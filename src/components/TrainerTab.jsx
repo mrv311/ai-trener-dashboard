@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2 } from 'lucide-react';
 
 const getZoneColorForTrainer = (percentFTP) => {
@@ -25,6 +25,9 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
   const [resistanceLevel, setResistanceLevel] = useState(30); 
   const [ftmsControlChar, setFtmsControlChar] = useState(null); 
 
+  // Referenca za računanje kadence (čuva prijašnje stanje)
+  const crankDataRef = useRef({ revs: -1, time: -1 });
+
   const [workoutRecipe, setWorkoutRecipe] = useState([
     { name: 'Zagrijavanje', duration: 10 * 60, power: 50 },
     { name: 'Z2 Aerobna Baza', duration: 5 * 60, power: 65 },
@@ -34,11 +37,8 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
     { name: 'Hlađenje', duration: 7 * 60, power: 45 },
   ]);
 
-  // --- NOVO: PAMETNI PARSER ZA INTERVALS.ICU TRENINGE ---
   useEffect(() => {
     if (workoutFromCalendar && workoutFromCalendar.workout_doc && workoutFromCalendar.workout_doc.steps) {
-      
-      // Funkcija koja prolazi i kroz složene intervale s ponavljanjima
       const extractSteps = (stepsArray) => {
         let flatSteps = [];
         stepsArray.forEach(step => {
@@ -165,7 +165,38 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
       setIsPowerConnected(true);
 
       powerChar.addEventListener('characteristicvaluechanged', (e) => {
-        setCurrentPower(e.target.value.getInt16(2, true));
+        const view = e.target.value;
+        const flags = view.getUint16(0, true);
+
+        // Očitavanje snage
+        setCurrentPower(view.getInt16(2, true));
+
+        // Matematika za kadencu (Bit 5 provjera)
+        if ((flags & 0x20) !== 0) {
+          let offset = 4;
+          if ((flags & 0x01) !== 0) offset += 1; 
+          if ((flags & 0x04) !== 0) offset += 2; 
+          if ((flags & 0x10) !== 0) offset += 6; 
+
+          if (view.byteLength >= offset + 4) {
+            const crankRevs = view.getUint16(offset, true);
+            const crankTime = view.getUint16(offset + 2, true);
+
+            if (crankDataRef.current.time !== -1) {
+              let timeDiff = crankTime - crankDataRef.current.time;
+              let revDiff = crankRevs - crankDataRef.current.revs;
+
+              if (timeDiff < 0) timeDiff += 65536;
+              if (revDiff < 0) revDiff += 65536;
+
+              if (timeDiff > 0) {
+                const rpm = Math.round((revDiff / (timeDiff / 1024)) * 60);
+                if (rpm >= 0 && rpm < 200) setCurrentCadence(rpm); // Filter čudnih vrijednosti
+              }
+            }
+            crankDataRef.current = { revs: crankRevs, time: crankTime };
+          }
+        }
       });
 
       try {
@@ -173,9 +204,14 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
         const controlPoint = await ftmsService.getCharacteristic('00002ad9-0000-1000-8000-00805f9b34fb');
         setFtmsControlChar(controlPoint);
         
+        // KLJUČNA ISPRAVKA: Trenažer prvo mora dobiti dozvolu za slanje odgovora (Indications)
+        await controlPoint.startNotifications();
+        
+        // Tek tada možemo zatražiti kontrolu (Opcode 0x00)
         await controlPoint.writeValue(new Uint8Array([0x00]));
+        console.log("FTMS kontrola preuzeta.");
       } catch (ftmsErr) {
-        console.warn("Ovaj uređaj ne podržava FTMS kontrolu ili je odbio zahtjev.", ftmsErr);
+        console.warn("FTMS greška:", ftmsErr);
       }
     } catch (err) {
       if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na trenažer: " + err.message);
@@ -188,7 +224,7 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
         try {
           const buffer = new ArrayBuffer(3);
           const view = new DataView(buffer);
-          view.setUint8(0, 0x05);
+          view.setUint8(0, 0x05); // Naredba za Target Power
           view.setInt16(1, activeTargetPower, true);
           await ftmsControlChar.writeValue(buffer);
         } catch (e) { console.error("Greška pri slanju ERG komande", e); }
@@ -201,7 +237,7 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
     const sendResCommand = async () => {
       if (ftmsControlChar && controlMode === 'RES') {
         try {
-          await ftmsControlChar.writeValue(new Uint8Array([0x04, resistanceLevel]));
+          await ftmsControlChar.writeValue(new Uint8Array([0x04, resistanceLevel])); // Naredba za Target Resistance
         } catch (e) { console.error("Greška pri slanju RES komande", e); }
       }
     };
@@ -248,8 +284,7 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
         </button>
         <div className="ml-auto flex items-center px-5 py-3 bg-white rounded-xl border border-stone-200 shadow-sm text-stone-500 font-medium text-sm">
           Trening za danas: <span className="text-stone-800 font-bold ml-2 uppercase">
-            {/* NOVO: Prikazuje pravo ime treninga iz kalendara */}
-            {workoutFromCalendar ? workoutFromCalendar.title : "SweetSpot 2x15m"}
+            {workoutFromCalendar ? workoutFromCalendar.title : "Slobodna Vožnja"}
           </span>
         </div>
       </div>
