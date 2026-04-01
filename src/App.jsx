@@ -4,7 +4,7 @@ import { Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart, Use
 import CalendarTab from './components/CalendarTab';
 import TrainerTab from './components/TrainerTab';
 import SettingsTab from './components/SettingsTab';
-import FitnessTab from './components/FitnessTab'; // DODAN IMPORT NOVE KOMPONENTE
+import FitnessTab from './components/FitnessTab';
 import PowerCurveTab from './components/PowerCurveTab';
 import ProfileTab from './components/ProfileTab';
 import AnalyticsTab from './components/AnalyticsTab';
@@ -19,6 +19,7 @@ export default function App() {
   const [wellnessData, setWellnessData] = useState({}); 
   const [isLoading, setIsLoading] = useState(false);
   const [unpairedList, setUnpairedList] = useState([]);
+  const [selectedWorkout, setSelectedWorkout] = useState(null);
 
   const [athleteProfile, setAthleteProfile] = useState({
     weight: 75.9, ftp: 270, thresholdHr: 160, maxHr: 180
@@ -62,7 +63,6 @@ export default function App() {
           mappedWellness[w.id] = {
             restingHR: w.restingHR, 
             sleep: w.sleepSecs ? formatDur(Math.round(w.sleepSecs / 60)) : null,
-            // AŽURIRANO: Sada spremamo i podatke za fitness grafikon!
             ctl: w.ctl,
             atl: w.atl,
             tsb: w.tsb
@@ -150,7 +150,8 @@ export default function App() {
         id: `ev-${ev.id}`, eventId: ev.id, date: evDate, title: ev.name || 'Planirano',
         duration: Math.round((ev.moving_time || 0) / 60), plannedDuration: Math.round((ev.moving_time || 0) / 60),
         tss: Math.round(ev.icu_training_load || 0), plannedTss: Math.round(ev.icu_training_load || 0),
-        statusColor: complianceColor, isCompleted: false
+        statusColor: complianceColor, isCompleted: false,
+        workout_doc: ev.workout_doc // POPRAVLJENO: Trenažer sad dobiva pravi dokument!
       });
     });
 
@@ -162,8 +163,6 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-stone-50 text-stone-900 font-sans">
-      
-      {/* LIJEVA NAVIGACIJA */}
       <div className="w-20 md:w-64 bg-white border-r border-stone-200 flex flex-col shadow-sm z-10 shrink-0">
         <div className="h-16 flex items-center px-6 border-b border-stone-100">
           <div className="bg-orange-600 p-1.5 rounded-lg mr-3 shadow-sm"><Activity className="w-5 h-5 text-white" /></div>
@@ -180,7 +179,6 @@ export default function App() {
         </nav>
       </div>
 
-      {/* GLAVNI SADRŽAJ */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         <header className="h-16 bg-white border-b border-stone-200 flex items-center justify-between px-8 shrink-0">
           <div className="flex items-center gap-4">
@@ -200,45 +198,33 @@ export default function App() {
         </header>
 
         <main className="flex-1 overflow-auto p-4 md:p-8 bg-stone-50">
-          
-          {activeTab === 'trainer' && <TrainerTab profile={athleteProfile} />}
-
           {activeTab === 'calendar' && (
             <CalendarTab 
-              currentDate={currentDate} 
-              setCurrentDate={setCurrentDate} 
-              workouts={workouts} 
-              wellnessData={wellnessData} 
-              handleUnpair={handleUnpair} 
-              handlePair={handlePair} 
+              currentDate={currentDate}
+              setCurrentDate={setCurrentDate}
+              workouts={workouts}
+              wellnessData={wellnessData}
+              handleUnpair={handleUnpair}
+              handlePair={handlePair}
+              onSelectWorkout={(workout) => {
+                setSelectedWorkout(workout);
+                setActiveTab('trainer'); 
+              }} 
             />
           )}
 
-          {/* PRIKAZ NOVE KOMPONENTE ZA FITNESS */}
-          {activeTab === 'fitness' && (
-            <FitnessTab wellnessData={wellnessData} />
-          )}
-
-          {activeTab === 'settings' && (
-            <SettingsTab 
-              intervalsId={intervalsId} 
-              setId={setIntervalsId} 
-              intervalsKey={intervalsKey} 
-              setKey={setIntervalsKey} 
+          {activeTab === 'trainer' && (
+            <TrainerTab 
               profile={athleteProfile} 
-              setProfile={setAthleteProfile} 
-              onSave={fetchWorkouts} 
+              workoutFromCalendar={selectedWorkout} 
             />
           )}
-          {activeTab === 'power' && (
-  <PowerCurveTab intervalsId={intervalsId} intervalsKey={intervalsKey} profile={athleteProfile} />
-)}
-{activeTab === 'profile' && (
-  <ProfileTab profile={athleteProfile} setProfile={setAthleteProfile} />
-)}
-{activeTab === 'analytics' && (
-  <AnalyticsTab intervalsId={intervalsId} intervalsKey={intervalsKey} />
-)}
+
+          {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
+          {activeTab === 'settings' && <SettingsTab intervalsId={intervalsId} setId={setIntervalsId} intervalsKey={intervalsKey} setKey={setIntervalsKey} profile={athleteProfile} setProfile={setAthleteProfile} onSave={fetchWorkouts} />}
+          {activeTab === 'power' && <PowerCurveTab intervalsId={intervalsId} intervalsKey={intervalsKey} profile={athleteProfile} />}
+          {activeTab === 'profile' && <ProfileTab profile={athleteProfile} setProfile={setAthleteProfile} />}
+          {activeTab === 'analytics' && <AnalyticsTab intervalsId={intervalsId} intervalsKey={intervalsKey} />}
         </main>
       </div>
     </div>

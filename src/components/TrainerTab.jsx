@@ -10,7 +10,7 @@ const getZoneColorForTrainer = (percentFTP) => {
   return 'bg-purple-600';                         
 };
 
-export default function TrainerTab({ profile }) {
+export default function TrainerTab({ profile, workoutFromCalendar }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0); 
   
@@ -20,11 +20,10 @@ export default function TrainerTab({ profile }) {
   const [isHrConnected, setIsHrConnected] = useState(false);
   const [isPowerConnected, setIsPowerConnected] = useState(false);
 
-  // --- NOVO: STANJA ZA KONTROLU TRENAŽERA ---
-  const [controlMode, setControlMode] = useState('ERG'); // 'ERG' ili 'RES'
-  const [ergIntensity, setErgIntensity] = useState(100); // 100% je default, mijenjamo za +/- 2%
-  const [resistanceLevel, setResistanceLevel] = useState(30); // Default 30% otpora za RES mode
-  const [ftmsControlChar, setFtmsControlChar] = useState(null); // Za slanje Bluetooth komandi
+  const [controlMode, setControlMode] = useState('ERG'); 
+  const [ergIntensity, setErgIntensity] = useState(100); 
+  const [resistanceLevel, setResistanceLevel] = useState(30); 
+  const [ftmsControlChar, setFtmsControlChar] = useState(null); 
 
   const [workoutRecipe, setWorkoutRecipe] = useState([
     { name: 'Zagrijavanje', duration: 10 * 60, power: 50 },
@@ -34,6 +33,45 @@ export default function TrainerTab({ profile }) {
     { name: 'SweetSpot 2', duration: 15 * 60, power: 90 },
     { name: 'Hlađenje', duration: 7 * 60, power: 45 },
   ]);
+
+  // --- NOVO: PAMETNI PARSER ZA INTERVALS.ICU TRENINGE ---
+  useEffect(() => {
+    if (workoutFromCalendar && workoutFromCalendar.workout_doc && workoutFromCalendar.workout_doc.steps) {
+      
+      // Funkcija koja prolazi i kroz složene intervale s ponavljanjima
+      const extractSteps = (stepsArray) => {
+        let flatSteps = [];
+        stepsArray.forEach(step => {
+          if (step.steps && Array.isArray(step.steps)) {
+             const loops = step.reps || step.count || 1;
+             for(let i=0; i<loops; i++) {
+                flatSteps = flatSteps.concat(extractSteps(step.steps));
+             }
+          } else {
+             let pwr = 50; 
+             if (step.power) {
+               if (step.power.value) pwr = step.power.value; 
+               else if (step.power.start && step.power.end) pwr = (step.power.start + step.power.end) / 2; 
+             }
+             flatSteps.push({
+               name: step.text || (pwr > 80 ? 'Radni Interval' : 'Odmor'),
+               duration: step.duration || 60, 
+               power: pwr
+             });
+          }
+        });
+        return flatSteps;
+      };
+
+      const parsedRecipe = extractSteps(workoutFromCalendar.workout_doc.steps);
+      
+      if (parsedRecipe.length > 0) {
+         setWorkoutRecipe(parsedRecipe);
+         setElapsedTime(0);
+         setIsPlaying(false);
+      }
+    }
+  }, [workoutFromCalendar]);
 
   const totalDuration = useMemo(() => workoutRecipe.reduce((acc, step) => acc + step.duration, 0), [workoutRecipe]);
 
@@ -70,7 +108,6 @@ export default function TrainerTab({ profile }) {
   const stepRemaining = currentStep.duration - stepElapsed;
   const progressPercent = (elapsedTime / totalDuration) * 100;
   
-  // Izračun ciljane snage s primijenjenim ERG postotkom
   const baseTargetPower = Math.round((currentStep.power / 100) * profile.ftp);
   const activeTargetPower = Math.round(baseTargetPower * (ergIntensity / 100));
 
@@ -92,7 +129,6 @@ export default function TrainerTab({ profile }) {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  // --- BLUETOOTH LOGIKA ---
   const connectHR = async () => {
     try {
       if (!navigator.bluetooth) { alert("Tvoj preglednik ne podržava Web Bluetooth."); return; }
@@ -116,15 +152,13 @@ export default function TrainerTab({ profile }) {
     try {
       if (!navigator.bluetooth) { alert("Tvoj preglednik ne podržava Web Bluetooth."); return; }
       
-      // Tražimo pedale/trenažer, ali dodajemo FTMS (0x1826) u opcionalne servise
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ services: ['cycling_power'] }],
-        optionalServices: ['00001826-0000-1000-8000-00805f9b34fb'] // FTMS UUID
+        optionalServices: ['00001826-0000-1000-8000-00805f9b34fb']
       });
       
       const server = await device.gatt.connect();
       
-      // 1. Čitanje snage (Cycling Power Service)
       const powerService = await server.getPrimaryService('cycling_power');
       const powerChar = await powerService.getCharacteristic('cycling_power_measurement');
       await powerChar.startNotifications();
@@ -134,32 +168,24 @@ export default function TrainerTab({ profile }) {
         setCurrentPower(e.target.value.getInt16(2, true));
       });
 
-      // 2. Pokušaj spajanja na FTMS za kontrolu ERG/RES (Fitness Machine Service)
       try {
         const ftmsService = await server.getPrimaryService('00001826-0000-1000-8000-00805f9b34fb');
         const controlPoint = await ftmsService.getCharacteristic('00002ad9-0000-1000-8000-00805f9b34fb');
         setFtmsControlChar(controlPoint);
         
-        // Zatraži kontrolu nad trenažerom (Opcode 0x00)
         await controlPoint.writeValue(new Uint8Array([0x00]));
-        console.log("FTMS kontrola uspješno preuzeta.");
       } catch (ftmsErr) {
         console.warn("Ovaj uređaj ne podržava FTMS kontrolu ili je odbio zahtjev.", ftmsErr);
       }
-
     } catch (err) {
       if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na trenažer: " + err.message);
     }
   };
 
-  // --- SLANJE KOMANDI TRENAŽERU ---
-  
-  // Šalje ERG cilj (Watt) trenažeru kad god se promijeni interval ili ERG offset
   useEffect(() => {
     const sendErgCommand = async () => {
       if (ftmsControlChar && controlMode === 'ERG') {
         try {
-          // Opcode 0x05 (Set Target Power), snaga je INT16 (little endian)
           const buffer = new ArrayBuffer(3);
           const view = new DataView(buffer);
           view.setUint8(0, 0x05);
@@ -171,12 +197,10 @@ export default function TrainerTab({ profile }) {
     sendErgCommand();
   }, [activeTargetPower, controlMode, ftmsControlChar]);
 
-  // Šalje Resistance Level trenažeru kad se promijeni
   useEffect(() => {
     const sendResCommand = async () => {
       if (ftmsControlChar && controlMode === 'RES') {
         try {
-          // Opcode 0x04 (Set Target Resistance Level), razina je UINT8 (0-100)
           await ftmsControlChar.writeValue(new Uint8Array([0x04, resistanceLevel]));
         } catch (e) { console.error("Greška pri slanju RES komande", e); }
       }
@@ -184,7 +208,6 @@ export default function TrainerTab({ profile }) {
     sendResCommand();
   }, [resistanceLevel, controlMode, ftmsControlChar]);
 
-  // --- UI FUNKCIJE ---
   const toggleMode = () => setControlMode(prev => prev === 'ERG' ? 'RES' : 'ERG');
   const increaseErg = () => setErgIntensity(prev => prev + 2);
   const decreaseErg = () => setErgIntensity(prev => Math.max(50, prev - 2));
@@ -224,7 +247,10 @@ export default function TrainerTab({ profile }) {
           {isHrConnected ? 'Pulsmetar Spojen' : 'Spoji Pulsmetar'}
         </button>
         <div className="ml-auto flex items-center px-5 py-3 bg-white rounded-xl border border-stone-200 shadow-sm text-stone-500 font-medium text-sm">
-          Trening za danas: <span className="text-stone-800 font-bold ml-2">SweetSpot 2x15m</span>
+          Trening za danas: <span className="text-stone-800 font-bold ml-2 uppercase">
+            {/* NOVO: Prikazuje pravo ime treninga iz kalendara */}
+            {workoutFromCalendar ? workoutFromCalendar.title : "SweetSpot 2x15m"}
+          </span>
         </div>
       </div>
 
@@ -236,7 +262,6 @@ export default function TrainerTab({ profile }) {
              <span className="text-stone-400 font-black uppercase tracking-widest text-sm">Trenutna Snaga</span>
           </div>
 
-          {/* KONTROLA TRENAŽERA (ERG / RES) */}
           <div className="absolute top-6 right-6 flex items-center gap-2 bg-stone-50 p-1.5 rounded-xl border border-stone-200">
             <button onClick={toggleMode} className="flex items-center gap-2 px-4 py-2 bg-white shadow-sm border border-stone-200 rounded-lg text-xs font-bold text-stone-700 uppercase tracking-wider hover:bg-stone-50 transition-colors">
               <Settings2 className="w-3.5 h-3.5" /> {controlMode} Mode

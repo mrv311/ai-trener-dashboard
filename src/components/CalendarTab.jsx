@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play } from 'lucide-react';
 
 const formatDur = (mins) => {
   const h = Math.floor(mins / 60);
@@ -26,7 +26,8 @@ const getTopCol = (sc) => {
   return "bg-stone-200";
 };
 
-export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair }) {
+// DODANO: onSelectWorkout u prope komponente
+export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, onSelectWorkout }) {
   const cy = currentDate.getFullYear(); 
   const cm = currentDate.getMonth();
   const daysInMo = new Date(cy, cm + 1, 0).getDate();
@@ -115,6 +116,18 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                             <div className="font-bold text-xs flex items-start justify-between text-stone-800 leading-tight">
                               <span className="line-clamp-2 pr-1">{w.title}</span>
                               <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                                
+                                {/* NOVO: Gumb PLAY za slanje na trenažer (samo za planirane treninge) */}
+                                {!w.isCompleted && onSelectWorkout && (
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }} 
+                                    className="text-orange-500 hover:text-white bg-orange-100 hover:bg-orange-500 rounded-md p-1 transition-all" 
+                                    title="Pošalji na trenažer"
+                                  >
+                                    <Play className="w-3.5 h-3.5 fill-current" />
+                                  </button>
+                                )}
+
                                 {w.actId && w.eventId && <button onClick={() => handleUnpair(w.actId, w.eventId)} className="text-stone-400 hover:text-orange-600 transition-colors" title="Razdvoji planirano i odrađeno"><Unlink className="w-3.5 h-3.5" /></button>}
                                 {w.actId && w.separatedEventId && <button onClick={() => handlePair(w.actId, w.separatedEventId)} className="text-stone-400 hover:text-emerald-600 transition-colors" title="Spoji s planiranim treningom"><Link2 className="w-3.5 h-3.5" /></button>}
                                 {w.statusColor === 'green' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
