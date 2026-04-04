@@ -1,0 +1,149 @@
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { fetchIntervalsData } from '../services/intervalsApi';
+
+export function useIntervalsData(intervalsId, intervalsKey) {
+  const [rawActivities, setRawActivities] = useState([]);
+  const [rawEvents, setRawEvents] = useState([]);
+  const [wellnessData, setWellnessData] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [unpairedList, setUnpairedList] = useState([]);
+
+  const fetchWorkouts = useCallback(async () => {
+    if (!intervalsId || !intervalsKey) {
+      setRawActivities([]);
+      setRawEvents([]);
+      setWellnessData({});
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await fetchIntervalsData(intervalsId, intervalsKey);
+      
+      setRawActivities(data.activities);
+      setRawEvents(data.events);
+      
+      const mappedWellness = {};
+      data.wellness.forEach(w => {
+        const formatDur = (mins) => { 
+          const h = Math.floor(mins / 60); 
+          return `${h > 0 ? h + 'h ' : ''}${String(mins % 60).padStart(2, '0')}m`; 
+        };
+        mappedWellness[w.id] = {
+          restingHR: w.restingHR, 
+          sleep: w.sleepSecs ? formatDur(Math.round(w.sleepSecs / 60)) : null,
+          ctl: w.ctl,
+          atl: w.atl,
+          tsb: w.tsb
+        };
+      });
+      setWellnessData(mappedWellness);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [intervalsId, intervalsKey]);
+
+  useEffect(() => {
+    fetchWorkouts();
+  }, [fetchWorkouts]);
+
+  const workouts = useMemo(() => {
+    const finalWorkouts = [];
+    const consumedEvents = new Set();
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    rawActivities.forEach(act => {
+      const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
+      let pairedEvent = null;
+      let separatedEventId = null;
+
+      for (let e of rawEvents) {
+        if (e.category !== 'WORKOUT') continue;
+        const isDateMatch = e.start_date_local && e.start_date_local.split('T')[0] === actDate;
+        const isIdMatch = e.activity_id === act.id;
+
+        if (isDateMatch || isIdMatch) {
+          if (unpairedList.includes(`${act.id}-${e.id}`)) {
+            separatedEventId = e.id;
+          } else if (!consumedEvents.has(e.id)) {
+            pairedEvent = e;
+            consumedEvents.add(e.id);
+            break; 
+          }
+        }
+      }
+
+      let complianceColor = 'blue'; 
+      let plannedTssDisplay = null;
+      let plannedDurDisplay = null;
+      let eventIdObj = null;
+
+      if (pairedEvent) {
+        eventIdObj = pairedEvent.id;
+        plannedTssDisplay = Math.round(pairedEvent.icu_training_load || 0);
+        plannedDurDisplay = Math.round((pairedEvent.moving_time || 0) / 60);
+
+        const actualTss = Math.round(act.icu_training_load || 0);
+        const actualDur = Math.round((act.moving_time || 0) / 60);
+
+        let ratio = 1;
+        if (plannedTssDisplay > 0 && actualTss > 0) ratio = actualTss / plannedTssDisplay;
+        else if (plannedDurDisplay > 0 && actualDur > 0) ratio = actualDur / plannedDurDisplay;
+
+        if (ratio >= 0.8 && ratio <= 1.2) complianceColor = 'green';
+        else if ((ratio >= 0.5 && ratio < 0.8) || (ratio > 1.2 && ratio <= 1.5)) complianceColor = 'yellow';
+        else complianceColor = 'red';
+      }
+
+      finalWorkouts.push({
+        id: `act-${act.id}`, actId: act.id, eventId: eventIdObj, separatedEventId: separatedEventId,
+        date: actDate, title: act.name || 'Trening',
+        duration: Math.round((act.moving_time || 0) / 60), plannedDuration: plannedDurDisplay,
+        tss: Math.round(act.icu_training_load || 0), plannedTss: plannedTssDisplay,
+        statusColor: complianceColor, isCompleted: true
+      });
+    });
+
+    rawEvents.forEach(ev => {
+      if (ev.category !== 'WORKOUT' || consumedEvents.has(ev.id)) return; 
+      if (ev.activity_id && !unpairedList.some(pair => pair.endsWith(`-${ev.id}`))) return; 
+
+      const evDate = ev.start_date_local ? ev.start_date_local.split('T')[0] : '';
+      let complianceColor = 'grey'; 
+      if (evDate < todayStr) complianceColor = 'red-missed'; 
+
+      finalWorkouts.push({
+        id: `ev-${ev.id}`, eventId: ev.id, date: evDate, title: ev.name || 'Planirano',
+        duration: Math.round((ev.moving_time || 0) / 60), plannedDuration: Math.round((ev.moving_time || 0) / 60),
+        tss: Math.round(ev.icu_training_load || 0), plannedTss: Math.round(ev.icu_training_load || 0),
+        statusColor: complianceColor, isCompleted: false,
+        workout_doc: ev.workout_doc
+      });
+    });
+
+    return finalWorkouts;
+  }, [rawActivities, rawEvents, unpairedList]); 
+
+  const handleUnpair = useCallback((actId, eventId) => { 
+    if (!actId || !eventId) return; 
+    setUnpairedList(prev => [...prev, `${actId}-${eventId}`]); 
+  }, []);
+  
+  const handlePair = useCallback((actId, eventId) => { 
+    if (!actId || !eventId) return; 
+    setUnpairedList(prev => prev.filter(pair => pair !== `${actId}-${eventId}`)); 
+  }, []);
+
+  return {
+    workouts,
+    wellnessData,
+    isLoading,
+    error,
+    fetchWorkouts,
+    handlePair,
+    handleUnpair
+  };
+}

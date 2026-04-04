@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart, User, Loader2, Monitor } from 'lucide-react';
+import React, { useState } from 'react';
+import { Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart, User, Loader2, Monitor, LogOut, Link as LinkIcon } from 'lucide-react';
 
 import CalendarTab from './components/CalendarTab';
 import TrainerTab from './components/TrainerTab';
@@ -8,17 +8,18 @@ import FitnessTab from './components/FitnessTab';
 import PowerCurveTab from './components/PowerCurveTab';
 import ProfileTab from './components/ProfileTab';
 import AnalyticsTab from './components/AnalyticsTab';
+import ConnectionsTab from './components/ConnectionsTab';
+
+import { useLocalStorage } from './hooks/useLocalStorage';
+import { useIntervalsData } from './hooks/useIntervalsData';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('calendar');
-  const [intervalsId, setIntervalsId] = useState(() => localStorage.getItem('intervalsId') || '');
-  const [intervalsKey, setIntervalsKey] = useState(() => localStorage.getItem('intervalsKey') || '');
+  const [intervalsId, setIntervalsId] = useLocalStorage('intervalsId', '');
+  const [intervalsKey, setIntervalsKey] = useLocalStorage('intervalsKey', '');
   
-  const [rawActivities, setRawActivities] = useState([]);
-  const [rawEvents, setRawEvents] = useState([]);
-  const [wellnessData, setWellnessData] = useState({}); 
-  const [isLoading, setIsLoading] = useState(false);
-  const [unpairedList, setUnpairedList] = useState([]);
+  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair } = useIntervalsData(intervalsId, intervalsKey);
+
   const [selectedWorkout, setSelectedWorkout] = useState(null);
 
   const [athleteProfile, setAthleteProfile] = useState({
@@ -27,139 +28,7 @@ export default function App() {
   
   const [currentDate, setCurrentDate] = useState(new Date()); 
 
-  const fetchWorkouts = async () => {
-    if (!intervalsId || !intervalsKey) return;
-    setIsLoading(true);
-    try {
-      const cleanId = intervalsId.trim();
-      const cleanKey = intervalsKey.trim();
-      const authString = btoa(`API_KEY:${cleanKey}`);
-      
-      const todayObj = new Date();
-      const pastDate = new Date(); pastDate.setMonth(todayObj.getMonth() - 12);
-      const futureDate = new Date(); futureDate.setMonth(todayObj.getMonth() + 3);
-
-      const oldest = pastDate.toISOString().split('T')[0];
-      const newest = futureDate.toISOString().split('T')[0];
-
-      const headers = { 'Authorization': `Basic ${authString}`, 'Accept': 'application/json' };
-
-      const actRes = await fetch(`https://intervals.icu/api/v1/athlete/${cleanId}/activities?oldest=${oldest}&newest=${newest}`, { headers });
-      if (actRes.status === 401) throw new Error("API ključ ili ID su neispravni.");
-      if (actRes.status === 429) throw new Error("Previše zahtjeva prema serveru. Pričekaj malo.");
-      if (!actRes.ok) throw new Error("Greška pri spajanju na server.");
-
-      const wellRes = await fetch(`https://intervals.icu/api/v1/athlete/${cleanId}/wellness?oldest=${oldest}&newest=${newest}`, { headers });
-      const evRes = await fetch(`https://intervals.icu/api/v1/athlete/${cleanId}/events?oldest=${oldest}&newest=${newest}`, { headers });
-      
-      setRawActivities(await actRes.json());
-      if (evRes.ok) setRawEvents(await evRes.json());
-      
-      if (wellRes.ok) {
-        const wellData = await wellRes.json();
-        const mappedWellness = {};
-        wellData.forEach(w => {
-          const formatDur = (mins) => { const h = Math.floor(mins / 60); return `${h > 0 ? h + 'h ' : ''}${String(mins % 60).padStart(2, '0')}m`; };
-          mappedWellness[w.id] = {
-            restingHR: w.restingHR, 
-            sleep: w.sleepSecs ? formatDur(Math.round(w.sleepSecs / 60)) : null,
-            ctl: w.ctl,
-            atl: w.atl,
-            tsb: w.tsb
-          };
-        });
-        setWellnessData(mappedWellness);
-      }
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (intervalsId && intervalsKey) fetchWorkouts();
-  }, []);
-
-  const workouts = useMemo(() => {
-    const finalWorkouts = [];
-    const consumedEvents = new Set();
-    const todayStr = new Date().toISOString().split('T')[0];
-
-    rawActivities.forEach(act => {
-      const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
-      let pairedEvent = null;
-      let separatedEventId = null;
-
-      for (let e of rawEvents) {
-        if (e.category !== 'WORKOUT') continue;
-        const isDateMatch = e.start_date_local && e.start_date_local.split('T')[0] === actDate;
-        const isIdMatch = e.activity_id === act.id;
-
-        if (isDateMatch || isIdMatch) {
-          if (unpairedList.includes(`${act.id}-${e.id}`)) {
-            separatedEventId = e.id;
-          } else if (!consumedEvents.has(e.id)) {
-            pairedEvent = e;
-            consumedEvents.add(e.id);
-            break; 
-          }
-        }
-      }
-
-      let complianceColor = 'blue'; 
-      let plannedTssDisplay = null;
-      let plannedDurDisplay = null;
-      let eventIdObj = null;
-
-      if (pairedEvent) {
-        eventIdObj = pairedEvent.id;
-        plannedTssDisplay = Math.round(pairedEvent.icu_training_load || 0);
-        plannedDurDisplay = Math.round((pairedEvent.moving_time || 0) / 60);
-
-        const actualTss = Math.round(act.icu_training_load || 0);
-        const actualDur = Math.round((act.moving_time || 0) / 60);
-
-        let ratio = 1;
-        if (plannedTssDisplay > 0 && actualTss > 0) ratio = actualTss / plannedTssDisplay;
-        else if (plannedDurDisplay > 0 && actualDur > 0) ratio = actualDur / plannedDurDisplay;
-
-        if (ratio >= 0.8 && ratio <= 1.2) complianceColor = 'green';
-        else if ((ratio >= 0.5 && ratio < 0.8) || (ratio > 1.2 && ratio <= 1.5)) complianceColor = 'yellow';
-        else complianceColor = 'red';
-      }
-
-      finalWorkouts.push({
-        id: `act-${act.id}`, actId: act.id, eventId: eventIdObj, separatedEventId: separatedEventId,
-        date: actDate, title: act.name || 'Trening',
-        duration: Math.round((act.moving_time || 0) / 60), plannedDuration: plannedDurDisplay,
-        tss: Math.round(act.icu_training_load || 0), plannedTss: plannedTssDisplay,
-        statusColor: complianceColor, isCompleted: true
-      });
-    });
-
-    rawEvents.forEach(ev => {
-      if (ev.category !== 'WORKOUT' || consumedEvents.has(ev.id)) return; 
-      if (ev.activity_id && !unpairedList.some(pair => pair.endsWith(`-${ev.id}`))) return; 
-
-      const evDate = ev.start_date_local ? ev.start_date_local.split('T')[0] : '';
-      let complianceColor = 'grey'; 
-      if (evDate < todayStr) complianceColor = 'red-missed'; 
-
-      finalWorkouts.push({
-        id: `ev-${ev.id}`, eventId: ev.id, date: evDate, title: ev.name || 'Planirano',
-        duration: Math.round((ev.moving_time || 0) / 60), plannedDuration: Math.round((ev.moving_time || 0) / 60),
-        tss: Math.round(ev.icu_training_load || 0), plannedTss: Math.round(ev.icu_training_load || 0),
-        statusColor: complianceColor, isCompleted: false,
-        workout_doc: ev.workout_doc // POPRAVLJENO: Trenažer sad dobiva pravi dokument!
-      });
-    });
-
-    return finalWorkouts;
-  }, [rawActivities, rawEvents, unpairedList]); 
-
-  const handleUnpair = (actId, eventId) => { if (!actId || !eventId) return; setUnpairedList(prev => [...prev, `${actId}-${eventId}`]); };
-  const handlePair = (actId, eventId) => { if (!actId || !eventId) return; setUnpairedList(prev => prev.filter(pair => pair !== `${actId}-${eventId}`)); };
+  const connectionStatus = isLoading ? 'connecting' : (error ? 'error' : (intervalsId && intervalsKey && workouts.length > 0 ? 'connected' : 'idle'));
 
   return (
     <div className="flex h-screen bg-stone-50 text-stone-900 font-sans">
@@ -177,6 +46,26 @@ export default function App() {
           <NavItem icon={<Settings />} label="Postavke" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
           <NavItem icon={<User />} label="Profil" active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
         </nav>
+        <div className="p-3 border-t border-stone-100 mt-auto flex flex-col gap-1">
+          <button 
+            onClick={() => setActiveTab('connections')} 
+            className={`w-full flex items-center px-4 py-3 rounded-lg transition-all ${activeTab === 'connections' ? 'bg-orange-50 text-orange-700 font-semibold' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-800'}`}
+          >
+            <LinkIcon className={`w-5 h-5 ${activeTab === 'connections' ? 'text-orange-600' : 'text-stone-400'}`} />
+            <span className="ml-3 text-sm hidden md:block font-medium">Spajanje API-ja</span>
+          </button>
+
+          <button 
+            onClick={() => { 
+              setIntervalsId(''); 
+              setIntervalsKey(''); 
+            }} 
+            className="w-full flex items-center px-4 py-3 rounded-lg transition-all text-stone-400 hover:bg-stone-100 hover:text-red-600"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="ml-3 text-sm hidden md:block font-medium">Odjava</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 flex flex-col h-full overflow-hidden">
@@ -187,8 +76,13 @@ export default function App() {
               {activeTab === 'calendar' && 'Dnevnik Treninga'}
               {activeTab === 'trainer' && 'Virtualna Vožnja (Trenažer)'}
               {activeTab === 'fitness' && 'Kondicija i Umor (PMC)'}
+              {activeTab === 'profile' && 'Moj Profil'}
+              {activeTab === 'power' && 'Krivulja Snage'}
+              {activeTab === 'analytics' && 'Analitika'}
+              {activeTab === 'connections' && 'Vanjske Veze'}
             </h1>
-            {isLoading && <Loader2 className="w-4 h-4 text-orange-500 animate-spin" />}
+            {isLoading && <Loader2 className="w-5 h-5 text-orange-500 animate-spin" />}
+            {error && <span className="text-xs font-bold bg-red-100 text-red-600 px-3 py-1 rounded-full border border-red-200">{error}</span>}
           </div>
           {(activeTab === 'calendar' || activeTab === 'fitness') && (
             <button onClick={fetchWorkouts} className="flex items-center gap-2 bg-stone-100 hover:bg-stone-200 text-stone-600 px-4 py-2 rounded-lg text-xs font-bold transition-colors border border-stone-200">
@@ -221,10 +115,11 @@ export default function App() {
           )}
 
           {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
-          {activeTab === 'settings' && <SettingsTab intervalsId={intervalsId} setId={setIntervalsId} intervalsKey={intervalsKey} setKey={setIntervalsKey} profile={athleteProfile} setProfile={setAthleteProfile} onSave={fetchWorkouts} />}
+          {activeTab === 'settings' && <SettingsTab profile={athleteProfile} setProfile={setAthleteProfile} />}
           {activeTab === 'power' && <PowerCurveTab intervalsId={intervalsId} intervalsKey={intervalsKey} profile={athleteProfile} />}
           {activeTab === 'profile' && <ProfileTab profile={athleteProfile} setProfile={setAthleteProfile} />}
           {activeTab === 'analytics' && <AnalyticsTab intervalsId={intervalsId} intervalsKey={intervalsKey} />}
+          {activeTab === 'connections' && <ConnectionsTab connectionStatus={connectionStatus} intervalsId={intervalsId} setId={setIntervalsId} intervalsKey={intervalsKey} setKey={setIntervalsKey} onSave={fetchWorkouts} />}
         </main>
       </div>
     </div>

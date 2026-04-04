@@ -1,13 +1,30 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity } from 'lucide-react';
+import TrainerModals from './trainer/TrainerModals';
+import TrainerGraph, { getZoneColorForTrainer } from './trainer/TrainerGraph';
 
-const getZoneColorForTrainer = (percentFTP) => {
-  if (percentFTP < 55) return 'bg-sky-300';
-  if (percentFTP < 75) return 'bg-sky-400';
-  if (percentFTP < 90) return 'bg-emerald-400';
-  if (percentFTP < 105) return 'bg-amber-400';
-  if (percentFTP < 120) return 'bg-rose-500';
-  return 'bg-purple-600';
+const playBeep = (freq = 800, duration = 0.2) => {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+    
+    osc.start();
+    osc.stop(ctx.currentTime + duration);
+  } catch (e) {
+    console.warn("AudioContext nije dostupan", e);
+  }
 };
 
 // --- POWER MATCH PID KONTROLER ---
@@ -188,6 +205,13 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
   const currentStep = workoutRecipe[currentStepIndex];
   const stepRemaining = currentStep.duration - stepElapsed;
   const progressPercent = (elapsedTime / totalDuration) * 100;
+
+  // BILJEŽENJE KRAJA INTERVALA I ZVUKOVI
+  useEffect(() => {
+    if (isPlaying && stepRemaining <= 3 && stepRemaining > 0 && currentStepIndex < workoutRecipe.length - 1) {
+      playBeep(800, 0.2); 
+    }
+  }, [elapsedTime, isPlaying]);
 
   const baseTargetPower = Math.round((currentStep.power / 100) * profile.ftp);
   const activeTargetPower = Math.round(baseTargetPower * (ergIntensity / 100));
@@ -398,66 +422,46 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
     });
   };
 
+  // KEYBOARD SHORTCUTS
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (showStopPrompt || isFinished) return; // ignoriraj ako je modal otvoren
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setIsPlaying(p => !p);
+      } else if (e.code === 'ArrowUp') {
+        e.preventDefault();
+        if (controlMode === 'ERG') setErgIntensity(p => p + 3);
+        else setResistanceLevel(p => Math.min(100, p + 3));
+      } else if (e.code === 'ArrowDown') {
+        e.preventDefault();
+        if (controlMode === 'ERG') setErgIntensity(p => Math.max(50, p - 3));
+        else setResistanceLevel(p => Math.max(0, p - 3));
+      } else if (e.code === 'KeyS') {
+        e.preventDefault();
+        handleSkip();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showStopPrompt, isFinished, controlMode, handleSkip]);
+
   return (
     <div className="max-w-6xl mx-auto flex flex-col h-[calc(100vh-8rem)] gap-6 animate-in fade-in relative">
 
-      {/* MODAL: Upozorenje prije prekida */}
-      {showStopPrompt && !isFinished && (
-        <div className="absolute inset-0 z-50 bg-stone-900/60 backdrop-blur-md rounded-[32px] flex items-center justify-center p-6 animate-in zoom-in-95 duration-200">
-          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center border border-stone-200">
-            <div className="bg-rose-100 p-4 rounded-full mb-4">
-              <Square className="w-10 h-10 text-rose-500 fill-current" />
-            </div>
-            <h2 className="text-2xl font-black text-stone-800 uppercase tracking-tight mb-2">Prekinuti trening?</h2>
-            <p className="text-stone-500 font-medium mb-8 text-sm">Želiš li ranije završiti trening i spremiti dosadašnje rezultate?</p>
-            <div className="flex flex-col gap-3 w-full">
-              <button onClick={confirmStop} className="w-full py-3.5 bg-rose-500 text-white rounded-xl font-black hover:bg-rose-600 transition-colors shadow-lg shadow-rose-500/20">Da, završi trening</button>
-              <button onClick={cancelStop} className="w-full py-3.5 bg-stone-100 text-stone-600 rounded-xl font-black hover:bg-stone-200 transition-colors">Ne, nastavi s vožnjom</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Završetak treninga */}
-      {isFinished && summaryStats && (
-        <div className="absolute inset-0 z-50 bg-stone-900/60 backdrop-blur-md rounded-[32px] flex items-center justify-center p-6 animate-in zoom-in-95 duration-300">
-          <div className="bg-white rounded-3xl p-10 max-w-lg w-full shadow-2xl flex flex-col items-center text-center border border-stone-200">
-            <div className="bg-orange-100 p-4 rounded-full mb-6">
-              <Award className="w-16 h-16 text-orange-500" />
-            </div>
-            <h2 className="text-3xl font-black text-stone-800 uppercase tracking-tight">Trening Završen!</h2>
-            <p className="text-stone-500 font-bold mt-2 mb-8">{workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja'}</p>
-            <div className="grid grid-cols-3 gap-4 w-full mb-10">
-              <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100">
-                <p className="text-[10px] font-black uppercase text-stone-400 tracking-widest mb-1">Avg Power</p>
-                <p className="text-2xl font-black text-stone-800">{summaryStats.avgPower} <span className="text-sm font-bold text-stone-400">W</span></p>
-                {isPmConnected && <p className="text-[9px] text-violet-500 font-bold mt-1">PowerMeter</p>}
-              </div>
-              <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100">
-                <p className="text-[10px] font-black uppercase text-rose-400 tracking-widest mb-1">Avg HR</p>
-                <p className="text-2xl font-black text-stone-800">{summaryStats.avgHr} <span className="text-sm font-bold text-stone-400">bpm</span></p>
-              </div>
-              <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100">
-                <p className="text-[10px] font-black uppercase text-orange-400 tracking-widest mb-1">Avg Cadence</p>
-                <p className="text-2xl font-black text-stone-800">{summaryStats.avgCadence} <span className="text-sm font-bold text-stone-400">rpm</span></p>
-              </div>
-            </div>
-            <div className="flex flex-col gap-3 w-full">
-              <button onClick={() => setUploadStatus('intervals')} className={`flex items-center justify-center gap-3 w-full py-4 rounded-xl font-black transition-all ${uploadStatus === 'intervals' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-stone-800 text-white hover:bg-stone-700'}`}>
-                {uploadStatus === 'intervals' ? <CheckCircle2 className="w-5 h-5" /> : <UploadCloud className="w-5 h-5" />}
-                {uploadStatus === 'intervals' ? 'Poslano na Intervals.icu!' : 'Upload na Intervals.icu'}
-              </button>
-              <button onClick={() => setUploadStatus('strava')} className={`flex items-center justify-center gap-3 w-full py-4 rounded-xl font-black transition-all ${uploadStatus === 'strava' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-[#fc4c02] text-white hover:bg-[#e34402] shadow-lg shadow-orange-500/20'}`}>
-                {uploadStatus === 'strava' ? <CheckCircle2 className="w-5 h-5" /> : <UploadCloud className="w-5 h-5" />}
-                {uploadStatus === 'strava' ? 'Poslano na Stravu!' : 'Upload na Stravu'}
-              </button>
-            </div>
-            <button onClick={() => { setIsFinished(false); setUploadStatus(null); setElapsedTime(0); setWorkoutHistory([]); }} className="mt-8 text-stone-400 font-bold hover:text-stone-600 text-sm">
-              Zatvori i resetiraj
-            </button>
-          </div>
-        </div>
-      )}
+      <TrainerModals 
+        showStopPrompt={showStopPrompt}
+        isFinished={isFinished}
+        confirmStop={confirmStop}
+        cancelStop={cancelStop}
+        summaryStats={summaryStats}
+        workoutFromCalendar={workoutFromCalendar}
+        isPmConnected={isPmConnected}
+        uploadStatus={uploadStatus}
+        setUploadStatus={setUploadStatus}
+        handleReset={() => { setIsFinished(false); setUploadStatus(null); setElapsedTime(0); setWorkoutHistory([]); }}
+      />
 
       {/* GORNJA TRAKA: Bluetooth gumbi */}
       <div className="flex gap-4 flex-wrap">
@@ -614,45 +618,13 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
           </div>
         </div>
 
-        <div className="relative flex-1 w-full bg-stone-50 rounded-t-xl flex items-end overflow-hidden border border-stone-200">
-          {workoutRecipe.map((step, i) => {
-            const widthPercent = (step.duration / totalDuration) * 100;
-            const heightPercent = Math.min(Math.max((step.power / 150) * 100, 15), 100);
-            return <div key={i} style={{ width: `${widthPercent}%`, height: `${heightPercent}%` }} className={`${getZoneColorForTrainer(step.power)} border-r border-white/20 transition-all duration-300 opacity-90`} />;
-          })}
-
-          <div className="absolute top-0 bottom-0 left-0 bg-stone-900/30 z-10 pointer-events-none transition-all duration-1000 ease-linear" style={{ width: `${progressPercent}%` }} />
-
-          {workoutHistory.length > 0 && (
-            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none z-20">
-              <polyline
-                points={workoutHistory.map(p => {
-                  const x = (p.time / totalDuration) * 100;
-                  const hrPercent = Math.min(Math.max((p.hr / (profile?.maxHr || 180)) * 100, 0), 100);
-                  return `${x},${100 - hrPercent}`;
-                }).join(' ')}
-                fill="none" stroke="#ef4444" strokeWidth="1.5"
-                strokeLinecap="round" strokeLinejoin="round"
-                style={{ filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.4))' }}
-              />
-              <polyline
-                points={workoutHistory.map(p => {
-                  const x = (p.time / totalDuration) * 100;
-                  const powerInPercentFTP = (p.power / profile.ftp) * 100;
-                  const heightPercent = Math.min(Math.max((powerInPercentFTP / 150) * 100, 15), 100);
-                  return `${x},${100 - heightPercent}`;
-                }).join(' ')}
-                fill="none" stroke="#ffffff" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round"
-                style={{ filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.6))' }}
-              />
-            </svg>
-          )}
-
-          <div className="absolute top-0 bottom-0 w-0.5 bg-stone-800 shadow-[0_0_8px_rgba(0,0,0,0.5)] z-30 transition-all duration-1000 ease-linear" style={{ left: `${progressPercent}%` }}>
-            <div className="absolute -top-1.5 -left-[5px] w-3 h-3 bg-stone-800 rounded-full border-2 border-white"></div>
-          </div>
-        </div>
+        <TrainerGraph 
+          workoutRecipe={workoutRecipe}
+          workoutHistory={workoutHistory}
+          totalDuration={totalDuration}
+          progressPercent={progressPercent}
+          profile={profile}
+        />
 
         <div className="flex justify-between items-center px-4 py-2 bg-stone-100 rounded-b-xl border-x border-b border-stone-200">
           <div className="text-[11px] font-black uppercase tracking-widest text-stone-500">
