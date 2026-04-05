@@ -482,8 +482,8 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
       </div>
 
       {/* GLAVNI GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 shrink-0">
-        <div className="md:col-span-2 lg:col-span-2 bg-zinc-900/40 backdrop-blur-xl rounded-3xl shadow-xl border border-zinc-800/80 p-6 md:p-8 flex flex-col justify-center items-center relative overflow-hidden">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-6 shrink-0">
+        <div className="md:col-span-2 lg:col-span-2 bg-zinc-900/40 backdrop-blur-xl rounded-3xl shadow-xl border border-zinc-800/80 p-4 md:p-8 flex flex-col justify-center items-center relative overflow-hidden">
           <div className={`absolute top-0 w-full h-2 ${getZoneColorForTrainer(currentStep.power)} transition-colors duration-500 shadow-[0_0_10px_rgba(255,255,255,0.2)]`}></div>
           <div className="absolute top-6 left-6 flex items-center gap-3">
             <span className="text-zinc-500 font-black uppercase tracking-widest text-sm">
@@ -516,8 +516,8 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
             )}
           </div>
 
-          <div className="flex items-baseline gap-2 md:gap-4 mt-12 md:mt-10">
-            <div className={`text-[80px] md:text-[160px] font-black leading-none tracking-tighter transition-colors ${controlMode === 'RES' && isPlaying ? 'text-indigo-400 drop-shadow-[0_0_10px_rgba(129,140,248,0.5)]' : getPowerColor()}`}>
+          <div className="flex items-baseline gap-2 md:gap-4 mt-8 md:mt-10">
+            <div className={`text-[64px] md:text-[140px] font-black leading-none tracking-tighter transition-colors ${controlMode === 'RES' && isPlaying ? 'text-indigo-400 drop-shadow-[0_0_10px_rgba(129,140,248,0.5)]' : getPowerColor()}`}>
               {displayPower}
             </div>
             <span className="text-xl md:text-3xl font-bold text-zinc-600 pb-2 md:pb-6">W</span>
@@ -546,28 +546,28 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
           </div>
         </div>
 
-        <div className="flex sm:flex-col md:flex-row lg:flex-col gap-4 md:gap-6">
-          <div className="bg-zinc-900/40 backdrop-blur-xl rounded-3xl shadow-xl border border-zinc-800/80 p-4 md:p-6 flex-1 flex flex-col justify-center items-center relative group hover:border-rose-500/30 transition-colors">
-            <span className="absolute top-4 left-4 md:top-5 md:left-5 text-rose-500/80 font-black uppercase tracking-widest text-[10px] md:text-xs flex items-center gap-1.5"><Heart className="w-3 h-3 md:w-4 md:h-4 group-hover:text-rose-500 transition-colors" /> <span className="hidden sm:inline">Puls</span></span>
-            <div className="flex items-baseline gap-1 md:gap-2 mt-4 md:mt-0">
-              <div className={`text-[46px] md:text-[70px] font-black leading-none ${isHrConnected ? 'text-zinc-100 drop-shadow-[0_0_8px_rgba(244,63,94,0.3)]' : 'text-zinc-700'}`}>{displayHR}</div>
-              <span className="text-sm md:text-lg font-bold text-zinc-600 pb-1 md:pb-2">bpm</span>
+        <div className="flex sm:flex-col md:flex-row lg:flex-col gap-2 sm:gap-4 md:gap-6">
+          <div className="bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-3 md:p-6 flex-1 flex flex-col justify-center items-center relative group hover:border-rose-500/30 transition-colors">
+            <span className="absolute top-3 left-3 md:top-5 md:left-5 text-rose-500/80 font-black uppercase tracking-widest text-[9px] md:text-xs flex items-center gap-1"><Heart className="w-3 h-3 md:w-4 md:h-4 group-hover:text-rose-500 transition-colors" /> <span className="hidden xl:inline">Puls</span></span>
+            <div className="flex items-baseline gap-1 md:gap-2 mt-3 md:mt-0">
+              <div className={`text-[36px] md:text-[70px] font-black leading-none ${isHrConnected ? 'text-zinc-100 drop-shadow-[0_0_8px_rgba(244,63,94,0.3)]' : 'text-zinc-700'}`}>{displayHR}</div>
+              <span className="text-xs md:text-lg font-bold text-zinc-600 pb-1 md:pb-2">bpm</span>
             </div>
           </div>
-          <div className="bg-zinc-900/40 backdrop-blur-xl rounded-3xl shadow-xl border border-zinc-800/80 p-4 md:p-6 flex-1 flex flex-col justify-center items-center relative group hover:border-orange-500/30 transition-colors">
-            <span className="absolute top-4 left-4 md:top-5 md:left-5 text-orange-500/80 font-black uppercase tracking-widest text-[10px] md:text-xs flex items-center gap-1.5"><Zap className="w-3 h-3 md:w-4 md:h-4 group-hover:text-orange-500 transition-colors" /> <span className="hidden sm:inline">Kadenca</span></span>
-            <div className="flex items-baseline gap-1 md:gap-2 mt-4 md:mt-0">
-              <div className={`text-[46px] md:text-[70px] font-black leading-none ${(isPmConnected || isPowerConnected) ? 'text-zinc-100 drop-shadow-[0_0_8px_rgba(249,115,22,0.3)]' : 'text-zinc-700'}`}>{displayCadence}</div>
-              <span className="text-sm md:text-lg font-bold text-zinc-600 pb-1 md:pb-2">rpm</span>
+          <div className="bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-3 md:p-6 flex-1 flex flex-col justify-center items-center relative group hover:border-orange-500/30 transition-colors">
+            <span className="absolute top-3 left-3 md:top-5 md:left-5 text-orange-500/80 font-black uppercase tracking-widest text-[9px] md:text-xs flex items-center gap-1"><Zap className="w-3 h-3 md:w-4 md:h-4 group-hover:text-orange-500 transition-colors" /> <span className="hidden xl:inline">Kadenca</span></span>
+            <div className="flex items-baseline gap-1 md:gap-2 mt-3 md:mt-0">
+              <div className={`text-[36px] md:text-[70px] font-black leading-none ${(isPmConnected || isPowerConnected) ? 'text-zinc-100 drop-shadow-[0_0_8px_rgba(249,115,22,0.3)]' : 'text-zinc-700'}`}>{displayCadence}</div>
+              <span className="text-xs md:text-lg font-bold text-zinc-600 pb-1 md:pb-2">rpm</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* DONJI PANEL: Trening grafikon i kontrole */}
-      <div className="bg-zinc-900/40 backdrop-blur-xl rounded-3xl shadow-xl border border-zinc-800/80 p-4 md:p-6 flex flex-col flex-1 min-h-[250px] md:min-h-[300px]">
-        <div className="flex flex-col md:flex-row md:items-end justify-between px-1 md:px-2 mb-4 gap-4 md:gap-0">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start md:items-center gap-4">
+      <div className="bg-zinc-900/40 backdrop-blur-xl rounded-3xl shadow-xl border border-zinc-800/80 p-3 md:p-6 flex flex-col flex-1 min-h-[200px] md:min-h-[300px]">
+        <div className="flex flex-col md:flex-row md:items-end justify-between px-1 md:px-2 mb-2 md:mb-4 gap-3 md:gap-0">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start md:items-center gap-3 md:gap-4">
             <div className="flex items-center bg-zinc-950/50 rounded-full p-1 border border-zinc-800 mx-auto sm:mx-0">
               <button onClick={handleStopClick} className="w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-colors hover:bg-zinc-800 text-zinc-400 hover:text-white" title="Prekini trening"><Square className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" /></button>
               <button onClick={() => setIsPlaying(!isPlaying)} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center transition-all shadow-lg shrink-0 ${isPlaying ? 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-white' : 'bg-orange-500 hover:bg-orange-400 text-white shadow-orange-500/30'}`}>
@@ -576,16 +576,16 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
               <button onClick={handleSkip} className="w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-colors hover:bg-zinc-800 text-zinc-400 hover:text-white" title="Preskoči na idući interval"><FastForward className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" /></button>
             </div>
             <div className="text-center sm:text-left">
-              <div className="text-[10px] md:text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1 md:mb-1.5">Trenutni Interval</div>
-              <div className="text-lg md:text-2xl font-bold text-zinc-100 flex flex-wrap items-center justify-center sm:justify-start gap-2 md:gap-3">
-                {currentStep.name} <span className="text-zinc-500 font-medium text-sm md:text-lg">@ {currentStep.power}% FTP</span>
-                <button onClick={handleExtend} className="md:ml-2 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 text-[10px] uppercase tracking-wider font-bold px-2 py-1 md:px-3 md:py-1.5 rounded-lg transition-colors flex items-center gap-1 shrink-0"><Plus className="w-3 h-3" /> 5 Min</button>
+              <div className="text-[10px] md:text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-0.5 md:mb-1.5">Trenutni Interval</div>
+              <div className="text-base md:text-2xl font-bold text-zinc-100 flex flex-wrap items-center justify-center sm:justify-start gap-1 md:gap-3">
+                {currentStep.name} <span className="text-zinc-500 font-medium text-xs md:text-lg">@ {currentStep.power}% FTP</span>
+                <button onClick={handleExtend} className="md:ml-2 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 text-[9px] md:text-[10px] uppercase tracking-wider font-bold px-2 py-1 md:px-3 md:py-1.5 rounded-lg transition-colors flex items-center gap-1 shrink-0"><Plus className="w-3 h-3" /> 5 Min</button>
               </div>
             </div>
           </div>
-          <div className="text-center md:text-right border-t border-zinc-800/50 md:border-t-0 pt-3 md:pt-0">
-            <div className="text-[10px] md:text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-0.5 md:mb-1.5">Preostalo u intervalu</div>
-            <div className={`text-4xl md:text-5xl font-black font-mono tracking-tight ${isPlaying ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]' : 'text-zinc-600'}`}>{formatTime(stepRemaining)}</div>
+          <div className="text-center md:text-right border-t border-zinc-800/50 md:border-t-0 pt-2 md:pt-0">
+            <div className="text-[9px] md:text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-0.5 md:mb-1.5">Preostalo u intervalu</div>
+            <div className={`text-3xl md:text-5xl font-black font-mono tracking-tight ${isPlaying ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]' : 'text-zinc-600'}`}>{formatTime(stepRemaining)}</div>
           </div>
         </div>
 
