@@ -119,12 +119,13 @@ export default function App() {
               />
             )}
 
-            {activeTab === 'trainer' && (
+            {/* TRENAŽER TAB - ostaje uvijek renderiran u DOM-u kako bi trening tekao u pozadini, samo se CSS-om skriva */}
+            <div className={activeTab === 'trainer' ? 'block' : 'hidden'}>
               <TrainerTab 
                 profile={athleteProfile} 
                 workoutFromCalendar={selectedWorkout} 
               />
-            )}
+            </div>
 
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
             {activeTab === 'settings' && <SettingsTab profile={athleteProfile} setProfile={setAthleteProfile} />}
