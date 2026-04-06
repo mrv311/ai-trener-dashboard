@@ -91,7 +91,7 @@ export default function LibraryTab({ onSelectWorkout }) {
             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
             <span className="hidden sm:inline">{isUploading ? 'Učitavanje...' : 'Dodaj ZWO/ERG'}</span>
             <span className="sm:hidden">Dodaj</span>
-            <input type="file" multiple accept=".zwo,.erg" className="absolute w-0 h-0 opacity-0 pointer-events-none" onChange={handleFileUpload} disabled={isUploading} />
+            <input type="file" multiple className="absolute w-0 h-0 opacity-0 pointer-events-none" onChange={handleFileUpload} disabled={isUploading} />
           </label>
           <button 
             onClick={fetchWorkouts} 
