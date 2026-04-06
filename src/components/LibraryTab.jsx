@@ -30,31 +30,46 @@ export default function LibraryTab({ onSelectWorkout }) {
   };
 
   const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
     setIsUploading(true);
     setError(null);
 
-    try {
-      const text = await file.text();
-      const parsedWorkout = await parseWorkoutFile(text, file.name);
-      
-      const { data, error } = await supabase.from('workouts').insert([parsedWorkout]).select();
-      
-      if (error) throw error;
-      
-      // Osježi listu
-      await fetchWorkouts();
-      
-    } catch (err) {
-      console.error(err);
-      setError("Greška pri učitavanju: " + err.message);
-    } finally {
-      setIsUploading(false);
-      // Reset inputa
-      event.target.value = null;
+    const uploadedWorkouts = [];
+    const errors = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const text = await file.text();
+        const parsedWorkout = await parseWorkoutFile(text, file.name);
+        uploadedWorkouts.push(parsedWorkout);
+      } catch (err) {
+        console.error(`Greška pri parsiranju fajla ${file.name}:`, err);
+        errors.push(`${file.name}: ${err.message}`);
+      }
     }
+
+    if (uploadedWorkouts.length > 0) {
+      try {
+        const { data, error } = await supabase.from('workouts').insert(uploadedWorkouts).select();
+        if (error) throw error;
+        // Osježi listu
+        await fetchWorkouts();
+      } catch (err) {
+        console.error(err);
+        setError("Greška pri spremanju u bazu: " + err.message);
+      }
+    }
+
+    if (errors.length > 0) {
+      setError(`Neuspješan uvoz nekih datoteka:\n${errors.join('\n')}`);
+    }
+
+    setIsUploading(false);
+    // Reset inputa
+    event.target.value = null;
   };
 
   const formatTime = (secs) => {
@@ -76,7 +91,7 @@ export default function LibraryTab({ onSelectWorkout }) {
             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
             <span className="hidden sm:inline">{isUploading ? 'Učitavanje...' : 'Dodaj ZWO/ERG'}</span>
             <span className="sm:hidden">Dodaj</span>
-            <input type="file" accept=".zwo,.erg" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
+            <input type="file" multiple accept=".zwo,.erg" className="absolute w-0 h-0 opacity-0 pointer-events-none" onChange={handleFileUpload} disabled={isUploading} />
           </label>
           <button 
             onClick={fetchWorkouts} 
