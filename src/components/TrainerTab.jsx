@@ -103,7 +103,12 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
   ]);
 
   useEffect(() => {
-    if (workoutFromCalendar && workoutFromCalendar.workout_doc && workoutFromCalendar.workout_doc.steps) {
+    if (!workoutFromCalendar) return;
+
+    let parsedRecipe = [];
+
+    if (workoutFromCalendar.workout_doc && workoutFromCalendar.workout_doc.steps) {
+      // Intervals API format
       const extractSteps = (stepsArray) => {
         let flatSteps = [];
         stepsArray.forEach(step => {
@@ -127,16 +132,19 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
         });
         return flatSteps;
       };
+      parsedRecipe = extractSteps(workoutFromCalendar.workout_doc.steps);
+    } else if (workoutFromCalendar.steps && Array.isArray(workoutFromCalendar.steps)) {
+      // Supabase / Library format
+      parsedRecipe = workoutFromCalendar.steps;
+    }
 
-      const parsedRecipe = extractSteps(workoutFromCalendar.workout_doc.steps);
-      if (parsedRecipe.length > 0) {
-        setWorkoutRecipe(parsedRecipe);
-        setElapsedTime(0);
-        setWorkoutHistory([]);
-        setIsFinished(false);
-        setShowStopPrompt(false);
-        setIsPlaying(false);
-      }
+    if (parsedRecipe.length > 0) {
+      setWorkoutRecipe(parsedRecipe);
+      setElapsedTime(0);
+      setWorkoutHistory([]);
+      setIsFinished(false);
+      setShowStopPrompt(false);
+      setIsPlaying(false);
     }
   }, [workoutFromCalendar]);
 

@@ -133,6 +133,7 @@ export default function App() {
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
             {activeTab === 'library' && (
               <LibraryTab 
+                ftp={athleteProfile.ftp}
                 onSelectWorkout={(workout) => {
                   setSelectedWorkout(workout);
                   handleTabChange('trainer');

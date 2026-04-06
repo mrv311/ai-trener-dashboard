@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud } from 'lucide-react';
+import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
 import { parseWorkoutFile } from '../utils/workoutParser';
 
-export default function LibraryTab({ onSelectWorkout }) {
+export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
   const [workouts, setWorkouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -72,9 +72,56 @@ export default function LibraryTab({ onSelectWorkout }) {
     event.target.value = null;
   };
 
+  const handleDeleteWorkout = async (workoutId) => {
+    try {
+      const { error } = await supabase.from('workouts').delete().eq('id', workoutId);
+      if (error) throw error;
+      await fetchWorkouts();
+    } catch (err) {
+      console.error(err);
+      setError("Greška pri brisanju: " + err.message);
+    }
+  };
+
   const formatTime = (secs) => {
     const m = Math.floor(secs / 60);
     return `${m} min`;
+  };
+
+  const getCategoryColor = (cat) => {
+    switch (cat) {
+      case 'Oporavak': return 'bg-gray-500/20 text-gray-400 border-gray-500/50';
+      case 'Endurance': return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
+      case 'Tempo': return 'bg-green-500/20 text-green-400 border-green-500/50';
+      case 'Sweet Spot': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
+      case 'Threshold': return 'bg-orange-500/20 text-orange-400 border-orange-500/50';
+      case 'VO2 Max': return 'bg-red-500/20 text-red-400 border-red-500/50';
+      case 'Anaerobni': return 'bg-purple-500/20 text-purple-400 border-purple-500/50';
+      default: return 'bg-zinc-500/20 text-zinc-400 border-zinc-500/50';
+    }
+  };
+
+  const getWorkoutMetrics = (workout) => {
+    if (!workout.steps || workout.steps.length === 0) return { np: 0, avg: 0, tss: 0 };
+    let totalDuration = 0, totalWork = 0, totalTSS = 0;
+    
+    workout.steps.forEach(s => {
+      let intensity = s.power / 100;
+      let stepTss = (s.duration / 3600) * (intensity * intensity) * 100;
+      totalTSS += stepTss;
+      totalDuration += s.duration;
+      totalWork += ((s.power / 100) * ftp) * s.duration;
+    });
+    
+    let avgPower = totalWork / totalDuration;
+    let IF = Math.sqrt(totalTSS / ((totalDuration/3600) * 100)) || 0;
+    let np = IF * ftp;
+    
+    return {
+      np: Math.round(np),
+      avg: Math.round(avgPower),
+      tss: Math.round(totalTSS)
+    };
   };
 
   return (
@@ -119,29 +166,48 @@ export default function LibraryTab({ onSelectWorkout }) {
           {workouts.map((workout) => (
             <div key={workout.id} className="bg-zinc-900/60 backdrop-blur-md border border-zinc-800 rounded-2xl p-5 hover:border-orange-500/50 hover:shadow-[0_0_20px_rgba(249,115,22,0.1)] transition-all group flex flex-col h-full relative overflow-hidden">
               <div className="flex justify-between items-start mb-3 relative z-10">
-                <h3 className="text-lg font-black text-zinc-100 group-hover:text-orange-500 transition-colors pr-8 leading-tight">
+                <h3 className="text-lg font-black text-zinc-100 group-hover:text-orange-500 transition-colors pr-16 leading-tight">
                   {workout.title}
                 </h3>
-                <div className="absolute right-0 top-0 flex items-center justify-center w-8 h-8 rounded-full bg-zinc-950 border border-zinc-800 text-xs font-black text-zinc-400 shadow-sm shadow-black shrink-0">
-                  {workout.difficulty_score}
+                <div className="absolute right-0 top-0 flex gap-2">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDeleteWorkout(workout.id); }}
+                    className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-red-500 hover:border-red-500/50 shadow-sm shadow-black shrink-0 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-950 border border-zinc-800 text-xs font-black text-zinc-400 shadow-sm shadow-black shrink-0">
+                    {workout.difficulty_score}
+                  </div>
                 </div>
               </div>
+              
+              {workout.category && (
+                <div className="mb-2 relative z-10">
+                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${getCategoryColor(workout.category)}`}>
+                    {workout.category}
+                  </span>
+                </div>
+              )}
               
               <p className="text-zinc-500 text-sm mb-5 leading-relaxed flex-1 relative z-10">
                 {workout.description}
               </p>
 
               {/* MALI PREVIEW GRAF */}
-              <div className="h-16 w-full flex items-end mb-5 rounded-lg overflow-hidden bg-zinc-950/80 border border-zinc-800/60 p-0.5 relative z-10">
+              <div className="h-16 w-full flex items-end mb-5 rounded-lg overflow-hidden bg-zinc-950/80 border border-zinc-800/60 p-0.5 relative z-10 group/graph">
                 {workout.steps && workout.steps.length > 0 ? (
                   workout.steps.map((wStep, i) => {
                     const widthP = (wStep.duration / workout.duration_seconds) * 100;
                     const heightP = Math.min(Math.max((wStep.power / 150) * 100, 15), 100);
+                    const watts = Math.round((wStep.power / 100) * ftp);
+                    const mins = Math.round(wStep.duration / 60 * 10) / 10;
                     return (
                       <div 
                         key={i} 
+                        title={`${wStep.name || 'Segment'}: ${mins} min @ ${watts}W (${wStep.power}%)`}
                         style={{ width: `${widthP}%`, height: `${heightP}%` }} 
-                        className={`${getZoneColorForTrainer(wStep.power)} opacity-80 border-r border-zinc-950`}
+                        className={`${getZoneColorForTrainer(wStep.power)} opacity-80 border-r border-zinc-950 hover:opacity-100 hover:brightness-125 cursor-crosshair transition-all`}
                       />
                     )
                   })
@@ -151,9 +217,21 @@ export default function LibraryTab({ onSelectWorkout }) {
               </div>
 
               <div className="flex items-center justify-between border-t border-zinc-800/80 pt-4 mt-auto relative z-10">
-                <div className="flex bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 items-center gap-2">
-                  <Clock className="w-4 h-4 text-zinc-500" />
-                  <span className="text-zinc-300 font-bold text-sm tracking-wide">{formatTime(workout.duration_seconds)}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 items-center gap-2">
+                    <Clock className="w-4 h-4 text-zinc-500" />
+                    <span className="text-zinc-300 font-bold text-sm tracking-wide">{formatTime(workout.duration_seconds)}</span>
+                  </div>
+                  {(() => {
+                    const metrics = getWorkoutMetrics(workout);
+                    return (
+                      <div className="flex bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 items-center gap-2" title={`Avg: ${metrics.avg}W | TSS: ${metrics.tss}`}>
+                         <Activity className="w-4 h-4 text-zinc-500" />
+                         <span className="text-zinc-300 font-bold text-sm tracking-wide">NP {metrics.np}W</span>
+                         <span className="hidden sm:inline text-zinc-600 text-xs ml-1 font-semibold">TSS {metrics.tss}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
                 
                 <button 
