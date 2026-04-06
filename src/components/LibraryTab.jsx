@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Play, Loader2, Database, Clock, RefreshCw } from 'lucide-react';
+import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
+import { parseWorkoutFile } from '../utils/workoutParser';
 
 export default function LibraryTab({ onSelectWorkout }) {
   const [workouts, setWorkouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     fetchWorkouts();
@@ -27,6 +29,34 @@ export default function LibraryTab({ onSelectWorkout }) {
     }
   };
 
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setError(null);
+
+    try {
+      const text = await file.text();
+      const parsedWorkout = await parseWorkoutFile(text, file.name);
+      
+      const { data, error } = await supabase.from('workouts').insert([parsedWorkout]).select();
+      
+      if (error) throw error;
+      
+      // Osježi listu
+      await fetchWorkouts();
+      
+    } catch (err) {
+      console.error(err);
+      setError("Greška pri učitavanju: " + err.message);
+    } finally {
+      setIsUploading(false);
+      // Reset inputa
+      event.target.value = null;
+    }
+  };
+
   const formatTime = (secs) => {
     const m = Math.floor(secs / 60);
     return `${m} min`;
@@ -34,20 +64,28 @@ export default function LibraryTab({ onSelectWorkout }) {
 
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-6 animate-in fade-in pb-20 md:pb-0">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
         <div>
           <h2 className="text-2xl font-black text-zinc-100 flex items-center gap-3">
             <Database className="text-orange-500 w-6 h-6" /> Knjižnica Treninga
           </h2>
           <p className="text-zinc-500 text-sm mt-1">Strukturirani treninzi iz baze spremni za vožnju.</p>
         </div>
-        <button 
-          onClick={fetchWorkouts} 
-          disabled={loading}
-          className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin text-orange-500' : ''}`} />
-        </button>
+        <div className="flex gap-2">
+          <label className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-white font-bold rounded-xl cursor-pointer transition-all shadow-[0_0_15px_rgba(249,115,22,0.3)]">
+            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+            <span className="hidden sm:inline">{isUploading ? 'Učitavanje...' : 'Dodaj ZWO/ERG'}</span>
+            <span className="sm:hidden">Dodaj</span>
+            <input type="file" accept=".zwo,.erg" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
+          </label>
+          <button 
+            onClick={fetchWorkouts} 
+            disabled={loading || isUploading}
+            className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin text-orange-500' : ''}`} />
+          </button>
+        </div>
       </div>
 
       {error && (
