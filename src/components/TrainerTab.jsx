@@ -578,7 +578,7 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
             <div className="text-center sm:text-left">
               <div className="text-[10px] md:text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-0.5 md:mb-1.5">Trenutni Interval</div>
               <div className="text-base md:text-2xl font-bold text-zinc-100 flex flex-wrap items-center justify-center sm:justify-start gap-1 md:gap-3">
-                {currentStep.name} <span className="text-zinc-500 font-medium text-xs md:text-lg">@ {currentStep.power}% FTP</span>
+                {currentStep.name} <span className="text-zinc-500 font-medium text-xs md:text-lg">@ {Math.round(currentStep.power * (ergIntensity / 100))}% FTP</span>
                 <button onClick={handleExtend} className="md:ml-2 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 text-[9px] md:text-[10px] uppercase tracking-wider font-bold px-2 py-1 md:px-3 md:py-1.5 rounded-lg transition-colors flex items-center gap-1 shrink-0"><Plus className="w-3 h-3" /> 5 Min</button>
               </div>
             </div>
@@ -595,6 +595,7 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
           totalDuration={totalDuration}
           progressPercent={progressPercent}
           profile={profile}
+          ergIntensity={ergIntensity}
         />
 
         <div className="flex justify-between items-center px-4 py-2 bg-zinc-950/50 rounded-b-xl border-x border-b border-zinc-800/80">

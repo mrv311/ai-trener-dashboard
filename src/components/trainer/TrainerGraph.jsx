@@ -14,7 +14,8 @@ export default function TrainerGraph({
   workoutHistory,
   totalDuration,
   progressPercent,
-  profile
+  profile,
+  ergIntensity = 100
 }) {
   const [hoveredStep, setHoveredStep] = useState(null);
 
@@ -82,16 +83,17 @@ export default function TrainerGraph({
         <div className="absolute inset-0 flex items-end w-full z-[5]">
           {workoutRecipe.map((step, i) => {
             const widthPercent = (step.duration / totalDuration) * 100;
-            const heightPercent = Math.min(Math.max((step.power / 150) * 100, 15), 100);
-            const targetW = Math.round((step.power / 100) * profile?.ftp);
+            const scaledPower = step.power * (ergIntensity / 100);
+            const heightPercent = Math.min(Math.max((scaledPower / 150) * 100, 15), 100);
+            const targetW = Math.round((scaledPower / 100) * profile?.ftp);
 
             return (
               <div
                 key={i}
-                onMouseEnter={() => setHoveredStep({ ...step, targetW, index: i })}
+                onMouseEnter={() => setHoveredStep({ ...step, targetW, scaledPower, index: i })}
                 onMouseLeave={() => setHoveredStep(null)}
                 style={{ width: `${widthPercent}%`, height: `${heightPercent}%` }}
-                className={`${getZoneColorForTrainer(step.power)} border-r border-zinc-950/40 transition-all duration-300 opacity-80 relative cursor-pointer hover:opacity-100`}
+                className={`${getZoneColorForTrainer(scaledPower)} border-r border-zinc-950/40 transition-all duration-300 opacity-80 relative cursor-pointer hover:opacity-100`}
               >
                 {/* Tooltip */}
                 {hoveredStep && hoveredStep.index === i && (
@@ -104,7 +106,7 @@ export default function TrainerGraph({
                     }}
                   >
                     <span className="block text-zinc-400 mb-0.5">{step.name}</span>
-                    <span className="text-sm text-orange-500 drop-shadow-[0_0_3px_rgba(249,115,22,0.4)]">{targetW} W</span> <span className="font-normal text-zinc-500">({step.power}% FTP)</span>
+                    <span className="text-sm text-orange-500 drop-shadow-[0_0_3px_rgba(249,115,22,0.4)]">{targetW} W</span> <span className="font-normal text-zinc-500">({Math.round(hoveredStep.scaledPower)}% FTP)</span>
                     <span className="block mt-1 font-normal text-zinc-400">{Math.floor(step.duration / 60)} min {step.duration % 60} sec</span>
                   </div>
                 )}
