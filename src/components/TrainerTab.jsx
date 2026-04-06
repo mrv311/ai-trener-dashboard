@@ -423,7 +423,7 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
   }, [showStopPrompt, isFinished, controlMode, handleSkip]);
 
   return (
-    <div className="max-w-6xl mx-auto flex flex-col min-h-[calc(100vh-8rem)] h-auto md:h-[calc(100vh-8rem)] gap-4 md:gap-6 animate-in fade-in relative">
+    <div className="max-w-6xl mx-auto flex flex-col min-h-[calc(100vh-8rem)] gap-4 md:gap-6 animate-in fade-in relative pb-20 md:pb-0">
 
       <TrainerModals 
         showStopPrompt={showStopPrompt}
@@ -565,7 +565,7 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
       </div>
 
       {/* DONJI PANEL: Trening grafikon i kontrole */}
-      <div className="bg-zinc-900/40 backdrop-blur-xl rounded-3xl shadow-xl border border-zinc-800/80 p-3 md:p-6 flex flex-col flex-1 min-h-[200px] md:min-h-[300px]">
+      <div className="bg-zinc-900/40 backdrop-blur-xl rounded-3xl shadow-xl border border-zinc-800/80 p-3 md:p-6 flex flex-col min-h-[300px] md:min-h-[300px] md:flex-1">
         <div className="flex flex-col md:flex-row md:items-end justify-between px-1 md:px-2 mb-2 md:mb-4 gap-3 md:gap-0">
           <div className="flex flex-col sm:flex-row items-center sm:items-start md:items-center gap-3 md:gap-4">
             <div className="flex items-center bg-zinc-950/50 rounded-full p-1 border border-zinc-800 mx-auto sm:mx-0">

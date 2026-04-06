@@ -41,7 +41,7 @@ export default function TrainerGraph({
   return (
     <div className="flex flex-col flex-1 w-full gap-2">
       {/* Glavni Graf */}
-      <div className="relative flex-1 w-full bg-zinc-950/50 rounded-t-xl border border-zinc-800/80 overflow-visible">
+      <div className="relative flex-1 min-h-[150px] w-full bg-zinc-950/50 rounded-t-xl border border-zinc-800/80 overflow-visible">
         {/* Sloj za overlay i SVG — clipan */}
         <div className="absolute inset-0 overflow-hidden rounded-t-xl pointer-events-none">
           <div className="absolute top-0 bottom-0 left-0 bg-black/40 z-10 transition-all duration-1000 ease-linear" style={{ width: `${progressPercent}%` }} />
