@@ -79,7 +79,7 @@ export default function TrainerGraph({
         </div>
 
         {/* Sloj za stupce (barove) — NIJE clipan, tako da tooltip može izviriti */}
-        <div className="relative flex items-end w-full h-full z-[5]">
+        <div className="absolute inset-0 flex items-end w-full z-[5]">
           {workoutRecipe.map((step, i) => {
             const widthPercent = (step.duration / totalDuration) * 100;
             const heightPercent = Math.min(Math.max((step.power / 150) * 100, 15), 100);
