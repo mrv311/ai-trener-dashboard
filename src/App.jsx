@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart, User, Loader2, Monitor, LogOut, Link as LinkIcon, MoreHorizontal, X } from 'lucide-react';
+import { Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart, User, Loader2, Monitor, LogOut, Link as LinkIcon, MoreHorizontal, X, Database } from 'lucide-react';
 
 import CalendarTab from './components/CalendarTab';
 import TrainerTab from './components/TrainerTab';
@@ -9,6 +9,7 @@ import PowerCurveTab from './components/PowerCurveTab';
 import ProfileTab from './components/ProfileTab';
 import AnalyticsTab from './components/AnalyticsTab';
 import ConnectionsTab from './components/ConnectionsTab';
+import LibraryTab from './components/LibraryTab';
 
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useIntervalsData } from './hooks/useIntervalsData';
@@ -47,6 +48,7 @@ export default function App() {
         </div>
         <nav className="mt-6 flex-1 px-3 space-y-2">
           <NavItem icon={<CalendarIcon />} label="Kalendar" active={activeTab === 'calendar'} onClick={() => handleTabChange('calendar')} />
+          <NavItem icon={<Database />} label="Knjižnica" active={activeTab === 'library'} onClick={() => handleTabChange('library')} />
           <NavItem icon={<Monitor />} label="Trenažer" active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
           <NavItem icon={<Activity />} label="Fitness" active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
           <NavItem icon={<LineChart />} label="Krivulja snage" active={activeTab === 'power'} onClick={() => handleTabChange('power')} />
@@ -82,6 +84,7 @@ export default function App() {
             <h1 className="text-lg md:text-xl font-bold text-zinc-100 truncate tracking-tight">
               {activeTab === 'settings' && 'Postavke Aplikacije'}
               {activeTab === 'calendar' && 'Dnevnik Treninga'}
+              {activeTab === 'library' && 'Knjižnica Treninga'}
               {activeTab === 'trainer' && 'Virtualna Vožnja'}
               {activeTab === 'fitness' && 'Kondicija i Umor'}
               {activeTab === 'profile' && 'Moj Profil'}
@@ -128,6 +131,14 @@ export default function App() {
             </div>
 
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
+            {activeTab === 'library' && (
+              <LibraryTab 
+                onSelectWorkout={(workout) => {
+                  setSelectedWorkout(workout);
+                  handleTabChange('trainer');
+                }} 
+              />
+            )}
             {activeTab === 'settings' && <SettingsTab profile={athleteProfile} setProfile={setAthleteProfile} />}
             {activeTab === 'power' && <PowerCurveTab intervalsId={intervalsId} intervalsKey={intervalsKey} profile={athleteProfile} />}
             {activeTab === 'profile' && <ProfileTab profile={athleteProfile} setProfile={setAthleteProfile} />}
@@ -140,10 +151,10 @@ export default function App() {
         <div className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-800/80 z-40 px-2 pt-1 pb-safe-bottom">
           <div className="flex justify-around items-center h-14">
             <MobileTab icon={<CalendarIcon />} label="Kalendar" active={activeTab === 'calendar'} onClick={() => handleTabChange('calendar')} />
+            <MobileTab icon={<Database />} label="Knjižnica" active={activeTab === 'library'} onClick={() => handleTabChange('library')} />
             <MobileTab icon={<Monitor />} label="Trenažer" active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
             <MobileTab icon={<Activity />} label="Fitness" active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
-            <MobileTab icon={<BarChart2 />} label="Analitika" active={activeTab === 'analytics'} onClick={() => handleTabChange('analytics')} />
-            <MobileTab icon={<MoreHorizontal />} label="Više" active={['power', 'settings', 'profile', 'connections'].includes(activeTab) || isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+            <MobileTab icon={<MoreHorizontal />} label="Više" active={['power', 'analytics', 'settings', 'profile', 'connections'].includes(activeTab) || isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
           </div>
         </div>
 
@@ -160,6 +171,7 @@ export default function App() {
               </div>
               
               <div className="grid grid-cols-2 gap-3 mb-6">
+                 <MobileMenuGridBtn icon={<BarChart2 />} label="Analitika" active={activeTab === 'analytics'} onClick={() => handleTabChange('analytics')} />
                  <MobileMenuGridBtn icon={<LineChart />} label="Krivulja snage" active={activeTab === 'power'} onClick={() => handleTabChange('power')} />
                  <MobileMenuGridBtn icon={<Settings />} label="Postavke" active={activeTab === 'settings'} onClick={() => handleTabChange('settings')} />
                  <MobileMenuGridBtn icon={<User />} label="Moj Profil" active={activeTab === 'profile'} onClick={() => handleTabChange('profile')} />
