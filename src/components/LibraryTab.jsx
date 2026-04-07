@@ -392,7 +392,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                     {/* Ukrasni sjaj iza */}
                     <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-orange-500/10 blur-[50px] rounded-full pointer-events-none group-hover/card:bg-orange-500/20 transition-colors"></div>
                   </div>
-                ))}
+                ))})()}
               </div>
             </div>
           )}
