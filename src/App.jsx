@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart, User, Loader2, Monitor, LogOut, Link as LinkIcon, MoreHorizontal, X, Database } from 'lucide-react';
+import { Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart, User, Loader2, Monitor, LogOut, Link as LinkIcon, MoreHorizontal, X, Database, TrendingUp } from 'lucide-react';
 
 import CalendarTab from './components/CalendarTab';
 import TrainerTab from './components/TrainerTab';
