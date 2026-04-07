@@ -12,7 +12,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
   const [activeFolder, setActiveFolder] = useState(null);
   const [editingWorkoutId, setEditingWorkoutId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
-  const [sortBy, setSortBy] = useState('difficulty');
+  const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
 
   useEffect(() => {
@@ -126,7 +126,8 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
     return {
       np: Math.round(np),
       avg: Math.round(avgPower),
-      tss: Math.round(totalTSS)
+      tss: Math.round(totalTSS),
+      if_factor: IF.toFixed(2)
     };
   };
 
@@ -241,6 +242,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                       onChange={(e) => setSortBy(e.target.value)}
                       className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-1.5 text-sm outline-none focus:border-orange-500 font-bold"
                     >
+                      <option value="name">Ime</option>
                       <option value="difficulty">Faktor Težine</option>
                       <option value="duration">Trajanje</option>
                       <option value="tss">TSS</option>
@@ -265,6 +267,12 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                 {(() => {
                   const items = [...(groupedWorkouts[activeFolder] || [])];
                   items.sort((a, b) => {
+                    if (sortBy === 'name') {
+                      return sortOrder === 'asc' 
+                        ? a.title.localeCompare(b.title) 
+                        : b.title.localeCompare(a.title);
+                    }
+                    
                     let valA = 0; let valB = 0;
                     if (sortBy === 'difficulty') {
                       valA = a.difficulty_score; valB = b.difficulty_score;
@@ -370,7 +378,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                             <>
                               <div className="flex bg-zinc-950 px-1.5 py-1 rounded-md border border-zinc-800 items-center gap-1 shadow-inner shrink-0 cursor-default" title={`Prosječna snaga: ${metrics.avg}W`}>
                                  <Activity className="w-3 h-3 text-zinc-500" />
-                                 <span className="text-zinc-300 font-extrabold text-[10px] tracking-wider">NP {metrics.np}</span>
+                                 <span className="text-zinc-300 font-extrabold text-[10px] tracking-wider">NP {metrics.np} | IF {metrics.if_factor}</span>
                               </div>
                               <div className="flex bg-zinc-950 px-1.5 py-1 rounded-md border border-zinc-800 items-center gap-1 shadow-inner shrink-0 cursor-default" title="Training Stress Score">
                                  <Zap className="w-3 h-3 text-zinc-500" />
