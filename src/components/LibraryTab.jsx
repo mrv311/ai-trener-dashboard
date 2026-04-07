@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X } from 'lucide-react';
+import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
 import { parseWorkoutFile } from '../utils/workoutParser';
 
@@ -318,18 +318,24 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                     </div>
 
                     <div className="flex items-center justify-between border-t border-zinc-800/80 pt-4 mt-auto relative z-10">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 items-center gap-2">
-                          <Clock className="w-4 h-4 text-zinc-500" />
-                          <span className="text-zinc-300 font-bold text-sm tracking-wide">{formatTime(workout.duration_seconds)}</span>
+                      <div className="flex gap-1.5 items-center flex-wrap max-w-[70%]">
+                        <div className="flex bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-800 items-center gap-1.5 shadow-inner">
+                          <Clock className="w-3.5 h-3.5 text-zinc-500" />
+                          <span className="text-zinc-300 font-extrabold text-[11px] tracking-wider">{formatTime(workout.duration_seconds)}</span>
                         </div>
                         {(() => {
                           const metrics = getWorkoutMetrics(workout);
                           return (
-                            <div className="flex bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800 items-center gap-2" title={`Avg: ${metrics.avg}W | TSS: ${metrics.tss}`}>
-                               <Activity className="w-4 h-4 text-zinc-500" />
-                               <span className="text-zinc-300 font-bold text-sm tracking-wide">NP {metrics.np}W</span>
-                            </div>
+                            <>
+                              <div className="flex bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-800 items-center gap-1.5 shadow-inner" title={`Prosječna snaga: ${metrics.avg}W`}>
+                                 <Activity className="w-3.5 h-3.5 text-zinc-500" />
+                                 <span className="text-zinc-300 font-extrabold text-[11px] tracking-wider">NP {metrics.np}</span>
+                              </div>
+                              <div className="flex bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-800 items-center gap-1.5 shadow-inner">
+                                 <span className="text-orange-500/80 font-black text-[10px] uppercase">TSS</span>
+                                 <span className="text-zinc-300 font-extrabold text-[11px] tracking-wider">{metrics.tss}</span>
+                              </div>
+                            </>
                           );
                         })()}
                       </div>
