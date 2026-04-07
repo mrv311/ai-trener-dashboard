@@ -452,8 +452,8 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                  
                  return (
                    <div className="h-40 w-full flex items-end mb-8 rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800 shadow-inner relative">
-                     <div className="absolute left-0 right-0 border-t border-dashed border-white/40 z-20 pointer-events-none flex items-center" style={{ bottom: `${ftpLinePercent}%` }}>
-                        <span className="text-[9px] font-black text-white bg-zinc-900 border border-zinc-700 px-1.5 py-0.5 rounded-r-md leading-none shadow-sm -mt-2 -ml-[1px]">FTP {ftp}W</span>
+                     <div className="absolute left-0 right-0 h-0 border-t border-dashed border-white/60 z-20 pointer-events-none" style={{ bottom: `${ftpLinePercent}%` }}>
+                        <span className="absolute left-1 bottom-1 text-[10px] font-black text-white/90 leading-none drop-shadow-md">FTP {ftp}W</span>
                      </div>
                      {selectedDetailWorkout.steps?.map((wStep, i) => {
                         const widthP = (wStep.duration / selectedDetailWorkout.duration_seconds) * 100;
@@ -500,7 +500,8 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                        type="date" 
                        value={scheduleDate} 
                        onChange={(e) => setScheduleDate(e.target.value)} 
-                       className="sm:w-1/2 bg-zinc-950 border border-zinc-700 text-white rounded-xl px-5 py-3.5 font-bold outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 shadow-inner"
+                       onClick={(e) => { try { e.target.showPicker(); } catch(err){} }}
+                       className="sm:w-1/2 bg-zinc-950 border border-zinc-700 text-white rounded-xl px-5 py-3.5 font-bold outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 shadow-inner cursor-pointer"
                     />
                     <button 
                        onClick={handleScheduleWorkout}
