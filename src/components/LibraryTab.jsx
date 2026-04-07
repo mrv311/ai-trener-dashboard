@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft } from 'lucide-react';
+import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
 import { parseWorkoutFile } from '../utils/workoutParser';
 
@@ -10,6 +10,8 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
   const [error, setError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [activeFolder, setActiveFolder] = useState(null);
+  const [editingWorkoutId, setEditingWorkoutId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
 
   useEffect(() => {
     fetchWorkouts();
@@ -82,6 +84,19 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
     } catch (err) {
       console.error(err);
       setError("Greška pri brisanju: " + err.message);
+    }
+  };
+
+  const handleUpdateTitle = async () => {
+    if (!editingWorkoutId || !editTitle.trim()) return;
+    try {
+      const { error } = await supabase.from('workouts').update({ title: editTitle.trim() }).eq('id', editingWorkoutId);
+      if (error) throw error;
+      setEditingWorkoutId(null);
+      await fetchWorkouts();
+    } catch (err) {
+      console.error(err);
+      setError("Greška pri promjeni naziva: " + err.message);
     }
   };
 
@@ -225,16 +240,47 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 {groupedWorkouts[activeFolder].map((workout) => (
                   <div key={workout.id} className="bg-zinc-900/60 backdrop-blur-md border border-zinc-800 rounded-2xl p-5 hover:border-orange-500/50 hover:shadow-[0_0_20px_rgba(249,115,22,0.1)] transition-all group/card flex flex-col h-full relative overflow-hidden">
-                    <div className="flex justify-between items-start mb-3 relative z-10">
-                      <h3 className="text-lg font-black text-zinc-100 group-hover/card:text-orange-500 transition-colors pr-16 leading-tight">
-                        {workout.title}
-                      </h3>
-                      <div className="absolute right-0 top-0 flex gap-2">
+                    <div className="flex justify-between items-start mb-3 relative z-10 w-full">
+                      {editingWorkoutId === workout.id ? (
+                        <div className="flex gap-2 w-full pr-20 items-center bg-zinc-950 p-1.5 rounded-xl border border-orange-500/50 shadow-inner">
+                          <input 
+                            type="text" 
+                            value={editTitle} 
+                            onChange={e => setEditTitle(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleUpdateTitle()}
+                            onClick={e => e.stopPropagation()}
+                            className="bg-transparent text-white text-sm font-bold w-full outline-none px-1"
+                            autoFocus 
+                          />
+                          <button onClick={(e) => { e.stopPropagation(); handleUpdateTitle(); }} className="text-green-500 hover:text-green-400 shrink-0 p-1 bg-zinc-900 rounded-md">
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); setEditingWorkoutId(null); }} className="text-red-500 hover:text-red-400 shrink-0 p-1 bg-zinc-900 rounded-md">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <h3 className="text-lg font-black text-zinc-100 group-hover/card:text-orange-500 transition-colors pr-24 leading-tight">
+                          {workout.title}
+                        </h3>
+                      )}
+                      
+                      <div className="absolute right-0 top-0 flex gap-1.5">
+                        {editingWorkoutId !== workout.id && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); setEditTitle(workout.title); setEditingWorkoutId(workout.id); }}
+                            className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-blue-500 hover:border-blue-500/50 shadow-sm shadow-black shrink-0 transition-colors"
+                            title="Preimenuj"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleDeleteWorkout(workout.id); }}
                           className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-red-500 hover:border-red-500/50 shadow-sm shadow-black shrink-0 transition-colors"
+                          title="Obriši"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                         <div className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-950 border border-zinc-800 text-xs font-black text-zinc-400 shadow-sm shadow-black shrink-0">
                           {workout.difficulty_score}
