@@ -58,39 +58,81 @@ function categorizeWorkout(steps) {
   return map[dominantCategory];
 }
 
+function getZoneRange(category) {
+   switch(category) {
+      case 'Oporavak': return [0, 55];
+      case 'Endurance': return [55, 76];
+      case 'Tempo': return [76, 88];
+      case 'Sweet Spot': return [88, 95];
+      case 'Threshold': return [95, 106];
+      case 'VO2 Max': return [106, 121];
+      case 'Anaerobni': return [121, 999];
+      default: return [0, 100];
+   }
+}
+
 function calculateCategoryDifficulty(steps, category) {
-  let totalTSS = 0;
-  let totalDuration = 0;
+  const [minPow, maxPow] = getZoneRange(category);
   
+  let tizSeconds = 0;
+  let maxIntervalSeconds = 0;
+  let currentInterval = 0;
+  let totalTSS = 0;
+
   steps.forEach(step => {
     let intensity = step.power / 100;
-    let tss = (step.duration / 3600) * (intensity * intensity) * 100;
-    totalTSS += tss;
-    totalDuration += step.duration;
-  });
+    totalTSS += (step.duration / 3600) * (intensity * intensity) * 100;
 
-  let hours = totalDuration / 3600;
-  
-  const expectedTSSForLevel5 = {
-    'Oporavak': 30,
-    'Endurance': 50,
-    'Tempo': 65,
-    'Sweet Spot': 75,
-    'Threshold': 85,
-    'VO2 Max': 95,
-    'Anaerobni': 100
-  };
-  
-  let referenceTSS = expectedTSSForLevel5[category] || 60;
-  let score = (totalTSS / referenceTSS) * 5.0;
-  
-  // Bonus za dugotrajnost
-  if (hours > 1.5) {
-     score += (hours - 1.5) * 1.5;
+    if (step.power >= minPow && step.power < maxPow) {
+       tizSeconds += step.duration;
+       currentInterval += step.duration;
+    } else {
+       if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
+       currentInterval = 0;
+    }
+  });
+  if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
+
+  let tizMinutes = tizSeconds / 60;
+  let maxIntervalMins = maxIntervalSeconds / 60;
+  let score = 1.0;
+
+  // Temeljni sustav bodovanja po Zonama temeljen na vremenu u zoni (TiZ)
+  switch (category) {
+    case 'Oporavak':
+      score = 1.0; 
+      break;
+    case 'Endurance':
+      score = 1.0 + (tizMinutes / 60) * 1.8;
+      break;
+    case 'Tempo':
+      score = 1.0 + (tizMinutes / 45) * 2.0;
+      break;
+    case 'Sweet Spot':
+      score = 1.0 + (tizMinutes / 45) * 3.0; 
+      // Bonus za duge neprekinute intervale
+      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.05; 
+      break;
+    case 'Threshold':
+      score = 1.0 + (tizMinutes / 30) * 3.5;
+      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.1;
+      break;
+    case 'VO2 Max':
+      score = 1.0 + (tizMinutes / 15) * 4.0; 
+      break;
+    case 'Anaerobni':
+      score = 1.0 + (tizMinutes / 5) * 4.0;
+      break;
+    default:
+      score = (totalTSS / 60) * 4.0; 
+      break;
   }
-  
+
+  // Mali dodatak za opći umor skupljen izvan glavnih intervala (npr. dugi warmup)
+  score += (totalTSS * 0.005);
+
   if (score < 1.0) score = 1.0;
-  if (score > 10.0) score = 10.0;
+  // Ne postoji umjetni cap na 10.0 prema zahtjevu korisnika!
   
   return parseFloat(score.toFixed(1));
 }
