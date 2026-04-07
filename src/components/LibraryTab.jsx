@@ -247,7 +247,10 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                             type="text" 
                             value={editTitle} 
                             onChange={e => setEditTitle(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && handleUpdateTitle()}
+                            onKeyDown={e => {
+                              e.stopPropagation();
+                              if (e.key === 'Enter') handleUpdateTitle();
+                            }}
                             onClick={e => e.stopPropagation()}
                             className="bg-transparent text-white text-sm font-bold w-full outline-none px-1"
                             autoFocus 
