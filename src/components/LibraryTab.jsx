@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap } from 'lucide-react';
+import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
 import { parseWorkoutFile } from '../utils/workoutParser';
 
@@ -12,6 +12,8 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
   const [activeFolder, setActiveFolder] = useState(null);
   const [editingWorkoutId, setEditingWorkoutId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
+  const [sortBy, setSortBy] = useState('difficulty');
+  const [sortOrder, setSortOrder] = useState('asc');
 
   useEffect(() => {
     fetchWorkouts();
@@ -232,13 +234,52 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                     <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">{groupedWorkouts[activeFolder].length} treninga u mapi</p>
                   </div>
                 </div>
-                <button onClick={() => setActiveFolder(null)} className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-zinc-800/50 border border-zinc-700/50 text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all font-bold text-sm shadow-sm">
-                  <ArrowLeft className="w-4 h-4" /> Nazad na mape
-                </button>
+                <div className="flex items-center flex-wrap gap-3 w-full sm:w-auto">
+                  <div className="flex gap-2">
+                    <select 
+                      value={sortBy} 
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-1.5 text-sm outline-none focus:border-orange-500 font-bold"
+                    >
+                      <option value="difficulty">Faktor Težine</option>
+                      <option value="duration">Trajanje</option>
+                      <option value="tss">TSS</option>
+                      <option value="np">NP (Snaga)</option>
+                    </select>
+
+                    <button 
+                      onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')} 
+                      className="p-2 flex items-center justify-center bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition shadow-sm"
+                      title="Promijeni smjer sortiranja"
+                    >
+                      {sortOrder === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <button onClick={() => setActiveFolder(null)} className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-zinc-800/50 border border-zinc-700/50 text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all font-bold text-sm shadow-sm">
+                    <ArrowLeft className="w-4 h-4" /> Nazad na mape
+                  </button>
+                </div>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                {groupedWorkouts[activeFolder].map((workout) => (
+                {(() => {
+                  const items = [...(groupedWorkouts[activeFolder] || [])];
+                  items.sort((a, b) => {
+                    let valA = 0; let valB = 0;
+                    if (sortBy === 'difficulty') {
+                      valA = a.difficulty_score; valB = b.difficulty_score;
+                    } else if (sortBy === 'duration') {
+                      valA = a.duration_seconds; valB = b.duration_seconds;
+                    } else {
+                      const metricsA = getWorkoutMetrics(a);
+                      const metricsB = getWorkoutMetrics(b);
+                      if (sortBy === 'tss') { valA = metricsA.tss; valB = metricsB.tss; }
+                      if (sortBy === 'np') { valA = metricsA.np; valB = metricsB.np; }
+                    }
+                    return sortOrder === 'asc' ? valA - valB : valB - valA;
+                  });
+
+                  return items.map((workout) => (
                   <div key={workout.id} className="bg-zinc-900/60 backdrop-blur-md border border-zinc-800 rounded-2xl p-5 hover:border-orange-500/50 hover:shadow-[0_0_20px_rgba(249,115,22,0.1)] transition-all group/card flex flex-col h-full relative overflow-hidden">
                     <div className="flex justify-between items-start mb-3 relative z-10 w-full">
                       {editingWorkoutId === workout.id ? (
