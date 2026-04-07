@@ -124,6 +124,27 @@ export function useIntervalsData(intervalsId, intervalsKey) {
       });
     });
 
+    const localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+    localScheduled.forEach(sched => {
+      let complianceColor = 'grey';
+      if (sched.date < todayStr) complianceColor = 'red-missed';
+      finalWorkouts.push({
+        id: `local-${sched.id}`,
+        date: sched.date,
+        title: sched.title,
+        duration: sched.duration_seconds ? Math.round(sched.duration_seconds / 60) : sched.duration,
+        plannedDuration: sched.duration_seconds ? Math.round(sched.duration_seconds / 60) : sched.duration,
+        tss: sched.tss,
+        plannedTss: sched.tss,
+        statusColor: complianceColor,
+        isCompleted: false,
+        isLocal: true,
+        steps: sched.steps,
+        category: sched.category,
+        difficulty_score: sched.difficulty_score
+      });
+    });
+
     return finalWorkouts;
   }, [rawActivities, rawEvents, unpairedList]); 
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown } from 'lucide-react';
+import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
 import { parseWorkoutFile } from '../utils/workoutParser';
 
@@ -14,6 +14,26 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
   const [editTitle, setEditTitle] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
+
+  const [selectedDetailWorkout, setSelectedDetailWorkout] = useState(null);
+  const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split('T')[0]);
+  const [scheduleSuccess, setScheduleSuccess] = useState(false);
+
+  const handleScheduleWorkout = () => {
+    if (!selectedDetailWorkout || !scheduleDate) return;
+    const records = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+    const newRecord = {
+      ...selectedDetailWorkout,
+      id: Date.now().toString(),
+      date: scheduleDate
+    };
+    localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify([...records, newRecord]));
+    setScheduleSuccess(true);
+    setTimeout(() => {
+      setScheduleSuccess(false);
+      setSelectedDetailWorkout(null);
+    }, 1500);
+  };
 
   useEffect(() => {
     fetchWorkouts();
@@ -288,7 +308,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                   });
 
                   return items.map((workout) => (
-                  <div key={workout.id} className="bg-zinc-900/60 backdrop-blur-md border border-zinc-800 rounded-2xl p-5 hover:border-orange-500/50 hover:shadow-[0_0_20px_rgba(249,115,22,0.1)] transition-all group/card flex flex-col h-full relative overflow-hidden">
+                  <div key={workout.id} onClick={() => setSelectedDetailWorkout(workout)} className="bg-zinc-900/60 backdrop-blur-md border border-zinc-800 rounded-2xl p-5 hover:border-orange-500/50 hover:shadow-[0_0_20px_rgba(249,115,22,0.1)] transition-all group/card flex flex-col h-full relative overflow-hidden cursor-pointer">
                     <div className="flex justify-between items-start mb-3 relative z-10 w-full">
                       {editingWorkoutId === workout.id ? (
                         <div className="flex gap-2 w-full pr-20 items-center bg-zinc-950 p-1.5 rounded-xl border border-orange-500/50 shadow-inner">
@@ -390,7 +410,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                       </div>
                       
                       <button 
-                        onClick={() => onSelectWorkout(workout)}
+                        onClick={(e) => { e.stopPropagation(); onSelectWorkout(workout); }}
                         className="flex outline-none shrink-0 items-center justify-center gap-1 bg-orange-500 hover:bg-orange-400 text-white font-extrabold px-2.5 py-1.5 rounded-md text-[10px] uppercase tracking-wider transition-all shadow-[0_0_8px_rgba(249,115,22,0.3)] group-hover/card:shadow-[0_0_12px_rgba(249,115,22,0.5)]"
                       >
                         <Play className="w-3 h-3" fill="currentColor" /> KRENI
@@ -404,6 +424,86 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* MODAL DETALJA TRENINGA I ZAKAZIVANJE */}
+      {selectedDetailWorkout && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-black/80 backdrop-blur-md animate-in fade-in" onClick={() => setSelectedDetailWorkout(null)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-3xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between p-6 border-b border-zinc-800/80 bg-zinc-950/50 rounded-t-3xl shrink-0">
+               <div>
+                  <h2 className="text-2xl font-black text-zinc-100 pr-4">{selectedDetailWorkout.title}</h2>
+                  <p className="text-xs font-bold text-orange-500 uppercase tracking-widest mt-1.5">{selectedDetailWorkout.category} • FAKTOR TEŽINE {selectedDetailWorkout.difficulty_score}</p>
+               </div>
+               <button onClick={() => setSelectedDetailWorkout(null)} className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-full transition-colors shrink-0"><X className="w-5 h-5"/></button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[70vh]">
+               {selectedDetailWorkout.description && (
+                  <p className="text-sm text-zinc-400 mb-6 italic leading-relaxed border-l-2 border-orange-500/50 pl-4">{selectedDetailWorkout.description}</p>
+               )}
+               
+               {/* GRAFIKA U DETALJIMA */}
+               <div className="h-40 w-full flex items-end mb-8 rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800 p-1 shadow-inner relative">
+                 {selectedDetailWorkout.steps?.map((wStep, i) => {
+                    const widthP = (wStep.duration / selectedDetailWorkout.duration_seconds) * 100;
+                    const heightP = Math.min(Math.max((wStep.power / 150) * 100, 10), 100);
+                    return <div key={i} style={{ width: `${widthP}%`, height: `${heightP}%` }} className={`${getZoneColorForTrainer(wStep.power)} border-r border-zinc-950/50 opacity-90 transition-opacity`} />
+                 })}
+               </div>
+
+               {/* METRIKE */}
+               {(() => {
+                 const m = getWorkoutMetrics(selectedDetailWorkout);
+                 return (
+                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+                      <div className="bg-zinc-950/50 p-4 border border-zinc-800/80 rounded-xl relative overflow-hidden">
+                         <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1.5">Trajanje</p>
+                         <p className="text-2xl font-black text-zinc-100">{Math.round(selectedDetailWorkout.duration_seconds / 60)} <span className="text-sm text-zinc-500 font-bold">min</span></p>
+                      </div>
+                      <div className="bg-zinc-950/50 p-4 border border-zinc-800/80 rounded-xl">
+                         <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1.5">TSS</p>
+                         <p className="text-2xl font-black text-zinc-100">{m.tss}</p>
+                      </div>
+                      <div className="bg-zinc-950/50 p-4 border border-zinc-800/80 rounded-xl">
+                         <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1.5">NP</p>
+                         <p className="text-2xl font-black text-zinc-100">{m.np} <span className="text-sm text-zinc-500 font-bold">W</span></p>
+                      </div>
+                      <div className="bg-zinc-950/50 p-4 border border-zinc-800/80 rounded-xl">
+                         <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-1.5">IF</p>
+                         <p className="text-2xl font-black text-zinc-100">{m.if_factor}</p>
+                      </div>
+                   </div>
+                 );
+               })()}
+
+               {/* ZAKAZIVANJE */}
+               <div className="bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-orange-500/10 via-zinc-900 to-zinc-900 border border-orange-500/20 rounded-2xl p-6 shadow-lg relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-5"><CalendarDays className="w-32 h-32 text-orange-500" /></div>
+                  <h3 className="flex items-center gap-2 text-md font-black text-orange-400 uppercase tracking-widest mb-6 relative z-10">
+                    <CalendarPlus className="w-6 h-6" /> Zakaži za trening u Kalendaru
+                  </h3>
+                  <div className="flex flex-col sm:flex-row gap-4 relative z-10">
+                    <input 
+                       type="date" 
+                       value={scheduleDate} 
+                       onChange={(e) => setScheduleDate(e.target.value)} 
+                       className="sm:w-1/2 bg-zinc-950 border border-zinc-700 text-white rounded-xl px-5 py-3.5 font-bold outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 shadow-inner"
+                    />
+                    <button 
+                       onClick={handleScheduleWorkout}
+                       className={`sm:w-1/2 flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl text-sm font-black transition-all ${
+                         scheduleSuccess ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white shadow-[0_4px_15px_rgba(249,115,22,0.3)] border border-orange-500/50'
+                       }`}
+                    >
+                       {scheduleSuccess ? <CheckSquare className="w-5 h-5"/> : <CalendarDays className="w-5 h-5" />}
+                       {scheduleSuccess ? 'TRENING DODAN!' : 'SPREMI U KALENDAR'}
+                    </button>
+                  </div>
+               </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
