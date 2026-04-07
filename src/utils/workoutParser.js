@@ -240,7 +240,7 @@ function parseERG(ergText) {
     const cl = line.trim();
     if (cl.startsWith('DESCRIPTION=')) description = cl.replace('DESCRIPTION=', '').trim();
     if (cl.startsWith('FILE NAME=') || cl.startsWith('FILENAME=')) title = cl.replace(/FILE NAME=|FILENAME=/g, '').trim();
-    if (cl.startsWith('FTP=')) ftpParams = parseFloat(cl.replace('FTP=', '')) || 250;
+    if (/^FTP\s*=/i.test(cl)) ftpParams = parseFloat(cl.replace(/^FTP\s*=/i, '')) || 250;
     
     if (cl === '[COURSE DATA]') {
       inData = true;
