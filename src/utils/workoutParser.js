@@ -121,9 +121,9 @@ function calculateCategoryDifficulty(steps, category) {
       score = 1.0 + (tizMinutes / 15) * 4.0; 
       break;
     case 'Anaerobni':
-      // Anaerobni treninzi jako brzo idu u opasne visine za mali TiZ
-      // Postavljamo veći djelitelj i eksponencijalno rezanje dužih treninga
-      score = 1.0 + Math.pow(tizMinutes / 8, 0.85) * 5.0;
+      // Ekstremni treninzi tipa Taylor -2 imaju preko 30 minuta TiZ
+      // Još strože i ravnije po krivulji kako ne bi bježalo iznad 15
+      score = 1.0 + Math.pow(tizMinutes / 10, 0.8) * 4.5;
       break;
     default:
       score = (totalTSS / 60) * 4.0; 
