@@ -66,7 +66,7 @@ class PowerMatchPID {
 
 const pidController = new PowerMatchPID();
 
-export default function TrainerTab({ profile, workoutFromCalendar }) {
+export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
 
@@ -504,10 +504,18 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
           </button>
         )}
 
-        <div className="ml-auto md:ml-auto md:w-auto w-full flex items-center px-4 py-2.5 md:py-3 bg-zinc-900/40 backdrop-blur-md rounded-xl border border-zinc-800/80 shadow-sm text-zinc-500 font-medium text-xs md:text-sm">
-          Trening: <span className="text-zinc-100 font-bold ml-2 uppercase truncate">
-            {workoutFromCalendar ? workoutFromCalendar.title : "Slobodna Vožnja"}
-          </span>
+        <div className="ml-auto flex items-center justify-between md:justify-end w-full md:w-auto bg-zinc-900/40 backdrop-blur-md rounded-xl border border-zinc-800/80 shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 md:py-3 text-zinc-500 font-medium text-xs md:text-sm truncate">
+            Trening: <span className="text-zinc-100 font-bold ml-2 uppercase">{workoutFromCalendar ? workoutFromCalendar.title : "Slobodna Vožnja"}</span>
+          </div>
+          {onClose && (
+            <button 
+              onClick={onClose} 
+              className="px-4 py-2.5 md:py-3 bg-zinc-800 hover:bg-zinc-700 hover:text-white transition-colors text-zinc-400 font-bold border-l border-zinc-700/50 flex items-center gap-2"
+            >
+              <X className="w-4 h-4 md:w-5 md:h-5" /> <span className="hidden md:inline">Zatvori</span>
+            </button>
+          )}
         </div>
       </div>
 

@@ -130,6 +130,7 @@ export default function App() {
               <TrainerTab 
                 profile={athleteProfile} 
                 workoutFromCalendar={selectedWorkout} 
+                onClose={() => handleTabChange('library')}
               />
             </div>
 
