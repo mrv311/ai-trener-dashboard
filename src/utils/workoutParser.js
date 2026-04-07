@@ -118,20 +118,22 @@ function calculateCategoryDifficulty(steps, category) {
       if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.1;
       break;
     case 'VO2 Max':
-      score = 1.0 + (tizMinutes / 15) * 4.0; 
+      score = 1.0 + (tizMinutes / 14) * 4.0;
+      if (maxIntervalMins >= 3) score += (maxIntervalMins - 2) * 0.15;
       break;
     case 'Anaerobni':
       // Ekstremni treninzi tipa Taylor -2 imaju preko 30 minuta TiZ
-      // Još strože i ravnije po krivulji kako ne bi bježalo iznad 15
-      score = 1.0 + Math.pow(tizMinutes / 10, 0.8) * 4.5;
+      // Oboreno kako bi vrhunci bili još prizemljeniji
+      score = 1.0 + Math.pow(tizMinutes / 12, 0.72) * 4.0;
       break;
     default:
       score = (totalTSS / 60) * 4.0; 
       break;
   }
 
-  // Mali dodatak za opći umor skupljen izvan glavnih intervala (npr. dugi warmup)
-  score += (totalTSS * 0.005);
+  // Blago povećan utjecaj ukupnog umora i volumena (sa 0.005 na 0.008)
+  // To osigurava da dugi treninzi iste TiZ minutaže (poput Bashful +5 vs +6) dobiju jasnu razliku na prvoj decimali
+  score += (totalTSS * 0.008);
 
   if (score < 1.0) score = 1.0;
   // Ne postoji umjetni cap na 10.0 prema zahtjevu korisnika!

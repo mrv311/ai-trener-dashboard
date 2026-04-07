@@ -384,11 +384,32 @@ export default function TrainerTab({ profile, workoutFromCalendar }) {
     const pwrData = workoutHistory.filter(h => h.power > 0);
     const hrData = workoutHistory.filter(h => h.hr > 0);
     const cadData = workoutHistory.filter(h => h.cadence > 0);
+    
+    // Provjera prava na upis razine (preko 85% dovršenosti)
+    if (elapsedTime / totalDuration >= 0.85 && workoutFromCalendar && workoutFromCalendar.difficulty_score) {
+      try {
+        const existingHistory = JSON.parse(localStorage.getItem('ai_trener_completed_workouts') || '[]');
+        const newRecord = {
+          id: Date.now().toString(),
+          date: new Date().toISOString(),
+          title: workoutFromCalendar.title || 'Nepoznat trening',
+          category: workoutFromCalendar.category || 'Endurance',
+          difficulty_score: workoutFromCalendar.difficulty_score || 1.0,
+          duration_seconds: elapsedTime
+        };
+        localStorage.setItem('ai_trener_completed_workouts', JSON.stringify([...existingHistory, newRecord]));
+        console.log("Napredak zabilježen!", newRecord);
+      } catch(e) {
+        console.error("Greška pri spremanju napretka", e);
+      }
+    }
+
     setSummaryStats({
       avgPower: pwrData.length ? Math.round(pwrData.reduce((a, b) => a + b.power, 0) / pwrData.length) : 0,
       avgHr: hrData.length ? Math.round(hrData.reduce((a, b) => a + b.hr, 0) / hrData.length) : 0,
       avgCadence: cadData.length ? Math.round(cadData.reduce((a, b) => a + b.cadence, 0) / cadData.length) : 0,
-      totalDur: elapsedTime
+      totalDur: elapsedTime,
+      isLevelUpEligible: elapsedTime / totalDuration >= 0.85
     });
   };
 

@@ -10,6 +10,7 @@ import ProfileTab from './components/ProfileTab';
 import AnalyticsTab from './components/AnalyticsTab';
 import ConnectionsTab from './components/ConnectionsTab';
 import LibraryTab from './components/LibraryTab';
+import ProgressionTab from './components/ProgressionTab';
 
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useIntervalsData } from './hooks/useIntervalsData';
@@ -51,6 +52,7 @@ export default function App() {
           <NavItem icon={<Database />} label="Knjižnica" active={activeTab === 'library'} onClick={() => handleTabChange('library')} />
           <NavItem icon={<Monitor />} label="Trenažer" active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
           <NavItem icon={<Activity />} label="Fitness" active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
+          <NavItem icon={<TrendingUp />} label="Napredak" active={activeTab === 'progression'} onClick={() => handleTabChange('progression')} />
           <NavItem icon={<LineChart />} label="Krivulja snage" active={activeTab === 'power'} onClick={() => handleTabChange('power')} />
           <NavItem icon={<BarChart2 />} label="Analitika" active={activeTab === 'analytics'} onClick={() => handleTabChange('analytics')} />
           <NavItem icon={<Settings />} label="Postavke" active={activeTab === 'settings'} onClick={() => handleTabChange('settings')} />
@@ -87,6 +89,7 @@ export default function App() {
               {activeTab === 'library' && 'Knjižnica Treninga'}
               {activeTab === 'trainer' && 'Virtualna Vožnja'}
               {activeTab === 'fitness' && 'Kondicija i Umor'}
+              {activeTab === 'progression' && 'Faktor Napretka'}
               {activeTab === 'profile' && 'Moj Profil'}
               {activeTab === 'power' && 'Krivulja Snage'}
               {activeTab === 'analytics' && 'Analitika Treninga'}
@@ -131,6 +134,7 @@ export default function App() {
             </div>
 
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
+            {activeTab === 'progression' && <ProgressionTab />}
             {activeTab === 'library' && (
               <LibraryTab 
                 ftp={athleteProfile.ftp}
@@ -155,6 +159,7 @@ export default function App() {
             <MobileTab icon={<Database />} label="Knjižnica" active={activeTab === 'library'} onClick={() => handleTabChange('library')} />
             <MobileTab icon={<Monitor />} label="Trenažer" active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
             <MobileTab icon={<Activity />} label="Fitness" active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
+            <MobileTab icon={<TrendingUp />} label="Napredak" active={activeTab === 'progression'} onClick={() => handleTabChange('progression')} />
             <MobileTab icon={<MoreHorizontal />} label="Više" active={['power', 'analytics', 'settings', 'profile', 'connections'].includes(activeTab) || isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
           </div>
         </div>
