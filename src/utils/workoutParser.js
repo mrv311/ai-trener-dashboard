@@ -239,11 +239,15 @@ function parseERG(ergText) {
   for (let line of lines) {
     const cl = line.trim();
     if (cl.startsWith('DESCRIPTION=')) description = cl.replace('DESCRIPTION=', '').trim();
-    if (cl.startsWith('FILENAME=')) title = cl.replace('FILENAME=', '').trim();
+    if (cl.startsWith('FILE NAME=') || cl.startsWith('FILENAME=')) title = cl.replace(/FILE NAME=|FILENAME=/g, '').trim();
     if (cl.startsWith('FTP=')) ftpParams = parseFloat(cl.replace('FTP=', '')) || 250;
     
     if (cl === '[COURSE DATA]') {
       inData = true;
+      continue;
+    }
+    if (cl === '[END COURSE DATA]') {
+      inData = false;
       continue;
     }
     if (inData && cl) {
@@ -263,16 +267,13 @@ function parseERG(ergText) {
     const start = points[i];
     const end = points[i+1];
     
-    // ERG file obično ima blokove definirane sa dvije točke na istom vremenu npr 10.00 100\n 10.00 200, preskačemo takve jumpove bez vremena.
     if (end.min > start.min) { 
       const durationSec = Math.round((end.min - start.min) * 60);
-      const isPercent = start.val < 1000 && ftpParams; // Cesto ERG stavi Watte, a ne FTP%. Ovo aproksimira % = (Watt / FTP) * 100
       let power = start.val;
       
       // Pokušaj pretvoriti Watte u FTP% ako su vrijednosti očito Watti
-      if (power > 300 || start.val === end.val && start.val > 250) {
-        power = (power / ftpParams) * 100;
-      } else if (ftpParams && power > 0) {
+      // Većina ERG fajlova koristi čiste watte koji se baziraju na zadani FTP. 
+      if (ftpParams && power > 0) {
         power = (power / ftpParams) * 100;
       }
       
