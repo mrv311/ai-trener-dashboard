@@ -367,22 +367,22 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                     </div>
 
                     <div className="flex items-center justify-between border-t border-zinc-800/80 pt-4 mt-auto relative z-10 gap-2 w-full">
-                      <div className="flex gap-1 items-center overflow-hidden">
-                        <div className="flex bg-zinc-950 px-1.5 py-1 rounded-md border border-zinc-800 items-center gap-1 shadow-inner shrink-0 cursor-default">
+                      <div className="flex gap-1 items-center flex-wrap flex-1 min-w-0">
+                        <div className="flex bg-zinc-950 px-1 py-1 rounded border border-zinc-800 items-center justify-center gap-1 shadow-inner shrink-0 cursor-default">
                           <Clock className="w-3 h-3 text-zinc-500" />
-                          <span className="text-zinc-300 font-extrabold text-[10px] tracking-wider">{formatTime(workout.duration_seconds)}</span>
+                          <span className="text-zinc-300 font-extrabold text-[9px] tracking-wider whitespace-nowrap">{formatTime(workout.duration_seconds)}</span>
                         </div>
                         {(() => {
                           const metrics = getWorkoutMetrics(workout);
                           return (
                             <>
-                              <div className="flex bg-zinc-950 px-1.5 py-1 rounded-md border border-zinc-800 items-center gap-1 shadow-inner shrink-0 cursor-default" title={`Prosječna snaga: ${metrics.avg}W`}>
+                              <div className="flex bg-zinc-950 px-1 py-1 rounded border border-zinc-800 items-center justify-center gap-1 shadow-inner shrink-0 cursor-default" title={`Prosječna snaga: ${metrics.avg}W`}>
                                  <Activity className="w-3 h-3 text-zinc-500" />
-                                 <span className="text-zinc-300 font-extrabold text-[10px] tracking-wider">NP {metrics.np} | IF {metrics.if_factor}</span>
+                                 <span className="text-zinc-300 font-extrabold text-[9px] tracking-wider whitespace-nowrap">NP {metrics.np} | IF {metrics.if_factor}</span>
                               </div>
-                              <div className="flex bg-zinc-950 px-1.5 py-1 rounded-md border border-zinc-800 items-center gap-1 shadow-inner shrink-0 cursor-default" title="Training Stress Score">
+                              <div className="flex bg-zinc-950 px-1 py-1 rounded border border-zinc-800 items-center justify-center gap-1 shadow-inner shrink-0 cursor-default" title="Training Stress Score">
                                  <Zap className="w-3 h-3 text-zinc-500" />
-                                 <span className="text-zinc-300 font-extrabold text-[10px] tracking-wider">TSS {metrics.tss}</span>
+                                 <span className="text-zinc-300 font-extrabold text-[9px] tracking-wider whitespace-nowrap">TSS {metrics.tss}</span>
                               </div>
                             </>
                           );
@@ -391,9 +391,9 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                       
                       <button 
                         onClick={() => onSelectWorkout(workout)}
-                        className="flex outline-none shrink-0 items-center justify-center gap-1.5 bg-orange-500 hover:bg-orange-400 text-white font-extrabold px-3 py-1.5 rounded-md text-[11px] uppercase tracking-wider transition-all shadow-[0_0_8px_rgba(249,115,22,0.3)] group-hover/card:shadow-[0_0_12px_rgba(249,115,22,0.5)]"
+                        className="flex outline-none shrink-0 items-center justify-center gap-1 bg-orange-500 hover:bg-orange-400 text-white font-extrabold px-2.5 py-1.5 rounded-md text-[10px] uppercase tracking-wider transition-all shadow-[0_0_8px_rgba(249,115,22,0.3)] group-hover/card:shadow-[0_0_12px_rgba(249,115,22,0.5)]"
                       >
-                        <Play className="w-3 h-3" fill="currentColor" /> Kreni
+                        <Play className="w-3 h-3" fill="currentColor" /> KRENI
                       </button>
                     </div>
                     
