@@ -154,38 +154,63 @@ function parseZWO(xmlText) {
   
   if (!workoutNodes) throw new Error('ZWO datoteka ne sadrži <workout> sekciju.');
 
+  const getAttr = (node, ...names) => {
+    for (let name of names) {
+      if (node.hasAttribute(name)) return node.getAttribute(name);
+      if (node.hasAttribute(name.toLowerCase())) return node.getAttribute(name.toLowerCase());
+      if (node.hasAttribute(name.toUpperCase())) return node.getAttribute(name.toUpperCase());
+    }
+    return null;
+  };
+
   for (let i = 0; i < workoutNodes.length; i++) {
     const node = workoutNodes[i];
-    const type = node.tagName;
+    const typeStr = node.tagName || '';
+    const type = typeStr.toLowerCase();
     
-    if (type === 'Warmup' || type === 'Cooldown') {
-      const duration = parseInt(node.getAttribute('Duration'));
-      const powerLow = parseFloat(node.getAttribute('PowerLow')) * 100;
-      const powerHigh = parseFloat(node.getAttribute('PowerHigh')) * 100;
+    if (type === 'warmup' || type === 'cooldown' || type === 'ramp') {
+      const duration = parseInt(getAttr(node, 'Duration', 'duration'));
+      const powerLowAttr = getAttr(node, 'PowerLow', 'powerlow');
+      const powerHighAttr = getAttr(node, 'PowerHigh', 'powerhigh');
+      
+      let powerLow = powerLowAttr ? parseFloat(powerLowAttr) * 100 : 50;
+      let powerHigh = powerHighAttr ? parseFloat(powerHighAttr) * 100 : 50;
+      
       steps.push({
-        name: type === 'Warmup' ? 'Zagrijavanje' : 'Hlađenje',
-        duration: duration,
-        power: Math.round((powerLow + powerHigh) / 2) // Aproksimacija rampe prosjekom
+        name: type === 'warmup' ? 'Zagrijavanje' : (type === 'cooldown' ? 'Hlađenje' : 'Rampa'),
+        duration: duration || 0,
+        power: Math.round((powerLow + powerHigh) / 2)
       });
-    } else if (type === 'SteadyState') {
-      const duration = parseInt(node.getAttribute('Duration'));
-      const power = parseFloat(node.getAttribute('Power')) * 100;
+    } else if (type === 'steadystate') {
+      const duration = parseInt(getAttr(node, 'Duration', 'duration'));
+      const powerAttr = getAttr(node, 'Power', 'power');
+      const power = powerAttr ? parseFloat(powerAttr) * 100 : 65;
       steps.push({
         name: 'Interval',
-        duration: duration,
+        duration: duration || 0,
         power: Math.round(power)
       });
-    } else if (type === 'IntervalsT') {
-      const repeat = parseInt(node.getAttribute('Repeat'));
-      const onDur = parseInt(node.getAttribute('OnDuration'));
-      const offDur = parseInt(node.getAttribute('OffDuration'));
-      const onPow = parseFloat(node.getAttribute('OnPower')) * 100;
-      const offPow = parseFloat(node.getAttribute('OffPower')) * 100;
+    } else if (type === 'intervalst') {
+      const repeat = parseInt(getAttr(node, 'Repeat', 'repeat')) || 1;
+      const onDur = parseInt(getAttr(node, 'OnDuration', 'onduration'));
+      const offDur = parseInt(getAttr(node, 'OffDuration', 'offduration'));
+      const onPowAttr = getAttr(node, 'OnPower', 'onpower', 'PowerOn');
+      const offPowAttr = getAttr(node, 'OffPower', 'offpower', 'PowerOff');
+      
+      const onPow = onPowAttr ? parseFloat(onPowAttr) * 100 : 100;
+      const offPow = offPowAttr ? parseFloat(offPowAttr) * 100 : 50;
       
       for (let r = 0; r < repeat; r++) {
-        steps.push({ name: `On (${r+1}/${repeat})`, duration: onDur, power: Math.round(onPow) });
-        steps.push({ name: `Off`, duration: offDur, power: Math.round(offPow) });
+        if (onDur) steps.push({ name: `On (${r+1}/${repeat})`, duration: onDur, power: Math.round(onPow) });
+        if (offDur) steps.push({ name: `Off`, duration: offDur, power: Math.round(offPow) });
       }
+    } else if (type === 'freeride') {
+      const duration = parseInt(getAttr(node, 'Duration', 'duration'));
+      steps.push({
+        name: 'Slobodna Vožnja',
+        duration: duration || 0,
+        power: 55
+      });
     }
   }
 
