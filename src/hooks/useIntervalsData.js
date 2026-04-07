@@ -8,6 +8,7 @@ export function useIntervalsData(intervalsId, intervalsKey) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [unpairedList, setUnpairedList] = useState([]);
+  const [localRefreshTrigger, setLocalRefreshTrigger] = useState(0);
 
   const fetchWorkouts = useCallback(async () => {
     if (!intervalsId || !intervalsKey) {
@@ -146,7 +147,7 @@ export function useIntervalsData(intervalsId, intervalsKey) {
     });
 
     return finalWorkouts;
-  }, [rawActivities, rawEvents, unpairedList]); 
+  }, [rawActivities, rawEvents, unpairedList, localRefreshTrigger]); 
 
   const handleUnpair = useCallback((actId, eventId) => { 
     if (!actId || !eventId) return; 
@@ -158,6 +159,14 @@ export function useIntervalsData(intervalsId, intervalsKey) {
     setUnpairedList(prev => prev.filter(pair => pair !== `${actId}-${eventId}`)); 
   }, []);
 
+  const handleDeleteLocalActivity = useCallback((localId) => {
+    const rawId = localId.replace('local-', '');
+    let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+    localScheduled = localScheduled.filter(w => w.id !== rawId);
+    localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
+    setLocalRefreshTrigger(prev => prev + 1);
+  }, []);
+
   return {
     workouts,
     wellnessData,
@@ -165,6 +174,7 @@ export function useIntervalsData(intervalsId, intervalsKey) {
     error,
     fetchWorkouts,
     handlePair,
-    handleUnpair
+    handleUnpair,
+    handleDeleteLocalActivity
   };
 }

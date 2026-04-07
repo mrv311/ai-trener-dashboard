@@ -446,6 +446,9 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                
                {/* GRAFIKA U DETALJIMA */}
                <div className="h-40 w-full flex items-end mb-8 rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800 p-1 shadow-inner relative">
+                 <div className="absolute left-0 right-0 border-t border-dashed border-white/40 z-20 pointer-events-none flex items-center" style={{ bottom: `${(100/150)*100}%` }}>
+                    <span className="text-[9px] font-black text-white bg-zinc-900 border border-zinc-700 px-1.5 py-0.5 rounded-r-md leading-none shadow-sm -mt-2 -ml-1">FTP {ftp}W</span>
+                 </div>
                  {selectedDetailWorkout.steps?.map((wStep, i) => {
                     const widthP = (wStep.duration / selectedDetailWorkout.duration_seconds) * 100;
                     const heightP = Math.min(Math.max((wStep.power / 150) * 100, 10), 100);

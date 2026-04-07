@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2 } from 'lucide-react';
 
 const formatDur = (mins) => {
   const h = Math.floor(mins / 60);
@@ -26,7 +26,7 @@ const getTopCol = (sc) => {
   return "bg-zinc-700";
 };
 
-export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, onSelectWorkout }) {
+export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, onSelectWorkout }) {
   const cy = currentDate.getFullYear(); 
   const cm = currentDate.getMonth();
   const daysInMo = new Date(cy, cm + 1, 0).getDate();
@@ -115,6 +115,14 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                           )}
                           {w.statusColor === 'green' && <CheckCircle2 className="w-4 h-4 text-emerald-400 drop-shadow-[0_0_5px_rgba(16,185,129,0.5)]" />}
                           {w.statusColor === 'red-missed' && <XCircle className="w-4 h-4 text-rose-500" />}
+                          {w.isLocal && !w.isCompleted && handleDeleteLocalActivity && (
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }} 
+                              className="text-zinc-500 hover:text-red-500 rounded-lg p-1 transition-colors" 
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="flex justify-between items-center text-xs text-zinc-400 font-medium bg-zinc-950/40 px-2 py-1.5 rounded-lg border border-zinc-800 border-dashed">
@@ -189,7 +197,16 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                                 {w.actId && w.separatedEventId && <button onClick={() => handlePair(w.actId, w.separatedEventId)} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom"><Link2 className="w-3.5 h-3.5" /></button>}
                                 {w.statusColor === 'green' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 drop-shadow-[0_0_3px_rgba(16,185,129,0.5)]" />}
                                 {w.statusColor === 'red-missed' && <XCircle className="w-3.5 h-3.5 text-rose-500" />}
-                                {w.statusColor === 'grey' && <Target className="w-3.5 h-3.5 text-zinc-500" />}
+                                {w.statusColor === 'grey' && !w.isLocal && <Target className="w-3.5 h-3.5 text-zinc-500" />}
+                                {w.isLocal && !w.isCompleted && handleDeleteLocalActivity && (
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }} 
+                                    className="text-zinc-600 hover:text-red-500 rounded p-0.5 transition-colors" 
+                                    title="Obriši planirani trening"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                             <div className="flex justify-between items-end text-xs text-zinc-400 font-medium">

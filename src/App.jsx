@@ -21,7 +21,7 @@ export default function App() {
   const [intervalsId, setIntervalsId] = useLocalStorage('intervalsId', '');
   const [intervalsKey, setIntervalsKey] = useLocalStorage('intervalsKey', '');
   
-  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair } = useIntervalsData(intervalsId, intervalsKey);
+  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity } = useIntervalsData(intervalsId, intervalsKey);
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
 
@@ -118,6 +118,7 @@ export default function App() {
                 wellnessData={wellnessData}
                 handleUnpair={handleUnpair}
                 handlePair={handlePair}
+                handleDeleteLocalActivity={handleDeleteLocalActivity}
                 onSelectWorkout={(workout) => {
                   setSelectedWorkout(workout);
                   handleTabChange('trainer'); 
