@@ -17,7 +17,7 @@ export async function parseWorkoutFile(fileText, fileName) {
   return parsedWorkout;
 }
 
-function categorizeWorkout(steps) {
+export function categorizeWorkout(steps) {
   const scores = { recovery: 0, endurance: 0, tempo: 0, sweetspot: 0, threshold: 0, vo2max: 0, anaerobic: 0 };
   
   steps.forEach(s => {
@@ -71,7 +71,7 @@ function getZoneRange(category) {
    }
 }
 
-function calculateCategoryDifficulty(steps, category) {
+export function calculateCategoryDifficulty(steps, category) {
   const [minPow, maxPow] = getZoneRange(category);
   
   let tizSeconds = 0;
@@ -97,46 +97,54 @@ function calculateCategoryDifficulty(steps, category) {
   let maxIntervalMins = maxIntervalSeconds / 60;
   let score = 1.0;
 
-  // Temeljni sustav bodovanja po Zonama temeljen na vremenu u zoni (TiZ)
+  // Rekalibrirane formule — raspon 1.0 do 10.0 po zoni
+  // Svaka zona ima "referentni max TiZ" koji odgovara scoreu ~9.0
+  // Formula: 1.0 + (tiz / refMaxTiZ) * 8.0
+  //   Endurance refMax=200min, Tempo=70, SS=60, Threshold=45, VO2Max=28, Anaerobni=18
   switch (category) {
     case 'Oporavak':
       score = 1.0; 
       break;
     case 'Endurance':
-      score = 1.0 + (tizMinutes / 60) * 1.8;
+      // 30min→2.2, 90min→4.6, 150min→7.0, 200min→9.0
+      score = 1.0 + (tizMinutes / 200) * 8.0;
       break;
     case 'Tempo':
-      score = 1.0 + (tizMinutes / 45) * 2.0;
+      // 15min→2.7, 40min→5.6, 70min→9.0
+      score = 1.0 + (tizMinutes / 70) * 8.0;
       break;
     case 'Sweet Spot':
-      score = 1.0 + (tizMinutes / 45) * 3.0; 
-      // Bonus za duge neprekinute intervale
-      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.05; 
+      // 12min→2.6, 35min→5.7, 60min→9.0
+      score = 1.0 + (tizMinutes / 60) * 8.0;
+      // Bonus za duge neprekinute intervale (>20 min)
+      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.02;
       break;
     case 'Threshold':
-      score = 1.0 + (tizMinutes / 30) * 3.5;
-      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.1;
+      // 10min→2.8, 25min→5.4, 45min→9.0
+      score = 1.0 + (tizMinutes / 45) * 8.0;
+      // Bonus za duge intervale (>10 min neprekinuto u zoni)
+      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.03;
       break;
     case 'VO2 Max':
-      score = 1.0 + (tizMinutes / 14) * 4.0;
-      if (maxIntervalMins >= 3) score += (maxIntervalMins - 2) * 0.15;
+      // 6min→2.7, 15min→5.3, 28min→9.0
+      score = 1.0 + (tizMinutes / 28) * 8.0;
+      // Bonus za duge VO2 intervale (>=3 min)
+      if (maxIntervalMins >= 3) score += (maxIntervalMins - 2) * 0.05;
       break;
     case 'Anaerobni':
-      // Ekstremni treninzi tipa Taylor -2 imaju preko 30 minuta TiZ
-      // Oboreno kako bi vrhunci bili još prizemljeniji
-      score = 1.0 + Math.pow(tizMinutes / 12, 0.72) * 4.0;
+      // 3min→2.3, 8min→4.6, 18min→9.0
+      score = 1.0 + (tizMinutes / 18) * 8.0;
       break;
     default:
-      score = (totalTSS / 60) * 4.0; 
+      score = 1.0 + (totalTSS / 80) * 8.0;
       break;
   }
 
-  // Blago povećan utjecaj ukupnog umora i volumena (sa 0.005 na 0.008)
-  // To osigurava da dugi treninzi iste TiZ minutaže (poput Bashful +5 vs +6) dobiju jasnu razliku na prvoj decimali
-  score += (totalTSS * 0.008);
+  // Mali TSS modifikator za razlikovanje treninga slične TiZ ali razl. volumena
+  score += (totalTSS * 0.004);
 
   if (score < 1.0) score = 1.0;
-  // Ne postoji umjetni cap na 10.0 prema zahtjevu korisnika!
+  if (score > 10.0) score = 10.0;
   
   return parseFloat(score.toFixed(1));
 }
