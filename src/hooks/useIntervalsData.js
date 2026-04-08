@@ -54,12 +54,15 @@ export function useIntervalsData(intervalsId, intervalsKey) {
   const workouts = useMemo(() => {
     const finalWorkouts = [];
     const consumedEvents = new Set();
+    const consumedLocalIds = new Set();
     const todayStr = new Date().toISOString().split('T')[0];
+
+    const localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
 
     rawActivities.forEach(act => {
       const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
       let pairedEvent = null;
-      let separatedEventId = null;
+      let separatedEventIds = [];
 
       for (let e of rawEvents) {
         if (e.category !== 'WORKOUT') continue;
@@ -68,11 +71,22 @@ export function useIntervalsData(intervalsId, intervalsKey) {
 
         if (isDateMatch || isIdMatch) {
           if (unpairedList.includes(`${act.id}-${e.id}`)) {
-            separatedEventId = e.id;
-          } else if (!consumedEvents.has(e.id)) {
+            separatedEventIds.push(e.id);
+          } else if (!consumedEvents.has(e.id) && !pairedEvent) {
             pairedEvent = e;
             consumedEvents.add(e.id);
-            break; 
+          }
+        }
+      }
+
+      let pairedLocal = null;
+      for (let lw of localScheduled) {
+        if (lw.date === actDate) {
+          if (unpairedList.includes(`${act.id}-local-${lw.id}`)) {
+            separatedEventIds.push(`local-${lw.id}`);
+          } else if (!pairedEvent && !pairedLocal && !consumedLocalIds.has(lw.id)) {
+            pairedLocal = lw;
+            consumedLocalIds.add(lw.id);
           }
         }
       }
@@ -81,11 +95,19 @@ export function useIntervalsData(intervalsId, intervalsKey) {
       let plannedTssDisplay = null;
       let plannedDurDisplay = null;
       let eventIdObj = null;
+      let diffScore = null;
 
-      if (pairedEvent) {
-        eventIdObj = pairedEvent.id;
-        plannedTssDisplay = Math.round(pairedEvent.icu_training_load || 0);
-        plannedDurDisplay = Math.round((pairedEvent.moving_time || 0) / 60);
+      if (pairedEvent || pairedLocal) {
+        if (pairedEvent) {
+          eventIdObj = pairedEvent.id;
+          plannedTssDisplay = Math.round(pairedEvent.icu_training_load || 0);
+          plannedDurDisplay = Math.round((pairedEvent.moving_time || 0) / 60);
+        } else {
+          eventIdObj = `local-${pairedLocal.id}`;
+          plannedTssDisplay = Math.round(pairedLocal.tss || 0);
+          plannedDurDisplay = pairedLocal.duration_seconds ? Math.round(pairedLocal.duration_seconds / 60) : pairedLocal.duration;
+          diffScore = pairedLocal.difficulty_score;
+        }
 
         const actualTss = Math.round(act.icu_training_load || 0);
         const actualDur = Math.round((act.moving_time || 0) / 60);
@@ -100,11 +122,12 @@ export function useIntervalsData(intervalsId, intervalsKey) {
       }
 
       finalWorkouts.push({
-        id: `act-${act.id}`, actId: act.id, eventId: eventIdObj, separatedEventId: separatedEventId,
+        id: `act-${act.id}`, actId: act.id, eventId: eventIdObj, separatedEventIds,
         date: actDate, title: act.name || 'Trening',
         duration: Math.round((act.moving_time || 0) / 60), plannedDuration: plannedDurDisplay,
         tss: Math.round(act.icu_training_load || 0), plannedTss: plannedTssDisplay,
-        statusColor: complianceColor, isCompleted: true
+        statusColor: complianceColor, isCompleted: true,
+        difficulty_score: diffScore
       });
     });
 
@@ -125,8 +148,8 @@ export function useIntervalsData(intervalsId, intervalsKey) {
       });
     });
 
-    const localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
     localScheduled.forEach(sched => {
+      if (consumedLocalIds.has(sched.id)) return;
       let complianceColor = 'grey';
       if (sched.date < todayStr) complianceColor = 'red-missed';
       finalWorkouts.push({

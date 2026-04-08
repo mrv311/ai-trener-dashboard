@@ -7,57 +7,57 @@ const formatDur = (mins) => {
 };
 
 const getCardBg = (sc) => {
-  if (sc === 'green') return "bg-emerald-950/30 border-emerald-500/20 border shadow-[0_4px_10px_rgba(16,185,129,0.05)]"; 
+  if (sc === 'green') return "bg-emerald-950/30 border-emerald-500/20 border shadow-[0_4px_10px_rgba(16,185,129,0.05)]";
   if (sc === 'yellow') return "bg-amber-950/30 border-amber-500/20 border shadow-[0_4px_10px_rgba(245,158,11,0.05)]";
-  if (sc === 'red') return "bg-rose-950/30 border-rose-500/20 border shadow-[0_4px_10px_rgba(244,63,94,0.05)]"; 
+  if (sc === 'red') return "bg-rose-950/30 border-rose-500/20 border shadow-[0_4px_10px_rgba(244,63,94,0.05)]";
   if (sc === 'red-missed') return "bg-rose-950/10 border-rose-500/20 border-dashed border opacity-80";
-  if (sc === 'blue') return "bg-sky-950/30 border-sky-500/20 border shadow-[0_4px_10px_rgba(14,165,233,0.05)]"; 
+  if (sc === 'blue') return "bg-sky-950/30 border-sky-500/20 border shadow-[0_4px_10px_rgba(14,165,233,0.05)]";
   if (sc === 'grey') return "bg-zinc-800/40 border-zinc-700 border-dashed border";
   return "bg-zinc-900/50 border-zinc-800 border";
 };
 
 const getTopCol = (sc) => {
-  if (sc === 'green') return "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"; 
-  if (sc === 'yellow') return "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]"; 
+  if (sc === 'green') return "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]";
+  if (sc === 'yellow') return "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]";
   if (sc === 'red') return "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]";
-  if (sc === 'red-missed') return "bg-rose-500/50"; 
-  if (sc === 'blue') return "bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.5)]"; 
-  if (sc === 'grey') return "bg-zinc-600"; 
+  if (sc === 'red-missed') return "bg-rose-500/50";
+  if (sc === 'blue') return "bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.5)]";
+  if (sc === 'grey') return "bg-zinc-600";
   return "bg-zinc-700";
 };
 
 export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, onSelectWorkout }) {
-  const cy = currentDate.getFullYear(); 
+  const cy = currentDate.getFullYear();
   const cm = currentDate.getMonth();
   const daysInMo = new Date(cy, cm + 1, 0).getDate();
-  const startOff = new Date(cy, cm, 1).getDay() === 0 ? 6 : new Date(cy, cm, 1).getDay() - 1; 
-  
-  const calDays = []; 
+  const startOff = new Date(cy, cm, 1).getDay() === 0 ? 6 : new Date(cy, cm, 1).getDay() - 1;
+
+  const calDays = [];
   const daysPrev = new Date(cy, cm, 0).getDate();
-  
+
   for (let i = startOff - 1; i >= 0; i--) {
     calDays.push({ day: daysPrev - i, dateStr: `${cy}-${String(cm).padStart(2, '0')}-${String(daysPrev - i).padStart(2, '0')}`, isCurrentMonth: false });
   }
   for (let i = 1; i <= daysInMo; i++) {
     calDays.push({ day: i, dateStr: `${cy}-${String(cm + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`, isCurrentMonth: true });
   }
-  let nx = 1; 
-  while (calDays.length % 7 !== 0) { 
-    calDays.push({ day: nx, dateStr: `${cy}-${String(cm + 2).padStart(2, '0')}-${String(nx).padStart(2, '0')}`, isCurrentMonth: false }); 
-    nx++; 
+  let nx = 1;
+  while (calDays.length % 7 !== 0) {
+    calDays.push({ day: nx, dateStr: `${cy}-${String(cm + 2).padStart(2, '0')}-${String(nx).padStart(2, '0')}`, isCurrentMonth: false });
+    nx++;
   }
-  
-  const weeks = []; 
+
+  const weeks = [];
   for (let i = 0; i < calDays.length; i += 7) weeks.push(calDays.slice(i, i + 7));
-  
+
   const monthNames = ["Siječanj", "Veljača", "Ožujak", "Travanj", "Svibanj", "Lipanj", "Srpanj", "Kolovoz", "Rujan", "Listopad", "Studeni", "Prosinac"];
   const dayNames = ["PON", "UTO", "SRI", "ČET", "PET", "SUB", "NED"];
   const todayStr = new Date().toISOString().split('T')[0];
 
   return (
     <div className="max-w-[1600px] mx-auto bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 flex flex-col min-h-[700px] animate-in fade-in overflow-hidden">
-      
-        {/* ZAGLAVLJE KALENDARA */}
+
+      {/* ZAGLAVLJE KALENDARA */}
       <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-950/50">
         <span className="px-4 font-bold text-lg text-zinc-100 drop-shadow-sm">{monthNames[cm]} {cy}</span>
         <div className="flex bg-zinc-900/80 rounded-lg p-1 border border-zinc-800 gap-1">
@@ -76,9 +76,9 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       {/* VERTIKALNA LISTA DANA (Mobile) */}
       <div className="flex md:hidden flex-col bg-zinc-950 gap-[1px] flex-1 overflow-y-auto">
         {calDays.filter(d => d.isCurrentMonth).map((dObj) => {
-          const dStr = dObj.dateStr; 
+          const dStr = dObj.dateStr;
           const dWorks = workouts.filter(w => w.date === dStr);
-          const isTdy = dStr === todayStr; 
+          const isTdy = dStr === todayStr;
           const dWell = wellnessData[dStr];
           const dayOfWeek = dayNames[(new Date(dStr).getDay() + 6) % 7];
 
@@ -96,7 +96,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                   </div>
                 )}
               </div>
-              
+
               <div className="flex flex-col gap-2">
                 {dWorks.length > 0 ? dWorks.map(w => (
                   <div key={w.id} className={`rounded-xl flex flex-col overflow-hidden ${getCardBg(w.statusColor)}`}>
@@ -106,9 +106,9 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                         <span className="pr-2">{w.title}</span>
                         <div className="flex items-center gap-1.5 shrink-0">
                           {!w.isCompleted && onSelectWorkout && (
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }} 
-                              className="text-orange-400 bg-orange-500/10 hover:bg-orange-500 hover:text-white rounded-lg p-1.5 transition-all shadow-[0_0_8px_rgba(249,115,22,0.2)] hover:shadow-[0_0_12px_rgba(249,115,22,0.6)] border border-orange-500/20" 
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
+                              className="text-orange-400 bg-orange-500/10 hover:bg-orange-500 hover:text-white rounded-lg p-1.5 transition-all shadow-[0_0_8px_rgba(249,115,22,0.2)] hover:shadow-[0_0_12px_rgba(249,115,22,0.6)] border border-orange-500/20"
                             >
                               <Play className="w-4 h-4 fill-current" />
                             </button>
@@ -116,9 +116,9 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                           {w.statusColor === 'green' && <CheckCircle2 className="w-4 h-4 text-emerald-400 drop-shadow-[0_0_5px_rgba(16,185,129,0.5)]" />}
                           {w.statusColor === 'red-missed' && <XCircle className="w-4 h-4 text-rose-500" />}
                           {w.isLocal && !w.isCompleted && handleDeleteLocalActivity && (
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }} 
-                              className="text-zinc-500 hover:text-red-500 rounded-lg p-1 transition-colors" 
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
+                              className="text-zinc-500 hover:text-red-500 rounded-lg p-1 transition-colors"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -143,23 +143,23 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       {/* MREŽA TJEDANA I DANA (Desktop) */}
       <div className="hidden md:flex flex-1 flex-col bg-zinc-800 border-l border-zinc-800 gap-[1px]">
         {weeks.map((wk, wi) => {
-          let aT=0; let pT=0; let aD=0; let pD=0;
+          let aT = 0; let pT = 0; let aD = 0; let pD = 0;
           return (
             <div key={wi} className="grid grid-cols-8 gap-[1px] flex-1 min-h-[180px]">
               {wk.map((dObj) => {
-                const dStr = dObj.dateStr; 
+                const dStr = dObj.dateStr;
                 const dWorks = workouts.filter(w => w.date === dStr);
-                const isTdy = dStr === todayStr; 
+                const isTdy = dStr === todayStr;
                 const dWell = wellnessData[dStr];
-                
-                dWorks.forEach(w => { 
-                  if (w.isCompleted) { 
-                    aT += w.tss; aD += w.duration; 
-                    if(w.plannedTss) pT += w.plannedTss; 
-                    if(w.plannedDuration) pD += w.plannedDuration; 
-                  } else { 
-                    pT += w.tss; pD += w.duration; 
-                  } 
+
+                dWorks.forEach(w => {
+                  if (w.isCompleted) {
+                    aT += w.tss; aD += w.duration;
+                    if (w.plannedTss) pT += w.plannedTss;
+                    if (w.plannedDuration) pD += w.plannedDuration;
+                  } else {
+                    pT += w.tss; pD += w.duration;
+                  }
                 });
 
                 return (
@@ -173,7 +173,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                         </div>
                       )}
                     </div>
-                    
+
                     <div className="flex-1 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
                       {dWorks.map(w => (
                         <div key={w.id} className={`rounded-xl flex flex-col overflow-hidden min-h-[86px] backdrop-blur-sm ${getCardBg(w.statusColor)} ${!dObj.isCurrentMonth && 'opacity-60 saturate-50'}`}>
@@ -182,11 +182,11 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                             <div className="font-bold text-xs flex items-start justify-between text-zinc-200 leading-tight">
                               <span className="line-clamp-2 pr-1">{w.title}</span>
                               <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
-                                
+
                                 {!w.isCompleted && onSelectWorkout && (
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }} 
-                                    className="text-orange-400 hover:text-white bg-orange-500/10 hover:bg-orange-500 rounded-md p-1 transition-all border border-orange-500/20" 
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
+                                    className="text-orange-400 hover:text-white bg-orange-500/10 hover:bg-orange-500 rounded-md p-1 transition-all border border-orange-500/20"
                                     title="Pošalji na trenažer"
                                   >
                                     <Play className="w-3.5 h-3.5 fill-current" />
@@ -194,14 +194,18 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                                 )}
 
                                 {w.actId && w.eventId && <button onClick={() => handleUnpair(w.actId, w.eventId)} className="text-zinc-500 hover:text-orange-400 transition-colors" title="Razdvoji planirano i odrađeno"><Unlink className="w-3.5 h-3.5" /></button>}
-                                {w.actId && w.separatedEventId && <button onClick={() => handlePair(w.actId, w.separatedEventId)} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom"><Link2 className="w-3.5 h-3.5" /></button>}
+                                {w.actId && w.separatedEventIds && w.separatedEventIds.map(sepId => (
+                                  <button key={sepId} onClick={() => handlePair(w.actId, sepId)} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom">
+                                    <Link2 className="w-3.5 h-3.5" />
+                                  </button>
+                                ))}
                                 {w.statusColor === 'green' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 drop-shadow-[0_0_3px_rgba(16,185,129,0.5)]" />}
                                 {w.statusColor === 'red-missed' && <XCircle className="w-3.5 h-3.5 text-rose-500" />}
                                 {w.statusColor === 'grey' && !w.isLocal && <Target className="w-3.5 h-3.5 text-zinc-500" />}
                                 {w.isLocal && !w.isCompleted && handleDeleteLocalActivity && (
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }} 
-                                    className="text-zinc-600 hover:text-red-500 rounded p-0.5 transition-colors" 
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
+                                    className="text-zinc-600 hover:text-red-500 rounded p-0.5 transition-colors"
                                     title="Obriši planirani trening"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -220,7 +224,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                   </div>
                 );
               })}
-              
+
               {/* SAŽETAK TJEDNA */}
               <div className="bg-gradient-to-b from-orange-500/5 to-transparent p-4 flex flex-col justify-end items-end border-l border-zinc-800 bg-zinc-900/40 text-right space-y-3">
                 <div className="w-full">
