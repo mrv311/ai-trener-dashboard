@@ -79,13 +79,17 @@ function calculateCategoryDifficulty(steps, category) {
   let currentInterval = 0;
   let totalTSS = 0;
 
+    let zoneTSS = 0;
+
   steps.forEach(step => {
     let intensity = step.power / 100;
-    totalTSS += (step.duration / 3600) * (intensity * intensity) * 100;
+    let stepTss = (step.duration / 3600) * (intensity * intensity) * 100;
+    totalTSS += stepTss;
 
     if (step.power >= minPow && step.power < maxPow) {
        tizSeconds += step.duration;
        currentInterval += step.duration;
+       zoneTSS += stepTss;
     } else {
        if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
        currentInterval = 0;
@@ -95,45 +99,73 @@ function calculateCategoryDifficulty(steps, category) {
 
   let tizMinutes = tizSeconds / 60;
   let maxIntervalMins = maxIntervalSeconds / 60;
+  
+  // Prilagodba: Umjesto čistog vremena u zoni (koje nagrađuje niži intenzitet), 
+  // računamo "efektivne minute" balansirajući vrijeme sakupljeno i intenzitet (TSS) unutar zone.
+  const baseTssPerMin = {
+    'Oporavak': 0.1,
+    'Endurance': 0.50, // na 55%
+    'Tempo': 0.96,     // na 76%
+    'Sweet Spot': 1.29,// na 88%
+    'Threshold': 1.50, // na 95%
+    'VO2 Max': 1.87,   // na 106%
+    'Anaerobni': 2.44  // na 121%
+  };
+  
+  let normalizedTizMins = zoneTSS / (baseTssPerMin[category] || 1.0);
+  
+  let blendFactor = 0.5; // Zadani omjer vremena i intenziteta
+  if (category === 'Anaerobni') blendFactor = 0.8;      // U Anaerobnoj zoni (121-999%) intenzitet je ključan
+  else if (category === 'VO2 Max') blendFactor = 0.6;
+  else if (category === 'Oporavak' || category === 'Endurance') blendFactor = 0.2; // U Z2 dominira čisto vrijeme
+  
+  let effectiveMins = tizMinutes * (1 - blendFactor) + normalizedTizMins * blendFactor;
+
   let score = 1.0;
 
-  // Temeljni sustav bodovanja po Zonama temeljen na vremenu u zoni (TiZ)
+  // Temeljni sustav bodovanja po Zonama temeljen na efektivnom vremenu (effectiveMins)
   switch (category) {
     case 'Oporavak':
       score = 1.0; 
       break;
     case 'Endurance':
-      score = 1.0 + (tizMinutes / 60) * 1.8;
+      score = 1.0 + (effectiveMins / 60) * 1.8;
       break;
     case 'Tempo':
-      score = 1.0 + (tizMinutes / 45) * 2.0;
+      score = 1.0 + (effectiveMins / 45) * 2.0;
       break;
     case 'Sweet Spot':
-      score = 1.0 + (tizMinutes / 45) * 3.0; 
+      score = 1.0 + (effectiveMins / 45) * 3.0; 
       // Bonus za duge neprekinute intervale
       if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.05; 
       break;
     case 'Threshold':
-      score = 1.0 + (tizMinutes / 30) * 3.5;
+      score = 1.0 + (effectiveMins / 30) * 3.5;
       if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.1;
       break;
     case 'VO2 Max':
-      score = 1.0 + (tizMinutes / 14) * 4.0;
+      score = 1.0 + (effectiveMins / 14) * 4.0;
       if (maxIntervalMins >= 3) score += (maxIntervalMins - 2) * 0.15;
       break;
     case 'Anaerobni':
-      // Ekstremni treninzi tipa Taylor -2 imaju preko 30 minuta TiZ
-      // Oboreno kako bi vrhunci bili još prizemljeniji
-      score = 1.0 + Math.pow(tizMinutes / 12, 0.72) * 4.0;
+      // Rješenje za problem gdje San Joaquin +5 (visok intenzitet, manji TiZ) 
+      // dobiva manji score od Taylor -2 (niži intenzitet, ogroman TiZ).
+      score = 1.0 + Math.pow(effectiveMins / 12, 0.72) * 4.0;
       break;
     default:
       score = (totalTSS / 60) * 4.0; 
       break;
   }
 
-  // Blago povećan utjecaj ukupnog umora i volumena (sa 0.005 na 0.008)
-  // To osigurava da dugi treninzi iste TiZ minutaže (poput Bashful +5 vs +6) dobiju jasnu razliku na prvoj decimali
+  // Utjecaj ukupnog umora i volumena
   score += (totalTSS * 0.008);
+  
+  // Dodatni bonus za treninge s vrlo visokim intenzitetom (IF) i kratkim pauzama
+  let workoutDurationSecs = steps.reduce((sum, s) => sum + s.duration, 0);
+  let IF = workoutDurationSecs > 0 ? Math.sqrt(totalTSS / ((workoutDurationSecs / 3600) * 100)) : 0;
+  if (IF > 0.85) {
+     score += (IF - 0.85) * 5.0; 
+  }
 
   if (score < 1.0) score = 1.0;
   // Ne postoji umjetni cap na 10.0 prema zahtjevu korisnika!
