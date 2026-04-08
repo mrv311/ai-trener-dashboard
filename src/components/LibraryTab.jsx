@@ -392,9 +392,9 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                           return (
                             <div 
                               key={i} 
-                              title={`${wStep.name || 'Segment'}: ${mins} min @ ${watts}W (${wStep.power}%)`}
+                              title={`${wStep.name || 'Segment'}: ${wStep.duration >= 60 ? mins + ' min' : wStep.duration + ' sec'} @ ${watts}W (${wStep.power}%)`}
                               style={{ width: `${widthP}%`, height: `${heightP}%` }} 
-                              className={`${getZoneColorForTrainer(wStep.power)} opacity-80 border-r border-zinc-950 hover:opacity-100 hover:brightness-125 cursor-crosshair transition-all`}
+                              className={`${getZoneColorForTrainer(wStep.power)} opacity-90 hover:opacity-100 hover:brightness-125 cursor-crosshair transition-all min-w-[2px]`}
                             />
                           )
                         })
@@ -475,7 +475,9 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                      {selectedDetailWorkout.steps?.map((wStep, i) => {
                         const widthP = (wStep.duration / selectedDetailWorkout.duration_seconds) * 100;
                         const heightP = Math.min(Math.max((wStep.power / scaleMax) * 100, 5), 100);
-                        return <div key={i} title={`${Math.round(wStep.power)}%`} style={{ width: `${widthP}%`, height: `${heightP}%` }} className={`${getZoneColorForTrainer(wStep.power)} border-r border-zinc-950/50 opacity-90 transition-opacity`} />
+                        const watts = Math.round((wStep.power / 100) * ftp);
+                        const mins = Math.round(wStep.duration / 60 * 10) / 10;
+                        return <div key={i} title={`${wStep.name || 'Segment'}: ${wStep.duration >= 60 ? mins + ' min' : wStep.duration + ' sec'} @ ${watts}W (${wStep.power}%)`} style={{ width: `${widthP}%`, height: `${heightP}%` }} className={`${getZoneColorForTrainer(wStep.power)} opacity-95 hover:opacity-100 hover:brightness-125 cursor-crosshair transition-all min-w-[2px]`} />
                      })}
                    </div>
                  );
