@@ -74,7 +74,8 @@ function getZoneRange(category) {
 function calculateCategoryDifficulty(steps, category) {
   const [minPow, maxPow] = getZoneRange(category);
   
-  let tizSeconds = 0;
+  let tizSeconds = 0; // Vrijeme u ciljanoj zoni
+  let overheadSeconds = 0; // Vrijeme u zonama iznad ciljane (za kumulativni umor)
   let maxIntervalSeconds = 0;
   let currentInterval = 0;
   let totalTSS = 0;
@@ -83,9 +84,13 @@ function calculateCategoryDifficulty(steps, category) {
     let intensity = step.power / 100;
     totalTSS += (step.duration / 3600) * (intensity * intensity) * 100;
 
+    // Kumulativni TiZ: ako je trening npr. Threshold, računaj i sve iznad toga
     if (step.power >= minPow && step.power < maxPow) {
        tizSeconds += step.duration;
        currentInterval += step.duration;
+    } else if (step.power >= maxPow) {
+       overheadSeconds += step.duration;
+       currentInterval += step.duration; // Iznad zone također doprinosi neprekidnom naporu
     } else {
        if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
        currentInterval = 0;
@@ -93,58 +98,49 @@ function calculateCategoryDifficulty(steps, category) {
   });
   if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
 
-  let tizMinutes = tizSeconds / 60;
+  // Ukupno efektivno vrijeme (ciljana zona + 1.2x bonus za rad iznad nje jer je teže)
+  let effectiveTiZ = (tizSeconds / 60) + (overheadSeconds / 60) * 1.2;
   let maxIntervalMins = maxIntervalSeconds / 60;
   let score = 1.0;
 
-  // Rekalibrirane formule — raspon 1.0 do 10.0 po zoni
-  // Svaka zona ima "referentni max TiZ" koji odgovara scoreu ~9.0
-  // Formula: 1.0 + (tiz / refMaxTiZ) * 8.0
-  //   Endurance refMax=200min, Tempo=70, SS=60, Threshold=45, VO2Max=28, Anaerobni=18
+  // Rekalibrirane formule — bazni scoring
   switch (category) {
     case 'Oporavak':
-      score = 1.0; 
+      score = 0.5 + (totalTSS / 40); 
       break;
     case 'Endurance':
-      // 30min→2.2, 90min→4.6, 150min→7.0, 200min→9.0
-      score = 1.0 + (tizMinutes / 200) * 8.0;
+      score = 1.0 + (effectiveTiZ / 180) * 8.0;
       break;
     case 'Tempo':
-      // 15min→2.7, 40min→5.6, 70min→9.0
-      score = 1.0 + (tizMinutes / 70) * 8.0;
+      score = 1.5 + (effectiveTiZ / 60) * 7.5;
       break;
     case 'Sweet Spot':
-      // 12min→2.6, 35min→5.7, 60min→9.0
-      score = 1.0 + (tizMinutes / 60) * 8.0;
-      // Bonus za duge neprekinute intervale (>20 min)
-      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.02;
+      score = 2.0 + (effectiveTiZ / 50) * 7.0;
+      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.05;
       break;
     case 'Threshold':
-      // 10min→2.8, 25min→5.4, 45min→9.0
-      score = 1.0 + (tizMinutes / 45) * 8.0;
-      // Bonus za duge intervale (>10 min neprekinuto u zoni)
-      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.03;
+      score = 2.5 + (effectiveTiZ / 40) * 7.0;
+      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.08;
       break;
     case 'VO2 Max':
-      // 6min→2.7, 15min→5.3, 28min→9.0
-      score = 1.0 + (tizMinutes / 28) * 8.0;
-      // Bonus za duge VO2 intervale (>=3 min)
-      if (maxIntervalMins >= 3) score += (maxIntervalMins - 2) * 0.05;
+      score = 3.0 + (effectiveTiZ / 22) * 7.0;
+      if (maxIntervalMins >= 3) score += (maxIntervalMins - 2) * 0.2;
       break;
     case 'Anaerobni':
-      // 3min→2.3, 8min→4.6, 18min→9.0
-      score = 1.0 + (tizMinutes / 18) * 8.0;
+      // Anaerobni treninzi su brutalni, bazna ocjena kreće više
+      score = 3.5 + (effectiveTiZ / 15) * 6.5;
+      if (maxIntervalMins > 0.5) score += (maxIntervalMins * 0.1);
       break;
     default:
-      score = 1.0 + (totalTSS / 80) * 8.0;
+      score = 1.0 + (totalTSS / 70) * 8.0;
       break;
   }
 
-  // Mali TSS modifikator za razlikovanje treninga slične TiZ ali razl. volumena
-  score += (totalTSS * 0.004);
+  // Povećan utjecaj ukupnog volumena (TSS) - ovo je "glue" koji drži ocjenu realnom
+  score += (totalTSS * 0.012);
 
   if (score < 1.0) score = 1.0;
-  if (score > 10.0) score = 10.0;
+  // Nema više gornjeg limita (capa) na 10!
   
   return parseFloat(score.toFixed(1));
 }
