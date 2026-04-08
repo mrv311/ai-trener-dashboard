@@ -25,8 +25,10 @@ export default function App() {
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
 
-  const [athleteProfile, setAthleteProfile] = useState({
-    weight: 75.9, ftp: 270, thresholdHr: 160, maxHr: 180
+  const [athleteProfile, setAthleteProfile] = useLocalStorage('ai_trener_profile', {
+    weight: 75.9, ftp: 270, thresholdHr: 160, maxHr: 180,
+    birthYear: 1985, height: 180, experience: '3-5', riderType: 'all-rounder',
+    hoursPerWeek: 8, primaryGoal: 'Istra 300', goalDate: '2026-09-26', weakness: 'kratki usponi (VO2Max)'
   });
   
   const [currentDate, setCurrentDate] = useState(new Date()); 
