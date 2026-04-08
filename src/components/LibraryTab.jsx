@@ -64,12 +64,25 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
 
     const uploadedWorkouts = [];
     const errors = [];
+    const skippedDuplicates = [];
+
+    // Postojeći nazivi za detekciju duplikata (case-insensitive)
+    const existingTitles = new Set(workouts.map(w => w.title.trim().toLowerCase()));
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
         const text = await file.text();
         const parsedWorkout = await parseWorkoutFile(text, file.name);
+        
+        const normalizedTitle = parsedWorkout.title.trim().toLowerCase();
+        if (existingTitles.has(normalizedTitle)) {
+          skippedDuplicates.push(parsedWorkout.title);
+          continue;
+        }
+        
+        // Spriječi duplikate unutar istog uploada
+        existingTitles.add(normalizedTitle);
         uploadedWorkouts.push(parsedWorkout);
       } catch (err) {
         console.error(`Greška pri parsiranju fajla ${file.name}:`, err);
@@ -81,7 +94,6 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
       try {
         const { error: insertError } = await supabase.from('workouts').insert(uploadedWorkouts).select();
         if (insertError) throw insertError;
-        // Osježi listu i vrati se na početak (zatvori mape)
         setActiveFolder(null);
         await fetchWorkouts();
       } catch (err) {
@@ -90,8 +102,15 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
       }
     }
 
+    const messages = [];
+    if (skippedDuplicates.length > 0) {
+      messages.push(`Preskočeno ${skippedDuplicates.length} duplikata: ${skippedDuplicates.join(', ')}`);
+    }
     if (errors.length > 0) {
-      setError(`Neuspješan uvoz nekih datoteka:\n${errors.join('\n')}`);
+      messages.push(`Neuspješan uvoz: ${errors.join(', ')}`);
+    }
+    if (messages.length > 0) {
+      setError(messages.join('\n'));
     }
 
     setIsUploading(false);
