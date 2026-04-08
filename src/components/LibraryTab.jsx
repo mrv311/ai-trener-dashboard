@@ -62,15 +62,26 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
     setIsUploading(true);
     setError(null);
 
-    const uploadedWorkouts = [];
+        const uploadedWorkouts = [];
     const errors = [];
+    let duplicateCount = 0;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
         const text = await file.text();
         const parsedWorkout = await parseWorkoutFile(text, file.name);
-        uploadedWorkouts.push(parsedWorkout);
+        
+        // Provjera duplikata po naslovu treninga u trenutnoj listi `workouts`
+        const isDuplicate = workouts.some(
+          existing => existing.title.toLowerCase() === parsedWorkout.title.toLowerCase()
+        );
+
+        if (isDuplicate) {
+          duplicateCount++;
+        } else {
+          uploadedWorkouts.push(parsedWorkout);
+        }
       } catch (err) {
         console.error(`Greška pri parsiranju fajla ${file.name}:`, err);
         errors.push(`${file.name}: ${err.message}`);
@@ -90,8 +101,16 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
       }
     }
 
+    let errorMessage = '';
     if (errors.length > 0) {
-      setError(`Neuspješan uvoz nekih datoteka:\n${errors.join('\n')}`);
+      errorMessage += `Neuspješan uvoz nekih datoteka:\n${errors.join('\n')}\n`;
+    }
+    if (duplicateCount > 0) {
+      errorMessage += `Preskočeno duplikata (već postoje u bazi): ${duplicateCount}`;
+    }
+
+    if (errorMessage) {
+      setError(errorMessage.trim());
     }
 
     setIsUploading(false);
