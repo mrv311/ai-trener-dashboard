@@ -10,16 +10,36 @@ const ZONES = [
   { id: 'Anaerobni', name: 'Z6 Anaerobni', color: 'text-fuchsia-500', bg: 'bg-fuchsia-500', icon: <Trophy className="w-5 h-5 text-fuchsia-500" /> },
 ];
 
-export default function ProgressionTab() {
+export default function ProgressionTab({ workouts = [] }) {
   const [levels, setLevels] = useState({});
   const [history, setHistory] = useState([]);
 
   useEffect(() => {
-    // 1. Čitanje povijesti odvoženih treninga
+    // 1. Čitanje povijesti odvoženih treninga (lokalno + intervals povezane aktivnosti)
     const loadHistory = () => {
       try {
-        const stored = JSON.parse(localStorage.getItem('ai_trener_completed_workouts') || '[]');
-        setHistory(stored);
+        const localHistory = JSON.parse(localStorage.getItem('ai_trener_completed_workouts') || '[]');
+        
+        const allCompleted = [...localHistory];
+        
+        // Dodaj sve zavrsene aktivnosti koje su bile uspjesno uparene i imaju faktor tezine
+        workouts.forEach(w => {
+           if (w.isCompleted && w.difficulty_score && w.category) {
+              const alreadyExists = allCompleted.some(loc => loc.id === w.id);
+              if (!alreadyExists) {
+                  allCompleted.push({
+                      id: w.id,
+                      date: w.date,
+                      title: w.title,
+                      category: w.category,
+                      difficulty_score: w.difficulty_score
+                  });
+              }
+           }
+        });
+
+        // Svi zapisi idu u history za lakše rudarenje "heroj" treninga
+        setHistory(allCompleted);
         
         // 2. Izračun aktualnih razina (maksimalni score u zadnjih 30 dana) po zonama
         const currentLevels = {
@@ -30,12 +50,11 @@ export default function ProgressionTab() {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        stored.forEach(workout => {
-          const workoutDate = new Date(workout.date);
-          // Ako je trening unutar 30 dana i veći od trenutnog levela, postavi ga
-          if (workoutDate > thirtyDaysAgo && currentLevels[workout.category] !== undefined) {
-             if (workout.difficulty_score > currentLevels[workout.category]) {
-                currentLevels[workout.category] = workout.difficulty_score;
+        allCompleted.forEach(w => {
+          const wDate = new Date(w.date);
+          if (wDate > thirtyDaysAgo && currentLevels[w.category] !== undefined) {
+             if (w.difficulty_score > currentLevels[w.category]) {
+                currentLevels[w.category] = w.difficulty_score;
              }
           }
         });
@@ -47,7 +66,7 @@ export default function ProgressionTab() {
     };
 
     loadHistory();
-  }, []);
+  }, [workouts]);
 
   // Formatiranje razine
   const formatLevel = (val) => {

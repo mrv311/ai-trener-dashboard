@@ -136,7 +136,7 @@ export default function App() {
             </div>
 
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
-            {activeTab === 'progression' && <ProgressionTab />}
+            {activeTab === 'progression' && <ProgressionTab workouts={workouts} />}
             {activeTab === 'library' && (
               <LibraryTab 
                 ftp={athleteProfile.ftp}

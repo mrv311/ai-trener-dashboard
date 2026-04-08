@@ -96,6 +96,7 @@ export function useIntervalsData(intervalsId, intervalsKey) {
       let plannedDurDisplay = null;
       let eventIdObj = null;
       let diffScore = null;
+      let actCategory = null;
 
       if (pairedEvent || pairedLocal) {
         if (pairedEvent) {
@@ -107,6 +108,7 @@ export function useIntervalsData(intervalsId, intervalsKey) {
           plannedTssDisplay = Math.round(pairedLocal.tss || 0);
           plannedDurDisplay = pairedLocal.duration_seconds ? Math.round(pairedLocal.duration_seconds / 60) : pairedLocal.duration;
           diffScore = pairedLocal.difficulty_score;
+          actCategory = pairedLocal.category;
         }
 
         const actualTss = Math.round(act.icu_training_load || 0);
@@ -127,7 +129,8 @@ export function useIntervalsData(intervalsId, intervalsKey) {
         duration: Math.round((act.moving_time || 0) / 60), plannedDuration: plannedDurDisplay,
         tss: Math.round(act.icu_training_load || 0), plannedTss: plannedTssDisplay,
         statusColor: complianceColor, isCompleted: true,
-        difficulty_score: diffScore
+        difficulty_score: diffScore,
+        category: actCategory
       });
     });
 
