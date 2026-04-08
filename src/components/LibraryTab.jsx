@@ -12,6 +12,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
   const [activeFolder, setActiveFolder] = useState(null);
   const [editingWorkoutId, setEditingWorkoutId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
+  const [editCategory, setEditCategory] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
 
@@ -109,16 +110,16 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
     }
   };
 
-  const handleUpdateTitle = async () => {
+  const handleUpdateWorkout = async () => {
     if (!editingWorkoutId || !editTitle.trim()) return;
     try {
-      const { error } = await supabase.from('workouts').update({ title: editTitle.trim() }).eq('id', editingWorkoutId);
+      const { error } = await supabase.from('workouts').update({ title: editTitle.trim(), category: editCategory }).eq('id', editingWorkoutId);
       if (error) throw error;
       setEditingWorkoutId(null);
       await fetchWorkouts();
     } catch (err) {
       console.error(err);
-      setError("Greška pri promjeni naziva: " + err.message);
+      setError("Greška pri promjeni: " + err.message);
     }
   };
 
@@ -160,11 +161,12 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
       case 'Threshold': return 'border-orange-500/50 text-orange-400 hover:bg-orange-500/10 shadow-[0_0_15px_rgba(249,115,22,0.1)]';
       case 'VO2 Max': return 'border-red-500/50 text-red-400 hover:bg-red-500/10 shadow-[0_0_15px_rgba(239,68,68,0.1)]';
       case 'Anaerobni': return 'border-purple-500/50 text-purple-400 hover:bg-purple-500/10 shadow-[0_0_15px_rgba(168,85,247,0.1)]';
+      case 'Testiranje': return 'border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 shadow-[0_0_15px_rgba(6,182,212,0.1)]';
       default: return 'border-zinc-500/50 text-zinc-400 hover:bg-zinc-500/10 shadow-[0_0_15px_rgba(113,113,122,0.1)]';
     }
   };
 
-  const categoryOrder = ['Oporavak', 'Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Anaerobni', 'Ostalo'];
+  const categoryOrder = ['Oporavak', 'Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Anaerobni', 'Testiranje', 'Ostalo'];
 
   const groupedWorkouts = workouts.reduce((acc, workout) => {
     const cat = workout.category || 'Ostalo';
@@ -311,25 +313,35 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                   <div key={workout.id} onClick={() => setSelectedDetailWorkout(workout)} className="bg-zinc-900/60 backdrop-blur-md border border-zinc-800 rounded-2xl p-5 hover:border-orange-500/50 hover:shadow-[0_0_20px_rgba(249,115,22,0.1)] transition-all group/card flex flex-col h-full relative overflow-hidden cursor-pointer">
                     <div className="flex justify-between items-start mb-3 relative z-10 w-full">
                       {editingWorkoutId === workout.id ? (
-                        <div className="flex gap-2 w-full pr-20 items-center bg-zinc-950 p-1.5 rounded-xl border border-orange-500/50 shadow-inner">
+                        <div className="flex flex-col gap-2 w-full pr-20 p-2 rounded-xl bg-zinc-950 border border-orange-500/50 shadow-inner">
                           <input 
                             type="text" 
                             value={editTitle} 
                             onChange={e => setEditTitle(e.target.value)}
                             onKeyDown={e => {
                               e.stopPropagation();
-                              if (e.key === 'Enter') handleUpdateTitle();
+                              if (e.key === 'Enter') handleUpdateWorkout();
                             }}
                             onClick={e => e.stopPropagation()}
-                            className="bg-transparent text-white text-sm font-bold w-full outline-none px-1"
+                            className="bg-zinc-900 border border-zinc-800 text-white rounded text-sm font-bold w-full outline-none px-2 py-1 focus:border-orange-500"
                             autoFocus 
                           />
-                          <button onClick={(e) => { e.stopPropagation(); handleUpdateTitle(); }} className="text-green-500 hover:text-green-400 shrink-0 p-1 bg-zinc-900 rounded-md">
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button onClick={(e) => { e.stopPropagation(); setEditingWorkoutId(null); }} className="text-red-500 hover:text-red-400 shrink-0 p-1 bg-zinc-900 rounded-md">
-                            <X className="w-4 h-4" />
-                          </button>
+                          <div className="flex gap-2">
+                             <select
+                               value={editCategory}
+                               onChange={e => setEditCategory(e.target.value)}
+                               onClick={e => e.stopPropagation()}
+                               className="bg-zinc-900 border border-zinc-800 text-white rounded text-xs font-bold flex-1 outline-none px-2 py-1 focus:border-orange-500"
+                             >
+                               {categoryOrder.map(c => <option key={c} value={c}>{c}</option>)}
+                             </select>
+                             <button onClick={(e) => { e.stopPropagation(); handleUpdateWorkout(); }} className="text-green-500 hover:text-green-400 shrink-0 p-1 bg-zinc-800 rounded-md">
+                               <Check className="w-4 h-4" />
+                             </button>
+                             <button onClick={(e) => { e.stopPropagation(); setEditingWorkoutId(null); }} className="text-red-500 hover:text-red-400 shrink-0 p-1 bg-zinc-800 rounded-md">
+                               <X className="w-4 h-4" />
+                             </button>
+                          </div>
                         </div>
                       ) : (
                         <h3 className="text-lg font-black text-zinc-100 group-hover/card:text-orange-500 transition-colors pr-24 leading-tight">
@@ -340,9 +352,14 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                       <div className="absolute right-0 top-0 flex gap-1.5">
                         {editingWorkoutId !== workout.id && (
                           <button 
-                            onClick={(e) => { e.stopPropagation(); setEditTitle(workout.title); setEditingWorkoutId(workout.id); }}
+                            onClick={(e) => { 
+                               e.stopPropagation(); 
+                               setEditTitle(workout.title); 
+                               setEditCategory(workout.category || 'Ostalo');
+                               setEditingWorkoutId(workout.id); 
+                            }}
                             className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-blue-500 hover:border-blue-500/50 shadow-sm shadow-black shrink-0 transition-colors"
-                            title="Preimenuj"
+                            title="Uredi trening"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
