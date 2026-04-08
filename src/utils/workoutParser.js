@@ -17,7 +17,7 @@ export async function parseWorkoutFile(fileText, fileName) {
   return parsedWorkout;
 }
 
-export function categorizeWorkout(steps) {
+function categorizeWorkout(steps) {
   const scores = { recovery: 0, endurance: 0, tempo: 0, sweetspot: 0, threshold: 0, vo2max: 0, anaerobic: 0 };
   
   steps.forEach(s => {
@@ -71,7 +71,7 @@ function getZoneRange(category) {
    }
 }
 
-export function calculateCategoryDifficulty(steps, category) {
+function calculateCategoryDifficulty(steps, category) {
   const [minPow, maxPow] = getZoneRange(category);
   
   let tizSeconds = 0;

@@ -2,14 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
-import { parseWorkoutFile, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
+import { parseWorkoutFile } from '../utils/workoutParser';
 
 export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
   const [workouts, setWorkouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [isRecalculating, setIsRecalculating] = useState(false);
   const [activeFolder, setActiveFolder] = useState(null);
   const [editingWorkoutId, setEditingWorkoutId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
@@ -119,46 +118,6 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
     event.target.value = null;
   };
 
-  const handleRecalcAll = async () => {
-    setIsRecalculating(true);
-    setError(null);
-    let updated = 0;
-    let failed = 0;
-    try {
-      for (const workout of workouts) {
-        if (!workout.steps || workout.steps.length === 0) {
-          failed++;
-          continue;
-        }
-        const newCategory = categorizeWorkout(workout.steps);
-        const newDifficulty = calculateCategoryDifficulty(workout.steps, newCategory);
-        
-        // Preskoči ako se ništa nije promijenilo
-        if (workout.category === newCategory && workout.difficulty_score === newDifficulty) continue;
-
-        const { error: updateError } = await supabase.from('workouts')
-          .update({ category: newCategory, difficulty_score: newDifficulty })
-          .eq('id', workout.id);
-        
-        if (updateError) {
-          console.error(`Greška pri ažuriranju ${workout.title}:`, updateError);
-          failed++;
-        } else {
-          updated++;
-        }
-      }
-      await fetchWorkouts();
-      if (updated > 0 || failed > 0) {
-        setError(`Rekalkulacija završena: ${updated} ažurirano, ${failed} preskočeno (bez podataka).`);
-      }
-    } catch (err) {
-      console.error(err);
-      setError("Greška pri rekalkulaciji: " + err.message);
-    } finally {
-      setIsRecalculating(false);
-    }
-  };
-
   const handleDeleteWorkout = async (workoutId) => {
     try {
       const { error } = await supabase.from('workouts').delete().eq('id', workoutId);
@@ -252,22 +211,13 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
           </h2>
           <p className="text-zinc-500 text-sm mt-1">Strukturirani treninzi iz baze spremni za vožnju.</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2">
           <label className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-white font-bold rounded-xl cursor-pointer transition-all shadow-[0_0_15px_rgba(249,115,22,0.3)]">
             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
             <span className="hidden sm:inline">{isUploading ? 'Učitavanje...' : 'Dodaj ZWO/ERG'}</span>
             <span className="sm:hidden">Dodaj</span>
             <input type="file" multiple className="absolute w-0 h-0 opacity-0 pointer-events-none" onChange={handleFileUpload} disabled={isUploading} />
           </label>
-          <button 
-            onClick={handleRecalcAll}
-            disabled={loading || isUploading || isRecalculating || workouts.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-50 font-bold text-sm"
-            title="Ponovo izračunaj faktor težine za sve treninge"
-          >
-            {isRecalculating ? <Loader2 className="w-4 h-4 animate-spin text-orange-500" /> : <Zap className="w-4 h-4" />}
-            <span className="hidden sm:inline">{isRecalculating ? 'Računa...' : 'Rekalkuliraj'}</span>
-          </button>
           <button 
             onClick={fetchWorkouts} 
             disabled={loading || isUploading}
