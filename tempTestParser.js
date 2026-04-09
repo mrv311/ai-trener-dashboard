@@ -1,6 +1,6 @@
 // Očekivani izlaz: { title, description, duration_seconds, difficulty_score, steps: [{ name, duration, power }] }
 
-export async function parseWorkoutFile(fileText, fileName) {
+async function parseWorkoutFile(fileText, fileName) {
   const isZwo = fileName.toLowerCase().endsWith('.zwo');
   const isErg = fileName.toLowerCase().endsWith('.erg');
   
@@ -144,14 +144,14 @@ function calculateCategoryDifficulty(steps, category) {
       if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.1;
       break;
         case 'VO2 Max':
-          score = 1.0 + (effectiveMins / 32.0) * 4.0;
-          if (maxIntervalMins >= 3) score += Math.min(maxIntervalMins - 2, 8) * 0.15;
-          break;
-        case 'Anaerobni':
-          // Rješenje za problem gdje San Joaquin +5 (visok intenzitet, manji TiZ) 
-          // dobiva manji score od Taylor -2 (niži intenzitet, ogroman TiZ).
-          score = 1.0 + Math.pow(effectiveMins / 26.0, 0.72) * 4.0;
-          break;
+      score = 1.0 + (effectiveMins / 21.5) * 4.0;
+      if (maxIntervalMins >= 3) score += (maxIntervalMins - 2) * 0.15;
+      break;
+    case 'Anaerobni':
+      // Rješenje za problem gdje San Joaquin +5 (visok intenzitet, manji TiZ) 
+      // dobiva manji score od Taylor -2 (niži intenzitet, ogroman TiZ).
+      score = 1.0 + Math.pow(effectiveMins / 18.5, 0.72) * 4.0;
+      break;
     default:
       score = (totalTSS / 60) * 4.0; 
       break;
@@ -344,3 +344,5 @@ function parseERG(ergText) {
     steps: mergedSteps
   };
 }
+
+module.exports = { categorizeWorkout, calculateCategoryDifficulty };
