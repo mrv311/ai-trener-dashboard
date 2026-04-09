@@ -44,23 +44,35 @@ export default function TrainerGraph({
               <polyline
                 points={workoutHistory.map(p => {
                   const x = (p.time / totalDuration) * 100;
-                  const hrPercent = Math.min(Math.max((p.hr / (profile?.maxHr || 180)) * 100, 0), 100);
-                  return `${x},${100 - hrPercent}`;
+                  const maxVal = Math.max((profile?.ftp || 200) * 1.5, 200);
+                  const heightPercent = Math.min(Math.max((p.power / maxVal) * 100, 15), 100);
+                  return `${x},${100 - heightPercent}`;
                 }).join(' ')}
-                fill="none" stroke="#f43f5e" strokeWidth="1.5"
+                fill="none" stroke="#f4f4f5" strokeWidth="0.5"
+                strokeLinecap="round" strokeLinejoin="round"
+                style={{ filter: 'drop-shadow(0px 0px 4px rgba(255,255,255,0.4))' }}
+              />
+              <polyline
+                points={workoutHistory.map(p => {
+                  const x = (p.time / totalDuration) * 100;
+                  const maxVal = Math.max((profile?.ftp || 200) * 1.5, 200);
+                  const scaledHr = Math.min(Math.max((p.hr / maxVal) * 100, 15), 100);
+                  return `${x},${100 - scaledHr}`;
+                }).join(' ')}
+                fill="none" stroke="#f43f5e" strokeWidth="0.5"
                 strokeLinecap="round" strokeLinejoin="round"
                 style={{ filter: 'drop-shadow(0px 0px 3px rgba(244,63,94,0.6))' }}
               />
               <polyline
                 points={workoutHistory.map(p => {
                   const x = (p.time / totalDuration) * 100;
-                  const powerInPercentFTP = (p.power / profile?.ftp) * 100;
-                  const heightPercent = Math.min(Math.max((powerInPercentFTP / 150) * 100, 15), 100);
-                  return `${x},${100 - heightPercent}`;
+                  const maxVal = Math.max((profile?.ftp || 200) * 1.5, 200);
+                  const cadPercent = Math.min(Math.max((p.cadence / maxVal) * 100, 15), 100);
+                  return `${x},${100 - cadPercent}`;
                 }).join(' ')}
-                fill="none" stroke="#f4f4f5" strokeWidth="2"
+                fill="none" stroke="#eab308" strokeWidth="0.5"
                 strokeLinecap="round" strokeLinejoin="round"
-                style={{ filter: 'drop-shadow(0px 0px 4px rgba(255,255,255,0.4))' }}
+                style={{ filter: 'drop-shadow(0px 0px 3px rgba(234,179,8,0.6))', opacity: 0.8 }}
               />
             </svg>
           )}
@@ -76,8 +88,9 @@ export default function TrainerGraph({
           {workoutRecipe.map((step, i) => {
             const widthPercent = (step.duration / totalDuration) * 100;
             const scaledPower = step.power * (ergIntensity / 100);
-            const heightPercent = Math.min(Math.max((scaledPower / 150) * 100, 15), 100);
             const targetW = Math.round((scaledPower / 100) * profile?.ftp);
+            const maxVal = Math.max((profile?.ftp || 200) * 1.5, 200);
+            const heightPercent = Math.min(Math.max((targetW / maxVal) * 100, 15), 100);
 
             return (
               <div

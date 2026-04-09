@@ -31,13 +31,13 @@ const playBeep = (freq = 800, duration = 0.2) => {
 // --- POWER MATCH PID KONTROLER ---
 class PowerMatchPID {
   constructor() {
-    this.kP = 1.5;   // Proporcionalni faktor
-    this.kI = 0.05;  // Integralni faktor (sprječava trajnu grešku)
-    this.kD = 0.3;   // Derivativni faktor (prigušuje oscilacije)
+        this.kP = 0.5;   // Proporcionalni faktor
+    this.kI = 0.1;  // Integralni faktor (sprječava trajnu grešku)
+    this.kD = 0.0;   // Derivativni faktor (prigušuje oscilacije)
     this.integral = 0;
     this.prevError = 0;
     this.lastTime = null;
-    this.maxIntegral = 50; // Anti-windup
+    this.maxIntegral = 30; // Anti-windup
   }
 
   reset() {
@@ -150,27 +150,64 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
   const totalDuration = useMemo(() => workoutRecipe.reduce((acc, step) => acc + step.duration, 0), [workoutRecipe]);
 
+  const stateRef = useRef({
+    powerMatchEnabled, isPmConnected, isPowerConnected, isHrConnected,
+    pmPower, currentPower, currentHR, currentCadence
+  });
+  
+  useEffect(() => {
+    stateRef.current = {
+      powerMatchEnabled, isPmConnected, isPowerConnected, isHrConnected,
+      pmPower, currentPower, currentHR, currentCadence
+    };
+  }, [powerMatchEnabled, isPmConnected, isPowerConnected, isHrConnected, pmPower, currentPower, currentHR, currentCadence]);
+
+  const lastUpdateRef = useRef(Date.now());
+
   useEffect(() => {
     let interval;
     if (isPlaying && elapsedTime < totalDuration) {
-      interval = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
+      lastUpdateRef.current = Date.now();
+      interval = setInterval(() => {
+        const now = Date.now();
+        const deltaSecs = Math.floor((now - lastUpdateRef.current) / 1000);
+        
+        if (deltaSecs > 0) {
+          lastUpdateRef.current += deltaSecs * 1000;
+          
+          setElapsedTime(prev => {
+            const newElapsed = prev + deltaSecs;
+            
+            const s = stateRef.current;
+            const recordedPower = (s.powerMatchEnabled && s.isPmConnected) ? s.pmPower : (s.isPowerConnected ? s.currentPower : 0);
+            const hr = s.isHrConnected ? s.currentHR : 0;
+            const cad = (s.isPmConnected ? s.currentCadence : (s.isPowerConnected ? s.currentCadence : 0));
+            
+            if (prev < totalDuration) {
+              setWorkoutHistory(hist => {
+                const newHist = [...hist];
+                for (let i = 0; i < deltaSecs; i++) {
+                   if (prev + i + 1 <= totalDuration) {
+                     newHist.push({ time: prev + i + 1, power: recordedPower, hr, cadence: cad });
+                   }
+                }
+                return newHist;
+              });
+            }
+            
+            return newElapsed > totalDuration ? totalDuration : newElapsed;
+          });
+        }
+      }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, elapsedTime, totalDuration]);
+  }, [isPlaying, totalDuration]);
 
   useEffect(() => {
-    if (isPlaying && elapsedTime > 0 && elapsedTime < totalDuration) {
-      const recordedPower = (powerMatchEnabled && isPmConnected) ? pmPower : (isPowerConnected ? currentPower : 0);
-      setWorkoutHistory(prev => [...prev, {
-        time: elapsedTime,
-        power: recordedPower,
-        hr: isHrConnected ? currentHR : 0,
-        cadence: (isPmConnected ? currentCadence : (isPowerConnected ? currentCadence : 0))
-      }]);
-    } else if (isPlaying && elapsedTime >= totalDuration) {
+    if (isPlaying && elapsedTime >= totalDuration) {
       handleFinishWorkout();
     }
-  }, [elapsedTime]);
+  }, [elapsedTime, isPlaying, totalDuration]);
 
   useEffect(() => {
     const anyPower = (isPmConnected ? pmPower : 0) || (isPowerConnected ? currentPower : 0);
@@ -211,10 +248,18 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     }
   }, [elapsedTime, isPlaying]);
 
-  const baseTargetPower = Math.round((currentStep.power / 100) * profile.ftp);
+    const baseTargetPower = Math.round((currentStep.power / 100) * profile.ftp);
   const activeTargetPower = Math.round(baseTargetPower * (ergIntensity / 100));
 
-  const displayPower = (isPmConnected ? pmPower : (isPowerConnected ? currentPower : 0));
+  const displayPower = useMemo(() => {
+    const current = (isPmConnected ? pmPower : (isPowerConnected ? currentPower : 0));
+    if (!isPlaying || workoutHistory.length === 0) return current;
+    
+    const recent = workoutHistory.slice(-2);
+    const sum = recent.reduce((acc, h) => acc + h.power, 0) + current;
+    return Math.round(sum / (recent.length + 1));
+  }, [pmPower, currentPower, isPmConnected, isPowerConnected, isPlaying, workoutHistory]);
+
   const displayHR = isHrConnected ? currentHR : 0;
   const displayCadence = currentCadence;
 
@@ -333,17 +378,42 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     }
   };
 
+    const lastErgCommandTimeRef = useRef(0);
+  const lastTargetPowerRef = useRef(activeTargetPower);
+
   useEffect(() => {
     const sendErgCommand = async () => {
       if (!ftmsControlChar || controlMode !== 'ERG') return;
+
+      const now = Date.now();
+      const targetChanged = lastTargetPowerRef.current !== activeTargetPower;
+
+      if (targetChanged) {
+        lastTargetPowerRef.current = activeTargetPower;
+        pidController.reset();
+      } else {
+        if (powerMatchEnabled && isPmConnected) {
+          if (now - lastErgCommandTimeRef.current < 2000) return; // Svake 2 sekunde
+        } else {
+          return;
+        }
+      }
+
       try {
         let commandPower = activeTargetPower;
 
         if (powerMatchEnabled && isPmConnected && pmPower > 0) {
-          commandPower = pidController.compute(activeTargetPower, pmPower);
-          commandPower = Math.max(30, Math.min(Math.round(profile.ftp * 1.5), commandPower));
+          const recentPm = workoutHistory.slice(-2).map(h => h.power);
+          const avgPmPower = recentPm.length > 0 
+            ? Math.round((recentPm.reduce((a, b) => a + b, 0) + pmPower) / (recentPm.length + 1))
+            : pmPower;
+            
+          commandPower = pidController.compute(activeTargetPower, avgPmPower);
+          const maxTrainerW = Math.round((profile?.ftp || 250) * 1.5);
+          commandPower = Math.max(30, Math.min(maxTrainerW, commandPower));
         }
 
+        lastErgCommandTimeRef.current = now;
         const buffer = new ArrayBuffer(3);
         const view = new DataView(buffer);
         view.setUint8(0, 0x05);
@@ -352,7 +422,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       } catch (e) { console.error("Greška pri slanju ERG komande", e); }
     };
     sendErgCommand();
-  }, [activeTargetPower, controlMode, ftmsControlChar, pmPower, powerMatchEnabled, isPmConnected]);
+  }, [activeTargetPower, controlMode, ftmsControlChar, pmPower, powerMatchEnabled, isPmConnected, workoutHistory, profile]);
 
   useEffect(() => {
     const sendResCommand = async () => {
