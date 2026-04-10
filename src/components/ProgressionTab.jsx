@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Target, TrendingUp, Trophy, ArrowUpRight, Flame, Clock, Award, Info } from 'lucide-react';
+import { Target, TrendingUp, Trophy, ArrowUpRight, Flame, Clock, Award, Info, TrendingDown } from 'lucide-react';
 
 const ZONES = [
   { id: 'Endurance', name: 'Z2 Endurance', color: 'text-sky-400', bg: 'bg-sky-500', icon: <Clock className="w-5 h-5 text-sky-400" /> },
@@ -11,22 +11,22 @@ const ZONES = [
 ];
 
 export default function ProgressionTab({ workouts = [] }) {
-  const [levels, setLevels] = useState({});
-  const [history, setHistory] = useState([]);
+  const [progressionData, setProgressionData] = useState({
+    levels: { 'Endurance': 1.0, 'Tempo': 1.0, 'Sweet Spot': 1.0, 'Threshold': 1.0, 'VO2 Max': 1.0, 'Anaerobni': 1.0 },
+    heroes: {}
+  });
 
   useEffect(() => {
-    // 1. Čitanje povijesti odvoženih treninga (lokalno + intervals povezane aktivnosti)
-    const loadHistory = () => {
+    const loadAndCalculate = () => {
       try {
         const localHistory = JSON.parse(localStorage.getItem('ai_trener_completed_workouts') || '[]');
-        
         const allCompleted = [...localHistory];
+        let hasNewWorkouts = false;
         
-        // Dodaj sve zavrsene aktivnosti koje su bile uspjesno uparene i imaju faktor tezine
+        // Ažuriranje lokalne baze novim treninzima
         workouts.forEach(w => {
            if (w.isCompleted && w.difficulty_score && w.category) {
-              const alreadyExists = allCompleted.some(loc => loc.id === w.id);
-              if (!alreadyExists) {
+              if (!allCompleted.some(loc => loc.id === w.id)) {
                   allCompleted.push({
                       id: w.id,
                       date: w.date,
@@ -34,55 +34,73 @@ export default function ProgressionTab({ workouts = [] }) {
                       category: w.category,
                       difficulty_score: w.difficulty_score
                   });
+                  hasNewWorkouts = true;
               }
            }
         });
 
-        // Svi zapisi idu u history za lakše rudarenje "heroj" treninga
-        setHistory(allCompleted);
-        
-        // 2. Izračun aktualnih razina (maksimalni score u zadnjih 30 dana) po zonama
-        const currentLevels = {
-          'Endurance': 1.0, 'Tempo': 1.0, 'Sweet Spot': 1.0, 
-          'Threshold': 1.0, 'VO2 Max': 1.0, 'Anaerobni': 1.0
-        };
+        if (hasNewWorkouts) {
+            localStorage.setItem('ai_trener_completed_workouts', JSON.stringify(allCompleted));
+        }
 
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const now = Date.now();
+        // Gledamo unazad 45 dana umjesto 30 kako bi se pad forme vidio duže prije reseta
+        const historyWindowMs = 45 * 24 * 60 * 60 * 1000; 
+        const cutoffTime = now - historyWindowMs;
 
-        allCompleted.forEach(w => {
-          const wDate = new Date(w.date);
-          if (wDate > thirtyDaysAgo && currentLevels[w.category] !== undefined) {
-             if (w.difficulty_score > currentLevels[w.category]) {
-                currentLevels[w.category] = w.difficulty_score;
+        const currentLevels = { 'Endurance': 1.0, 'Tempo': 1.0, 'Sweet Spot': 1.0, 'Threshold': 1.0, 'VO2 Max': 1.0, 'Anaerobni': 1.0 };
+        const currentHeroes = {};
+
+        // DECAY PARAMETRI
+        const GRACE_PERIOD_DAYS = 5; // Prvih 5 dana nema pada forme
+        const DECAY_PER_DAY = 0.05;  // Nakon toga gubiš 0.05 bodova po danu
+
+        for (let i = 0; i < allCompleted.length; i++) {
+          const w = allCompleted[i];
+          const wTime = new Date(w.date).getTime();
+
+          if (wTime > cutoffTime && currentLevels[w.category] !== undefined) {
+             const daysAgo = (now - wTime) / (1000 * 60 * 60 * 24);
+             
+             // Izračun izgubljenih bodova zbog vremena
+             let decay = 0;
+             if (daysAgo > GRACE_PERIOD_DAYS) {
+                 decay = (daysAgo - GRACE_PERIOD_DAYS) * DECAY_PER_DAY;
+             }
+
+             // Efektivni score nikada ne može pasti ispod 1.0
+             const effectiveScore = Math.max(1.0, w.difficulty_score - decay);
+
+             // Zapisujemo maksimalni efektivni score u zonu
+             if (effectiveScore > currentLevels[w.category]) {
+                currentLevels[w.category] = effectiveScore;
+                currentHeroes[w.category] = { ...w, effectiveScore, decay };
+             } else if (effectiveScore === currentLevels[w.category]) {
+                // Ako dva treninga imaju isti efektivni score, mlađi je Heroj
+                if (!currentHeroes[w.category] || wTime > new Date(currentHeroes[w.category].date).getTime()) {
+                   currentHeroes[w.category] = { ...w, effectiveScore, decay };
+                }
              }
           }
-        });
+        }
 
-        setLevels(currentLevels);
+        setProgressionData({ levels: currentLevels, heroes: currentHeroes });
       } catch(e) {
         console.error("Greška kod učitavanja razina napretka", e);
       }
     };
 
-    loadHistory();
+    loadAndCalculate();
   }, [workouts]);
 
-  // Formatiranje razine
-  const formatLevel = (val) => {
-    return parseFloat(val).toFixed(1);
-  };
-
-  const getPercentage = (level) => {
-    // Maksimalni vizualni level je 10.0
-    return Math.min(100, Math.max(10, (level / 10) * 100));
-  };
+  const formatLevel = (val) => parseFloat(val).toFixed(1);
+  const getPercentage = (level) => Math.min(100, Math.max(10, (level / 10) * 100));
 
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-6 animate-in fade-in h-full pb-8">
       {/* HEADER */}
       <div className="bg-zinc-950/50 rounded-3xl shadow-2xl border border-zinc-800/80 p-6 md:p-10 flex flex-col sm:flex-row items-center justify-between shrink-0 gap-6 relative overflow-hidden backdrop-blur-md">
-        <div className="absolute -top-20 -right-20 p-6 opacity-[0.03]">
+        <div className="absolute -top-20 -right-20 p-6 opacity-[0.03] pointer-events-none">
           <TrendingUp className="w-96 h-96 text-orange-500" />
         </div>
         
@@ -93,23 +111,20 @@ export default function ProgressionTab({ workouts = [] }) {
           <div className="flex-1 text-center md:text-left">
             <h2 className="text-3xl md:text-4xl font-black text-zinc-100 tracking-tight lowercase">Faktor <span className="text-orange-500">n</span>apretka</h2>
             <p className="text-zinc-400 font-medium text-sm mt-2 max-w-2xl mx-auto md:mx-0">
-              Prati tvoju trenutnu sposobnost i izdržljivost unutar različitih zona snage. Završetkom težih treninga (iznad 85% trajanja) podižeš svoj Faktor Težine! Razine polagano propadaju ako se sustavno ne treniraju zadnjih 30 dana.
+              Prati tvoju trenutnu sposobnost i izdržljivost unutar različitih zona snage. Razine polagano opadaju ako određeni energetski sustav nije treniran više od 5 dana, odražavajući stvarni gubitak forme.
             </p>
           </div>
         </div>
       </div>
 
-      {/* RAZINE ZONE (Grafikoni) */}
+      {/* RAZINE ZONE */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         {ZONES.map(zone => {
-          const currentLevel = levels[zone.id] || 1.0;
+          const currentLevel = progressionData.levels[zone.id];
           const percentage = getPercentage(currentLevel);
           const hasAdvanced = currentLevel > 1.0;
-
-          // Zadnji najteži trening u ovoj zoni?
-          const heroWorkout = history
-            .filter(w => w.category === zone.id && new Date(w.date) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
-            .sort((a, b) => b.difficulty_score - a.difficulty_score)[0];
+          const hero = progressionData.heroes[zone.id];
+          const isDecaying = hero && hero.decay > 0.1; // Samo ako je osjetno pao
 
           return (
             <div key={zone.id} className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/80 rounded-3xl p-6 flex flex-col relative overflow-hidden group hover:border-zinc-700 transition-colors">
@@ -120,31 +135,46 @@ export default function ProgressionTab({ workouts = [] }) {
                   </div>
                   <h3 className="text-lg font-bold text-zinc-100">{zone.name}</h3>
                 </div>
-                <div className={`text-4xl font-black ${hasAdvanced ? 'text-zinc-100 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'text-zinc-700'}`}>
+                <div className={`text-4xl font-black flex flex-col items-end ${hasAdvanced ? 'text-zinc-100 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'text-zinc-700'}`}>
                   {formatLevel(currentLevel)}
+                  {/* Prikaz malog crvenog indikatora gubitka bodova */}
+                  {isDecaying && (
+                    <span className="text-xs font-semibold text-rose-500/80 mt-1 flex items-center gap-1 drop-shadow-none">
+                      <TrendingDown className="w-3 h-3" />
+                      -{formatLevel(hero.decay)}
+                    </span>
+                  )}
                 </div>
               </div>
 
               {/* BAR CHART */}
-              <div className="h-4 w-full bg-zinc-950 rounded-full overflow-hidden shadow-inner flex mb-6 border border-zinc-800">
+              <div className="h-4 w-full bg-zinc-950 rounded-full overflow-hidden shadow-inner flex mb-6 border border-zinc-800 relative">
                 <div 
                   className={`h-full ${zone.bg} transition-all duration-1000 ease-out`}
                   style={{ width: `${percentage}%`, filter: hasAdvanced ? 'brightness(1.2)' : 'grayscale(1)' }}
                 >
                   {hasAdvanced && <div className="w-full h-full bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.3),transparent)] animate-[shimmer_2s_infinite]"></div>}
                 </div>
+                {/* Linija koja pokazuje originalnu razinu (prije opadanja) */}
+                {isDecaying && (
+                   <div 
+                     className="absolute top-0 bottom-0 border-r-2 border-rose-500/50 z-10"
+                     style={{ left: `${getPercentage(hero.difficulty_score)}%` }}
+                     title={`Originalna ocjena: ${formatLevel(hero.difficulty_score)}`}
+                   />
+                )}
               </div>
 
-              {/* HEROS WORKOUT */}
+              {/* HERO WORKOUT */}
               <div className="mt-auto pt-4 border-t border-zinc-800/60 min-h-[4rem] flex flex-col justify-center">
-                {heroWorkout ? (
+                {hero ? (
                   <div className="flex items-center justify-between text-xs">
                     <div className="text-zinc-500 font-medium truncate pr-2 flex items-center gap-1.5">
                       <ArrowUpRight className={`w-3.5 h-3.5 ${zone.color}`} />
-                      Zaslužno: <span className="text-zinc-300 font-bold truncate max-w-[120px]">{heroWorkout.title}</span>
+                      Zaslužno: <span className="text-zinc-300 font-bold truncate max-w-[120px]" title={hero.title}>{hero.title}</span>
                     </div>
-                    <span className="font-bold text-zinc-400 bg-zinc-950 px-2 py-1 rounded max-w-fit flex-shrink-0">
-                      Prije {Math.floor((Date.now() - new Date(heroWorkout.date)) / (1000 * 60 * 60 * 24))} d
+                    <span className={`font-bold px-2 py-1 rounded max-w-fit flex-shrink-0 ${isDecaying ? 'text-rose-400 bg-rose-950/30' : 'text-zinc-400 bg-zinc-950'}`}>
+                      Prije {Math.floor((Date.now() - new Date(hero.date).getTime()) / (1000 * 60 * 60 * 24))} d
                     </span>
                   </div>
                 ) : (
