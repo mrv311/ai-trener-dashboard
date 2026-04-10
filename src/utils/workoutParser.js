@@ -78,8 +78,7 @@ function calculateCategoryDifficulty(steps, category) {
   let maxIntervalSeconds = 0;
   let currentInterval = 0;
   let totalTSS = 0;
-
-    let zoneTSS = 0;
+  let zoneTSS = 0;
 
   steps.forEach(step => {
     let intensity = step.power / 100;
@@ -95,35 +94,34 @@ function calculateCategoryDifficulty(steps, category) {
        currentInterval = 0;
     }
   });
+  
   if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
 
   let tizMinutes = tizSeconds / 60;
   let maxIntervalMins = maxIntervalSeconds / 60;
   
-  // Prilagodba: Umjesto čistog vremena u zoni (koje nagrađuje niži intenzitet), 
-  // računamo "efektivne minute" balansirajući vrijeme sakupljeno i intenzitet (TSS) unutar zone.
   const baseTssPerMin = {
     'Oporavak': 0.1,
-    'Endurance': 0.50, // na 55%
-    'Tempo': 0.96,     // na 76%
-    'Sweet Spot': 1.29,// na 88%
-    'Threshold': 1.50, // na 95%
-    'VO2 Max': 1.87,   // na 106%
-    'Anaerobni': 2.44  // na 121%
+    'Endurance': 0.50,
+    'Tempo': 0.96,
+    'Sweet Spot': 1.29,
+    'Threshold': 1.50,
+    'VO2 Max': 1.87,
+    'Anaerobni': 2.44
   };
   
   let normalizedTizMins = zoneTSS / (baseTssPerMin[category] || 1.0);
   
-  let blendFactor = 0.5; // Zadani omjer vremena i intenziteta
-  if (category === 'Anaerobni') blendFactor = 0.8;      // U Anaerobnoj zoni (121-999%) intenzitet je ključan
+  let blendFactor = 0.5; 
+  if (category === 'Anaerobni') blendFactor = 0.8;      
   else if (category === 'VO2 Max') blendFactor = 0.6;
-  else if (category === 'Oporavak' || category === 'Endurance') blendFactor = 0.2; // U Z2 dominira čisto vrijeme
+  else if (category === 'Oporavak' || category === 'Endurance') blendFactor = 0.2; 
   
   let effectiveMins = tizMinutes * (1 - blendFactor) + normalizedTizMins * blendFactor;
 
   let score = 1.0;
 
-  // Temeljni sustav bodovanja po Zonama temeljen na efektivnom vremenu (effectiveMins)
+  // --- OPTIMIZIRANI SWITCH BLOK ---
   switch (category) {
     case 'Oporavak':
       score = 1.0; 
@@ -136,7 +134,6 @@ function calculateCategoryDifficulty(steps, category) {
       break;
     case 'Sweet Spot':
       score = 1.0 + (effectiveMins / 45) * 3.0; 
-      // Bonus za duge neprekinute intervale
       if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.05; 
       break;
     case 'Threshold':
@@ -144,33 +141,39 @@ function calculateCategoryDifficulty(steps, category) {
       if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.1;
       break;
     case 'VO2 Max':
-      score = 1.0 + (effectiveMins / 14) * 4.0;
-      if (maxIntervalMins >= 3) score += (maxIntervalMins - 2) * 0.15;
+      // Nelinearna krivulja (Math.pow 0.85) rješava inflaciju ocjena kod mikro-intervala
+      score = 1.0 + Math.pow(effectiveMins / 15.0, 0.85) * 3.5;
+      // Eksponencijalni bonus primjenjuje se samo na iznimno duge VO2 intervale
+      if (maxIntervalMins >= 2.5) {
+         score += Math.pow(maxIntervalMins - 2.0, 1.2) * 0.2;
+      }
       break;
     case 'Anaerobni':
-      // Rješenje za problem gdje San Joaquin +5 (visok intenzitet, manji TiZ) 
-      // dobiva manji score od Taylor -2 (niži intenzitet, ogroman TiZ).
-      score = 1.0 + Math.pow(effectiveMins / 12, 0.72) * 4.0;
+      score = 1.0 + Math.pow(effectiveMins / 18.5, 0.72) * 4.0;
       break;
     default:
       score = (totalTSS / 60) * 4.0; 
       break;
   }
 
-  // Utjecaj ukupnog umora i volumena
-  score += (totalTSS * 0.008);
+  // Utjecaj ukupnog umora i volumena (smanjen na 0.006 za realniju bazu)
+  score += (totalTSS * 0.006);
   
-  // Dodatni bonus za treninge s vrlo visokim intenzitetom (IF) i kratkim pauzama
+  // Optimizirani IF bonus
   let workoutDurationSecs = steps.reduce((sum, s) => sum + s.duration, 0);
   let IF = workoutDurationSecs > 0 ? Math.sqrt(totalTSS / ((workoutDurationSecs / 3600) * 100)) : 0;
+  
   if (IF > 0.85) {
-     score += (IF - 0.85) * 5.0; 
+      let ifBonus = (IF - 0.85) * 4.0;
+      // Prepolovi IF bonus za visoke zone kako bi se izbjegao "double-dipping" intenziteta
+      if (category === 'VO2 Max' || category === 'Anaerobni') {
+          ifBonus *= 0.5; 
+      }
+      score += ifBonus; 
   }
 
-  if (score < 1.0) score = 1.0;
-  // Ne postoji umjetni cap na 10.0 prema zahtjevu korisnika!
-  
-  return parseFloat(score.toFixed(1));
+  // Osiguravamo da score nikada ne padne ispod 1.0
+  return parseFloat(Math.max(1.0, score).toFixed(1));
 }
 
 function parseZWO(xmlText) {
