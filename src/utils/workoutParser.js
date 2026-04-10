@@ -26,13 +26,14 @@ function categorizeWorkout(steps) {
     const intensity = p / 100;
     const tss = (dur / 3600) * (intensity * intensity) * 100;
 
-    if (p < 55) scores.recovery += tss * 0.1; // Jako sniženo bodovanje (zagrijavanje)
-    else if (p < 76) scores.endurance += tss * 0.5; // Lagano sniženo
+    if (p < 55) scores.recovery += tss * 0.1; 
+    else if (p < 76) scores.endurance += tss * 0.5; 
     else if (p < 88) scores.tempo += tss * 1.5; 
-    else if (p < 95) scores.sweetspot += tss * 2.0; // Sweet Spot je često dominantan cilj
-    else if (p < 106) scores.threshold += tss * 3.0; // Visok intenzitet vuče klasifikaciju
-    else if (p < 121) scores.vo2max += tss * 4.0;
-    else scores.anaerobic += tss * 5.0; // Sprint/Anaerobni jako brzo preuzimaju klasifikaciju
+    else if (p < 95) scores.sweetspot += tss * 2.0; 
+    else if (p < 106) scores.threshold += tss * 3.0; 
+    // FIX: Podignuto sa 121 na 131. VO2 Max treninzi često idu do 125-130% na kraćim intervalima.
+    else if (p < 131) scores.vo2max += tss * 4.0;
+    else scores.anaerobic += tss * 5.0; 
   });
 
   let maxScore = 0;
@@ -65,8 +66,9 @@ function getZoneRange(category) {
       case 'Tempo': return [76, 88];
       case 'Sweet Spot': return [88, 95];
       case 'Threshold': return [95, 106];
-      case 'VO2 Max': return [106, 121];
-      case 'Anaerobni': return [121, 999];
+      // FIX: Sinhronizirano s novom granicom.
+      case 'VO2 Max': return [106, 131];
+      case 'Anaerobni': return [131, 999];
       default: return [0, 100];
    }
 }
