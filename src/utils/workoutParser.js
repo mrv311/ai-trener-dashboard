@@ -112,67 +112,69 @@ function calculateCategoryDifficulty(steps, category) {
   
   let normalizedTizMins = zoneTSS / (baseTssPerMin[category] || 1.0);
   
-  let blendFactor = 0.5; 
-  if (category === 'Anaerobni') blendFactor = 0.8;      
-  else if (category === 'VO2 Max') blendFactor = 0.6;
-  else if (category === 'Oporavak' || category === 'Endurance') blendFactor = 0.2; 
+  // Oslabljeni blendFactor kako bi čisto vrijeme u zoni imalo veći utjecaj, 
+  // sprječavajući nerealno napuhavanje TSS-a u mikro-intervalima.
+  let blendFactor = 0.4; 
+  if (category === 'Anaerobni') blendFactor = 0.6;      
+  else if (category === 'VO2 Max') blendFactor = 0.5;
+  else if (category === 'Oporavak' || category === 'Endurance') blendFactor = 0.1; 
   
   let effectiveMins = tizMinutes * (1 - blendFactor) + normalizedTizMins * blendFactor;
 
   let score = 1.0;
 
-  // --- OPTIMIZIRANI SWITCH BLOK ---
   switch (category) {
     case 'Oporavak':
       score = 1.0; 
       break;
     case 'Endurance':
-      score = 1.0 + (effectiveMins / 60) * 1.8;
+      score = 1.0 + (effectiveMins / 60) * 1.5;
       break;
     case 'Tempo':
-      score = 1.0 + (effectiveMins / 45) * 2.0;
+      score = 1.0 + (effectiveMins / 45) * 1.8;
       break;
     case 'Sweet Spot':
-      score = 1.0 + (effectiveMins / 45) * 3.0; 
-      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.05; 
+      score = 1.0 + (effectiveMins / 35) * 2.0; 
+      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.04; 
       break;
     case 'Threshold':
-      score = 1.0 + (effectiveMins / 30) * 3.5;
-      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.1;
+      score = 1.0 + (effectiveMins / 25) * 2.5;
+      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.08;
       break;
     case 'VO2 Max':
-      // Nelinearna krivulja (Math.pow 0.85) rješava inflaciju ocjena kod mikro-intervala
-      score = 1.0 + Math.pow(effectiveMins / 15.0, 0.85) * 3.5;
-      // Eksponencijalni bonus primjenjuje se samo na iznimno duge VO2 intervale
-      if (maxIntervalMins >= 2.5) {
-         score += Math.pow(maxIntervalMins - 2.0, 1.2) * 0.2;
+      // Kontrolirano linearno skaliranje: ~20 efektivnih minuta daje 5.5, ~30 daje 7.6.
+      score = 1.0 + (effectiveMins / 4.5);
+      // Ograničen bonus: Dodaje bodove za teške intervale (preko 2.5 min), 
+      // ali capped na maksimalno 5 minuta kako bi spriječili bugove u parsiranju.
+      if (maxIntervalMins > 2.5) {
+         let overMins = Math.min(maxIntervalMins - 2.5, 5.0); 
+         score += overMins * 0.4;
       }
       break;
     case 'Anaerobni':
-      score = 1.0 + Math.pow(effectiveMins / 18.5, 0.72) * 4.0;
+      score = 1.0 + (effectiveMins / 3.0);
+      if (maxIntervalMins > 1.0) {
+         let overMins = Math.min(maxIntervalMins - 1.0, 3.0);
+         score += overMins * 0.5;
+      }
       break;
     default:
       score = (totalTSS / 60) * 4.0; 
       break;
   }
 
-  // Utjecaj ukupnog umora i volumena (smanjen na 0.006 za realniju bazu)
-  score += (totalTSS * 0.006);
+  // Blaga baza umora
+  score += (totalTSS * 0.005);
   
-  // Optimizirani IF bonus
   let workoutDurationSecs = steps.reduce((sum, s) => sum + s.duration, 0);
   let IF = workoutDurationSecs > 0 ? Math.sqrt(totalTSS / ((workoutDurationSecs / 3600) * 100)) : 0;
   
-  if (IF > 0.85) {
-      let ifBonus = (IF - 0.85) * 4.0;
-      // Prepolovi IF bonus za visoke zone kako bi se izbjegao "double-dipping" intenziteta
-      if (category === 'VO2 Max' || category === 'Anaerobni') {
-          ifBonus *= 0.5; 
-      }
-      score += ifBonus; 
+  // IF Bonus se sada striktno ignorira za VO2 Max i Anaerobne treninge 
+  // jer te kategorije već same po sebi imaju ekstreman IF.
+  if (IF > 0.85 && category !== 'VO2 Max' && category !== 'Anaerobni') {
+      score += (IF - 0.85) * 2.5;
   }
 
-  // Osiguravamo da score nikada ne padne ispod 1.0
   return parseFloat(Math.max(1.0, score).toFixed(1));
 }
 
