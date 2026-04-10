@@ -76,7 +76,6 @@ function getZoneRange(category) {
 function calculateCategoryDifficulty(steps, category) {
   const [minPow, maxPow] = getZoneRange(category);
   
-  let tizSeconds = 0;
   let maxIntervalSeconds = 0;
   let currentInterval = 0;
   let totalTSS = 0;
@@ -88,7 +87,6 @@ function calculateCategoryDifficulty(steps, category) {
     totalTSS += stepTss;
 
     if (step.power >= minPow && step.power < maxPow) {
-       tizSeconds += step.duration;
        currentInterval += step.duration;
        zoneTSS += stepTss;
     } else {
@@ -99,71 +97,51 @@ function calculateCategoryDifficulty(steps, category) {
   
   if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
 
-  let tizMinutes = tizSeconds / 60;
   let maxIntervalMins = maxIntervalSeconds / 60;
-  
-  const baseTssPerMin = {
-    'Oporavak': 0.1,
-    'Endurance': 0.50,
-    'Tempo': 0.96,
-    'Sweet Spot': 1.29,
-    'Threshold': 1.50,
-    'VO2 Max': 1.87,
-    'Anaerobni': 2.44
+
+  // Temeljni sustav: Dijelimo akumulirani TSS iz zone s konstantom. 
+  // Što je viša zona, potrebno je manje TSS-a za dobivanje 1.0 boda težine.
+  const divisors = {
+    'Oporavak': 30,
+    'Endurance': 25,     
+    'Tempo': 15,         
+    'Sweet Spot': 11.5,  
+    'Threshold': 9.5,    
+    'VO2 Max': 8.0,      
+    'Anaerobni': 6.0     
   };
   
-  let normalizedTizMins = zoneTSS / (baseTssPerMin[category] || 1.0);
-  
-  // Oslabljeni blendFactor kako bi čisto vrijeme u zoni imalo veći utjecaj, 
-  // sprječavajući nerealno napuhavanje TSS-a u mikro-intervalima.
-  let blendFactor = 0.4; 
-  if (category === 'Anaerobni') blendFactor = 0.6;      
-  else if (category === 'VO2 Max') blendFactor = 0.5;
-  else if (category === 'Oporavak' || category === 'Endurance') blendFactor = 0.1; 
-  
-  let effectiveMins = tizMinutes * (1 - blendFactor) + normalizedTizMins * blendFactor;
+  let divisor = divisors[category] || 15;
+  let score = 1.0 + (zoneTSS / divisor);
 
-  let score = 1.0;
-
+  // Dodajemo vrlo male, kontrolirane bonuse za specifično dugačke intervale
   switch (category) {
-    case 'Oporavak':
-      score = 1.0; 
-      break;
-    case 'Endurance':
-      score = 1.0 + (effectiveMins / 60) * 1.5;
-      break;
-    case 'Tempo':
-      score = 1.0 + (effectiveMins / 45) * 1.8;
-      break;
     case 'Sweet Spot':
-      score = 1.0 + (effectiveMins / 35) * 2.0; 
-      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.04; 
+      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.04;
       break;
     case 'Threshold':
-      score = 1.0 + (effectiveMins / 25) * 2.5;
-      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.08;
+      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.05;
       break;
     case 'VO2 Max':
-      // Kontrolirano linearno skaliranje: ~20 efektivnih minuta daje 5.5, ~30 daje 7.6.
-      score = 1.0 + (effectiveMins / 4.5);
-      // Ograničen bonus: Dodaje bodove za teške intervale (preko 2.5 min), 
-      // ali capped na maksimalno 5 minuta kako bi spriječili bugove u parsiranju.
       if (maxIntervalMins > 2.5) {
-         let overMins = Math.min(maxIntervalMins - 2.5, 5.0); 
-         score += overMins * 0.4;
+         // Cap na max 4 minute viška kako greška parsera ne bi uništila ocjenu
+         let over = Math.min(maxIntervalMins - 2.5, 4.0);
+         score += over * 0.2;
       }
       break;
     case 'Anaerobni':
-      score = 1.0 + (effectiveMins / 3.0);
       if (maxIntervalMins > 1.0) {
-         let overMins = Math.min(maxIntervalMins - 1.0, 3.0);
-         score += overMins * 0.5;
+         let over = Math.min(maxIntervalMins - 1.0, 2.0);
+         score += over * 0.3;
       }
       break;
-    default:
-      score = (totalTSS / 60) * 4.0; 
-      break;
   }
+
+  // Blagi utjecaj ukupnog volumena i umora (npr. 100 TSS trening dodaje samo 0.3 na ocjenu)
+  score += (totalTSS * 0.003);
+
+  return parseFloat(Math.max(1.0, score).toFixed(1));
+}
 
   // Blaga baza umora
   score += (totalTSS * 0.005);
