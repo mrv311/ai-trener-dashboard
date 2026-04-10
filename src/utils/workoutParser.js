@@ -72,73 +72,66 @@ function getZoneRange(category) {
 }
 
 function calculateCategoryDifficulty(steps, category) {
-  const [minPow, maxPow] = getZoneRange(category);
-  
-  let tizSeconds = 0;
-  let maxIntervalSeconds = 0;
-  let currentInterval = 0;
+  // 1. Interne granice zona (VO2 Max mora ići do 130 zbog ekstremnih mikro-intervala)
+  const ranges = {
+    'Oporavak': [0, 55],
+    'Endurance': [55, 76],
+    'Tempo': [76, 88],
+    'Sweet Spot': [88, 95],
+    'Threshold': [95, 106],
+    'VO2 Max': [106, 130], 
+    'Anaerobni': [130, 999]
+  };
+
+  const [minPow, maxPow] = ranges[category] || [0, 100];
+
+  let zoneTSS = 0;
   let totalTSS = 0;
 
-  steps.forEach(step => {
-    let intensity = step.power / 100;
-    totalTSS += (step.duration / 3600) * (intensity * intensity) * 100;
+  // 2. Optimizirana petlja: Izbjegavamo .reduce i .forEach za brzinu izvođenja na backendu
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    const intensity = step.power / 100;
+    
+    // TSS formula: kvadriranje intenziteta uzrokuje ekstremni rast na VO2/Anaerobic
+    const stepTss = (step.duration / 3600) * (intensity * intensity) * 100;
+
+    totalTSS += stepTss;
 
     if (step.power >= minPow && step.power < maxPow) {
-       tizSeconds += step.duration;
-       currentInterval += step.duration;
-    } else {
-       if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
-       currentInterval = 0;
+       zoneTSS += stepTss;
     }
-  });
-  if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
-
-  let tizMinutes = tizSeconds / 60;
-  let maxIntervalMins = maxIntervalSeconds / 60;
-  let score = 1.0;
-
-  // Temeljni sustav bodovanja po Zonama temeljen na vremenu u zoni (TiZ)
-  switch (category) {
-    case 'Oporavak':
-      score = 1.0; 
-      break;
-    case 'Endurance':
-      score = 1.0 + (tizMinutes / 60) * 1.8;
-      break;
-    case 'Tempo':
-      score = 1.0 + (tizMinutes / 45) * 2.0;
-      break;
-    case 'Sweet Spot':
-      score = 1.0 + (tizMinutes / 45) * 3.0; 
-      // Bonus za duge neprekinute intervale
-      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.05; 
-      break;
-    case 'Threshold':
-      score = 1.0 + (tizMinutes / 30) * 3.5;
-      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.1;
-      break;
-    case 'VO2 Max':
-      score = 1.0 + (tizMinutes / 14) * 4.0;
-      if (maxIntervalMins >= 3) score += (maxIntervalMins - 2) * 0.15;
-      break;
-    case 'Anaerobni':
-      // Ekstremni treninzi tipa Taylor -2 imaju preko 30 minuta TiZ
-      // Oboreno kako bi vrhunci bili još prizemljeniji
-      score = 1.0 + Math.pow(tizMinutes / 12, 0.72) * 4.0;
-      break;
-    default:
-      score = (totalTSS / 60) * 4.0; 
-      break;
   }
 
-  // Blago povećan utjecaj ukupnog umora i volumena (sa 0.005 na 0.008)
-  // To osigurava da dugi treninzi iste TiZ minutaže (poput Bashful +5 vs +6) dobiju jasnu razliku na prvoj decimali
-  score += (totalTSS * 0.008);
+  // 3. Bazni djelitelji: Koliko ZoneTSS-a treba za 1.0 bod?
+  const zoneFactors = {
+    'Oporavak': 45.0,
+    'Endurance': 30.0,
+    'Tempo': 22.0,
+    'Sweet Spot': 18.0,
+    'Threshold': 14.0,
+    'VO2 Max': 9.5,   // Rekalibrirano za teške intervale
+    'Anaerobni': 5.5
+  };
 
-  if (score < 1.0) score = 1.0;
-  // Ne postoji umjetni cap na 10.0 prema zahtjevu korisnika!
-  
-  return parseFloat(score.toFixed(1));
+  const factor = zoneFactors[category] || 15.0;
+
+  // 4. Izračun sirove ocjene
+  let rawScore = 1.0 + (zoneTSS / factor);
+
+  // Dodatak za ukupni umor (vrlo mali utjecaj, čisto da duži treninzi budu mrvicu teži)
+  rawScore += (totalTSS * 0.0015);
+
+  // 5. Asimptotska kompresija (DAMPENER) - Ključ za rješavanje 13.6 problema
+  // Do ocjene 8.0 rast je normalan. Iznad 8.0, krivulja se lomi i raste znatno sporije.
+  let finalScore = rawScore;
+  if (rawScore > 8.0) {
+    // Primjenjujemo potenciju < 1 kako bismo "zgužvali" ekstremne vrijednosti
+    finalScore = 8.0 + Math.pow(rawScore - 8.0, 0.65);
+  }
+
+  // Osiguravamo da je minimalna ocjena 1.0
+  return parseFloat(Math.max(1.0, finalScore).toFixed(1));
 }
 
 function parseZWO(xmlText) {
