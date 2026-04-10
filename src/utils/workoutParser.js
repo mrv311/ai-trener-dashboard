@@ -17,62 +17,6 @@ export async function parseWorkoutFile(fileText, fileName) {
   return parsedWorkout;
 }
 
-function categorizeWorkout(steps) {
-  const scores = { recovery: 0, endurance: 0, tempo: 0, sweetspot: 0, threshold: 0, vo2max: 0, anaerobic: 0 };
-  
-  steps.forEach(s => {
-    const p = s.power;
-    const dur = s.duration;
-    const intensity = p / 100;
-    const tss = (dur / 3600) * (intensity * intensity) * 100;
-
-    if (p < 55) scores.recovery += tss * 0.1; 
-    else if (p < 76) scores.endurance += tss * 0.5; 
-    else if (p < 88) scores.tempo += tss * 1.5; 
-    else if (p < 95) scores.sweetspot += tss * 2.0; 
-    else if (p < 106) scores.threshold += tss * 3.0; 
-    // FIX: Podignuto sa 121 na 131. VO2 Max treninzi često idu do 125-130% na kraćim intervalima.
-    else if (p < 131) scores.vo2max += tss * 4.0;
-    else scores.anaerobic += tss * 5.0; 
-  });
-
-  let maxScore = 0;
-  let dominantCategory = 'recovery';
-
-  for (const [cat, score] of Object.entries(scores)) {
-    if (score > maxScore) {
-      maxScore = score;
-      dominantCategory = cat;
-    }
-  }
-
-  const map = {
-    recovery: 'Oporavak',
-    endurance: 'Endurance',
-    tempo: 'Tempo',
-    sweetspot: 'Sweet Spot',
-    threshold: 'Threshold',
-    vo2max: 'VO2 Max',
-    anaerobic: 'Anaerobni'
-  };
-  
-  return map[dominantCategory];
-}
-
-function getZoneRange(category) {
-   switch(category) {
-      case 'Oporavak': return [0, 55];
-      case 'Endurance': return [55, 76];
-      case 'Tempo': return [76, 88];
-      case 'Sweet Spot': return [88, 95];
-      case 'Threshold': return [95, 106];
-      // FIX: Sinhronizirano s novom granicom.
-      case 'VO2 Max': return [106, 131];
-      case 'Anaerobni': return [131, 999];
-      default: return [0, 100];
-   }
-}
-
 function calculateCategoryDifficulty(steps, category) {
   const [minPow, maxPow] = getZoneRange(category);
   
@@ -99,22 +43,21 @@ function calculateCategoryDifficulty(steps, category) {
 
   let maxIntervalMins = maxIntervalSeconds / 60;
 
-  // Temeljni sustav: Dijelimo akumulirani TSS iz zone s konstantom. 
-  // Što je viša zona, potrebno je manje TSS-a za dobivanje 1.0 boda težine.
+  // FIX 1: Stroži djelitelji. Ovi brojevi sada mapiraju maksimalni realni TSS u zoni na ocjenu 10.
   const divisors = {
-    'Oporavak': 30,
-    'Endurance': 25,     
-    'Tempo': 15,         
-    'Sweet Spot': 11.5,  
-    'Threshold': 9.5,    
-    'VO2 Max': 8.0,      
-    'Anaerobni': 6.0     
+    'Oporavak': 40.0,
+    'Endurance': 28.0,     
+    'Tempo': 22.0,         
+    'Sweet Spot': 17.5,  
+    'Threshold': 15.0,    
+    'VO2 Max': 10.5,      // Podignuto sa 8.0 (znatno smanjuje inflaciju kod Shortoffa)
+    'Anaerobni': 6.5     
   };
   
   let divisor = divisors[category] || 15;
   let score = 1.0 + (zoneTSS / divisor);
 
-  // Dodajemo vrlo male, kontrolirane bonuse za specifično dugačke intervale
+  // FIX 2: Oslabljeni bonusi da ne probijaju ljestvicu
   switch (category) {
     case 'Sweet Spot':
       if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.04;
@@ -124,21 +67,27 @@ function calculateCategoryDifficulty(steps, category) {
       break;
     case 'VO2 Max':
       if (maxIntervalMins > 2.5) {
-         // Cap na max 4 minute viška kako greška parsera ne bi uništila ocjenu
          let over = Math.min(maxIntervalMins - 2.5, 4.0);
-         score += over * 0.2;
+         score += over * 0.15; 
       }
       break;
     case 'Anaerobni':
       if (maxIntervalMins > 1.0) {
          let over = Math.min(maxIntervalMins - 1.0, 2.0);
-         score += over * 0.3;
+         score += over * 0.2;
       }
       break;
   }
 
-  // Blagi utjecaj ukupnog volumena i umora (npr. 100 TSS trening dodaje samo 0.3 na ocjenu)
-  score += (totalTSS * 0.003);
+  // Blagi utjecaj ukupnog volumena i umora
+  score += (totalTSS * 0.002);
+
+  // FIX 3: Logaritamski "Soft Cap". 
+  // Umjesto umjetnog rezanja na 10.0, svaka ocjena iznad 10 raste jako usporeno.
+  // Ono što je prije bilo 13.6, sada će biti prigušeno ispod 11.
+  if (score > 10.0) {
+      score = 10.0 + (score - 10.0) * 0.25; 
+  }
 
   return parseFloat(Math.max(1.0, score).toFixed(1));
 }
