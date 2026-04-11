@@ -28,41 +28,40 @@ const playBeep = (freq = 800, duration = 0.2) => {
   }
 };
 
-// --- POWER MATCH PID KONTROLER ---
-class PowerMatchPID {
+// --- ASSIOMA UNO POWER MATCH KONTROLER (EMA + DEADBAND) ---
+class AssiomaPowerMatch {
   constructor() {
-    this.kP = 0.5;   // Proporcionalni faktor
-    this.kI = 0.1;  // Integralni faktor (sprječava trajnu grešku)
-    this.kD = 0.0;   // Derivativni faktor (prigušuje oscilacije)
-    this.integral = 0;
-    this.prevError = 0;
-    this.lastTime = null;
-    this.maxIntegral = 30; // Anti-windup
+    this.alpha = 0.15; // Faktor zaglađivanja (0.15 = fokus na trend, ignorira mikro-skokove)
+    this.deadband = 5; // Tolerancija od 5W (ne mijenja otpor ako si blizu cilja)
+    this.smoothedPower = null;
   }
 
   reset() {
-    this.integral = 0;
-    this.prevError = 0;
-    this.lastTime = null;
+    this.smoothedPower = null;
   }
 
-  compute(targetPower, measuredPower) {
-    const now = Date.now();
-    const dt = this.lastTime ? Math.min((now - this.lastTime) / 1000, 2.0) : 1.0;
-    this.lastTime = now;
+  compute(targetPower, rawPower) {
+    // 1. Izračun eksponencijalnog pomičnog prosjeka (EMA)
+    if (this.smoothedPower === null) {
+      this.smoothedPower = rawPower;
+    } else {
+      this.smoothedPower = (this.alpha * rawPower) + ((1 - this.alpha) * this.smoothedPower);
+    }
 
-    const error = targetPower - measuredPower;
+    const currentSmoothed = Math.round(this.smoothedPower);
+    const powerDifference = targetPower - currentSmoothed;
 
-    this.integral = Math.max(-this.maxIntegral, Math.min(this.maxIntegral, this.integral + error * dt));
+    // 2. Deadband: Ako smo unutar +/- 5W od cilja, ne diraj trenažer
+    if (Math.abs(powerDifference) <= this.deadband) {
+      return null; // Znak da ne šaljemo novu komandu
+    }
 
-    const derivative = dt > 0 ? (error - this.prevError) / dt : 0;
-    this.prevError = error;
-
-    const correction = this.kP * error + this.kI * this.integral + this.kD * derivative;
-
-    return Math.round(targetPower + correction);
+    // 3. Dampening: Korekcija je samo 50% razlike kako bi izbjegli yo-yo efekt
+    return Math.round(targetPower + (powerDifference * 0.5));
   }
 }
+
+const pmController = new AssiomaPowerMatch();
 
 const pidController = new PowerMatchPID();
 
@@ -217,7 +216,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   }, [currentPower, pmPower, isPlaying, isFinished, showStopPrompt, isPowerConnected, isPmConnected]);
 
   useEffect(() => {
-    pidController.reset();
+    pmController.reset();
   }, [powerMatchEnabled]);
 
   let currentStepIndex = 0;
@@ -369,7 +368,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       await powerChar.startNotifications();
       setIsPmConnected(true);
       setPowerMatchEnabled(true);
-      pidController.reset();
+      pmController.reset();
       console.log("Powermetar spojen, Power Match aktiviran.");
 
       powerChar.addEventListener('characteristicvaluechanged', (e) => {
@@ -392,7 +391,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
       if (targetChanged) {
         lastTargetPowerRef.current = activeTargetPower;
-        pidController.reset();
+        pmController.reset();
       } else {
         if (powerMatchEnabled && isPmConnected) {
           if (now - lastErgCommandTimeRef.current < 2000) return; // Svake 2 sekunde
@@ -405,12 +404,14 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         let commandPower = activeTargetPower;
 
         if (powerMatchEnabled && isPmConnected && pmPower > 0) {
-          const recentPm = workoutHistory.slice(-2).map(h => h.power);
-          const avgPmPower = recentPm.length > 0
-            ? Math.round((recentPm.reduce((a, b) => a + b, 0) + pmPower) / (recentPm.length + 1))
-            : pmPower;
+          // Koristimo direktno sirovu snagu, klasa sama radi EMA zaglađivanje
+          const computedCommand = pmController.compute(activeTargetPower, pmPower);
 
-          commandPower = pidController.compute(activeTargetPower, avgPmPower);
+          // Ako smo unutar deadbanda (+/- 5W), pmController vraća null. Prekidamo slanje komande.
+          if (computedCommand === null) return;
+
+          commandPower = computedCommand;
+          // Sigurnosna granica (Max trenažer snaga je 150% FTP-a da te ne zablokira)
           const maxTrainerW = Math.round((profile?.ftp || 250) * 1.5);
           commandPower = Math.max(30, Math.min(maxTrainerW, commandPower));
         }
@@ -568,7 +569,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
         {isPmConnected && (
           <button
-            onClick={() => { setPowerMatchEnabled(prev => !prev); pidController.reset(); }}
+            onClick={() => { setPowerMatchEnabled(prev => !prev); pmController.reset(); }}
             className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-5 py-2.5 md:py-3 rounded-xl font-bold transition-all border shadow-sm text-xs md:text-base shrink-0 ${powerMatchEnabled ? 'bg-violet-600 text-white border-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.3)]' : 'bg-zinc-900/50 text-violet-500 border-zinc-800 hover:bg-zinc-800'}`}
           >
             <Activity className="w-4 h-4 md:w-5 md:h-5" />
