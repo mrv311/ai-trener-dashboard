@@ -3,6 +3,7 @@ import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastFor
 import TrainerModals from './trainer/TrainerModals';
 import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
+import { exportToTCX } from '../utils/exportUtils';
 
 const playBeep = (freq = 800, duration = 0.2) => {
   try {
@@ -538,6 +539,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         uploadStatus={uploadStatus}
         setUploadStatus={setUploadStatus}
         handleReset={() => { setIsFinished(false); setUploadStatus(null); setElapsedTime(0); setWorkoutHistory([]); }}
+        handleExportTcx={() => exportToTCX(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja')}
       />
 
       {/* GORNJA TRAKA: Bluetooth gumbi */}

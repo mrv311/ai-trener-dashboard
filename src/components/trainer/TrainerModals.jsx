@@ -1,5 +1,5 @@
 import React from 'react';
-import { Square, Award, UploadCloud, CheckCircle2 } from 'lucide-react';
+import { Square, Award, UploadCloud, CheckCircle2, Download } from 'lucide-react';
 
 export default function TrainerModals({
   showStopPrompt,
@@ -11,7 +11,8 @@ export default function TrainerModals({
   isPmConnected,
   uploadStatus,
   setUploadStatus,
-  handleReset
+  handleReset,
+  handleExportTcx
 }) {
   return (
     <>
@@ -66,6 +67,10 @@ export default function TrainerModals({
               <button onClick={() => setUploadStatus('strava')} className={`flex items-center justify-center gap-2 md:gap-3 w-full py-3 md:py-4 rounded-xl font-black transition-all text-sm md:text-base ${uploadStatus === 'strava' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-[#fc4c02] text-white hover:bg-[#e34402] shadow-[0_0_15px_rgba(252,76,2,0.3)]'}`}>
                 {uploadStatus === 'strava' ? <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" /> : <UploadCloud className="w-4 h-4 md:w-5 md:h-5" />}
                 {uploadStatus === 'strava' ? 'Poslano!' : 'Upload (Strava)'}
+              </button>
+              <button onClick={handleExportTcx} className="flex items-center justify-center gap-2 md:gap-3 w-full py-3 md:py-4 rounded-xl font-black transition-all text-sm md:text-base bg-sky-500 text-white hover:bg-sky-600 shadow-[0_0_15px_rgba(14,165,233,0.3)]">
+                <Download className="w-4 h-4 md:w-5 md:h-5" />
+                Preuzmi kao .TCX Datoteku
               </button>
             </div>
             <button onClick={handleReset} className="mt-8 text-zinc-500 font-bold hover:text-zinc-300 text-sm transition-colors">
