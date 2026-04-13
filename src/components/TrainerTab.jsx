@@ -164,12 +164,35 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   }, [powerMatchEnabled, isPmConnected, isPowerConnected, isHrConnected, pmPower, currentPower, currentHR, currentCadence]);
 
   const lastUpdateRef = useRef(Date.now());
+  const workerRef = useRef(null);
+
+  // Inicijalizacija Web Workera za precizno mjerenje vremena (zaobilazi pozadinsko usporavanje taba)
+  useEffect(() => {
+    const workerCode = `
+      let intervalId = null;
+      self.onmessage = function(e) {
+        if (e.data === 'start') {
+          if (!intervalId) intervalId = setInterval(() => self.postMessage('tick'), 1000);
+        } else if (e.data === 'stop') {
+          if (intervalId) { clearInterval(intervalId); intervalId = null; }
+        }
+      };
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
+    workerRef.current = new Worker(workerUrl);
+
+    return () => {
+      workerRef.current.terminate();
+      URL.revokeObjectURL(workerUrl);
+    };
+  }, []);
 
   useEffect(() => {
-    let interval;
     if (isPlaying && elapsedTime < totalDuration) {
       lastUpdateRef.current = Date.now();
-      interval = setInterval(() => {
+      
+      workerRef.current.onmessage = () => {
         const now = Date.now();
         const deltaSecs = Math.floor((now - lastUpdateRef.current) / 1000);
         
@@ -199,9 +222,16 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
             return newElapsed > totalDuration ? totalDuration : newElapsed;
           });
         }
-      }, 1000);
+      };
+      
+      workerRef.current.postMessage('start');
+    } else if (workerRef.current) {
+      workerRef.current.postMessage('stop');
     }
-    return () => clearInterval(interval);
+    
+    return () => {
+      if (workerRef.current) workerRef.current.postMessage('stop');
+    };
   }, [isPlaying, totalDuration]);
 
   useEffect(() => {
