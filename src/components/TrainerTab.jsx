@@ -248,7 +248,9 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     }
   }, [elapsedTime, isPlaying]);
 
-    const baseTargetPower = Math.round((currentStep.power / 100) * profile.ftp);
+  const hasValidFtp = profile && profile.ftp && profile.ftp > 0;
+  const ftpValue = hasValidFtp ? profile.ftp : 200;
+  const baseTargetPower = Math.round((currentStep.power / 100) * ftpValue);
   const activeTargetPower = Math.round(baseTargetPower * (ergIntensity / 100));
 
   const displayPower = useMemo(() => {
@@ -643,11 +645,17 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
           <div className="text-xl md:text-2xl font-bold text-zinc-400 mt-2 bg-zinc-950/40 px-4 md:px-6 py-2 md:py-2.5 rounded-2xl border border-zinc-800/60 text-center shadow-[inset_0_2px_10px_rgba(0,0,0,0.2)]">
             {controlMode === 'ERG' ? (
-              <>Cilj: <span className="text-zinc-100">{activeTargetPower} W</span>
-                {powerMatchEnabled && isPmConnected && (
-                  <span className="text-violet-400 ml-2 md:ml-3 text-sm md:text-base font-black drop-shadow-[0_0_5px_rgba(167,139,250,0.5)]">⟳ PM Locked</span>
-                )}
-              </>
+              !hasValidFtp ? (
+                <span className="text-rose-500 font-bold text-sm md:text-base flex items-center justify-center gap-2">
+                  ⚠️ <span className="hidden sm:inline">Upozorenje: Nije unesen FTP! Koristi se zadanih 200W.</span><span className="sm:hidden">Unesi FTP!</span>
+                </span>
+              ) : (
+                <>Cilj: <span className="text-zinc-100">{activeTargetPower} W</span>
+                  {powerMatchEnabled && isPmConnected && (
+                    <span className="text-violet-400 ml-2 md:ml-3 text-sm md:text-base font-black drop-shadow-[0_0_5px_rgba(167,139,250,0.5)]">⟳ PM Locked</span>
+                  )}
+                </>
+              )
             ) : (
               <>Slobodno <span className="text-indigo-400 ml-1 md:ml-2">(Otpor {resistanceLevel}%)</span></>
             )}
