@@ -48,8 +48,9 @@ export default function TrainerGraph({
                   const heightPercent = Math.min(Math.max((p.power / maxVal) * 100, 15), 100);
                   return `${x},${100 - heightPercent}`;
                 }).join(' ')}
-                fill="none" stroke="#f4f4f5" strokeWidth="0.5"
+                fill="none" stroke="#f4f4f5" strokeWidth="1.5"
                 strokeLinecap="round" strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
                 style={{ filter: 'drop-shadow(0px 0px 4px rgba(255,255,255,0.4))' }}
               />
               <polyline
@@ -59,8 +60,9 @@ export default function TrainerGraph({
                   const scaledHr = Math.min(Math.max((p.hr / maxVal) * 100, 15), 100);
                   return `${x},${100 - scaledHr}`;
                 }).join(' ')}
-                fill="none" stroke="#f43f5e" strokeWidth="0.5"
+                fill="none" stroke="#f43f5e" strokeWidth="1.5"
                 strokeLinecap="round" strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
                 style={{ filter: 'drop-shadow(0px 0px 3px rgba(244,63,94,0.6))' }}
               />
               <polyline
@@ -70,8 +72,9 @@ export default function TrainerGraph({
                   const cadPercent = Math.min(Math.max((p.cadence / maxVal) * 100, 15), 100);
                   return `${x},${100 - cadPercent}`;
                 }).join(' ')}
-                fill="none" stroke="#eab308" strokeWidth="0.5"
+                fill="none" stroke="#eab308" strokeWidth="1.5"
                 strokeLinecap="round" strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
                 style={{ filter: 'drop-shadow(0px 0px 3px rgba(234,179,8,0.6))', opacity: 0.8 }}
               />
             </svg>
