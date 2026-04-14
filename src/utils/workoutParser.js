@@ -205,35 +205,34 @@ function calculateCategoryDifficulty(steps, category) {
   let effectiveMins = tizMinutes * (1 - blendFactor) + normalizedTizMins * blendFactor;
 
   let score = 1.0;
-
   // Temeljni sustav bodovanja po Zonama temeljen na efektivnom vremenu (effectiveMins)
   switch (category) {
     case 'Oporavak':
       score = 1.0; 
       break;
     case 'Endurance':
-      score = 1.0 + (effectiveMins / 60) * 1.8;
+      score = 1.0 + (effectiveMins / 60) * 2.0;
       break;
     case 'Tempo':
-      score = 1.0 + (effectiveMins / 45) * 2.0;
+      score = 1.0 + (effectiveMins / 45) * 2.5;
       break;
     case 'Sweet Spot':
-      score = 1.0 + (effectiveMins / 45) * 3.0; 
+      score = 1.0 + (effectiveMins / 40) * 3.5; 
       // Bonus za duge neprekinute intervale
-      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.05; 
+      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.1; 
       break;
     case 'Threshold':
-      score = 1.0 + (effectiveMins / 30) * 3.5;
-      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.1;
+      score = 1.0 + (effectiveMins / 30) * 4.5;
+      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.2;
       break;
     case 'VO2 Max':
-      score = 1.0 + (effectiveMins / 14) * 4.0;
-      if (maxIntervalMins >= 3) score += (maxIntervalMins - 2) * 0.15;
+      score = 1.0 + (effectiveMins / 14) * 5.5;
+      if (maxIntervalMins >= 2) score += (maxIntervalMins - 2) * 0.3;
       break;
     case 'Anaerobni':
       // Rješenje za problem gdje San Joaquin +5 (visok intenzitet, manji TiZ) 
       // dobiva manji score od Taylor -2 (niži intenzitet, ogroman TiZ).
-      score = 1.0 + Math.pow(effectiveMins / 12, 0.72) * 4.0;
+      score = 1.0 + Math.pow(effectiveMins / 10, 0.8) * 5.0;
       break;
     default:
       score = (totalTSS / 60) * 4.0; 
@@ -248,19 +247,19 @@ function calculateCategoryDifficulty(steps, category) {
          let ratio = avgWork / avgRest;
          // Ako je vrijeme rada veće od oporavka (npr. 40/20) dodaj bonus
          if (ratio >= 1.0) {
-            score += Math.min(ratio * 0.5, 3.0); // Kapa do max +3 boda
+            score += Math.min(ratio * 0.5, 4.0); // Kapa do max +4 boda
          } else if (ratio > 0.5) {
-            score += 0.2; // 30/30 je 1.0 ratio, 30/60 je 0.5
+            score += 0.5; // 30/30 je 1.0 ratio, 30/60 je 0.5
          }
       }
   }
 
   // Utjecaj ukupnog umora i volumena
-  score += (totalTSS * 0.008);
+  score += (totalTSS * 0.012);
   
-  // Dodatni bonus za treninge s vrlo visokim intenzitetom (IF) i kratkim pauzama
+  // Eksperimentalni bonus za vrlo visok intenzitet
   if (metrics.workingIf > 0.85) {
-     score += (metrics.workingIf - 0.85) * 5.0; 
+     score += (metrics.workingIf - 0.85) * 10.0; 
   }
 
   if (score < 1.0) score = 1.0;
