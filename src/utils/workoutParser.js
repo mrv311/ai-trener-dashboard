@@ -204,33 +204,33 @@ function calculateCategoryDifficulty(steps, category) {
   
   let effectiveMins = tizMinutes * (1 - blendFactor) + normalizedTizMins * blendFactor;
 
-  let score = 1.0;  // Temeljni sustav bodovanja po Zonama temeljen na efektivnom vremenu (effectiveMins)
+  let score = 1.0;
+  // Temeljni sustav bodovanja po Zonama temeljen na efektivnom vremenu (effectiveMins)
   switch (category) {
     case 'Oporavak':
       score = 1.0; 
       break;
     case 'Endurance':
-      score = 1.0 + (effectiveMins / 60) * 2.0;
+      score = 1.0 + (effectiveMins / 70) * 1.8;
       break;
     case 'Tempo':
-      score = 1.0 + (effectiveMins / 45) * 2.5;
+      score = 1.0 + (effectiveMins / 55) * 2.2;
       break;
     case 'Sweet Spot':
-      score = 1.0 + (effectiveMins / 40) * 3.5; 
+      score = 1.0 + (effectiveMins / 45) * 3.0; 
       // Bonus za duge neprekinute intervale
-      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.1; 
+      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.05; 
       break;
     case 'Threshold':
-      score = 1.0 + (effectiveMins / 30) * 3.8; // Spušteno sa 4.5
-      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.2;
+      score = 1.0 + (effectiveMins / 35) * 3.8;
+      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.1;
       break;
     case 'VO2 Max':
-      score = 1.0 + (effectiveMins / 14) * 4.2; // Spušteno s 5.5
-      if (maxIntervalMins >= 2) score += (maxIntervalMins - 2) * 0.2; // Spušteno na 0.2
+      score = 1.0 + (effectiveMins / 18) * 4.2;
+      if (maxIntervalMins >= 2) score += (maxIntervalMins - 2) * 0.1; 
       break;
     case 'Anaerobni':
-      // Kompresirano logaritamsko skaliranje da ne bježi preko 10.0 bez debelog razloga
-      score = 1.0 + Math.pow(effectiveMins / 12, 0.75) * 4.2;
+      score = 1.0 + Math.pow(effectiveMins / 15, 0.75) * 4.5;
       break;
     default:
       score = (totalTSS / 60) * 4.0; 
@@ -243,21 +243,21 @@ function calculateCategoryDifficulty(steps, category) {
       let avgRest = totalRestDur / restSteps;
       if (avgRest > 0) {
          let ratio = avgWork / avgRest;
-         // Capping bonusa da spriječimo prevelik skok ukupnog scora
+         // Strog i jako ograničen bonus kako se ne bi 'lijepio' na već golemi base score
          if (ratio >= 1.0) {
-            score += Math.min(ratio * 0.4, 2.0); // Spuštena gornja granica na max +2 boda
+            score += Math.min(ratio * 0.4, 1.2); // Čvrsta kapa na 1.2
          } else if (ratio > 0.5) {
-            score += 0.3; // Spušten popustljiviji base bonus
+            score += 0.3; 
          }
       }
   }
 
   // Utjecaj ukupnog umora i volumena
-  score += (totalTSS * 0.010); // Smanjen utjecaj TSS-a s 0.012 natrag prema bazi
+  score += (totalTSS * 0.006);
   
-  // Eksperimentalni bonus za vrlo visok intenzitet
+  // Bonus za radni intenzitet izbrušen u granice normale
   if (metrics.workingIf > 0.85) {
-     score += (metrics.workingIf - 0.85) * 6.0; // Smanjeno s 10.0 na 6.0
+     score += (metrics.workingIf - 0.85) * 5.0; 
   }
 
   if (score < 1.0) score = 1.0;
