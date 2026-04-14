@@ -94,6 +94,9 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
   const crankDataRef = useRef({ revs: -1, time: -1 });
   const pmCrankDataRef = useRef({ revs: -1, time: -1 }); 
+  const hrDeviceRef = useRef(null);
+  const trainerDeviceRef = useRef(null);
+  const pmDeviceRef = useRef(null);
 
   const historyRef = useRef([]);
   useEffect(() => { historyRef.current = workoutHistory; }, [workoutHistory]);
@@ -368,9 +371,19 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   };
 
   const connectHR = async () => {
+    if (isHrConnected) {
+      if (hrDeviceRef.current && hrDeviceRef.current.gatt.connected) {
+        hrDeviceRef.current.gatt.disconnect();
+      }
+      setIsHrConnected(false);
+      setCurrentHR(0);
+      hrDeviceRef.current = null;
+      return;
+    }
     try {
       if (!navigator.bluetooth) { alert("Tvoj preglednik ne podržava Web Bluetooth."); return; }
       const device = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
+      hrDeviceRef.current = device;
       const server = await device.gatt.connect();
       const service = await server.getPrimaryService('heart_rate');
       const char = await service.getCharacteristic('heart_rate_measurement');
@@ -385,12 +398,24 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   };
 
   const connectTrainer = async () => {
+    if (isPowerConnected) {
+      if (trainerDeviceRef.current && trainerDeviceRef.current.gatt.connected) {
+        trainerDeviceRef.current.gatt.disconnect();
+      }
+      setIsPowerConnected(false);
+      setCurrentPower(0);
+      setCurrentCadence(prevCadence => isPmConnected ? prevCadence : 0);
+      trainerDeviceRef.current = null;
+      setFtmsControlChar(null);
+      return;
+    }
     try {
       if (!navigator.bluetooth) { alert("Tvoj preglednik ne podržava Web Bluetooth."); return; }
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ services: ['cycling_power'] }],
         optionalServices: ['00001826-0000-1000-8000-00805f9b34fb']
       });
+      trainerDeviceRef.current = device;
       const server = await device.gatt.connect();
       const powerService = await server.getPrimaryService('cycling_power');
       const powerChar = await powerService.getCharacteristic('cycling_power_measurement');
@@ -417,11 +442,23 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   };
 
   const connectPowerMeter = async () => {
+    if (isPmConnected) {
+      if (pmDeviceRef.current && pmDeviceRef.current.gatt.connected) {
+        pmDeviceRef.current.gatt.disconnect();
+      }
+      setIsPmConnected(false);
+      setPmPower(0);
+      setPowerMatchEnabled(false);
+      pidController.reset();
+      pmDeviceRef.current = null;
+      return;
+    }
     try {
       if (!navigator.bluetooth) { alert("Tvoj preglednik ne podržava Web Bluetooth."); return; }
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ services: ['cycling_power'] }]
       });
+      pmDeviceRef.current = device;
       const server = await device.gatt.connect();
       const powerService = await server.getPrimaryService('cycling_power');
       const powerChar = await powerService.getCharacteristic('cycling_power_measurement');
