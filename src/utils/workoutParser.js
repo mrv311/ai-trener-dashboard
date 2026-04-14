@@ -204,8 +204,7 @@ function calculateCategoryDifficulty(steps, category) {
   
   let effectiveMins = tizMinutes * (1 - blendFactor) + normalizedTizMins * blendFactor;
 
-  let score = 1.0;
-  // Temeljni sustav bodovanja po Zonama temeljen na efektivnom vremenu (effectiveMins)
+  let score = 1.0;  // Temeljni sustav bodovanja po Zonama temeljen na efektivnom vremenu (effectiveMins)
   switch (category) {
     case 'Oporavak':
       score = 1.0; 
@@ -222,17 +221,16 @@ function calculateCategoryDifficulty(steps, category) {
       if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.1; 
       break;
     case 'Threshold':
-      score = 1.0 + (effectiveMins / 30) * 4.5;
+      score = 1.0 + (effectiveMins / 30) * 3.8; // Spušteno sa 4.5
       if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.2;
       break;
     case 'VO2 Max':
-      score = 1.0 + (effectiveMins / 14) * 5.5;
-      if (maxIntervalMins >= 2) score += (maxIntervalMins - 2) * 0.3;
+      score = 1.0 + (effectiveMins / 14) * 4.2; // Spušteno s 5.5
+      if (maxIntervalMins >= 2) score += (maxIntervalMins - 2) * 0.2; // Spušteno na 0.2
       break;
     case 'Anaerobni':
-      // Rješenje za problem gdje San Joaquin +5 (visok intenzitet, manji TiZ) 
-      // dobiva manji score od Taylor -2 (niži intenzitet, ogroman TiZ).
-      score = 1.0 + Math.pow(effectiveMins / 10, 0.8) * 5.0;
+      // Kompresirano logaritamsko skaliranje da ne bježi preko 10.0 bez debelog razloga
+      score = 1.0 + Math.pow(effectiveMins / 12, 0.75) * 4.2;
       break;
     default:
       score = (totalTSS / 60) * 4.0; 
@@ -245,21 +243,21 @@ function calculateCategoryDifficulty(steps, category) {
       let avgRest = totalRestDur / restSteps;
       if (avgRest > 0) {
          let ratio = avgWork / avgRest;
-         // Ako je vrijeme rada veće od oporavka (npr. 40/20) dodaj bonus
+         // Capping bonusa da spriječimo prevelik skok ukupnog scora
          if (ratio >= 1.0) {
-            score += Math.min(ratio * 0.5, 4.0); // Kapa do max +4 boda
+            score += Math.min(ratio * 0.4, 2.0); // Spuštena gornja granica na max +2 boda
          } else if (ratio > 0.5) {
-            score += 0.5; // 30/30 je 1.0 ratio, 30/60 je 0.5
+            score += 0.3; // Spušten popustljiviji base bonus
          }
       }
   }
 
   // Utjecaj ukupnog umora i volumena
-  score += (totalTSS * 0.012);
+  score += (totalTSS * 0.010); // Smanjen utjecaj TSS-a s 0.012 natrag prema bazi
   
   // Eksperimentalni bonus za vrlo visok intenzitet
   if (metrics.workingIf > 0.85) {
-     score += (metrics.workingIf - 0.85) * 10.0; 
+     score += (metrics.workingIf - 0.85) * 6.0; // Smanjeno s 10.0 na 6.0
   }
 
   if (score < 1.0) score = 1.0;
