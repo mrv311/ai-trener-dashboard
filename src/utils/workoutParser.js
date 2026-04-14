@@ -1,3 +1,5 @@
+import { calculateCogganMetrics, expandStepsToSeconds } from './performanceMetrics';
+
 // Očekivani izlaz: { title, description, duration_seconds, difficulty_score, steps: [{ name, duration, power }] }
 
 export async function parseWorkoutFile(fileText, fileName) {
@@ -72,22 +74,19 @@ function getZoneRange(category) {
 }
 
 function calculateWorkoutMetrics(steps) {
-  const secPower = [];
-  steps.forEach(s => {
-    for (let i = 0; i < s.duration; i++) {
-      secPower.push(s.power);
-    }
-  });
+  // FTP postavljen na 100 jer steps.power obično sadržava % FTP-a
+  const powerArray = expandStepsToSeconds(steps, 100);
+  const metrics = calculateCogganMetrics(powerArray, 100);
 
-  const totalSecs = secPower.length;
+  const totalSecs = powerArray.length;
   if (totalSecs === 0) return { np: 0, tss: 0, workingIf: 0, trueTotalTss: 0 };
 
   let startIdx = 0;
-  while (startIdx < totalSecs && secPower[startIdx] < 55) {
+  while (startIdx < totalSecs && powerArray[startIdx] < 55) {
      startIdx++;
   }
   let endIdx = totalSecs - 1;
-  while (endIdx > startIdx && secPower[endIdx] < 55) {
+  while (endIdx > startIdx && powerArray[endIdx] < 55) {
      endIdx--;
   }
 
@@ -96,35 +95,12 @@ function calculateWorkoutMetrics(steps) {
      endIdx = totalSecs - 1;
   }
   
-  const getNP = (arr) => {
-    if (arr.length === 0) return 0;
-    const windowPower = [];
-    let windowSum = 0;
-    
-    for (let i = 0; i < arr.length; i++) {
-       windowSum += arr[i];
-       if (i >= 30) {
-           windowSum -= arr[i - 30];
-       }
-       let count = Math.min(i + 1, 30);
-       let avg30 = windowSum / count;
-       windowPower.push(Math.pow(avg30, 4));
-    }
-    
-    let sumVal = windowPower.reduce((a, b) => a + b, 0);
-    let avgPwr4 = sumVal / windowPower.length;
-    return Math.pow(avgPwr4, 0.25);
-  };
+  const workingMetrics = calculateCogganMetrics(powerArray.slice(startIdx, endIdx + 1), 100);
 
-  const trueNP = getNP(secPower);
-  const workingNP = getNP(secPower.slice(startIdx, endIdx + 1));
-
-  const trueTotalTss = (totalSecs / 3600) * Math.pow(trueNP / 100, 2) * 100;
-  
   return { 
-     np: trueNP, 
-     tss: trueTotalTss, 
-     workingIf: workingNP / 100
+     np: metrics.np, 
+     tss: metrics.tss, 
+     workingIf: parseFloat(workingMetrics.ifFactor)
   };
 }
 

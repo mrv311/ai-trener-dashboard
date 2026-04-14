@@ -4,6 +4,7 @@ import TrainerModals from './trainer/TrainerModals';
 import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
 import { exportToTCX } from '../utils/exportUtils';
+import { calculateCogganMetrics } from '../utils/performanceMetrics';
 
 const playBeep = (freq = 800, duration = 0.2) => {
   try {
@@ -93,6 +94,23 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
   const crankDataRef = useRef({ revs: -1, time: -1 });
   const pmCrankDataRef = useRef({ revs: -1, time: -1 }); 
+
+  const historyRef = useRef([]);
+  useEffect(() => { historyRef.current = workoutHistory; }, [workoutHistory]);
+
+  const [liveMetrics, setLiveMetrics] = useState({ np: 0, ifFactor: "0.00", tss: 0, workKj: 0 });
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    const interval = setInterval(() => {
+      const pwrArray = historyRef.current.map(h => h.power);
+      if (pwrArray.length > 0) {
+        const metrics = calculateCogganMetrics(pwrArray, profile?.ftp || 200);
+        setLiveMetrics(metrics);
+      }
+    }, 5000); 
+    return () => clearInterval(interval);
+  }, [isPlaying, profile]);
 
   const [workoutRecipe, setWorkoutRecipe] = useState([
     { name: 'Zagrijavanje', duration: 10 * 60, power: 50 },
@@ -304,6 +322,16 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     return "text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]";
   };
 
+  const getZoneTextColor = (pwr) => {
+    if (pwr < 55) return 'text-gray-400 drop-shadow-[0_0_8px_rgba(156,163,175,0.5)]';
+    if (pwr < 76) return 'text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]';
+    if (pwr < 88) return 'text-green-400 drop-shadow-[0_0_8px_rgba(74,222,128,0.5)]';
+    if (pwr < 95) return 'text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]';
+    if (pwr < 106) return 'text-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.5)]';
+    if (pwr < 121) return 'text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]';
+    return 'text-purple-400 drop-shadow-[0_0_8px_rgba(192,132,252,0.5)]';
+  };
+
   const formatTime = (secs) => {
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
@@ -507,12 +535,19 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       }
     }
 
+    const finalMetrics = calculateCogganMetrics(workoutHistory.map(h => h.power), profile?.ftp || 200);
+    setLiveMetrics(finalMetrics);
+
     setSummaryStats({
       avgPower: pwrData.length ? Math.round(pwrData.reduce((a, b) => a + b.power, 0) / pwrData.length) : 0,
       avgHr: hrData.length ? Math.round(hrData.reduce((a, b) => a + b.hr, 0) / hrData.length) : 0,
       avgCadence: cadData.length ? Math.round(cadData.reduce((a, b) => a + b.cadence, 0) / cadData.length) : 0,
       totalDur: elapsedTime,
-      isLevelUpEligible: elapsedTime / totalDuration >= 0.85
+      isLevelUpEligible: elapsedTime / totalDuration >= 0.85,
+      np: finalMetrics.np,
+      ifFactor: finalMetrics.ifFactor,
+      tss: finalMetrics.tss,
+      workKj: finalMetrics.workKj
     });
   };
 
@@ -709,6 +744,16 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
               <span className="text-xs md:text-lg font-bold text-zinc-600 pb-1 md:pb-2">rpm</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* SESSION PROGRESS BAR */}
+      <div className="bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] border border-zinc-800/80 px-4 py-2.5 flex items-center justify-between overflow-x-auto shrink-0 hide-scrollbar gap-4 md:col-span-3">
+        <div className={`flex items-center gap-6 md:gap-10 mx-auto ${getZoneTextColor(currentStep.power)} font-mono tabular-nums text-[10px] md:text-sm font-black uppercase tracking-widest`}>
+          <div className="flex items-center gap-1.5"><span className="text-zinc-500 font-bold opacity-70 drop-shadow-none">NP</span> <span>{liveMetrics.np}W</span></div>
+          <div className="flex items-center gap-1.5"><span className="text-zinc-500 font-bold opacity-70 drop-shadow-none">IF</span> <span>{liveMetrics.ifFactor}</span></div>
+          <div className="flex items-center gap-1.5"><span className="text-zinc-500 font-bold opacity-70 drop-shadow-none">TSS</span> <span>{liveMetrics.tss}</span></div>
+          <div className="flex items-center gap-1.5"><span className="text-zinc-500 font-bold opacity-70 drop-shadow-none">Work</span> <span>{liveMetrics.workKj}kJ</span></div>
         </div>
       </div>
 

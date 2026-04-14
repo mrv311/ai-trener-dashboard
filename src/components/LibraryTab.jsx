@@ -3,6 +3,7 @@ import { supabase } from '../services/supabaseClient';
 import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
 import { parseWorkoutFile } from '../utils/workoutParser';
+import { calculateCogganMetrics, expandStepsToSeconds } from '../utils/performanceMetrics';
 
 export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
   const [workouts, setWorkouts] = useState([]);
@@ -148,26 +149,16 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
   };
 
   const getWorkoutMetrics = (workout) => {
-    if (!workout.steps || workout.steps.length === 0) return { np: 0, avg: 0, tss: 0 };
-    let totalDuration = 0, totalWork = 0, totalTSS = 0;
+    if (!workout.steps || workout.steps.length === 0) return { np: 0, avg: 0, tss: 0, if_factor: "0.00" };
     
-    workout.steps.forEach(s => {
-      let intensity = s.power / 100;
-      let stepTss = (s.duration / 3600) * (intensity * intensity) * 100;
-      totalTSS += stepTss;
-      totalDuration += s.duration;
-      totalWork += ((s.power / 100) * ftp) * s.duration;
-    });
-    
-    let avgPower = totalWork / totalDuration;
-    let IF = Math.sqrt(totalTSS / ((totalDuration/3600) * 100)) || 0;
-    let np = IF * ftp;
+    const powerArray = expandStepsToSeconds(workout.steps, ftp);
+    const metrics = calculateCogganMetrics(powerArray, ftp);
     
     return {
-      np: Math.round(np),
-      avg: Math.round(avgPower),
-      tss: Math.round(totalTSS),
-      if_factor: IF.toFixed(2)
+      np: metrics.np,
+      avg: metrics.avgPower,
+      tss: metrics.tss,
+      if_factor: metrics.ifFactor
     };
   };
 

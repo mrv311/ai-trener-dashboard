@@ -42,21 +42,40 @@ export default function TrainerModals({
             </div>
             <h2 className="text-2xl md:text-3xl font-black text-zinc-100 uppercase tracking-tight shrink-0">Trening Završen!</h2>
             <p className="text-zinc-500 font-bold mt-1 md:mt-2 mb-6 md:mb-8 text-sm md:text-base shrink-0">{workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja'}</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 w-full mb-6 md:mb-10 shrink-0">
-              <div className="bg-zinc-950/50 p-3 md:p-4 rounded-2xl border border-zinc-800 flex flex-row sm:flex-col items-center sm:items-start justify-between sm:justify-start">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4 w-full mb-3 shrink-0">
+              <div className="bg-zinc-950/50 p-3 md:p-4 rounded-2xl border border-zinc-800 flex flex-col items-center sm:items-start justify-center sm:justify-start">
                 <p className="text-[10px] sm:text-[10px] font-black uppercase text-zinc-500 tracking-widest mb-0 sm:mb-1">Avg Power</p>
-                <div>
+                <div className="text-center sm:text-left">
                   <p className="text-xl md:text-2xl font-black text-zinc-100">{summaryStats.avgPower} <span className="text-xs md:text-sm font-bold text-zinc-500">W</span></p>
                   {isPmConnected && <p className="text-[9px] text-violet-400 font-bold mt-0.5 sm:mt-1 drop-shadow-[0_0_2px_rgba(167,139,250,0.5)]">PowerMeter</p>}
                 </div>
               </div>
-              <div className="bg-zinc-950/50 p-3 md:p-4 rounded-2xl border border-zinc-800 flex flex-row sm:flex-col items-center sm:items-start justify-between sm:justify-start">
+              <div className="bg-zinc-950/50 p-3 md:p-4 rounded-2xl border border-zinc-800 flex flex-col items-center sm:items-start justify-center sm:justify-start">
                 <p className="text-[10px] sm:text-[10px] font-black uppercase text-rose-500 tracking-widest mb-0 sm:mb-1">Avg HR</p>
                 <p className="text-xl md:text-2xl font-black text-zinc-100">{summaryStats.avgHr} <span className="text-xs md:text-sm font-bold text-zinc-500">bpm</span></p>
               </div>
-              <div className="bg-zinc-950/50 p-3 md:p-4 rounded-2xl border border-zinc-800 flex flex-row sm:flex-col items-center sm:items-start justify-between sm:justify-start">
+              <div className="bg-zinc-950/50 p-3 md:p-4 rounded-2xl border border-zinc-800 flex flex-col items-center sm:items-start justify-center sm:justify-start col-span-2 sm:col-span-1">
                 <p className="text-[10px] sm:text-[10px] font-black uppercase text-orange-500 tracking-widest mb-0 sm:mb-1">Cadence</p>
                 <p className="text-xl md:text-2xl font-black text-zinc-100">{summaryStats.avgCadence} <span className="text-xs md:text-sm font-bold text-zinc-500">rpm</span></p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2 w-full mb-6 md:mb-10 shrink-0">
+              <div className="bg-zinc-950/50 p-2 md:p-3 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">NP</p>
+                <p className="text-base font-black text-zinc-300">{summaryStats.np || 0} <span className="text-[10px] text-zinc-500">W</span></p>
+              </div>
+              <div className="bg-zinc-950/50 p-2 md:p-3 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">IF</p>
+                <p className="text-base font-black text-zinc-300">{summaryStats.ifFactor || '0.00'}</p>
+              </div>
+              <div className="bg-zinc-950/50 p-2 md:p-3 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">TSS</p>
+                <p className="text-base font-black text-zinc-300">{summaryStats.tss || 0}</p>
+              </div>
+              <div className="bg-zinc-950/50 p-2 md:p-3 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">Work</p>
+                <p className="text-base font-black text-zinc-300">{summaryStats.workKj || 0} <span className="text-[10px] text-zinc-500">kJ</span></p>
               </div>
             </div>
             <div className="flex flex-col gap-2.5 md:gap-3 w-full shrink-0">
