@@ -21,16 +21,16 @@ import { useIntervalsData } from './hooks/useIntervalsData';
 
 // 1. Centralizirana konfiguracija tabova za lakše održavanje
 const TABS = {
-  calendar: { label: 'Dnevnik Treninga', icon: <CalendarIcon />, component: CalendarTab },
-  library: { label: 'Knjižnica Treninga', icon: <Database />, component: LibraryTab },
-  trainer: { label: 'Virtualna Vožnja', icon: <Monitor />, component: TrainerTab },
-  fitness: { label: 'Kondicija i Umor', icon: <Activity />, component: FitnessTab },
-  progression: { label: 'Faktor Napretka', icon: <TrendingUp />, component: ProgressionTab },
-  power: { label: 'Krivulja Snage', icon: <LineChart />, component: PowerCurveTab },
-  analytics: { label: 'Analitika Treninga', icon: <BarChart2 />, component: AnalyticsTab },
-  settings: { label: 'Postavke Aplikacije', icon: <Settings />, component: SettingsTab },
-  profile: { label: 'Moj Profil', icon: <User />, component: ProfileTab },
-  connections: { label: 'Vanjske Veze', icon: <LinkIcon />, component: ConnectionsTab }
+  calendar: { label: 'Kalendar', icon: <CalendarIcon />, component: CalendarTab },
+  library: { label: 'Knjižnica', icon: <Database />, component: LibraryTab },
+  trainer: { label: 'Trenažer', icon: <Monitor />, component: TrainerTab },
+  fitness: { label: 'Kondicija', icon: <Activity />, component: FitnessTab },
+  progression: { label: 'Napredak', icon: <TrendingUp />, component: ProgressionTab },
+  power: { label: 'Snaga', icon: <LineChart />, component: PowerCurveTab },
+  analytics: { label: 'Analitika', icon: <BarChart2 />, component: AnalyticsTab },
+  settings: { label: 'Postavke', icon: <Settings />, component: SettingsTab },
+  profile: { label: 'Profil', icon: <User />, component: ProfileTab },
+  connections: { label: 'Veze', icon: <LinkIcon />, component: ConnectionsTab }
 };
 
 export default function App() {
