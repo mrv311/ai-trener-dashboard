@@ -211,26 +211,26 @@ function calculateCategoryDifficulty(steps, category) {
       score = 1.0; 
       break;
     case 'Endurance':
-      score = 1.0 + (effectiveMins / 70) * 1.8;
+      score = 1.0 + (effectiveMins / 75) * 1.8;
       break;
     case 'Tempo':
-      score = 1.0 + (effectiveMins / 55) * 2.2;
+      score = 1.0 + (effectiveMins / 60) * 2.2;
       break;
     case 'Sweet Spot':
-      score = 1.0 + (effectiveMins / 45) * 3.0; 
+      score = 1.0 + (effectiveMins / 50) * 2.8; 
       // Bonus za duge neprekinute intervale
       if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.05; 
       break;
     case 'Threshold':
-      score = 1.0 + (effectiveMins / 35) * 3.8;
-      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.1;
+      score = 1.0 + (effectiveMins / 40) * 3.4;
+      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.08;
       break;
     case 'VO2 Max':
-      score = 1.0 + (effectiveMins / 18) * 4.2;
-      if (maxIntervalMins >= 2) score += (maxIntervalMins - 2) * 0.1; 
+      score = 1.0 + (effectiveMins / 22) * 3.6;
+      if (maxIntervalMins >= 2) score += (maxIntervalMins - 2) * 0.08; 
       break;
     case 'Anaerobni':
-      score = 1.0 + Math.pow(effectiveMins / 15, 0.75) * 4.5;
+      score = 1.0 + Math.pow(effectiveMins / 18, 0.7) * 3.8;
       break;
     default:
       score = (totalTSS / 60) * 4.0; 
