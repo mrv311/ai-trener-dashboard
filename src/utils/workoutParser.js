@@ -71,30 +71,113 @@ function getZoneRange(category) {
    }
 }
 
+function calculateWorkoutMetrics(steps) {
+  const secPower = [];
+  steps.forEach(s => {
+    for (let i = 0; i < s.duration; i++) {
+      secPower.push(s.power);
+    }
+  });
+
+  const totalSecs = secPower.length;
+  if (totalSecs === 0) return { np: 0, tss: 0, workingIf: 0, trueTotalTss: 0 };
+
+  let startIdx = 0;
+  while (startIdx < totalSecs && secPower[startIdx] < 55) {
+     startIdx++;
+  }
+  let endIdx = totalSecs - 1;
+  while (endIdx > startIdx && secPower[endIdx] < 55) {
+     endIdx--;
+  }
+
+  if (startIdx >= endIdx) {
+     startIdx = 0;
+     endIdx = totalSecs - 1;
+  }
+  
+  const getNP = (arr) => {
+    if (arr.length === 0) return 0;
+    const windowPower = [];
+    let windowSum = 0;
+    
+    for (let i = 0; i < arr.length; i++) {
+       windowSum += arr[i];
+       if (i >= 30) {
+           windowSum -= arr[i - 30];
+       }
+       let count = Math.min(i + 1, 30);
+       let avg30 = windowSum / count;
+       windowPower.push(Math.pow(avg30, 4));
+    }
+    
+    let sumVal = windowPower.reduce((a, b) => a + b, 0);
+    let avgPwr4 = sumVal / windowPower.length;
+    return Math.pow(avgPwr4, 0.25);
+  };
+
+  const trueNP = getNP(secPower);
+  const workingNP = getNP(secPower.slice(startIdx, endIdx + 1));
+
+  const trueTotalTss = (totalSecs / 3600) * Math.pow(trueNP / 100, 2) * 100;
+  
+  return { 
+     np: trueNP, 
+     tss: trueTotalTss, 
+     workingIf: workingNP / 100
+  };
+}
+
 function calculateCategoryDifficulty(steps, category) {
   const [minPow, maxPow] = getZoneRange(category);
+  const metrics = calculateWorkoutMetrics(steps);
+  let totalTSS = metrics.tss;
   
   let tizSeconds = 0;
   let maxIntervalSeconds = 0;
   let currentInterval = 0;
-  let totalTSS = 0;
-
-    let zoneTSS = 0;
+  
+  // Novi prag za Over-Under: toleriramo rad iznad baze radne zone
+  let continuousWorkThreshold = minPow;
+  if (category === 'Threshold') continuousWorkThreshold = 85; 
+  else if (category === 'VO2 Max' || category === 'Anaerobni') continuousWorkThreshold = 95;
+  else if (category === 'Sweet Spot') continuousWorkThreshold = 76;
+  
+  let zoneTSS = 0; 
+  
+  let workSteps = 0;
+  let restSteps = 0;
+  let totalWorkDur = 0;
+  let totalRestDur = 0;
 
   steps.forEach(step => {
     let intensity = step.power / 100;
-    let stepTss = (step.duration / 3600) * (intensity * intensity) * 100;
-    totalTSS += stepTss;
+    let stepTss = (step.duration / 3600) * (intensity * intensity) * 100; 
 
-    if (step.power >= minPow && step.power < maxPow) {
-       tizSeconds += step.duration;
+    if (step.power >= continuousWorkThreshold) {
        currentInterval += step.duration;
-       zoneTSS += stepTss;
+       // Ako je unutar rastegnute "korisne" zone za odabranu kategoriju
+       if (step.power <= (maxPow === 999 ? 999 : maxPow + 15)) {
+           tizSeconds += step.duration;
+           zoneTSS += stepTss; 
+       }
     } else {
        if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
        currentInterval = 0;
     }
+
+    // Statistika za Work-To-Rest multiplikator
+    if (category === 'VO2 Max' || category === 'Anaerobni') {
+        if (step.power >= 106) {
+           workSteps++;
+           totalWorkDur += step.duration;
+        } else if (step.power <= 75 && workSteps > 0) { 
+           restSteps++;
+           totalRestDur += step.duration;
+        }
+    }
   });
+
   if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
 
   let tizMinutes = tizSeconds / 60;
@@ -157,14 +240,27 @@ function calculateCategoryDifficulty(steps, category) {
       break;
   }
 
+  // Work-to-Rest Bonus za vrlo oštre intervale
+  if ((category === 'VO2 Max' || category === 'Anaerobni') && workSteps > 0 && restSteps > 0) {
+      let avgWork = totalWorkDur / workSteps;
+      let avgRest = totalRestDur / restSteps;
+      if (avgRest > 0) {
+         let ratio = avgWork / avgRest;
+         // Ako je vrijeme rada veće od oporavka (npr. 40/20) dodaj bonus
+         if (ratio >= 1.0) {
+            score += Math.min(ratio * 0.5, 3.0); // Kapa do max +3 boda
+         } else if (ratio > 0.5) {
+            score += 0.2; // 30/30 je 1.0 ratio, 30/60 je 0.5
+         }
+      }
+  }
+
   // Utjecaj ukupnog umora i volumena
   score += (totalTSS * 0.008);
   
   // Dodatni bonus za treninge s vrlo visokim intenzitetom (IF) i kratkim pauzama
-  let workoutDurationSecs = steps.reduce((sum, s) => sum + s.duration, 0);
-  let IF = workoutDurationSecs > 0 ? Math.sqrt(totalTSS / ((workoutDurationSecs / 3600) * 100)) : 0;
-  if (IF > 0.85) {
-     score += (IF - 0.85) * 5.0; 
+  if (metrics.workingIf > 0.85) {
+     score += (metrics.workingIf - 0.85) * 5.0; 
   }
 
   if (score < 1.0) score = 1.0;
