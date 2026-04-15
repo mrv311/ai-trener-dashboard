@@ -39,7 +39,7 @@ export default function App() {
   const [intervalsId, setIntervalsId] = useLocalStorage('intervalsId', '');
   const [intervalsKey, setIntervalsKey] = useLocalStorage('intervalsKey', '');
 
-  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleRescheduleWorkout } = useIntervalsData(intervalsId, intervalsKey);
+  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleRescheduleWorkout, handleUpdateWorkout } = useIntervalsData(intervalsId, intervalsKey);
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [athleteProfile, setAthleteProfile] = useLocalStorage('ai_trener_profile', {
@@ -133,6 +133,7 @@ export default function App() {
                 handleUnpair={handleUnpair} handlePair={handlePair}
                 handleDeleteLocalActivity={handleDeleteLocalActivity}
                 handleRescheduleWorkout={handleRescheduleWorkout}
+                handleUpdateWorkout={handleUpdateWorkout}
                 onSelectWorkout={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
               />
             )}

@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Targ
 import { DndContext, pointerWithin, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
+import WorkoutEditorModal from './WorkoutEditorModal';
 
 const formatDur = (mins) => {
   const h = Math.floor(mins / 60);
@@ -34,7 +35,7 @@ const isDraggable = (w) => !w.isCompleted && (w.isLocal || w.id.startsWith('ev-'
 // ============================================================
 // WorkoutCard
 // ============================================================
-const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, isCurrentMonth }) {
+const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, onEditWorkout, isCurrentMonth }) {
   const canDrag = isDesktop && isDraggable(w);
 
   // UKLONJENO: transform varijabla - original se ne smije pomicati dok radi DragOverlay
@@ -53,6 +54,11 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
       ref={setNodeRef}
       style={style}
       {...(canDrag ? { ...attributes, ...listeners } : {})}
+      onClick={() => {
+        if (!isDragging && onEditWorkout && (w.isLocal || w.id.startsWith('ev-'))) {
+          onEditWorkout(w);
+        }
+      }}
       className={`rounded-xl flex flex-col overflow-hidden min-h-[86px] backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : ''} ${canDrag && !isDragging ? 'cursor-grab hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
     >
       <div className={`h-1.5 w-full shrink-0 ${getTopCol(w.statusColor)}`} />
@@ -115,7 +121,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
 // ============================================================
 // CalendarDay
 // ============================================================
-const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity }) {
+const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, onEditWorkout }) {
   const { isOver, setNodeRef } = useDroppable({
     id: dObj.dateStr,
   });
@@ -139,7 +145,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
         </div>
         <div className="flex flex-col gap-2">
           {dWorks.length > 0 ? dWorks.map(w => (
-            <WorkoutCard key={w.id} w={w} isDesktop={false} isDragging={false} onSelectWorkout={onSelectWorkout} handleUnpair={handleUnpair} handlePair={handlePair} handleDeleteLocalActivity={handleDeleteLocalActivity} />
+            <WorkoutCard key={w.id} w={w} isDesktop={false} isDragging={false} onSelectWorkout={onSelectWorkout} handleUnpair={handleUnpair} handlePair={handlePair} handleDeleteLocalActivity={handleDeleteLocalActivity} onEditWorkout={onEditWorkout} />
           )) : (
             <div className="text-xs text-zinc-600 italic px-2 py-2 bg-zinc-900/40 rounded-lg border border-zinc-800 border-dashed mr-auto">Odmor</div>
           )}
@@ -179,6 +185,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
             handleUnpair={handleUnpair}
             handlePair={handlePair}
             handleDeleteLocalActivity={handleDeleteLocalActivity}
+            onEditWorkout={onEditWorkout}
           />
         ))}
       </div>
@@ -211,7 +218,7 @@ function DragOverlayCard({ workout, activeWidth }) {
 // ============================================================
 // CalendarTab
 // ============================================================
-export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleRescheduleWorkout, onSelectWorkout }) {
+export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleRescheduleWorkout, handleUpdateWorkout, onSelectWorkout }) {
   const cy = currentDate.getFullYear();
   const cm = currentDate.getMonth();
   const daysInMo = new Date(cy, cm + 1, 0).getDate();
@@ -219,6 +226,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const [activeId, setActiveId] = useState(null);
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [activeWidth, setActiveWidth] = useState(0);
+  const [editingWorkout, setEditingWorkout] = useState(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -297,8 +306,28 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     setActiveWorkout(null);
   }, []);
 
+  const handleSaveWorkout = async (workoutId, title, code, calculatedTss, calculatedDuration) => {
+    if (!handleUpdateWorkout) return;
+    setIsUpdating(true);
+    try {
+      await handleUpdateWorkout(workoutId, title, code, calculatedTss, calculatedDuration);
+      setEditingWorkout(null);
+    } catch (err) {
+      alert("Došlo je do greške pri ažuriranju treninga.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 flex flex-col min-h-[700px] animate-in fade-in overflow-hidden">
+      <WorkoutEditorModal 
+        workout={editingWorkout} 
+        isOpen={!!editingWorkout} 
+        onClose={() => setEditingWorkout(null)} 
+        onSave={handleSaveWorkout}
+        isLoading={isUpdating}
+      />
       <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-950/50">
         <span className="px-4 font-bold text-lg text-zinc-100 drop-shadow-sm">{monthNames[cm]} {cy}</span>
         <div className="flex bg-zinc-900/80 rounded-lg p-1 border border-zinc-800 gap-1">
@@ -370,6 +399,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       handleUnpair={handleUnpair}
                       handlePair={handlePair}
                       handleDeleteLocalActivity={handleDeleteLocalActivity}
+                      onEditWorkout={setEditingWorkout}
                     />
                   );
                 })}

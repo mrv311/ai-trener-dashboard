@@ -78,3 +78,29 @@ export const updateEventDate = async (intervalsId, intervalsKey, eventId, newDat
 
   return res.json();
 };
+
+/**
+ * Ažurira detalje (tekst) eventa na Intervals.icu.
+ */
+export const updateEventDetails = async (intervalsId, intervalsKey, eventId, payload) => {
+  const cleanId = intervalsId.trim();
+  const headers = {
+    ...getAuthHeaders(intervalsKey),
+    'Content-Type': 'application/json'
+  };
+
+  const url = `https://intervals.icu/api/v1/athlete/${cleanId}/events/${eventId}`;
+  
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Greška pri ažuriranju treninga: ${res.status} ${errText}`);
+  }
+
+  return res.json();
+};

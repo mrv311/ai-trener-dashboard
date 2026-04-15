@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { fetchIntervalsData, updateEventDate } from '../services/intervalsApi';
+import { fetchIntervalsData, updateEventDate, updateEventDetails } from '../services/intervalsApi';
 
 export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError } = {}) {
   const [rawActivities, setRawActivities] = useState([]);
@@ -239,6 +239,52 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     }
   }, [rawEvents, intervalsId, intervalsKey, onRescheduleError]);
 
+  const handleUpdateWorkout = useCallback(async (workoutId, title, workout_doc, calculatedTss, calculatedDuration) => {
+    if (workoutId.startsWith('local-')) {
+      const rawId = workoutId.replace('local-', '');
+      let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+      const idx = localScheduled.findIndex(w => w.id === rawId);
+      if (idx > -1) {
+        localScheduled[idx].title = title;
+        localScheduled[idx].steps = workout_doc;
+        localScheduled[idx].tss = calculatedTss;
+        localScheduled[idx].duration = calculatedDuration;
+        localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
+        setLocalRefreshTrigger(prev => prev + 1);
+      }
+      return;
+    }
+
+    if (workoutId.startsWith('ev-')) {
+      const eventId = workoutId.replace('ev-', '');
+      const oldEvent = rawEvents.find(e => String(e.id) === eventId);
+      if (!oldEvent) return;
+
+      // Optimistic upate
+      setRawEvents(prev => prev.map(e => 
+        String(e.id) === eventId 
+          ? { ...e, name: title, workout_doc: workout_doc, icu_training_load: calculatedTss, moving_time: calculatedDuration * 60 }
+          : e
+      ));
+
+      try {
+        // Event details update requires passing existing info so we don't clear other options.
+        // Actually, we can just pass name and workout_doc (the Intervals.icu backend usually updates patch-like).
+        await updateEventDetails(intervalsId, intervalsKey, eventId, {
+          name: title,
+          workout_doc: workout_doc
+        });
+      } catch (err) {
+        console.error('Update Workout API error:', err);
+        // Revert on error
+        setRawEvents(prev => prev.map(e => 
+          String(e.id) === eventId ? oldEvent : e
+        ));
+        throw err;
+      }
+    }
+  }, [rawEvents, intervalsId, intervalsKey]);
+
   return {
     workouts,
     wellnessData,
@@ -248,6 +294,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     handlePair,
     handleUnpair,
     handleDeleteLocalActivity,
-    handleRescheduleWorkout
+    handleRescheduleWorkout,
+    handleUpdateWorkout
   };
 }
