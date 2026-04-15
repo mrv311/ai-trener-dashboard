@@ -4,7 +4,7 @@ import { DndContext, pointerWithin, DragOverlay, useSensor, useSensors, PointerS
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import WorkoutEditorModal from './WorkoutEditorModal';
-import { updateEventDetails } from '../api/intervalsApi';
+import { updateEventDetails } from '../services/intervalsApi';
 
 const formatDur = (mins) => {
   const h = Math.floor(mins / 60);
