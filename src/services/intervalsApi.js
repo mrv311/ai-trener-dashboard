@@ -49,3 +49,32 @@ export const fetchIntervalsData = async (intervalsId, intervalsKey) => {
 
   return { activities, events, wellness };
 };
+
+/**
+ * Ažurira datum eventa na Intervals.icu (za D&D reschedule).
+ * PUT /api/v1/athlete/{id}/events/{eventId}
+ */
+export const updateEventDate = async (intervalsId, intervalsKey, eventId, newDate) => {
+  const cleanId = intervalsId.trim();
+  const headers = {
+    ...getAuthHeaders(intervalsKey),
+    'Content-Type': 'application/json'
+  };
+
+  const url = `https://intervals.icu/api/v1/athlete/${cleanId}/events/${eventId}`;
+  
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({
+      start_date_local: `${newDate}T08:00:00`
+    })
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Greška pri premještanju treninga: ${res.status} ${errText}`);
+  }
+
+  return res.json();
+};

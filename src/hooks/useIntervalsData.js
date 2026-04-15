@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { fetchIntervalsData } from '../services/intervalsApi';
+import { fetchIntervalsData, updateEventDate } from '../services/intervalsApi';
 
-export function useIntervalsData(intervalsId, intervalsKey) {
+export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError } = {}) {
   const [rawActivities, setRawActivities] = useState([]);
   const [rawEvents, setRawEvents] = useState([]);
   const [wellnessData, setWellnessData] = useState({});
@@ -193,6 +193,52 @@ export function useIntervalsData(intervalsId, intervalsKey) {
     setLocalRefreshTrigger(prev => prev + 1);
   }, []);
 
+  /**
+   * Premješta trening na novi datum (D&D reschedule).
+   * Podržava lokalne treninge (localStorage) i Intervals.icu evente (API PUT).
+   * Koristi optimistic UI — odmah ažurira stanje, API poziv u pozadini.
+   */
+  const handleRescheduleWorkout = useCallback(async (workoutId, newDate) => {
+    // --- Lokalni treninzi ---
+    if (workoutId.startsWith('local-')) {
+      const rawId = workoutId.replace('local-', '');
+      let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+      const idx = localScheduled.findIndex(w => w.id === rawId);
+      if (idx === -1) return;
+      localScheduled[idx].date = newDate;
+      localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
+      setLocalRefreshTrigger(prev => prev + 1);
+      return;
+    }
+
+    // --- Intervals.icu eventi ---
+    if (workoutId.startsWith('ev-')) {
+      const eventId = workoutId.replace('ev-', '');
+      // Optimistic: odmah pomakni u lokalnom stanju
+      const oldDate = rawEvents.find(e => String(e.id) === eventId)?.start_date_local?.split('T')[0];
+      setRawEvents(prev => prev.map(e =>
+        String(e.id) === eventId
+          ? { ...e, start_date_local: `${newDate}T08:00:00` }
+          : e
+      ));
+
+      try {
+        await updateEventDate(intervalsId, intervalsKey, eventId, newDate);
+      } catch (err) {
+        // Revert na stari datum ako API poziv padne
+        console.error('Reschedule API error:', err);
+        if (oldDate) {
+          setRawEvents(prev => prev.map(e =>
+            String(e.id) === eventId
+              ? { ...e, start_date_local: `${oldDate}T08:00:00` }
+              : e
+          ));
+        }
+        onRescheduleError?.(err.message || 'Greška pri premještanju treninga');
+      }
+    }
+  }, [rawEvents, intervalsId, intervalsKey, onRescheduleError]);
+
   return {
     workouts,
     wellnessData,
@@ -201,6 +247,7 @@ export function useIntervalsData(intervalsId, intervalsKey) {
     fetchWorkouts,
     handlePair,
     handleUnpair,
-    handleDeleteLocalActivity
+    handleDeleteLocalActivity,
+    handleRescheduleWorkout
   };
 }
