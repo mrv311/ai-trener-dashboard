@@ -199,8 +199,8 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
 function DragOverlayCard({ workout, activeWidth }) {
   if (!workout) return null;
   return (
-    <div 
-      style={{ width: activeWidth ? `${activeWidth}px` : '200px' }} 
+    <div
+      style={{ width: activeWidth ? `${activeWidth}px` : '200px' }}
       className="rounded-xl overflow-hidden border-2 border-orange-500/80 bg-zinc-900/95 shadow-2xl shadow-orange-500/30 backdrop-blur-xl pointer-events-none cursor-grabbing scale-105 opacity-90 transition-transform"
     >
       <div className={`h-1.5 w-full ${getTopCol(workout.statusColor)}`} />
@@ -306,25 +306,32 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     setActiveWorkout(null);
   }, []);
 
-  const handleSaveWorkout = async (workoutId, title, code, calculatedTss, calculatedDuration) => {
-    if (!handleUpdateWorkout) return;
-    setIsUpdating(true);
+  const handleSaveWorkout = async (updatedWorkout) => {
     try {
-      await handleUpdateWorkout(workoutId, title, code, calculatedTss, calculatedDuration);
-      setEditingWorkout(null);
-    } catch (err) {
-      alert("Došlo je do greške pri ažuriranju treninga.");
-    } finally {
-      setIsUpdating(false);
+      // 1. Pripremi striktni payload samo s poljima koja Intervals.icu API prepoznaje za PUT /events
+      const payload = {
+        description: updatedWorkout.description, // Ovo je onaj tekstualni kod koji tipkamo u textarea
+        // Opcionalno, ako želiš da se mijenja i ime: name: updatedWorkout.title
+      };
+
+      // 2. Pozovi API
+      await updateEventDetails(intervalsId, intervalsKey, updatedWorkout.eventId, payload);
+
+      // 3. Ažuriraj lokalni React state da se GUI odmah osvježi bez novog fetch-a
+      // ... tvoja logika za setWorkouts
+
+    } catch (error) {
+      console.error("Greška pri spremanju:", error);
+      alert(error.message);
     }
   };
 
   return (
     <div className="max-w-[1600px] mx-auto bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 flex flex-col min-h-[700px] animate-in fade-in overflow-hidden">
-      <WorkoutEditorModal 
-        workout={editingWorkout} 
-        isOpen={!!editingWorkout} 
-        onClose={() => setEditingWorkout(null)} 
+      <WorkoutEditorModal
+        workout={editingWorkout}
+        isOpen={!!editingWorkout}
+        onClose={() => setEditingWorkout(null)}
         onSave={handleSaveWorkout}
         isLoading={isUpdating}
         userFtp={profile?.ftp}
