@@ -83,7 +83,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               <button key={sepId} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom">
                 <Link2 className="w-3.5 h-3.5" />
               </button>
-            )}
+            ))}
             {w.statusColor === 'green' && <CheckCircle2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-emerald-400 drop-shadow-[0_0_${isDesktop ? '3' : '5'}px_rgba(16,185,129,0.5)]`} />}
             {w.statusColor === 'red-missed' && <XCircle className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-rose-500`} />}
             {w.statusColor === 'grey' && !w.isLocal && <Target className="w-3.5 h-3.5 text-zinc-500" />}
@@ -112,6 +112,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
     </div>
   );
 });
+
 
 // ============================================================
 // CalendarDay
