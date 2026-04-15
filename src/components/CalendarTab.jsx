@@ -35,17 +35,15 @@ const isDraggable = (w) => !w.isCompleted && (w.isLocal || w.id.startsWith('ev-'
 // ============================================================
 const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, isCurrentMonth }) {
   const canDrag = isDesktop && isDraggable(w);
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+
+  // UKLONJENO: transform varijabla - original se ne smije pomicati dok radi DragOverlay
+  const { attributes, listeners, setNodeRef } = useDraggable({
     id: w.id,
     disabled: !canDrag,
     data: { workout: w }
   });
 
-  const style = transform ? {
-    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-    zIndex: 50,
-    touchAction: 'none'
-  } : {
+  const style = {
     touchAction: canDrag ? 'none' : 'auto'
   };
 
@@ -54,7 +52,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
       ref={setNodeRef}
       style={style}
       {...(canDrag ? { ...attributes, ...listeners } : {})}
-      className={`rounded-xl flex flex-col overflow-hidden min-h-[86px] backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-30 scale-95 border-dashed border-2 border-orange-500' : ''} ${canDrag ? 'cursor-grab active:cursor-grabbing hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
+      className={`rounded-xl flex flex-col overflow-hidden min-h-[86px] backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : ''} ${canDrag && !isDragging ? 'cursor-grab hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
     >
       <div className={`h-1.5 w-full shrink-0 ${getTopCol(w.statusColor)}`} />
       <div className={`${isDesktop ? 'p-2.5' : 'p-3.5'} flex flex-col justify-between flex-1 gap-2.5`}>
@@ -112,7 +110,6 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
     </div>
   );
 });
-
 
 // ============================================================
 // CalendarDay
@@ -191,12 +188,10 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
 // ============================================================
 // DragOverlay Preview
 // ============================================================
-// Uklonjen je nespretni custom modifier. Skaliranje prebačeno na transform-origin-top-left kako
-// komponenta ne bi centrirala samu sebe mimo kursora dok se povećava (scale-105).
 function DragOverlayCard({ workout }) {
   if (!workout) return null;
   return (
-    <div className="w-56 rounded-xl overflow-hidden border border-orange-500/40 bg-zinc-900/95 shadow-2xl shadow-orange-500/20 backdrop-blur-xl pointer-events-none opacity-90 scale-105 origin-top-left transition-transform">
+    <div className="w-[190px] rounded-xl overflow-hidden border-2 border-orange-500/80 bg-zinc-900/95 shadow-2xl shadow-orange-500/30 backdrop-blur-xl pointer-events-none cursor-grabbing">
       <div className={`h-1.5 w-full ${getTopCol(workout.statusColor)}`} />
       <div className="p-2.5 flex flex-col gap-1.5">
         <span className="font-bold text-xs text-zinc-100 line-clamp-2 leading-tight">{workout.title}</span>
@@ -223,7 +218,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 8, // Drži 8px tolerancije kako običan klik ne bi pokrenuo drag
       },
     })
   );
@@ -386,7 +381,6 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
           })}
         </div>
 
-        {/* Uklonjen custom modifiers={[snapCenterToCursor]} */}
         <DragOverlay
           dropAnimation={{
             duration: 200,
