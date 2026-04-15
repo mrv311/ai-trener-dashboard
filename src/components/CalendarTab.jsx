@@ -218,7 +218,7 @@ function DragOverlayCard({ workout, activeWidth }) {
 // ============================================================
 // CalendarTab
 // ============================================================
-export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleRescheduleWorkout, handleUpdateWorkout, onSelectWorkout }) {
+export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleRescheduleWorkout, handleUpdateWorkout, onSelectWorkout, profile }) {
   const cy = currentDate.getFullYear();
   const cm = currentDate.getMonth();
   const daysInMo = new Date(cy, cm + 1, 0).getDate();
@@ -327,6 +327,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         onClose={() => setEditingWorkout(null)} 
         onSave={handleSaveWorkout}
         isLoading={isUpdating}
+        userFtp={profile?.ftp}
       />
       <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-950/50">
         <span className="px-4 font-bold text-lg text-zinc-100 drop-shadow-sm">{monthNames[cm]} {cy}</span>

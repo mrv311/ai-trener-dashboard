@@ -135,6 +135,7 @@ export default function App() {
                 handleRescheduleWorkout={handleRescheduleWorkout}
                 handleUpdateWorkout={handleUpdateWorkout}
                 onSelectWorkout={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
+                profile={athleteProfile}
               />
             )}
 

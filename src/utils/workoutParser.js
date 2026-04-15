@@ -2,6 +2,116 @@ import { calculateCogganMetrics, expandStepsToSeconds } from './performanceMetri
 
 // Očekivani izlaz: { title, description, duration_seconds, difficulty_score, steps: [{ name, duration, power }] }
 
+export const parseIntervalsCode = (code, ftp = 200) => {
+  if (!code) return { duration: 0, tss: 0, np: 0, blocks: [], allSteps: [], zones: { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, z7: 0 } };
+  
+  let blocks = [];
+  let currentBlock = { name: 'Main', steps: [] };
+  let allSteps = [];
+  let totalDurMins = 0;
+  
+  let tempMultiplier = 1;
+
+  const lines = code.split('\n');
+  lines.forEach(line => {
+    let cleanLine = line.trim();
+    if (!cleanLine) return;
+
+    // Detekcija strelice ili crtice kao korak
+    const isStep = cleanLine.startsWith('-') || /^\d+[hms]/.test(cleanLine);
+    // Detekcija multiplikatora (npr 4x)
+    const xMatch = cleanLine.match(/^(\d+)x/i);
+
+    if (xMatch && !cleanLine.includes('%')) {
+      tempMultiplier = parseInt(xMatch[1]);
+      return; 
+    }
+
+    if (!isStep && !xMatch) {
+      if (currentBlock.steps.length > 0) blocks.push(currentBlock);
+      currentBlock = { name: cleanLine, steps: [] };
+      return;
+    }
+
+    // Parsiranje koraka
+    let mins = 0;
+    const hMatch = cleanLine.match(/(\d+)\s*h/i);
+    const mMatch = cleanLine.match(/(\d+)\s*m/i);
+    const sMatch = cleanLine.match(/(\d+)\s*s/i);
+
+    if (hMatch) mins += parseInt(hMatch[1]) * 60;
+    if (mMatch) mins += parseInt(mMatch[1]);
+    if (sMatch) mins += parseInt(sMatch[1]) / 60;
+
+    let powerMin = 0, powerMax = 0, powerAvg = 0;
+    // Trazimo range npr 50-70%
+    const pRangeMatch = cleanLine.match(/(\d+)-(\d+)%/);
+    // Trazimo single npr 100%
+    const pMatch = cleanLine.match(/(\d+)%\s*(?:FTP)?/i);
+
+    if (pRangeMatch) {
+      powerMin = parseInt(pRangeMatch[1]);
+      powerMax = parseInt(pRangeMatch[2]);
+      powerAvg = Math.round((powerMin + powerMax) / 2);
+    } else if (pMatch) {
+      powerMin = parseInt(pMatch[1]);
+      powerMax = powerMin;
+      powerAvg = powerMin;
+    }
+
+    if (mins > 0) {
+      const stepObj = {
+        text: cleanLine,
+        duration: mins * 60,
+        powerMin: powerMin > 0 ? powerMin : 50,
+        powerMax: powerMax > 0 ? powerMax : 50,
+        power: powerAvg > 0 ? powerAvg : 50
+      };
+
+      for(let i = 0; i < tempMultiplier; i++) {
+        currentBlock.steps.push({...stepObj});
+        allSteps.push({...stepObj});
+        totalDurMins += mins;
+      }
+      tempMultiplier = 1; // reset after applying
+    }
+  });
+
+  if (currentBlock.steps.length > 0 || blocks.length === 0) {
+     blocks.push(currentBlock);
+  }
+
+  // Računanje NP i TSS
+  const powerArray = expandStepsToSeconds(allSteps, ftp);
+  const metrics = calculateCogganMetrics(powerArray, ftp);
+
+  // Izračun zona (Zone 1 - Zone 7/SS)
+  const zoneStats = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, ss: 0 };
+  let secArray = expandStepsToSeconds(allSteps, 100); // in percent
+  secArray.forEach(p => {
+    if (p < 55) zoneStats.z1++;
+    else if (p < 76) zoneStats.z2++;
+    else if (p < 88) zoneStats.z3++;
+    else if (p < 95) zoneStats.ss++; // Sweet Spot
+    else if (p < 106) zoneStats.z4++;
+    else if (p < 121) zoneStats.z5++;
+    else zoneStats.z6++;
+  });
+
+  return {
+    duration: totalDurMins * 60,
+    tss: metrics.tss,
+    np: metrics.np,
+    workKj: metrics.workKj,
+    ifFactor: metrics.ifFactor,
+    avgPower: metrics.avgPower,
+    variability: metrics.avgPower > 0 ? (metrics.np / metrics.avgPower).toFixed(2) : 1,
+    blocks,
+    allSteps,
+    zones: zoneStats
+  };
+};
+
 export async function parseWorkoutFile(fileText, fileName) {
   const isZwo = fileName.toLowerCase().endsWith('.zwo');
   const isErg = fileName.toLowerCase().endsWith('.erg');
