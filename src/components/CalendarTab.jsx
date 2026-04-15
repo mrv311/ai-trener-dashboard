@@ -49,29 +49,29 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
   const style = transform ? {
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
     zIndex: 50,
-  } : undefined;
+    touchAction: 'none' // Sprječava default scroll na uređajima osjetljivim na dodir
+  } : {
+    touchAction: canDrag ? 'none' : 'auto'
+  };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`rounded-xl flex flex-col overflow-hidden min-h-[86px] backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false && 'opacity-60 saturate-50'} ${isDragging ? 'opacity-30 scale-95' : ''} ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      {...(canDrag ? { ...attributes, ...listeners } : {})}
+      className={`rounded-xl flex flex-col overflow-hidden min-h-[86px] backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-30 scale-95 border-dashed border-2 border-orange-500' : ''} ${canDrag ? 'cursor-grab active:cursor-grabbing hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
     >
       <div className={`h-1.5 w-full shrink-0 ${getTopCol(w.statusColor)}`} />
       <div className={`${isDesktop ? 'p-2.5' : 'p-3.5'} flex flex-col justify-between flex-1 gap-2.5`}>
         <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} flex items-start justify-between text-zinc-200 leading-tight`}>
           <span className={`${isDesktop ? 'line-clamp-2 pr-1' : 'pr-2'}`}>
-            {/* Drag handle ikona za draggable kartice */}
-            {canDrag && (
-              <span {...attributes} {...listeners} className="inline-flex mr-1 text-zinc-500 hover:text-orange-400 transition-colors align-middle" title="Povuci za premještanje">
-                <GripVertical className="w-3.5 h-3.5" />
-              </span>
-            )}
+            {canDrag && <GripVertical className="inline-block w-3.5 h-3.5 mr-1 text-zinc-500 align-middle pointer-events-none" />}
             {w.title}
           </span>
-          <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+          <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onPointerDown={(e) => { /* Blokiramo propagaciju odmah na wraperu ako dijete ne ulovi */ }}>
             {!w.isCompleted && onSelectWorkout && (
               <button
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
                 className={`text-orange-400 hover:text-white bg-orange-500/10 hover:bg-orange-500 ${isDesktop ? 'rounded-md p-1' : 'rounded-lg p-1.5 shadow-[0_0_8px_rgba(249,115,22,0.2)] hover:shadow-[0_0_12px_rgba(249,115,22,0.6)]'} transition-all border border-orange-500/20`}
                 title="Pošalji na trenažer"
@@ -79,9 +79,13 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                 <Play className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} fill-current`} />
               </button>
             )}
-            {w.actId && w.eventId && <button onClick={() => handleUnpair(w.actId, w.eventId)} className="text-zinc-500 hover:text-orange-400 transition-colors" title="Razdvoji planirano i odrađeno"><Unlink className="w-3.5 h-3.5" /></button>}
+            {w.actId && w.eventId && (
+              <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleUnpair(w.actId, w.eventId); }} className="text-zinc-500 hover:text-orange-400 transition-colors" title="Razdvoji planirano i odrađeno">
+                <Unlink className="w-3.5 h-3.5" />
+              </button>
+            )}
             {w.actId && w.separatedEventIds && w.separatedEventIds.map(sepId => (
-              <button key={sepId} onClick={() => handlePair(w.actId, sepId)} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom">
+              <button key={sepId} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom">
                 <Link2 className="w-3.5 h-3.5" />
               </button>
             ))}
@@ -90,6 +94,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
             {w.statusColor === 'grey' && !w.isLocal && <Target className="w-3.5 h-3.5 text-zinc-500" />}
             {w.isLocal && !w.isCompleted && handleDeleteLocalActivity && (
               <button
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
                 className={`text-zinc-${isDesktop ? '600' : '500'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
                 title="Obriši planirani trening"
