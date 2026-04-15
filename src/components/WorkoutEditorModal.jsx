@@ -2,6 +2,88 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Save, Pencil, Eye, Bike, Clock, Activity, Zap, BarChart3, Flame } from 'lucide-react';
 import { parseIntervalsCode } from '../utils/workoutParser';
 
+
+// ============================================================
+// Konverter: workout_doc JSON → čitljivi Intervals.icu tekst
+// ============================================================
+function formatDuration(secs) {
+  if (!secs || secs <= 0) return '0m';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.round(secs % 60);
+  let parts = [];
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (s > 0 && h === 0) parts.push(`${s}s`);
+  return parts.join('') || '0m';
+}
+
+function formatPower(power) {
+  if (!power) return '50%';
+  if (typeof power === 'number') return `${Math.round(power)}%`;
+  if (power.value != null) return `${Math.round(power.value)}%`;
+  if (power.start != null && power.end != null) {
+    return `${Math.round(power.start)}-${Math.round(power.end)}%`;
+  }
+  return '50%';
+}
+
+function stepsToTextLines(steps, indent = '') {
+  const lines = [];
+  if (!steps || !Array.isArray(steps)) return lines;
+
+  steps.forEach(step => {
+    // Grupni korak (ima pod-steps i/ili reps)
+    if (step.steps && Array.isArray(step.steps)) {
+      const reps = step.reps || step.count || 1;
+      // Ako ima tekst/naziv, to je naziv sekcije
+      if (step.text) {
+        lines.push(`${indent}${step.text}`);
+      }
+      if (reps > 1) {
+        lines.push(`${indent}${reps}x`);
+      }
+      const subLines = stepsToTextLines(step.steps, indent);
+      lines.push(...subLines);
+    } else {
+      //单 korak
+      const dur = formatDuration(step.duration || 0);
+      const pwr = formatPower(step.power);
+      const text = step.text ? ` ${step.text}` : '';
+      lines.push(`${indent}- ${dur} ${pwr}${text}`);
+    }
+  });
+
+  return lines;
+}
+
+/**
+ * Pretvara workout_doc JSON objekt iz Intervals.icu API-ja u čitljivi tekst.
+ * Podržava i lokalne step nizove iz Library/Schedule sustava.
+ */
+function workoutDocToCode(workoutDoc) {
+  if (!workoutDoc) return '';
+  if (typeof workoutDoc === 'string') return workoutDoc;
+
+  // Intervals.icu format: { steps: [...] }
+  if (workoutDoc.steps && Array.isArray(workoutDoc.steps)) {
+    return stepsToTextLines(workoutDoc.steps).join('\n');
+  }
+
+  // Direktni niz koraka (lokalni format: [{ name, duration, power }])
+  if (Array.isArray(workoutDoc)) {
+    return workoutDoc.map(step => {
+      const dur = formatDuration(step.duration || 0);
+      const pwr = `${Math.round(step.power || 50)}%`;
+      const name = step.name ? ` ${step.name}` : '';
+      return `- ${dur} ${pwr}${name}`;
+    }).join('\n');
+  }
+
+  return '';
+}
+
+
 // ============================================================
 // Pomoćne funkcije
 // ============================================================
@@ -202,9 +284,9 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
   useEffect(() => {
     if (workout && isOpen) {
       setTitle(workout.title || '');
-      // Dohvat koda iz različitih mogućih izvora
-      const workoutCode = workout.workout_doc || workout.steps || '';
-      setCode(typeof workoutCode === 'string' ? workoutCode : '');
+      // Dohvat koda iz različitih mogućih izvora (JSON ili Array pretvaramo u tekst)
+      const workoutData = workout.workout_doc || workout.steps || '';
+      setCode(workoutDocToCode(workoutData));
       setMode('view');
     }
   }, [workout, isOpen]);
