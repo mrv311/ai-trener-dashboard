@@ -28,15 +28,10 @@ const getTopCol = (sc) => {
   return "bg-zinc-700";
 };
 
-/**
- * Provjera da li je workout draggable:
- * - planirani (nije completed)
- * - lokalni ILI Intervals.icu event
- */
 const isDraggable = (w) => !w.isCompleted && (w.isLocal || w.id.startsWith('ev-'));
 
 // ============================================================
-// WorkoutCard — React.memo, opcionalno useDraggable
+// WorkoutCard
 // ============================================================
 const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, isCurrentMonth }) {
   const canDrag = isDesktop && isDraggable(w);
@@ -49,7 +44,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
   const style = transform ? {
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
     zIndex: 50,
-    touchAction: 'none' // Sprječava default scroll na uređajima osjetljivim na dodir
+    touchAction: 'none'
   } : {
     touchAction: canDrag ? 'none' : 'auto'
   };
@@ -68,7 +63,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
             {canDrag && <GripVertical className="inline-block w-3.5 h-3.5 mr-1 text-zinc-500 align-middle pointer-events-none" />}
             {w.title}
           </span>
-          <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onPointerDown={(e) => { /* Blokiramo propagaciju odmah na wraperu ako dijete ne ulovi */ }}>
+          <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onPointerDown={(e) => { }}>
             {!w.isCompleted && onSelectWorkout && (
               <button
                 onPointerDown={(e) => e.stopPropagation()}
@@ -88,7 +83,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               <button key={sepId} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom">
                 <Link2 className="w-3.5 h-3.5" />
               </button>
-            ))}
+            )}
             {w.statusColor === 'green' && <CheckCircle2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-emerald-400 drop-shadow-[0_0_${isDesktop ? '3' : '5'}px_rgba(16,185,129,0.5)]`} />}
             {w.statusColor === 'red-missed' && <XCircle className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-rose-500`} />}
             {w.statusColor === 'grey' && !w.isLocal && <Target className="w-3.5 h-3.5 text-zinc-500" />}
@@ -119,7 +114,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
 });
 
 // ============================================================
-// CalendarDay — React.memo + useDroppable
+// CalendarDay
 // ============================================================
 const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity }) {
   const { isOver, setNodeRef } = useDroppable({
@@ -127,7 +122,6 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
   });
 
   if (!isDesktop) {
-    // Mobile view — bez droppable
     const dayNames = ["PON", "UTO", "SRI", "ČET", "PET", "SUB", "NED"];
     const dayOfWeek = dayNames[(new Date(dObj.dateStr).getDay() + 6) % 7];
     return (
@@ -155,7 +149,6 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
     );
   }
 
-  // Desktop view — s droppable
   return (
     <div
       ref={setNodeRef}
@@ -195,12 +188,14 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
 });
 
 // ============================================================
-// DragOverlay Preview — minimalna kartica tijekom draga
+// DragOverlay Preview
 // ============================================================
+// Uklonjen je nespretni custom modifier. Skaliranje prebačeno na transform-origin-top-left kako
+// komponenta ne bi centrirala samu sebe mimo kursora dok se povećava (scale-105).
 function DragOverlayCard({ workout }) {
   if (!workout) return null;
   return (
-    <div className="w-56 rounded-xl overflow-hidden border border-orange-500/40 bg-zinc-900/95 shadow-2xl shadow-orange-500/20 backdrop-blur-xl pointer-events-none opacity-90 scale-105 transition-transform">
+    <div className="w-56 rounded-xl overflow-hidden border border-orange-500/40 bg-zinc-900/95 shadow-2xl shadow-orange-500/20 backdrop-blur-xl pointer-events-none opacity-90 scale-105 origin-top-left transition-transform">
       <div className={`h-1.5 w-full ${getTopCol(workout.statusColor)}`} />
       <div className="p-2.5 flex flex-col gap-1.5">
         <span className="font-bold text-xs text-zinc-100 line-clamp-2 leading-tight">{workout.title}</span>
@@ -213,26 +208,8 @@ function DragOverlayCard({ workout }) {
   );
 }
 
-// Modifikator koji centrira overlay savršeno ispod trenutne pozicije miša/prsta
-const snapCenterToCursor = ({ activatorEvent, activeNodeRect, transform, overlayNodeRect }) => {
-  if (activatorEvent && activeNodeRect && overlayNodeRect) {
-    const isTouch = activatorEvent.touches && activatorEvent.touches.length > 0;
-    const initialX = isTouch ? activatorEvent.touches[0].clientX : activatorEvent.clientX;
-    const initialY = isTouch ? activatorEvent.touches[0].clientY : activatorEvent.clientY;
-    
-    if (initialX !== undefined && initialY !== undefined) {
-      return {
-        ...transform,
-        x: transform.x + initialX - activeNodeRect.left - overlayNodeRect.width / 2,
-        y: transform.y + initialY - activeNodeRect.top - overlayNodeRect.height / 2,
-      };
-    }
-  }
-  return transform;
-};
-
 // ============================================================
-// CalendarTab — Glavni kontejner s DndContext
+// CalendarTab
 // ============================================================
 export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleRescheduleWorkout, onSelectWorkout }) {
   const cy = currentDate.getFullYear();
@@ -242,7 +219,6 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const [activeId, setActiveId] = useState(null);
   const [activeWorkout, setActiveWorkout] = useState(null);
 
-  // Sensor s distance threshold da klik ne triggera drag
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -275,7 +251,6 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     return w;
   }, [calDays]);
 
-  // Pre-compute workouts per day za O(1) lookup
   const workoutsByDate = useMemo(() => {
     const map = {};
     workouts.forEach(w => {
@@ -289,7 +264,6 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const dayNames = ["PON", "UTO", "SRI", "ČET", "PET", "SUB", "NED"];
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // ---- DnD Handlers ----
   const handleDragStart = useCallback((event) => {
     setActiveId(event.active.id);
     setActiveWorkout(event.active.data?.current?.workout || null);
@@ -304,14 +278,11 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     const workoutId = active.id;
     const newDate = over.id;
 
-    // Pronađi stari datum
     const draggedWorkout = workouts.find(w => w.id === workoutId);
     if (!draggedWorkout) return;
 
-    // Ako je isti dan — ne radi ništa
     if (draggedWorkout.date === newDate) return;
 
-    // Pozovi handler za reschedule (optimistic UI u hooku)
     if (handleRescheduleWorkout) {
       handleRescheduleWorkout(workoutId, newDate);
     }
@@ -324,8 +295,6 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
   return (
     <div className="max-w-[1600px] mx-auto bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 flex flex-col min-h-[700px] animate-in fade-in overflow-hidden">
-
-      {/* ZAGLAVLJE KALENDARA */}
       <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-950/50">
         <span className="px-4 font-bold text-lg text-zinc-100 drop-shadow-sm">{monthNames[cm]} {cy}</span>
         <div className="flex bg-zinc-900/80 rounded-lg p-1 border border-zinc-800 gap-1">
@@ -335,13 +304,11 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         </div>
       </div>
 
-      {/* DANI U TJEDNU (Desktop) */}
       <div className="hidden md:grid grid-cols-8 border-b border-zinc-800/80 bg-zinc-900/80 font-bold text-[10px] text-zinc-500 uppercase tracking-widest">
         {dayNames.map((d, i) => <div key={i} className="py-3 px-3 border-r border-zinc-800/80">{d}</div>)}
         <div className="py-3 text-center bg-orange-500/10 text-orange-400 border-l border-zinc-800 shadow-[inset_0_0_10px_rgba(249,115,22,0.05)]">Sažetak</div>
       </div>
 
-      {/* VERTIKALNA LISTA DANA (Mobile) — bez D&D */}
       <div className="flex md:hidden flex-col bg-zinc-950 gap-[1px] flex-1 overflow-y-auto">
         {calDays.filter(d => d.isCurrentMonth).map((dObj) => (
           <CalendarDay
@@ -361,7 +328,6 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         ))}
       </div>
 
-      {/* MREŽA TJEDANA I DANA (Desktop) — s DndContext */}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -404,7 +370,6 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                   );
                 })}
 
-                {/* SAŽETAK TJEDNA */}
                 <div className="bg-gradient-to-b from-orange-500/5 to-transparent p-4 flex flex-col justify-end items-end border-l border-zinc-800 bg-zinc-900/40 text-right space-y-3">
                   <div className="w-full">
                     <p className="text-[9px] font-black text-orange-500 uppercase tracking-tighter mb-1">Ukupno Vrijeme</p>
@@ -420,9 +385,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
           })}
         </div>
 
-        {/* DragOverlay — prati kursor tijekom draga */}
-        <DragOverlay 
-          modifiers={[snapCenterToCursor]}
+        {/* Uklonjen custom modifiers={[snapCenterToCursor]} */}
+        <DragOverlay
           dropAnimation={{
             duration: 200,
             easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
