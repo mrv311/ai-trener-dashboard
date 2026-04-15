@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical } from 'lucide-react';
-import { DndContext, closestCenter, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
+import { DndContext, pointerWithin, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 
 const formatDur = (mins) => {
@@ -188,10 +188,13 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
 // ============================================================
 // DragOverlay Preview
 // ============================================================
-function DragOverlayCard({ workout }) {
+function DragOverlayCard({ workout, activeWidth }) {
   if (!workout) return null;
   return (
-    <div className="w-[190px] rounded-xl overflow-hidden border-2 border-orange-500/80 bg-zinc-900/95 shadow-2xl shadow-orange-500/30 backdrop-blur-xl pointer-events-none cursor-grabbing">
+    <div 
+      style={{ width: activeWidth ? `${activeWidth}px` : '200px' }} 
+      className="rounded-xl overflow-hidden border-2 border-orange-500/80 bg-zinc-900/95 shadow-2xl shadow-orange-500/30 backdrop-blur-xl pointer-events-none cursor-grabbing scale-105 opacity-90 transition-transform"
+    >
       <div className={`h-1.5 w-full ${getTopCol(workout.statusColor)}`} />
       <div className="p-2.5 flex flex-col gap-1.5">
         <span className="font-bold text-xs text-zinc-100 line-clamp-2 leading-tight">{workout.title}</span>
@@ -214,6 +217,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const startOff = new Date(cy, cm, 1).getDay() === 0 ? 6 : new Date(cy, cm, 1).getDay() - 1;
   const [activeId, setActiveId] = useState(null);
   const [activeWorkout, setActiveWorkout] = useState(null);
+  const [activeWidth, setActiveWidth] = useState(0);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -263,6 +267,9 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const handleDragStart = useCallback((event) => {
     setActiveId(event.active.id);
     setActiveWorkout(event.active.data?.current?.workout || null);
+    if (event.active.rect.current?.initial) {
+      setActiveWidth(event.active.rect.current.initial.width);
+    }
   }, []);
 
   const handleDragEnd = useCallback((event) => {
@@ -326,7 +333,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={pointerWithin}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
@@ -387,7 +394,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
           }}
         >
-          {activeWorkout ? <DragOverlayCard workout={activeWorkout} /> : null}
+          {activeWorkout ? <DragOverlayCard workout={activeWorkout} activeWidth={activeWidth} /> : null}
         </DragOverlay>
       </DndContext>
     </div>
