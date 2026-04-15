@@ -309,17 +309,23 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
   const handleSaveWorkout = async (updatedWorkout) => {
     try {
-      // 1. Pripremi striktni payload samo s poljima koja Intervals.icu API prepoznaje za PUT /events
+      // 1. Povuci ID i ključ iz Local Storage-a (prilagodi nazive onako kako si ih ti nazvao u App.jsx)
+      const storedId = localStorage.getItem('intervalsId'); // ili kako god se zove tvoj ključ
+      const storedKey = localStorage.getItem('intervalsKey');
+
+      if (!storedId || !storedKey) {
+        alert("Niste prijavljeni ili nedostaje API ključ!");
+        return;
+      }
+
       const payload = {
-        description: updatedWorkout.description, // Ovo je onaj tekstualni kod koji tipkamo u textarea
-        // Opcionalno, ako želiš da se mijenja i ime: name: updatedWorkout.title
+        description: updatedWorkout.description,
       };
 
-      // 2. Pozovi API
-      await updateEventDetails(intervalsId, intervalsKey, updatedWorkout.eventId, payload);
+      // 2. Pošalji s pravim varijablama
+      await updateEventDetails(storedId, storedKey, updatedWorkout.eventId, payload);
 
-      // 3. Ažuriraj lokalni React state da se GUI odmah osvježi bez novog fetch-a
-      // ... tvoja logika za setWorkouts
+      // ... ostatak koda za zatvaranje modala ...
 
     } catch (error) {
       console.error("Greška pri spremanju:", error);
