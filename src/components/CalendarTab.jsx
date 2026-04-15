@@ -309,7 +309,6 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
   const handleSaveWorkout = async (updatedWorkout) => {
     try {
-      // 1. Povuci ID i ključ iz Local Storage-a
       const storedId = localStorage.getItem('intervalsId');
       const storedKey = localStorage.getItem('intervalsKey');
 
@@ -318,24 +317,23 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         return;
       }
 
-      // --- DEBBUGING LINIJE (Ispisuju se u F12 Console) ---
-      console.log("Cijeli objekt koji je stigao iz modala:", updatedWorkout);
-      console.log("ID treninga koji šaljemo u API:", updatedWorkout.id);
-      // ----------------------------------------------------
+      // 1. ČIŠĆENJE ID-a: Uklanjamo 'ev-' prefiks kako bismo dobili čisti broj
+      // Dodajemo String() za svaki slučaj da izbjegnemo greške ako nešto pukne
+      const realApiId = String(updatedWorkout.id).replace('ev-', '');
 
-      // 2. Pripremi payload s podacima
+      console.log("Cijeli objekt stigao u funkciju:", updatedWorkout);
+      console.log("Čisti brojčani ID za Intervals API:", realApiId);
+
+      // 2. Priprema payloada
       const payload = {
         description: updatedWorkout.description,
       };
 
-      // 3. Pošalji s pravim varijablama. PAZI: koristimo .id, a ne .eventId
-      await updateEventDetails(storedId, storedKey, updatedWorkout.id, payload);
+      // 3. Šaljemo na API s OČIŠĆENIM ID-em
+      await updateEventDetails(storedId, storedKey, realApiId, payload);
 
-      // ZATVARANJE MODALA I OSVJEŽAVANJE STATE-a
-      // Ovdje stavi svoju funkciju za zatvaranje modala, npr:
-      // setSelectedWorkoutForEdit(null);
-      // I po potrebi triggeraj re-fetch ili ažuriraj lokalni state:
-      // fetchWorkoutsData(); 
+      // Ovdje stavi svoju logiku za zatvaranje modala
+      // npr. setSelectedWorkoutForEdit(null);
 
     } catch (error) {
       console.error("Greška pri spremanju:", error);

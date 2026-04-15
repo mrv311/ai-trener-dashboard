@@ -46,7 +46,7 @@ function stepsToTextLines(steps, indent = '') {
       const subLines = stepsToTextLines(step.steps, indent);
       lines.push(...subLines);
     } else {
-      //单 korak
+      // Pojedinačni korak
       const dur = formatDuration(step.duration || 0);
       const pwr = formatPower(step.power);
       const text = step.text ? ` ${step.text}` : '';
@@ -295,9 +295,18 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
 
   if (!isOpen || !workout) return null;
 
+  // ===== KLJUČNA PROMJENA =====
   const handleSave = () => {
-    onSave(workout.id, title, code, stats.tss, Math.round(stats.duration / 60));
+    // Pakiramo SVE u jedan objekt
+    onSave({
+      ...workout,            // Zadržava originalni ID i ostale postavke
+      title: title,          // Novi (ili stari) naslov
+      description: code,     // Ažurirani tekst/kod iz textarea
+      tss: stats.tss,        // Preračunati TSS
+      duration: Math.round(stats.duration / 60) // Trajanje u minutama
+    });
   };
+  // ==============================
 
   const totalSecs = stats.duration || 0;
   const intensityPct = stats.np > 0 && ftp > 0 ? Math.round((stats.np / ftp) * 100) : 0;
@@ -307,7 +316,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
   const dayNames = ['Nedjelja', 'Ponedjeljak', 'Utorak', 'Srijeda', 'Četvrtak', 'Petak', 'Subota'];
   const dayName = workoutDate ? dayNames[workoutDate.getDay()] : '';
   const dateStr = workoutDate
-    ? `${workoutDate.getDate()} ${['Sij','Velj','Ožu','Tra','Svi','Lip','Srp','Kol','Ruj','Lis','Stu','Pro'][workoutDate.getMonth()]}`
+    ? `${workoutDate.getDate()} ${['Sij', 'Velj', 'Ožu', 'Tra', 'Svi', 'Lip', 'Srp', 'Kol', 'Ruj', 'Lis', 'Stu', 'Pro'][workoutDate.getMonth()]}`
     : '';
   const timeStr = workout.time || '08:00';
 
@@ -457,11 +466,10 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
           <div className="flex items-center gap-2">
             <button
               onClick={() => setMode(mode === 'edit' ? 'view' : 'edit')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all border ${
-                mode === 'edit'
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all border ${mode === 'edit'
                   ? 'bg-orange-500/10 text-orange-400 border-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.1)]'
                   : 'bg-zinc-800/50 text-zinc-400 border-zinc-700 hover:bg-zinc-800 hover:text-zinc-200'
-              }`}
+                }`}
             >
               {mode === 'edit' ? <Eye className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
               {mode === 'edit' ? 'View' : 'Edit'}
