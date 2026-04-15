@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical } from 'lucide-react';
 import { DndContext, pointerWithin, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { snapCenterToCursor } from '@dnd-kit/modifiers';
 
 const formatDur = (mins) => {
   const h = Math.floor(mins / 60);
@@ -389,6 +390,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         </div>
 
         <DragOverlay
+          modifiers={[snapCenterToCursor]}
           dropAnimation={{
             duration: 200,
             easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
