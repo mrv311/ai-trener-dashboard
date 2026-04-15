@@ -200,7 +200,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
 function DragOverlayCard({ workout }) {
   if (!workout) return null;
   return (
-    <div className="w-48 rounded-xl overflow-hidden border border-orange-500/40 bg-zinc-900/95 shadow-2xl shadow-orange-500/20 backdrop-blur-xl pointer-events-none">
+    <div className="w-56 rounded-xl overflow-hidden border border-orange-500/40 bg-zinc-900/95 shadow-2xl shadow-orange-500/20 backdrop-blur-xl pointer-events-none opacity-90 scale-105 transition-transform">
       <div className={`h-1.5 w-full ${getTopCol(workout.statusColor)}`} />
       <div className="p-2.5 flex flex-col gap-1.5">
         <span className="font-bold text-xs text-zinc-100 line-clamp-2 leading-tight">{workout.title}</span>
@@ -212,6 +212,24 @@ function DragOverlayCard({ workout }) {
     </div>
   );
 }
+
+// Modifikator koji centrira overlay savršeno ispod trenutne pozicije miša/prsta
+const snapCenterToCursor = ({ activatorEvent, activeNodeRect, transform, overlayNodeRect }) => {
+  if (activatorEvent && activeNodeRect && overlayNodeRect) {
+    const isTouch = activatorEvent.touches && activatorEvent.touches.length > 0;
+    const initialX = isTouch ? activatorEvent.touches[0].clientX : activatorEvent.clientX;
+    const initialY = isTouch ? activatorEvent.touches[0].clientY : activatorEvent.clientY;
+    
+    if (initialX !== undefined && initialY !== undefined) {
+      return {
+        ...transform,
+        x: transform.x + initialX - activeNodeRect.left - overlayNodeRect.width / 2,
+        y: transform.y + initialY - activeNodeRect.top - overlayNodeRect.height / 2,
+      };
+    }
+  }
+  return transform;
+};
 
 // ============================================================
 // CalendarTab — Glavni kontejner s DndContext
@@ -403,10 +421,13 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         </div>
 
         {/* DragOverlay — prati kursor tijekom draga */}
-        <DragOverlay dropAnimation={{
-          duration: 200,
-          easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
-        }}>
+        <DragOverlay 
+          modifiers={[snapCenterToCursor]}
+          dropAnimation={{
+            duration: 200,
+            easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+          }}
+        >
           {activeWorkout ? <DragOverlayCard workout={activeWorkout} /> : null}
         </DragOverlay>
       </DndContext>
