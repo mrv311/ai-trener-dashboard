@@ -110,22 +110,50 @@ export const createEvent = async (intervalsId, intervalsKey, payload) => {
  */
 export const updateEventDetails = async (intervalsId, intervalsKey, eventId, payload) => {
   const cleanId = intervalsId.trim();
-  const headers = {
-    ...getAuthHeaders(intervalsKey),
-    'Content-Type': 'application/json'
-  };
-
   const url = `https://intervals.icu/api/v1/athlete/${cleanId}/events/${eventId}`;
+
+  // 1. Sigurno spajanje headera
+  const headers = new Headers();
+  headers.append('Content-Type', 'application/json');
+  headers.append('Accept', 'application/json');
+
+  const auth = getAuthHeaders(intervalsKey);
+  if (auth instanceof Headers) {
+    auth.forEach((value, key) => headers.append(key, value));
+  } else if (auth && typeof auth === 'object') {
+    Object.keys(auth).forEach(key => headers.append(key, auth[key]));
+  }
+
+  if (!payload) throw new Error("Interna greška: Nema podataka.");
   
+  // 2. Priprema podataka
+  let cleanPayload = typeof payload === 'string' ? JSON.parse(payload) : { ...payload };
+  
+  // === KLJUČNI FIX ZA INTERVALS.ICU API ===
+  // API ruši parser ako 'workout_doc' dođe kao string. 
+  // Tekst s intervalima API isključivo očekuje unutar 'description' polja.
+  if (cleanPayload.workout_doc) {
+    // Prebaci tekstualne intervale u description (ako description već ne postoji)
+    if (!cleanPayload.description && typeof cleanPayload.workout_doc === 'string') {
+      cleanPayload.description = cleanPayload.workout_doc;
+    }
+    // OBAVEZNO obrisati workout_doc prije slanja, API ga sam generira na svojoj strani!
+    delete cleanPayload.workout_doc;
+  }
+  // =========================================
+
+  const bodyData = JSON.stringify(cleanPayload);
+
+  // 3. Slanje zahtjeva
   const res = await fetch(url, {
     method: 'PUT',
-    headers,
-    body: JSON.stringify(payload)
+    headers: headers,
+    body: bodyData
   });
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`Greška pri ažuriranju treninga: ${res.status} ${errText}`);
+    throw new Error(`Greška pri ažuriranju treninga (Status ${res.status}): ${errText}`);
   }
 
   return res.json();
