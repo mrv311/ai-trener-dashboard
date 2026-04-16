@@ -69,37 +69,47 @@ const DEFAULT_INTENSITY = [
 // ============================================================
 // WorkoutGraph (Performance Guardrail)
 // ============================================================
+// ============================================================
+// WorkoutGraph (Performance & Scaling Fix)
+// ============================================================
+// ============================================================
+// WorkoutGraph (Final Solid Visuals Fix)
+// ============================================================
+// ============================================================
+// WorkoutGraph (Final Polish with Seams)
+// ============================================================
+// ============================================================
+// WorkoutGraph (Final Solid Visuals Fix)
+// ============================================================
 const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted }) {
-  // Use extractIntensityData to convert workout_doc into an array of FTP percentages
   const intensityArray = useMemo(() => {
     return extractIntensityData(workoutDoc);
   }, [workoutDoc]);
   
   const displayData = intensityArray.length > 0 ? intensityArray : DEFAULT_INTENSITY.map(d => d.ftpPercent);
   
-  // Da bi svi stupci uvijek potpuno ispunili kontejner (bez praznog prostora ako ih ima malo, ili bez stiskanja u širinu od 1px ako ih ima puno)
   return (
-    <div className="flex items-end h-10 w-full mt-2.5">
+    <div className="relative flex items-end h-10 w-full mt-2.5 bg-zinc-950/60 rounded-sm overflow-hidden">
       {displayData.map((val, i) => {
         const zone = getZoneFromFtpPercent(val);
-        const height = `${Math.min(val, 150)}%`;
+        // Maksimalna visina je 150% FTP-a
+        const heightPercent = Math.min((val / 150) * 100, 100);
         
         return (
-          <div key={i} className="flex-1 flex items-end h-full">
-            {isCompleted ? (
-              <div 
-                className={`w-full rounded-t-[1px] ${ZONE_COLORS[zone] || 'bg-slate-500'}`}
-                style={{ height }}
-              />
-            ) : (
-              <div 
-                className={`w-full rounded-t-[1px] border-t border-l border-r border-b-0 bg-transparent opacity-60 box-border ${BORDER_COLORS[zone] || 'border-slate-500'}`}
-                style={{ height }}
-              />
-            )}
-          </div>
+          <div 
+            key={i} 
+            // isCompleted određuje hoće li boja biti puna ili izblijedjela (opacity-40)
+            className={`flex-1 transition-all duration-300 ${ZONE_COLORS[zone]} ${isCompleted ? 'opacity-100' : 'opacity-40'}`}
+            style={{ 
+              height: `${heightPercent}%`,
+              minWidth: '1px' // Sprječava da stupac potpuno nestane ako ih ima previše
+            }}
+          />
         );
       })}
+      
+      {/* 100% FTP Baseline Indikator (Suptilna linija praga) */}
+      <div className="absolute bottom-[66.6%] left-0 w-full border-b border-white/10 pointer-events-none" />
     </div>
   );
 });
@@ -110,14 +120,13 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted 
 const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, onEditWorkout, isCurrentMonth }) {
   const canDrag = isDesktop && isDraggable(w);
 
-  // UKLONJENO: transform varijabla - original se ne smije pomicati dok radi DragOverlay
   const { attributes, listeners, setNodeRef } = useDraggable({
     id: w.id,
     disabled: !canDrag,
     data: { workout: w }
   });
 
-    const style = {
+  const style = {
     touchAction: canDrag ? 'none' : 'auto'
   };
 
@@ -189,7 +198,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           </div>
         </div>
 
-                {/* Metrics Row: Load (TSS) & Description */}
+        {/* Metrics Row: Load (TSS) & Description */}
         <div className="flex flex-col gap-1.5 mt-2">
           <div className="flex items-center gap-2">
             <div className="flex items-baseline gap-1 bg-zinc-950/40 rounded px-1.5 py-0.5 border border-zinc-800/50">
@@ -205,7 +214,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           )}
         </div>
 
-                                {/* Visual Graph (Interval Visualization) */}
+        {/* Visual Graph (Interval Visualization) */}
         <WorkoutGraph 
            workoutDoc={w.workout_doc || w.steps} 
            isCompleted={w.isCompleted || w.status === 'completed'} 
@@ -263,7 +272,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
           onClick={(e) => {
              if (e.target.closest('.workout-card-element')) return;
              if (dObj.isCurrentMonth) {
-                                  const newWorkout = {
+                  const newWorkout = {
                      id: `local-${Date.now()}`,
                      date: dObj.dateStr,
                      title: 'Novi Trening',
@@ -274,10 +283,10 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
                      statusColor: 'grey',
                      isCompleted: false,
                      isLocal: true,
-                                          category: 'WORKOUT',
-                                          type: 'ride',
-                                          intervalDescription: 'Slatka točka: 3x15m na 90%',
-                                          steps: [{duration: 600, power: 50}, {duration: 900, power: 90}, {duration: 300, power: 50}, {duration: 900, power: 90}, {duration: 300, power: 50}, {duration: 900, power: 90}, {duration: 600, power: 50}]
+                     category: 'WORKOUT',
+                     type: 'ride',
+                     intervalDescription: 'Slatka točka: 3x15m na 90%',
+                     steps: [{duration: 600, power: 50}, {duration: 900, power: 90}, {duration: 300, power: 50}, {duration: 900, power: 90}, {duration: 300, power: 50}, {duration: 900, power: 90}, {duration: 600, power: 50}]
                  };
                  onEditWorkout(newWorkout);
              }
@@ -335,7 +344,7 @@ function DragOverlayCard({ workout, activeWidth }) {
            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Load</span>
            <span className="font-mono text-xs font-semibold text-zinc-200">{workout.tss > 0 ? workout.tss : '-'}</span>
         </div>
-                                <WorkoutGraph 
+        <WorkoutGraph 
            workoutDoc={workout.workout_doc || workout.steps} 
            isCompleted={workout.isCompleted || workout.status === 'completed'} 
         />
@@ -361,7 +370,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // Drži 8px tolerancije kako običan klik ne bi pokrenuo drag
+        distance: 8,
       },
     })
   );
@@ -435,16 +444,12 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     setActiveWorkout(null);
   }, []);
 
-      const handleSaveWorkout = async (updatedWorkout) => {
+  const handleSaveWorkout = async (updatedWorkout) => {
     setIsUpdating(true);
     try {
       if (updatedWorkout.id.startsWith('local-')) {
-          // Novi trening ili izmjena postojećeg lokalnog koji nije yet syncan
-          // HandleCreateWorkout će overwriteati isti ID ako već postoji u listi localScheduled (ili stvoriti novi)
-          // Zato ga slobodno zovemo za sve lokalne izmjene dok ne dobiju pravi 'ev-' prefix
           await handleCreateWorkout(updatedWorkout);
       } else {
-          // Postojeći trening
           await handleUpdateWorkout(
               updatedWorkout.id,
               updatedWorkout.title,
