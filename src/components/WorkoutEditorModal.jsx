@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Save, Pencil, Eye, Bike, Clock, Activity, Zap, BarChart3, Flame } from 'lucide-react';
 import { parseIntervalsCode } from '../utils/workoutParser';
+import { format } from 'date-fns';
 
 
 // ============================================================
@@ -296,14 +297,19 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
   if (!isOpen || !workout) return null;
 
   // ===== KLJUČNA PROMJENA =====
-  const handleSave = () => {
+    const handleSave = () => {
     // Pakiramo SVE u jedan objekt
     onSave({
       ...workout,            // Zadržava originalni ID i ostale postavke
       title: title,          // Novi (ili stari) naslov
       description: code,     // Ažurirani tekst/kod iz textarea
       tss: stats.tss,        // Preračunati TSS
-      duration: Math.round(stats.duration / 60) // Trajanje u minutama
+      duration: Math.round(stats.duration / 60), // Trajanje u minutama
+      type: workout.type || 'ride',
+      intensityFactor: stats.ifFactor,
+      plannedDuration: Math.round(stats.duration / 60),
+      plannedTss: stats.tss,
+      category: workout.category || 'WORKOUT'
     });
   };
   // ==============================

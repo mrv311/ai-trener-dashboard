@@ -60,7 +60,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           onEditWorkout(w);
         }
       }}
-      className={`rounded-xl flex flex-col overflow-hidden min-h-[86px] backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : ''} ${canDrag && !isDragging ? 'cursor-grab hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
+      className={`workout-card-element rounded-xl flex flex-col overflow-hidden min-h-[86px] backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : ''} ${canDrag && !isDragging ? 'cursor-grab hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
     >
       <div className={`h-1.5 w-full shrink-0 ${getTopCol(w.statusColor)}`} />
       <div className={`${isDesktop ? 'p-2.5' : 'p-3.5'} flex flex-col justify-between flex-1 gap-2.5`}>
@@ -156,14 +156,34 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
   }
 
   return (
-    <div
-      ref={setNodeRef}
-      className={`p-3 flex flex-col group relative transition-all duration-200
-        ${dObj.isCurrentMonth ? 'bg-zinc-900/60 hover:bg-zinc-800/80' : 'bg-zinc-950/80'}
-        ${isTdy ? 'ring-inset ring-2 ring-orange-500' : ''}
-        ${isOver ? 'bg-orange-500/10 ring-2 ring-orange-500/50 ring-inset shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}
-      `}
-    >
+        <div
+          ref={setNodeRef}
+          className={`p-3 flex flex-col group relative transition-all duration-200
+            ${dObj.isCurrentMonth ? 'bg-zinc-900/60 hover:bg-zinc-800/80 cursor-pointer' : 'bg-zinc-950/80'}
+            ${isTdy ? 'ring-inset ring-2 ring-orange-500' : ''}
+            ${isOver ? 'bg-orange-500/10 ring-2 ring-orange-500/50 ring-inset shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}
+          `}
+          onClick={(e) => {
+             if (e.target.closest('.workout-card-element')) return;
+             if (dObj.isCurrentMonth) {
+                 const newWorkout = {
+                     id: `local-${Date.now()}`,
+                     date: dObj.dateStr,
+                     title: 'Novi Trening',
+                     duration: 60,
+                     plannedDuration: 60,
+                     tss: 0,
+                     plannedTss: 0,
+                     statusColor: 'grey',
+                     isCompleted: false,
+                     isLocal: true,
+                     category: 'WORKOUT',
+                     type: 'ride'
+                 };
+                 onEditWorkout(newWorkout);
+             }
+          }}
+        >
       <div className="flex justify-between items-start mb-3">
         <span className={`text-xs font-bold ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.6)]' : (dObj.isCurrentMonth ? 'text-zinc-400' : 'text-zinc-600')}`}>{dObj.day}</span>
         {dWell && (
@@ -219,7 +239,7 @@ function DragOverlayCard({ workout, activeWidth }) {
 // ============================================================
 // CalendarTab
 // ============================================================
-export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleRescheduleWorkout, handleUpdateWorkout, onSelectWorkout, profile }) {
+export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile }) {
   const cy = currentDate.getFullYear();
   const cm = currentDate.getMonth();
   const daysInMo = new Date(cy, cm + 1, 0).getDate();
@@ -307,37 +327,28 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     setActiveWorkout(null);
   }, []);
 
-  const handleSaveWorkout = async (updatedWorkout) => {
+    const handleSaveWorkout = async (updatedWorkout) => {
+    setIsUpdating(true);
     try {
-      const storedId = localStorage.getItem('intervalsId');
-      const storedKey = localStorage.getItem('intervalsKey');
-
-      if (!storedId || !storedKey) {
-        alert("Niste prijavljeni ili nedostaje API ključ!");
-        return;
+      if (updatedWorkout.id.startsWith('local-') && updatedWorkout.title === 'Novi Trening') {
+          // Novi trening
+          await handleCreateWorkout(updatedWorkout);
+      } else {
+          // Postojeći trening (Intervals ili Edit lokalnog)
+          await handleUpdateWorkout(
+              updatedWorkout.id,
+              updatedWorkout.title,
+              updatedWorkout.description,
+              updatedWorkout.tss,
+              updatedWorkout.duration
+          );
       }
-
-      // 1. ČIŠĆENJE ID-a: Uklanjamo 'ev-' prefiks kako bismo dobili čisti broj
-      // Dodajemo String() za svaki slučaj da izbjegnemo greške ako nešto pukne
-      const realApiId = String(updatedWorkout.id).replace('ev-', '');
-
-      console.log("Cijeli objekt stigao u funkciju:", updatedWorkout);
-      console.log("Čisti brojčani ID za Intervals API:", realApiId);
-
-      // 2. Priprema payloada
-      const payload = {
-        description: updatedWorkout.description,
-      };
-
-      // 3. Šaljemo na API s OČIŠĆENIM ID-em
-      await updateEventDetails(storedId, storedKey, realApiId, payload);
-
-      // Ovdje stavi svoju logiku za zatvaranje modala
-      // npr. setSelectedWorkoutForEdit(null);
-
+      setEditingWorkout(null);
     } catch (error) {
       console.error("Greška pri spremanju:", error);
       alert(error.message);
+    } finally {
+      setIsUpdating(false);
     }
   };
 

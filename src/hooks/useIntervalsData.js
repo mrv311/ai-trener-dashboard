@@ -285,6 +285,57 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     }
   }, [rawEvents, intervalsId, intervalsKey]);
 
+    const handleCreateWorkout = useCallback(async (workoutObj) => {
+    // 1. Priprema optimističnog stanja (kreiramo lokalni zapis)
+    let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+    const newLocalWorkout = {
+      id: workoutObj.id.replace('local-', ''),
+      date: workoutObj.date,
+      title: workoutObj.title,
+      duration: workoutObj.duration,
+      duration_seconds: workoutObj.duration * 60,
+      tss: workoutObj.tss,
+      steps: workoutObj.description,
+      category: workoutObj.category || 'WORKOUT',
+      type: workoutObj.type || 'ride'
+    };
+    
+    localScheduled.push(newLocalWorkout);
+    localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
+    setLocalRefreshTrigger(prev => prev + 1);
+
+    // Ako nemamo API ključeve, stajemo ovdje, ostaje samo lokalno
+    if (!intervalsId || !intervalsKey) return;
+
+    // 2. Slanje na Intervals.icu u pozadini
+    try {
+      const { createEvent } = await import('../services/intervalsApi');
+      const payload = {
+        start_date_local: `${workoutObj.date}T08:00:00`,
+        category: workoutObj.category || 'WORKOUT',
+        name: workoutObj.title,
+        workout_doc: workoutObj.description,
+        icu_training_load: workoutObj.tss,
+        moving_time: workoutObj.duration * 60,
+        type: workoutObj.type === 'run' ? 'Run' : (workoutObj.type === 'strength' ? 'WeightTraining' : 'Ride')
+      };
+      
+      const newEvent = await createEvent(intervalsId, intervalsKey, payload);
+      
+      // Uspješno dodano na Intervals!
+      // Brišemo lokalni i dodajemo pravi event
+      localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+      localScheduled = localScheduled.filter(w => w.id !== newLocalWorkout.id);
+      localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
+      
+      setRawEvents(prev => [...prev, newEvent]);
+      setLocalRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error('Create Workout API error:', err);
+      // Ako api pukne, workout ostaje u lokalnom storageu što je ok fallback.
+    }
+  }, [intervalsId, intervalsKey]);
+
   return {
     workouts,
     wellnessData,
@@ -295,6 +346,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     handleUnpair,
     handleDeleteLocalActivity,
     handleRescheduleWorkout,
-    handleUpdateWorkout
+    handleUpdateWorkout,
+    handleCreateWorkout
   };
 }

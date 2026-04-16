@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart,
   User, Loader2, Monitor, LogOut, Link as LinkIcon,
@@ -39,7 +39,7 @@ export default function App() {
   const [intervalsId, setIntervalsId] = useLocalStorage('intervalsId', '');
   const [intervalsKey, setIntervalsKey] = useLocalStorage('intervalsKey', '');
 
-  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleRescheduleWorkout, handleUpdateWorkout } = useIntervalsData(intervalsId, intervalsKey);
+  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey);
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [athleteProfile, setAthleteProfile] = useLocalStorage('ai_trener_profile', {
@@ -126,7 +126,7 @@ export default function App() {
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-orange-900/10 via-zinc-950 to-zinc-950 pointer-events-none"></div>
 
           <div className="relative z-10 w-full h-full">
-            {activeTab === 'calendar' && (
+                        {activeTab === 'calendar' && (
               <CalendarTab
                 currentDate={currentDate} setCurrentDate={setCurrentDate}
                 workouts={workouts} wellnessData={wellnessData}
@@ -134,6 +134,7 @@ export default function App() {
                 handleDeleteLocalActivity={handleDeleteLocalActivity}
                 handleRescheduleWorkout={handleRescheduleWorkout}
                 handleUpdateWorkout={handleUpdateWorkout}
+                handleCreateWorkout={handleCreateWorkout}
                 onSelectWorkout={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
                 profile={athleteProfile}
               />
