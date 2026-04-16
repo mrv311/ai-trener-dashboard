@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical, Bike } from 'lucide-react';
 import { DndContext, pointerWithin, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import WorkoutEditorModal from './WorkoutEditorModal';
 import { updateEventDetails } from '../services/intervalsApi';
+import { extractIntensityData } from '../utils/workoutParser';
 
 const formatDur = (mins) => {
   const h = Math.floor(mins / 60);
@@ -33,6 +34,76 @@ const getTopCol = (sc) => {
 
 const isDraggable = (w) => !w.isCompleted && (w.isLocal || w.id.startsWith('ev-'));
 
+const ZONE_COLORS = {
+  1: 'bg-slate-500',
+  2: 'bg-emerald-500',
+  3: 'bg-amber-400',
+  4: 'bg-orange-500',
+  5: 'bg-rose-500'
+};
+
+const BORDER_COLORS = {
+  1: 'border-slate-500',
+  2: 'border-emerald-500',
+  3: 'border-amber-400',
+  4: 'border-orange-500',
+  5: 'border-rose-500'
+};
+
+// Mapiranje % FTP u zone za graf
+const getZoneFromFtpPercent = (percent) => {
+  if (!percent) return 1;
+  if (percent < 55) return 1;
+  if (percent <= 75) return 2;
+  if (percent <= 90) return 3;
+  if (percent <= 105) return 4;
+  return 5;
+};
+
+const DEFAULT_INTENSITY = [
+  { ftpPercent: 50 }, { ftpPercent: 50 }, { ftpPercent: 65 }, { ftpPercent: 65 }, { ftpPercent: 80 },
+  { ftpPercent: 50 }, { ftpPercent: 95 }, { ftpPercent: 95 }, { ftpPercent: 50 }, { ftpPercent: 110 },
+  { ftpPercent: 50 }, { ftpPercent: 65 }, { ftpPercent: 65 }, { ftpPercent: 50 }
+];
+
+// ============================================================
+// WorkoutGraph (Performance Guardrail)
+// ============================================================
+const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted }) {
+  // Use extractIntensityData to convert workout_doc into an array of FTP percentages
+  const intensityArray = useMemo(() => {
+    return extractIntensityData(workoutDoc);
+  }, [workoutDoc]);
+  
+  const displayData = intensityArray.length > 0 ? intensityArray : DEFAULT_INTENSITY.map(d => d.ftpPercent);
+  
+  // Da bi svi stupci uvijek potpuno ispunili kontejner (bez praznog prostora ako ih ima malo, ili bez stiskanja u širinu od 1px ako ih ima puno)
+  return (
+    <div className="flex items-end h-10 w-full mt-2.5">
+      {displayData.map((val, i) => {
+        const zone = getZoneFromFtpPercent(val);
+        const height = `${Math.min(val, 150)}%`;
+        
+        return (
+          <div key={i} className="flex-1 flex items-end h-full">
+            {isCompleted ? (
+              <div 
+                className={`w-full rounded-t-[1px] ${ZONE_COLORS[zone] || 'bg-slate-500'}`}
+                style={{ height }}
+              />
+            ) : (
+              <div 
+                className={`w-full rounded-t-[1px] border-t border-l border-r border-b-0 bg-transparent opacity-60 box-border ${BORDER_COLORS[zone] || 'border-slate-500'}`}
+                style={{ height }}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+});
+
 // ============================================================
 // WorkoutCard
 // ============================================================
@@ -46,7 +117,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
     data: { workout: w }
   });
 
-  const style = {
+    const style = {
     touchAction: canDrag ? 'none' : 'auto'
   };
 
@@ -60,60 +131,86 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           onEditWorkout(w);
         }
       }}
-      className={`workout-card-element rounded-xl flex flex-col overflow-hidden min-h-[86px] backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : ''} ${canDrag && !isDragging ? 'cursor-grab hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
+      className={`workout-card-element rounded-lg flex flex-col overflow-hidden min-h-[100px] backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : ''} ${canDrag && !isDragging ? 'cursor-grab hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
     >
       <div className={`h-1.5 w-full shrink-0 ${getTopCol(w.statusColor)}`} />
-      <div className={`${isDesktop ? 'p-2.5' : 'p-3.5'} flex flex-col justify-between flex-1 gap-2.5`}>
-        <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} flex items-start justify-between text-zinc-200 leading-tight`}>
-          <span className={`${isDesktop ? 'line-clamp-2 pr-1' : 'pr-2'}`}>
-            {canDrag && <GripVertical className="inline-block w-3.5 h-3.5 mr-1 text-zinc-500 align-middle pointer-events-none" />}
+      <div className={`${isDesktop ? 'p-3' : 'p-3.5'} flex flex-col justify-between flex-1`}>
+        {/* Header: Sport icon, duration */}
+        <div className="flex flex-col gap-1 w-full">
+          <div className="flex justify-between items-start w-full">
+            <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-wide">
+              <Bike className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+              <span title={w.plannedDuration ? `Plan: ${formatDur(w.plannedDuration)}` : ''}>
+                {formatDur(w.duration)}
+                {!isDesktop && w.plannedDuration && <span className="text-zinc-600 text-[9px] ml-1">/ {formatDur(w.plannedDuration)}</span>}
+              </span>
+            </div>
+            {/* Actions */}
+            <div className="flex items-center gap-1 shrink-0 ml-1" onPointerDown={(e) => { }}>
+              {!w.isCompleted && onSelectWorkout && (
+                <button
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
+                  className={`text-orange-400 hover:text-white bg-orange-500/10 hover:bg-orange-500 ${isDesktop ? 'rounded-md p-1' : 'rounded-lg p-1.5 shadow-[0_0_8px_rgba(249,115,22,0.2)] hover:shadow-[0_0_12px_rgba(249,115,22,0.6)]'} transition-all border border-orange-500/20`}
+                  title="Pošalji na trenažer"
+                >
+                  <Play className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} fill-current`} />
+                </button>
+              )}
+              {w.actId && w.eventId && (
+                <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleUnpair(w.actId, w.eventId); }} className="text-zinc-500 hover:text-orange-400 transition-colors" title="Razdvoji planirano i odrađeno">
+                  <Unlink className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {w.actId && w.separatedEventIds && w.separatedEventIds.map(sepId => (
+                <button key={sepId} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom">
+                  <Link2 className="w-3.5 h-3.5" />
+                </button>
+              ))}
+              {w.statusColor === 'green' && <CheckCircle2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-emerald-400 drop-shadow-[0_0_${isDesktop ? '3' : '5'}px_rgba(16,185,129,0.5)]`} />}
+              {w.statusColor === 'red-missed' && <XCircle className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-rose-500`} />}
+              {w.statusColor === 'grey' && !w.isLocal && <Target className="w-3.5 h-3.5 text-zinc-500" />}
+              {w.isLocal && !w.isCompleted && handleDeleteLocalActivity && (
+                <button
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
+                  className={`text-zinc-${isDesktop ? '600' : '500'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
+                  title="Obriši planirani trening"
+                >
+                  <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                </button>
+              )}
+            </div>
+          </div>
+          {/* Title */}
+          <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} text-zinc-100 leading-tight line-clamp-1`}>
+            {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-500 align-middle pointer-events-none" />}
             {w.title}
-          </span>
-          <div className="flex items-center gap-1.5 shrink-0 mt-0.5" onPointerDown={(e) => { }}>
-            {!w.isCompleted && onSelectWorkout && (
-              <button
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
-                className={`text-orange-400 hover:text-white bg-orange-500/10 hover:bg-orange-500 ${isDesktop ? 'rounded-md p-1' : 'rounded-lg p-1.5 shadow-[0_0_8px_rgba(249,115,22,0.2)] hover:shadow-[0_0_12px_rgba(249,115,22,0.6)]'} transition-all border border-orange-500/20`}
-                title="Pošalji na trenažer"
-              >
-                <Play className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} fill-current`} />
-              </button>
-            )}
-            {w.actId && w.eventId && (
-              <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleUnpair(w.actId, w.eventId); }} className="text-zinc-500 hover:text-orange-400 transition-colors" title="Razdvoji planirano i odrađeno">
-                <Unlink className="w-3.5 h-3.5" />
-              </button>
-            )}
-            {w.actId && w.separatedEventIds && w.separatedEventIds.map(sepId => (
-              <button key={sepId} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom">
-                <Link2 className="w-3.5 h-3.5" />
-              </button>
-            ))}
-            {w.statusColor === 'green' && <CheckCircle2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-emerald-400 drop-shadow-[0_0_${isDesktop ? '3' : '5'}px_rgba(16,185,129,0.5)]`} />}
-            {w.statusColor === 'red-missed' && <XCircle className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-rose-500`} />}
-            {w.statusColor === 'grey' && !w.isLocal && <Target className="w-3.5 h-3.5 text-zinc-500" />}
-            {w.isLocal && !w.isCompleted && handleDeleteLocalActivity && (
-              <button
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
-                className={`text-zinc-${isDesktop ? '600' : '500'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
-                title="Obriši planirani trening"
-              >
-                <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
-              </button>
-            )}
           </div>
         </div>
-        <div className={`flex justify-between items-${isDesktop ? 'end' : 'center'} text-xs text-zinc-400 font-medium ${!isDesktop ? 'bg-zinc-950/40 px-2 py-1.5 rounded-lg border border-zinc-800 border-dashed' : ''}`}>
-          <span title={w.plannedDuration ? `Plan: ${formatDur(w.plannedDuration)}` : ''}>
-            {formatDur(w.duration)}
-            {!isDesktop && w.plannedDuration && <span className="text-zinc-600 text-[10px] ml-1">/ {formatDur(w.plannedDuration)}</span>}
-          </span>
-          <span className={`font-mono text-zinc-${isDesktop ? '400' : '300'} bg-zinc-${isDesktop ? '950/50' : '900'} px-${isDesktop ? '1' : '2'} py-0.5 rounded ${isDesktop ? 'border border-zinc-700/50' : 'shadow-sm border border-zinc-700'}`} title={w.plannedTss ? `Plan: ${w.plannedTss} TSS` : ''}>
-            {w.tss > 0 ? w.tss : '-'} TSS
-          </span>
+
+                {/* Metrics Row: Load (TSS) & Description */}
+        <div className="flex flex-col gap-1.5 mt-2">
+          <div className="flex items-center gap-2">
+            <div className="flex items-baseline gap-1 bg-zinc-950/40 rounded px-1.5 py-0.5 border border-zinc-800/50">
+               <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Load</span>
+               <span className="font-mono text-xs font-semibold text-zinc-200" title={w.plannedTss ? `Plan: ${w.plannedTss} TSS` : ''}>
+                 {w.tss > 0 ? w.tss : '-'}
+               </span>
+               <span className="text-[9px] text-zinc-600 font-medium">TSS</span>
+            </div>
+          </div>
+          {w.intervalDescription && (
+            <span className="text-[10px] text-zinc-400/80 leading-tight line-clamp-1 italic">{w.intervalDescription}</span>
+          )}
         </div>
+
+                                {/* Visual Graph (Interval Visualization) */}
+        <WorkoutGraph 
+           workoutDoc={w.workout_doc || w.steps} 
+           isCompleted={w.isCompleted || w.status === 'completed'} 
+        />
+
       </div>
     </div>
   );
@@ -166,7 +263,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
           onClick={(e) => {
              if (e.target.closest('.workout-card-element')) return;
              if (dObj.isCurrentMonth) {
-                 const newWorkout = {
+                                  const newWorkout = {
                      id: `local-${Date.now()}`,
                      date: dObj.dateStr,
                      title: 'Novi Trening',
@@ -177,8 +274,10 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
                      statusColor: 'grey',
                      isCompleted: false,
                      isLocal: true,
-                     category: 'WORKOUT',
-                     type: 'ride'
+                                          category: 'WORKOUT',
+                                          type: 'ride',
+                                          intervalDescription: 'Slatka točka: 3x15m na 90%',
+                                          steps: [{duration: 600, power: 50}, {duration: 900, power: 90}, {duration: 300, power: 50}, {duration: 900, power: 90}, {duration: 300, power: 50}, {duration: 900, power: 90}, {duration: 600, power: 50}]
                  };
                  onEditWorkout(newWorkout);
              }
@@ -219,18 +318,27 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
 // ============================================================
 function DragOverlayCard({ workout, activeWidth }) {
   if (!workout) return null;
+  
   return (
     <div
       style={{ width: activeWidth ? `${activeWidth}px` : '200px' }}
-      className="rounded-xl overflow-hidden border-2 border-orange-500/80 bg-zinc-900/95 shadow-2xl shadow-orange-500/30 backdrop-blur-xl pointer-events-none cursor-grabbing scale-105 opacity-90 transition-transform"
+      className="rounded-lg overflow-hidden border-2 border-orange-500/80 bg-zinc-900/95 shadow-2xl shadow-orange-500/30 backdrop-blur-xl pointer-events-none cursor-grabbing scale-105 opacity-90 transition-transform flex flex-col"
     >
       <div className={`h-1.5 w-full ${getTopCol(workout.statusColor)}`} />
-      <div className="p-2.5 flex flex-col gap-1.5">
-        <span className="font-bold text-xs text-zinc-100 line-clamp-2 leading-tight">{workout.title}</span>
-        <div className="flex justify-between text-[10px] text-zinc-400 font-medium">
+      <div className="p-3 flex flex-col gap-1">
+        <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-wide">
+          <Bike className="w-3.5 h-3.5" />
           <span>{formatDur(workout.duration)}</span>
-          <span className="font-mono bg-zinc-950/50 px-1.5 py-0.5 rounded text-zinc-300">{workout.tss > 0 ? workout.tss : '-'} TSS</span>
         </div>
+        <span className="font-bold text-xs text-zinc-100 line-clamp-1 leading-tight">{workout.title}</span>
+        <div className="flex items-baseline gap-1 bg-zinc-950/40 rounded px-1.5 py-0.5 border border-zinc-800/50 w-fit mt-1">
+           <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Load</span>
+           <span className="font-mono text-xs font-semibold text-zinc-200">{workout.tss > 0 ? workout.tss : '-'}</span>
+        </div>
+                                <WorkoutGraph 
+           workoutDoc={workout.workout_doc || workout.steps} 
+           isCompleted={workout.isCompleted || workout.status === 'completed'} 
+        />
       </div>
     </div>
   );

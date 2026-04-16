@@ -2,6 +2,108 @@ import { calculateCogganMetrics, expandStepsToSeconds } from './performanceMetri
 
 // Očekivani izlaz: { title, description, duration_seconds, difficulty_score, steps: [{ name, duration, power }] }
 
+export const extractIntensityData = (workoutDoc) => {
+  if (!workoutDoc) return [];
+  
+  // 1. Ako je to niz objekata (naš lokalni "steps" format tipa [{duration: 600, power: 50}, ...])
+  if (Array.isArray(workoutDoc)) {
+    const arr = [];
+    workoutDoc.forEach(step => {
+      // Želimo stvoriti array vrijednosti proporcijonalan trajanju (npr. svaki element = x minuta)
+      // Ovdje za jednostavnost, ako je duration u sekundama, napravit ćemo array elemenata za svaku minutu.
+      const mins = Math.max(1, Math.round((step.duration || 60) / 60));
+      for(let i = 0; i < mins; i++) {
+        arr.push(step.power || 50);
+      }
+    });
+    return arr;
+  }
+  
+  // 2. Ako je string koda
+  if (typeof workoutDoc === 'string') {
+    const { allSteps } = parseIntervalsCode(workoutDoc);
+    const arr = [];
+    allSteps.forEach(step => {
+       const mins = Math.max(1, Math.round((step.duration || 60) / 60));
+       for(let i = 0; i < mins; i++) {
+         arr.push(step.power || 50);
+       }
+    });
+    return arr;
+  }
+  
+  // 3. Ako je originalni intervals_icu JSON format: { steps: [{...}] }
+  if (workoutDoc.steps && Array.isArray(workoutDoc.steps)) {
+    // Ako nema već pripremljene flattenane verzije, prebacujemo u string pa parsiramo opet radi lakoće
+    try {
+      const codeStr = stepsToTextLines(workoutDoc.steps).join('\n');
+      const { allSteps } = parseIntervalsCode(codeStr);
+      const arr = [];
+      allSteps.forEach(step => {
+         const mins = Math.max(1, Math.round((step.duration || 60) / 60));
+         for(let i = 0; i < mins; i++) {
+           arr.push(step.power || 50);
+         }
+      });
+      return arr;
+    } catch(e) {
+      return [];
+    }
+  }
+  
+  return [];
+};
+
+function stepsToTextLines(steps, indent = '') {
+  const lines = [];
+  if (!steps || !Array.isArray(steps)) return lines;
+
+  steps.forEach(step => {
+    // Grupni korak (ima pod-steps i/ili reps)
+    if (step.steps && Array.isArray(step.steps)) {
+      const reps = step.reps || step.count || 1;
+      // Ako ima tekst/naziv, to je naziv sekcije
+      if (step.text) {
+        lines.push(`${indent}${step.text}`);
+      }
+      if (reps > 1) {
+        lines.push(`${indent}${reps}x`);
+      }
+      const subLines = stepsToTextLines(step.steps, indent);
+      lines.push(...subLines);
+    } else {
+      // Pojedinačni korak
+      const formatDuration = (secs) => {
+        if (!secs || secs <= 0) return '0m';
+        const h = Math.floor(secs / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        const s = Math.round(secs % 60);
+        let parts = [];
+        if (h > 0) parts.push(`${h}h`);
+        if (m > 0) parts.push(`${m}m`);
+        if (s > 0 && h === 0) parts.push(`${s}s`);
+        return parts.join('') || '0m';
+      };
+      const formatPower = (power) => {
+        if (!power) return '50%';
+        if (typeof power === 'number') return `${Math.round(power)}%`;
+        if (power.value != null) return `${Math.round(power.value)}%`;
+        if (power.start != null && power.end != null) {
+          return `${Math.round(power.start)}-${Math.round(power.end)}%`;
+        }
+        return '50%';
+      };
+      
+      const dur = formatDuration(step.duration || 0);
+      const pwr = formatPower(step.power);
+      const text = step.text ? ` ${step.text}` : '';
+      lines.push(`${indent}- ${dur} ${pwr}${text}`);
+    }
+  });
+
+  return lines;
+}
+
 export const parseIntervalsCode = (code, ftp = 200) => {
   if (!code) return { duration: 0, tss: 0, np: 0, blocks: [], allSteps: [], zones: { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, z7: 0 } };
   
