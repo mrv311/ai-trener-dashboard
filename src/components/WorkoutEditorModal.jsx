@@ -332,8 +332,8 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
         className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ============ HEADER ============ */}
-        <div className="flex items-center gap-3 px-5 py-3.5 border-b border-zinc-800 bg-zinc-950/60">
+                // ============ HEADER ============
+        <div className="flex items-center gap-3 px-5 py-3.5 border-b border-zinc-800 bg-zinc-950/60" onKeyDown={e => e.stopPropagation()}>
           {/* Ikona */}
           <div className="bg-sky-500/10 p-2 rounded-xl border border-sky-500/20 shrink-0">
             <Bike className="w-5 h-5 text-sky-400" />
@@ -384,8 +384,8 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           <div className="flex flex-col lg:flex-row gap-0 lg:gap-0">
 
-            {/* LIJEVI STUPAC: Steps / Editor */}
-            <div className="flex-1 p-5 border-b lg:border-b-0 lg:border-r border-zinc-800 min-w-0">
+                        {/* LIJEVI STUPAC: Steps / Editor */}
+            <div className="flex-1 p-5 border-b lg:border-b-0 lg:border-r border-zinc-800 min-w-0" onKeyDown={e => e.stopPropagation()}>
               {mode === 'edit' ? (
                 <div className="flex flex-col gap-3">
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">

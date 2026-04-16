@@ -327,14 +327,16 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     setActiveWorkout(null);
   }, []);
 
-    const handleSaveWorkout = async (updatedWorkout) => {
+      const handleSaveWorkout = async (updatedWorkout) => {
     setIsUpdating(true);
     try {
-      if (updatedWorkout.id.startsWith('local-') && updatedWorkout.title === 'Novi Trening') {
-          // Novi trening
+      if (updatedWorkout.id.startsWith('local-')) {
+          // Novi trening ili izmjena postojećeg lokalnog koji nije yet syncan
+          // HandleCreateWorkout će overwriteati isti ID ako već postoji u listi localScheduled (ili stvoriti novi)
+          // Zato ga slobodno zovemo za sve lokalne izmjene dok ne dobiju pravi 'ev-' prefix
           await handleCreateWorkout(updatedWorkout);
       } else {
-          // Postojeći trening (Intervals ili Edit lokalnog)
+          // Postojeći trening
           await handleUpdateWorkout(
               updatedWorkout.id,
               updatedWorkout.title,

@@ -604,8 +604,13 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   };
 
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (showStopPrompt || isFinished) return; 
+        const handleKeyDown = (e) => {
+      // Allow default behavior inside text inputs or textareas
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) {
+        return;
+      }
+
+      if (showStopPrompt || isFinished) return;  
 
       if (e.code === 'Space') {
         e.preventDefault();
