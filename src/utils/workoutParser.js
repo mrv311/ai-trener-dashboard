@@ -104,139 +104,84 @@ function stepsToTextLines(steps, indent = '') {
   return lines;
 }
 
-/**
- * Pomoćna funkcija za parsiranje jedne linije treninga
- */
-const parseSingleLineToStep = (cleanLine) => {
-  let mins = 0;
-  const hMatch = cleanLine.match(/(\d+)\s*h/i);
-  const mMatch = cleanLine.match(/(\d+)\s*m/i);
-  const sMatch = cleanLine.match(/(\d+)\s*s/i);
-
-  if (hMatch) mins += parseInt(hMatch[1]) * 60;
-  if (mMatch) mins += parseInt(mMatch[1]);
-  if (sMatch) mins += parseInt(sMatch[1]) / 60;
-
-  let powerMin = 0, powerMax = 0, powerAvg = 0;
-  const pRangeMatch = cleanLine.match(/(\d+)-(\d+)%/);
-  const pMatch = cleanLine.match(/(\d+)%\s*(?:FTP)?/i);
-
-  if (pRangeMatch) {
-    powerMin = parseInt(pRangeMatch[1]);
-    powerMax = parseInt(pRangeMatch[2]);
-    powerAvg = Math.round((powerMin + powerMax) / 2);
-  } else if (pMatch) {
-    powerMin = parseInt(pMatch[1]);
-    powerMax = powerMin;
-    powerAvg = powerMin;
-  }
-
-  if (mins > 0) {
-    return {
-      text: cleanLine,
-      duration: mins * 60,
-      powerMin: powerMin > 0 ? powerMin : 50,
-      powerMax: powerMax > 0 ? powerMax : 50,
-      power: powerAvg > 0 ? powerAvg : 50
-    };
-  }
-  return null;
-};
-
 export const parseIntervalsCode = (code, ftp = 200) => {
-  if (!code) return { duration: 0, tss: 0, np: 0, blocks: [], allSteps: [], zones: { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, ss: 0 } };
-
+  if (!code) return { duration: 0, tss: 0, np: 0, blocks: [], allSteps: [], zones: { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, z7: 0 } };
+  
   let blocks = [];
   let currentBlock = { name: 'Main', steps: [] };
   let allSteps = [];
   let totalDurMins = 0;
+  
+  let tempMultiplier = 1;
 
-  const lines = code.split('\n').map(l => l.trim()).filter(l => l);
-  let i = 0;
+  const lines = code.split('\n');
+  lines.forEach(line => {
+    let cleanLine = line.trim();
+    if (!cleanLine) return;
 
-  while (i < lines.length) {
-    const line = lines[i];
-    
-    // Detekcija multiplikatora (npr. "4x")
-    const xMatch = line.match(/^(\d+)x/i);
-    
-    if (xMatch && !line.includes('%')) {
-      const multiplier = parseInt(xMatch[1]);
-      const loopSteps = [];
-      i++;
-      
-      // Lookahead: Skupljamo sve korake unutar bloka
-      while (i < lines.length && (lines[i].startsWith('-') || /^\d+[hms]/.test(lines[i]))) {
-         const stepObj = parseSingleLineToStep(lines[i]);
-         if (stepObj) loopSteps.push(stepObj);
-         i++;
-      }
-      
-      // Množimo blok (Work + Rest)
-      for (let m = 0; m < multiplier; m++) {
-        loopSteps.forEach(step => {
-          currentBlock.steps.push({...step});
-          allSteps.push({...step});
-          totalDurMins += step.duration / 60;
-        });
-      }
-      continue; 
+    // Detekcija strelice ili crtice kao korak
+    const isStep = cleanLine.startsWith('-') || /^\d+[hms]/.test(cleanLine);
+    // Detekcija multiplikatora (npr 4x)
+    const xMatch = cleanLine.match(/^(\d+)x/i);
+
+    if (xMatch && !cleanLine.includes('%')) {
+      tempMultiplier = parseInt(xMatch[1]);
+      return; 
     }
 
-    // Standardno parsiranje
-    const isStep = line.startsWith('-') || /^\d+[hms]/.test(line);
-    
-    if (!isStep) {
+    if (!isStep && !xMatch) {
       if (currentBlock.steps.length > 0) blocks.push(currentBlock);
-      currentBlock = { name: line, steps: [] };
-    } else {
-      const stepObj = parseSingleLineToStep(line);
-      if (stepObj) {
+      currentBlock = { name: cleanLine, steps: [] };
+      return;
+    }
+
+    // Parsiranje koraka
+    let mins = 0;
+    const hMatch = cleanLine.match(/(\d+)\s*h/i);
+    const mMatch = cleanLine.match(/(\d+)\s*m/i);
+    const sMatch = cleanLine.match(/(\d+)\s*s/i);
+
+    if (hMatch) mins += parseInt(hMatch[1]) * 60;
+    if (mMatch) mins += parseInt(mMatch[1]);
+    if (sMatch) mins += parseInt(sMatch[1]) / 60;
+
+    let powerMin = 0, powerMax = 0, powerAvg = 0;
+    // Trazimo range npr 50-70%
+    const pRangeMatch = cleanLine.match(/(\d+)-(\d+)%/);
+    // Trazimo single npr 100%
+    const pMatch = cleanLine.match(/(\d+)%\s*(?:FTP)?/i);
+
+    if (pRangeMatch) {
+      powerMin = parseInt(pRangeMatch[1]);
+      powerMax = parseInt(pRangeMatch[2]);
+      powerAvg = Math.round((powerMin + powerMax) / 2);
+    } else if (pMatch) {
+      powerMin = parseInt(pMatch[1]);
+      powerMax = powerMin;
+      powerAvg = powerMin;
+    }
+
+    if (mins > 0) {
+      const stepObj = {
+        text: cleanLine,
+        duration: mins * 60,
+        powerMin: powerMin > 0 ? powerMin : 50,
+        powerMax: powerMax > 0 ? powerMax : 50,
+        power: powerAvg > 0 ? powerAvg : 50
+      };
+
+      for(let i = 0; i < tempMultiplier; i++) {
         currentBlock.steps.push({...stepObj});
         allSteps.push({...stepObj});
-        totalDurMins += stepObj.duration / 60;
+        totalDurMins += mins;
       }
+      tempMultiplier = 1; // reset after applying
     }
-    i++;
-  }
-
-  if (currentBlock.steps.length > 0 || blocks.length === 0) {
-    blocks.push(currentBlock);
-  }
-
-  // Coggan metrike
-  const powerArray = expandStepsToSeconds(allSteps, ftp);
-  const metrics = calculateCogganMetrics(powerArray, ftp);
-
-  // O(1) izračun zona (Optimizirano)
-  const zoneStats = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, ss: 0 };
-  
-  allSteps.forEach(step => {
-    const p = step.power; 
-    const secs = step.duration;
-    
-    if (p < 55) zoneStats.z1 += secs;
-    else if (p < 76) zoneStats.z2 += secs;
-    else if (p < 88) zoneStats.z3 += secs;
-    else if (p < 95) zoneStats.ss += secs;
-    else if (p < 106) zoneStats.z4 += secs;
-    else if (p < 121) zoneStats.z5 += secs;
-    else zoneStats.z6 += secs;
   });
 
-  return {
-    duration: totalDurMins * 60,
-    tss: metrics.tss,
-    np: metrics.np,
-    workKj: metrics.workKj,
-    ifFactor: metrics.ifFactor,
-    avgPower: metrics.avgPower,
-    variability: metrics.avgPower > 0 ? (metrics.np / metrics.avgPower).toFixed(2) : 1,
-    blocks,
-    allSteps,
-    zones: zoneStats
-  };
-};
+  if (currentBlock.steps.length > 0 || blocks.length === 0) {
+     blocks.push(currentBlock);
+  }
 
   // Računanje NP i TSS
   const powerArray = expandStepsToSeconds(allSteps, ftp);
