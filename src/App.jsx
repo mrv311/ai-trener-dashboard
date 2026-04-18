@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart,
   User, Loader2, Monitor, LogOut, Link as LinkIcon,
-  MoreHorizontal, X, Database, TrendingUp
+  MoreHorizontal, X, Database, TrendingUp, ClipboardList
 } from 'lucide-react';
 
 import CalendarTab from './components/CalendarTab';
@@ -15,6 +15,7 @@ import AnalyticsTab from './components/AnalyticsTab';
 import ConnectionsTab from './components/ConnectionsTab';
 import LibraryTab from './components/LibraryTab';
 import ProgressionTab from './components/ProgressionTab';
+import HistoryTab from './components/HistoryTab';
 
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useIntervalsData } from './hooks/useIntervalsData';
@@ -24,6 +25,7 @@ const TABS = {
   calendar: { label: 'Kalendar', icon: <CalendarIcon />, component: CalendarTab },
   library: { label: 'Knjižnica', icon: <Database />, component: LibraryTab },
   trainer: { label: 'Trenažer', icon: <Monitor />, component: TrainerTab },
+  history: { label: 'Povijest', icon: <ClipboardList />, component: HistoryTab },
   fitness: { label: 'Kondicija', icon: <Activity />, component: FitnessTab },
   progression: { label: 'Napredak', icon: <TrendingUp />, component: ProgressionTab },
   power: { label: 'Snaga', icon: <LineChart />, component: PowerCurveTab },
@@ -75,7 +77,7 @@ export default function App() {
         </div>
 
         <nav className="mt-6 flex-1 px-3 space-y-2">
-          {['calendar', 'library', 'trainer', 'fitness', 'progression', 'power', 'analytics', 'settings', 'profile'].map(tabId => (
+          {['calendar', 'library', 'trainer', 'history', 'fitness', 'progression', 'power', 'analytics', 'settings', 'profile'].map(tabId => (
             <NavItem
               key={tabId}
               icon={TABS[tabId].icon}
@@ -149,6 +151,7 @@ export default function App() {
               />
             </div>
 
+            {activeTab === 'history' && <HistoryTab />}
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
             {activeTab === 'progression' && <ProgressionTab workouts={workouts} />}
             {activeTab === 'library' && (
@@ -170,6 +173,7 @@ export default function App() {
           <div className="flex justify-around items-center h-14">
             <MobileTab icon={<CalendarIcon />} label="Kalendar" active={activeTab === 'calendar'} onClick={() => handleTabChange('calendar')} />
             <MobileTab icon={<Monitor />} label="Trenažer" active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
+            <MobileTab icon={<ClipboardList />} label="Povijest" active={activeTab === 'history'} onClick={() => handleTabChange('history')} />
             <MobileTab icon={<Activity />} label="Fitness" active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
             <MobileTab icon={<MoreHorizontal />} label="Više" active={['settings', 'profile', 'connections', 'power', 'analytics'].includes(activeTab) || isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
           </div>
@@ -184,7 +188,7 @@ export default function App() {
                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-zinc-800 rounded-full text-zinc-400"><X className="w-5 h-5" /></button>
               </div>
               <div className="grid grid-cols-2 gap-3 mb-6">
-                {['analytics', 'power', 'settings', 'profile', 'connections', 'library'].map(tabId => (
+                {['analytics', 'power', 'settings', 'profile', 'connections', 'library', 'progression'].map(tabId => (
                   <MobileMenuGridBtn key={tabId} icon={TABS[tabId].icon} label={TABS[tabId].label} active={activeTab === tabId} onClick={() => handleTabChange(tabId)} />
                 ))}
               </div>

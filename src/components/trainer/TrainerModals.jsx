@@ -1,5 +1,5 @@
 import React from 'react';
-import { Square, Award, UploadCloud, CheckCircle2, Download } from 'lucide-react';
+import { Square, Award, UploadCloud, CheckCircle2, Download, Route, Gauge, Loader2, AlertCircle } from 'lucide-react';
 
 export default function TrainerModals({
   showStopPrompt,
@@ -11,6 +11,7 @@ export default function TrainerModals({
   isPmConnected,
   uploadStatus,
   setUploadStatus,
+  saveStatus,
   handleReset,
   handleExportTcx
 }) {
@@ -60,6 +61,20 @@ export default function TrainerModals({
               </div>
             </div>
 
+            {/* Udaljenost i brzina */}
+            <div className="grid grid-cols-2 gap-2 w-full mb-3 shrink-0">
+              <div className="bg-emerald-500/5 p-3 rounded-2xl border border-emerald-500/10 flex flex-col items-center justify-center">
+                <Route className="w-4 h-4 text-emerald-500 mb-1" />
+                <p className="text-[9px] font-black uppercase text-emerald-500/70 tracking-widest">Udaljenost</p>
+                <p className="text-xl font-black text-zinc-100">{summaryStats.distanceKm || '0.0'} <span className="text-[11px] font-bold text-zinc-500">km</span></p>
+              </div>
+              <div className="bg-sky-500/5 p-3 rounded-2xl border border-sky-500/10 flex flex-col items-center justify-center">
+                <Gauge className="w-4 h-4 text-sky-500 mb-1" />
+                <p className="text-[9px] font-black uppercase text-sky-500/70 tracking-widest">Avg Brzina</p>
+                <p className="text-xl font-black text-zinc-100">{summaryStats.avgSpeedKmh || '0.0'} <span className="text-[11px] font-bold text-zinc-500">km/h</span></p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-4 gap-2 w-full mb-6 md:mb-10 shrink-0">
               <div className="bg-zinc-950/50 p-2 md:p-3 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
                 <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-1">NP</p>
@@ -78,6 +93,20 @@ export default function TrainerModals({
                 <p className="text-base font-black text-zinc-300">{summaryStats.workKj || 0} <span className="text-[10px] text-zinc-500">kJ</span></p>
               </div>
             </div>
+
+            {/* Save status indikator */}
+            {saveStatus && (
+              <div className={`flex items-center gap-2 w-full mb-4 px-4 py-2.5 rounded-xl border text-xs font-bold shrink-0 ${
+                saveStatus === 'saving' ? 'bg-zinc-800/50 border-zinc-700 text-zinc-400' :
+                saveStatus === 'saved' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                'bg-red-500/10 border-red-500/20 text-red-400'
+              }`}>
+                {saveStatus === 'saving' && <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Spremanje u povijest...</>}
+                {saveStatus === 'saved' && <><CheckCircle2 className="w-3.5 h-3.5" /> Automatski spremljeno u povijest</>}
+                {saveStatus === 'error' && <><AlertCircle className="w-3.5 h-3.5" /> Greška pri spremanju — koristi TCX export</>}
+              </div>
+            )}
+
             <div className="flex flex-col gap-2.5 md:gap-3 w-full shrink-0">
               <button onClick={() => setUploadStatus('intervals')} className={`flex items-center justify-center gap-2 md:gap-3 w-full py-3 md:py-4 rounded-xl font-black transition-all text-sm md:text-base ${uploadStatus === 'intervals' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-zinc-800 text-white hover:bg-zinc-700 border border-zinc-700'}`}>
                 {uploadStatus === 'intervals' ? <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" /> : <UploadCloud className="w-4 h-4 md:w-5 md:h-5" />}
@@ -101,3 +130,4 @@ export default function TrainerModals({
     </>
   );
 }
+

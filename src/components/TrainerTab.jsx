@@ -5,6 +5,8 @@ import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
 import { exportToTCX } from '../utils/exportUtils';
 import { calculateCogganMetrics } from '../utils/performanceMetrics';
+import { calculateDistanceStream } from '../utils/virtualDistance';
+import { supabase } from '../services/supabaseClient';
 
 const playBeep = (freq = 800, duration = 0.2) => {
   try {
@@ -91,6 +93,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   const [showStopPrompt, setShowStopPrompt] = useState(false);
   const [summaryStats, setSummaryStats] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
+  const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
 
   const crankDataRef = useRef({ revs: -1, time: -1 });
   const pmCrankDataRef = useRef({ revs: -1, time: -1 }); 
@@ -575,16 +578,66 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     const finalMetrics = calculateCogganMetrics(workoutHistory.map(h => h.power), profile?.ftp || 200);
     setLiveMetrics(finalMetrics);
 
+    // Izračun virtualne udaljenosti
+    const mass = profile?.weight || 75;
+    const distResult = calculateDistanceStream(workoutHistory, mass);
+    const distanceKm = Math.round((distResult.totalDistanceM / 1000) * 10) / 10;
+    const avgSpeedKmh = distResult.avgSpeedKmh;
+
+    const avgPower = pwrData.length ? Math.round(pwrData.reduce((a, b) => a + b.power, 0) / pwrData.length) : 0;
+    const avgHr = hrData.length ? Math.round(hrData.reduce((a, b) => a + b.hr, 0) / hrData.length) : 0;
+    const avgCadence = cadData.length ? Math.round(cadData.reduce((a, b) => a + b.cadence, 0) / cadData.length) : 0;
+
     setSummaryStats({
-      avgPower: pwrData.length ? Math.round(pwrData.reduce((a, b) => a + b.power, 0) / pwrData.length) : 0,
-      avgHr: hrData.length ? Math.round(hrData.reduce((a, b) => a + b.hr, 0) / hrData.length) : 0,
-      avgCadence: cadData.length ? Math.round(cadData.reduce((a, b) => a + b.cadence, 0) / cadData.length) : 0,
+      avgPower,
+      avgHr,
+      avgCadence,
       totalDur: elapsedTime,
       isLevelUpEligible: elapsedTime / totalDuration >= 0.85,
       np: finalMetrics.np,
       ifFactor: finalMetrics.ifFactor,
       tss: finalMetrics.tss,
-      workKj: finalMetrics.workKj
+      workKj: finalMetrics.workKj,
+      distanceKm,
+      avgSpeedKmh
+    });
+
+    // --- AUTO SAVE u Supabase ---
+    const startedAt = new Date();
+    startedAt.setSeconds(startedAt.getSeconds() - elapsedTime);
+
+    const workoutTitle = workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja';
+    let workoutSource = 'free_ride';
+    if (workoutFromCalendar) {
+      workoutSource = workoutFromCalendar.workout_doc ? 'calendar' : 'library';
+    }
+
+    setSaveStatus('saving');
+    supabase.from('completed_activities').insert({
+      started_at: startedAt.toISOString(),
+      title: workoutTitle,
+      workout_source: workoutSource,
+      duration_seconds: elapsedTime,
+      avg_power: avgPower,
+      avg_hr: avgHr,
+      avg_cadence: avgCadence,
+      np: finalMetrics.np,
+      tss: finalMetrics.tss,
+      if_factor: parseFloat(finalMetrics.ifFactor),
+      work_kj: finalMetrics.workKj,
+      distance_m: distResult.totalDistanceM,
+      avg_speed_kmh: avgSpeedKmh,
+      ftp_used: profile?.ftp || 200,
+      weight_kg: mass,
+      stream_data: distResult.stream
+    }).then(({ error: saveErr }) => {
+      if (saveErr) {
+        console.error('Greška pri spremanju u Supabase:', saveErr);
+        setSaveStatus('error');
+      } else {
+        console.log('Trening automatski spremljen u Supabase!');
+        setSaveStatus('saved');
+      }
     });
   };
 
@@ -645,7 +698,8 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         isPmConnected={isPmConnected}
         uploadStatus={uploadStatus}
         setUploadStatus={setUploadStatus}
-        handleReset={() => { setIsFinished(false); setUploadStatus(null); setElapsedTime(0); setWorkoutHistory([]); }}
+        saveStatus={saveStatus}
+        handleReset={() => { setIsFinished(false); setUploadStatus(null); setSaveStatus(null); setElapsedTime(0); setWorkoutHistory([]); }}
         handleExportTcx={() => exportToTCX(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja')}
       />
 
