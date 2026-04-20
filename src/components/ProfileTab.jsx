@@ -4,6 +4,7 @@ import { User, Zap, Target, Clock, Save, BrainCircuit, CheckCircle2 } from 'luci
 export default function ProfileTab({ profile, setProfile }) {
   // Proširujemo postojeći profil s novim podacima za AI
   const [formData, setFormData] = useState({
+    username: profile?.username || 'Odvažni Vozač',
     weight: profile?.weight || 75.9,
     ftp: profile?.ftp || 270,
     maxHr: profile?.maxHr || 180,
@@ -70,6 +71,10 @@ export default function ProfileTab({ profile, setProfile }) {
           </div>
           
           <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Korisničko Ime</label>
+              <input type="text" name="username" value={formData.username} onChange={handleChange} placeholder="Npr. Odvažni Vozač" className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all focus:shadow-[0_0_10px_rgba(249,115,22,0.2)]" />
+            </div>
             <div>
               <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Godina Rođenja</label>
               <input type="number" name="birthYear" value={formData.birthYear} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all focus:shadow-[0_0_10px_rgba(249,115,22,0.2)]" />

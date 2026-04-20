@@ -46,7 +46,7 @@ export default function App() {
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [athleteProfile, setAthleteProfile] = useProfileSync({
-    weight: 75.9, ftp: 270, thresholdHr: 160, maxHr: 180,
+    username: 'Odvažni Vozač', weight: 75.9, ftp: 270, thresholdHr: 160, maxHr: 180,
     birthYear: 1985, height: 180, experience: '3-5', riderType: 'all-rounder',
     hoursPerWeek: 8, primaryGoal: 'Istra 300', goalDate: '2026-09-26', weakness: 'kratki usponi (VO2Max)'
   });
@@ -90,6 +90,17 @@ export default function App() {
         </nav>
 
         <div className="p-3 border-t border-zinc-800/80 mt-auto flex flex-col gap-2">
+          
+          {/* User Profile Banner */}
+          <div className="flex items-center gap-3 px-4 py-2 mb-1 bg-zinc-900/50 rounded-xl border border-zinc-800/50">
+            <div className="bg-gradient-to-br from-orange-400 to-orange-600 text-white rounded-full w-9 h-9 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(249,115,22,0.3)] shrink-0">
+              {(athleteProfile.username || 'K').charAt(0).toUpperCase()}
+            </div>
+            <div className="flex flex-col truncate">
+               <span className="text-sm font-bold text-zinc-100 truncate" title={athleteProfile.username || 'Korisnik'}>{athleteProfile.username || 'Korisnik'}</span>
+               <span className="text-[10px] text-zinc-500 truncate">FTP: <span className="font-bold text-orange-400">{athleteProfile.ftp}W</span> | {athleteProfile.weight}kg</span>
+            </div>
+          </div>
           <button
             onClick={() => handleTabChange('connections')}
             className={`w-full flex items-center px-4 py-3 rounded-xl transition-all ${activeTab === 'connections' ? 'bg-orange-500/10 text-orange-400 font-semibold border border-orange-500/20 shadow-[0_0_10px_rgba(249,115,22,0.1)]' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'}`}
@@ -185,7 +196,12 @@ export default function App() {
           <div className="md:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={() => setIsMobileMenuOpen(false)}>
             <div className="absolute bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-black text-zinc-100 tracking-tight">Ostale opcije</h3>
+                <div className="flex items-center gap-3">
+                  <div className="bg-gradient-to-br from-orange-400 to-orange-600 text-white rounded-full w-10 h-10 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(249,115,22,0.3)]">
+                    {(athleteProfile.username || 'K').charAt(0).toUpperCase()}
+                  </div>
+                  <h3 className="text-lg font-black text-zinc-100 tracking-tight">Bok, {athleteProfile.username || 'Korisnik'}</h3>
+                </div>
                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-zinc-800 rounded-full text-zinc-400"><X className="w-5 h-5" /></button>
               </div>
               <div className="grid grid-cols-2 gap-3 mb-6">
