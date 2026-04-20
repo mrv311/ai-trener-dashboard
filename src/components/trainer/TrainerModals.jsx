@@ -13,7 +13,8 @@ export default function TrainerModals({
   setUploadStatus,
   saveStatus,
   handleReset,
-  handleExportTcx
+  handleExportTcx,
+  handleExportFit
 }) {
   return (
     <>
@@ -116,10 +117,16 @@ export default function TrainerModals({
                 {uploadStatus === 'strava' ? <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" /> : <UploadCloud className="w-4 h-4 md:w-5 md:h-5" />}
                 {uploadStatus === 'strava' ? 'Poslano!' : 'Upload (Strava)'}
               </button>
-              <button onClick={handleExportTcx} className="flex items-center justify-center gap-2 md:gap-3 w-full py-3 md:py-4 rounded-xl font-black transition-all text-sm md:text-base bg-sky-500 text-white hover:bg-sky-600 shadow-[0_0_15px_rgba(14,165,233,0.3)]">
-                <Download className="w-4 h-4 md:w-5 md:h-5" />
-                Preuzmi kao .TCX Datoteku
-              </button>
+              <div className="flex gap-2 w-full">
+                <button onClick={handleExportFit} className="flex-1 flex items-center justify-center gap-2 md:gap-3 py-3 md:py-4 rounded-xl font-black transition-all text-sm md:text-base bg-emerald-500 text-white hover:bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                  <Download className="w-4 h-4 md:w-5 md:h-5" />
+                  FIT Preuzimanje
+                </button>
+                <button onClick={handleExportTcx} className="flex-1 flex items-center justify-center gap-2 md:gap-3 py-3 md:py-4 rounded-xl font-black transition-all text-sm md:text-base bg-sky-500 text-white hover:bg-sky-600 shadow-[0_0_15px_rgba(14,165,233,0.3)]">
+                  <Download className="w-4 h-4 md:w-5 md:h-5" />
+                  TCX
+                </button>
+              </div>
             </div>
             <button onClick={handleReset} className="mt-8 text-zinc-500 font-bold hover:text-zinc-300 text-sm transition-colors">
               Zatvori i resetiraj

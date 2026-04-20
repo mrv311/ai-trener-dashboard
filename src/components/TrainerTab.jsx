@@ -3,7 +3,7 @@ import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastFor
 import TrainerModals from './trainer/TrainerModals';
 import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer } from '../utils/workoutUtils';
-import { exportToTCX } from '../utils/exportUtils';
+import { exportToTCX, exportToFIT } from '../utils/exportUtils';
 import { calculateCogganMetrics } from '../utils/performanceMetrics';
 import { calculateDistanceStream } from '../utils/virtualDistance';
 import { supabase } from '../services/supabaseClient';
@@ -701,6 +701,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         saveStatus={saveStatus}
         handleReset={() => { setIsFinished(false); setUploadStatus(null); setSaveStatus(null); setElapsedTime(0); setWorkoutHistory([]); }}
         handleExportTcx={() => exportToTCX(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja')}
+        handleExportFit={() => exportToFIT(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja')}
       />
 
       {/* GORNJA TRAKA: Bluetooth gumbi */}

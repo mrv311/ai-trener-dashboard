@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { exportTCXFromStream } from '../utils/exportUtils';
+import { exportTCXFromStream, exportFITFromStream } from '../utils/exportUtils';
 import {
   Clock, Zap, Heart, Activity, Gauge, Download, Trash2, ChevronRight,
   X, TrendingUp, Flame, Route, Timer, Loader2, AlertCircle, RefreshCw
@@ -153,6 +153,24 @@ export default function HistoryTab() {
     doExport();
   };
 
+  const handleExportFIT = (activity) => {
+    const doExport = async () => {
+      let streamData = activity.stream_data;
+      if (!streamData) {
+        const { data } = await supabase
+          .from('completed_activities')
+          .select('stream_data')
+          .eq('id', activity.id)
+          .single();
+        streamData = data?.stream_data;
+      }
+      if (streamData) {
+        exportFITFromStream(streamData, activity.title, activity.started_at);
+      }
+    };
+    doExport();
+  };
+
   // Detail modal chart data
   const chartData = selectedActivity?.stream_data
     ? downsampleStream(selectedActivity.stream_data)
@@ -300,6 +318,12 @@ export default function HistoryTab() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleExportFIT(selectedActivity)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl text-xs font-bold border border-emerald-500/20 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" /> FIT
+                </button>
                 <button
                   onClick={() => handleExportTCX(selectedActivity)}
                   className="flex items-center gap-1.5 px-3 py-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 rounded-xl text-xs font-bold border border-sky-500/20 transition-colors"
