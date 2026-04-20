@@ -18,6 +18,7 @@ import ProgressionTab from './components/ProgressionTab';
 import HistoryTab from './components/HistoryTab';
 
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { useProfileSync } from './hooks/useProfileSync';
 import { useIntervalsData } from './hooks/useIntervalsData';
 
 // 1. Centralizirana konfiguracija tabova za lakše održavanje
@@ -44,7 +45,7 @@ export default function App() {
   const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey);
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
-  const [athleteProfile, setAthleteProfile] = useLocalStorage('ai_trener_profile', {
+  const [athleteProfile, setAthleteProfile] = useProfileSync({
     weight: 75.9, ftp: 270, thresholdHr: 160, maxHr: 180,
     birthYear: 1985, height: 180, experience: '3-5', riderType: 'all-rounder',
     hoursPerWeek: 8, primaryGoal: 'Istra 300', goalDate: '2026-09-26', weakness: 'kratki usponi (VO2Max)'
