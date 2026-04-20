@@ -26,10 +26,10 @@ export default function PowerCurveTab({ intervalsId, intervalsKey, profile }) {
       setError(null);
       
       try {
-        const authString = btoa(`API_KEY:${intervalsKey.trim()}`);
+        const authString = btoa(`API_KEY:${String(intervalsKey || '').trim()}`);
         const filterString = activeFilters.join(',');
         
-        const response = await fetch(`https://intervals.icu/api/v1/athlete/${intervalsId.trim()}/power-curves.json?curves=${filterString}&type=Ride`, {
+        const response = await fetch(`https://intervals.icu/api/v1/athlete/${String(intervalsId || '').trim()}/power-curves.json?curves=${filterString}&type=Ride`, {
           headers: { 'Authorization': `Basic ${authString}`, 'Accept': 'application/json' }
         });
         

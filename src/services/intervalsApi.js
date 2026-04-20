@@ -2,7 +2,7 @@ const FETCH_PAST_MONTHS = 12;
 const FETCH_FUTURE_MONTHS = 3;
 
 const getAuthHeaders = (apiKey) => {
-  const cleanKey = apiKey.trim();
+  const cleanKey = String(apiKey || '').trim();
   const authString = btoa(`API_KEY:${cleanKey}`);
   return { 
     'Authorization': `Basic ${authString}`, 
@@ -24,7 +24,7 @@ const getDateRange = () => {
 };
 
 export const fetchIntervalsData = async (intervalsId, intervalsKey) => {
-  const cleanId = intervalsId.trim();
+  const cleanId = String(intervalsId || '').trim();
   const headers = getAuthHeaders(intervalsKey);
   const { oldest, newest } = getDateRange();
 
@@ -55,7 +55,7 @@ export const fetchIntervalsData = async (intervalsId, intervalsKey) => {
  * PUT /api/v1/athlete/{id}/events/{eventId}
  */
 export const updateEventDate = async (intervalsId, intervalsKey, eventId, newDate) => {
-  const cleanId = intervalsId.trim();
+  const cleanId = String(intervalsId || '').trim();
   const headers = {
     ...getAuthHeaders(intervalsKey),
     'Content-Type': 'application/json'
@@ -83,7 +83,7 @@ export const updateEventDate = async (intervalsId, intervalsKey, eventId, newDat
  * Kreira novi event na Intervals.icu
  */
 export const createEvent = async (intervalsId, intervalsKey, payload) => {
-  const cleanId = intervalsId.trim();
+  const cleanId = String(intervalsId || '').trim();
   const headers = {
     ...getAuthHeaders(intervalsKey),
     'Content-Type': 'application/json'
@@ -109,7 +109,7 @@ export const createEvent = async (intervalsId, intervalsKey, payload) => {
  * Ažurira detalje (tekst) eventa na Intervals.icu.
  */
 export const updateEventDetails = async (intervalsId, intervalsKey, eventId, payload) => {
-  const cleanId = intervalsId.trim();
+  const cleanId = String(intervalsId || '').trim();
   const url = `https://intervals.icu/api/v1/athlete/${cleanId}/events/${eventId}`;
 
   // 1. Sigurno spajanje headera

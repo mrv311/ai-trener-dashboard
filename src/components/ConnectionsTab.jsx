@@ -3,9 +3,11 @@ import { CheckCircle, XCircle, Clock, Link as LinkIcon, Activity } from 'lucide-
 
 export default function ConnectionsTab({ connectionStatus, intervalsId, setId, intervalsKey, setKey, onSave }) {
   const saveSettings = () => { 
-    localStorage.setItem('intervalsId', intervalsId); 
-    localStorage.setItem('intervalsKey', intervalsKey.trim()); 
-    onSave(); 
+    if (intervalsKey) setKey(String(intervalsKey).trim());
+    if (intervalsId) setId(String(intervalsId).trim());
+    setTimeout(() => {
+      onSave(); 
+    }, 50);
   };
 
   return (

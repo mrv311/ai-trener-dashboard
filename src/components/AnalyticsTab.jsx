@@ -20,7 +20,7 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
       setError(null);
 
       try {
-        const authString = btoa(`API_KEY:${intervalsKey.trim()}`);
+        const authString = btoa(`API_KEY:${String(intervalsKey || '').trim()}`);
 
         const today = new Date();
         const pastDate = new Date();
@@ -34,7 +34,7 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
         const newest = today.toISOString().split('T')[0];
 
         const response = await fetch(
-          `https://intervals.icu/api/v1/athlete/${intervalsId.trim()}/activities?oldest=${oldest}&newest=${newest}`,
+          `https://intervals.icu/api/v1/athlete/${String(intervalsId || '').trim()}/activities?oldest=${oldest}&newest=${newest}`,
           {
             headers: {
               'Authorization': `Basic ${authString}`,
