@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2 } from 'lucide-react';
 import { downloadActivityFitFile, getActivityStreams } from '../services/intervalsApi';
-import { calculateEF, calculateVI } from '../utils/performanceMetrics';
+import { calculateEF, calculateVI, calculateCogganMetrics } from '../utils/performanceMetrics';
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 const formatDur = (mins) => {
@@ -23,6 +23,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const [streamsData, setStreamsData] = useState([]);
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
   const [userFtp, setUserFtp] = useState(200);
+  const [streamMetrics, setStreamMetrics] = useState({ np: 0, avgPower: 0, maxPower: 0, avgHr: 0 });
 
   useEffect(() => {
     if (!isOpen || !activity) {
@@ -49,6 +50,30 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
         
         const wattsStream = getStream('watts');
         const hrStream = getStream('heartrate');
+        
+        // Dinamički izračun metrika u slučaju da Intervals.icu nije poslao sumarne vrijednosti
+        let maxP = 0; 
+        let totalHr = 0; let validHr = 0;
+        
+        for (let i = 0; i < wattsStream.length; i++) {
+          if (wattsStream[i] > maxP) maxP = wattsStream[i];
+        }
+        for (let i = 0; i < hrStream.length; i++) {
+          if (hrStream[i] > 0) { 
+            totalHr += hrStream[i]; 
+            validHr++; 
+          }
+        }
+        
+        const cMetrics = calculateCogganMetrics(wattsStream, userFtp);
+        if (mounted) {
+          setStreamMetrics({
+            np: cMetrics.np,
+            avgPower: cMetrics.avgPower,
+            maxPower: maxP,
+            avgHr: validHr > 0 ? Math.round(totalHr / validHr) : 0
+          });
+        }
         
         let maxLength = Math.max(wattsStream.length, hrStream.length);
         
@@ -102,10 +127,10 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const plannedTss = activity.plannedTss || 0;
   const actualDur = activity.duration || 0;
   const plannedDur = activity.plannedDuration || 0;
-  const actualNp = activity.np || activity.normalized_power || 0;
-  const actualAvgPower = activity.average_power || activity.avgPower || 0;
-  const actualAvgHr = activity.average_heartrate || activity.averageHr || 0;
-  const actualMaxPower = activity.max_power || activity.maxPower || 0;
+  const actualNp = activity.np || streamMetrics.np || 0;
+  const actualAvgPower = activity.average_power || streamMetrics.avgPower || 0;
+  const actualAvgHr = activity.average_heartrate || streamMetrics.avgHr || 0;
+  const actualMaxPower = activity.max_power || streamMetrics.maxPower || 0;
 
   const ef = calculateEF(actualNp, actualAvgHr);
   const vi = calculateVI(actualNp, actualAvgPower);
