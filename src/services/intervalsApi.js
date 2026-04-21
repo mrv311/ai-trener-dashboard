@@ -165,10 +165,13 @@ export const updateEventDetails = async (intervalsId, intervalsKey, eventId, pay
 export const downloadActivityFitFile = async (intervalsId, intervalsKey, activityId) => {
   const cleanId = String(intervalsId || '').trim();
   const headers = getAuthHeaders(intervalsKey);
-  const url = `https://intervals.icu/api/v1/athlete/${cleanId}/activities/${activityId}/file`;
+  const url = `https://intervals.icu/api/v1/activity/${activityId}/file`;
 
   const res = await fetch(url, { headers });
   if (!res.ok) {
+    if (res.status === 403 || res.status === 404) {
+      throw new Error(`Datoteka nije dostupna za preuzimanje. Ovo se često događa prenesenim treninzima sa Strave zbog njihovih pravila privatnosti (Status ${res.status}).`);
+    }
     const errText = await res.text().catch(() => '');
     throw new Error(`Greška pri preuzimanju datoteke: ${res.status} ${errText}`);
   }

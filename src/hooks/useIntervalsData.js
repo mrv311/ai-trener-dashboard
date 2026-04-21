@@ -134,7 +134,11 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         statusColor: complianceColor, isCompleted: true,
         difficulty_score: diffScore,
         category: actCategory,
-        workout_doc: workoutDoc
+        workout_doc: workoutDoc,
+        np: Math.round(act.icu_normalized_power || act.normalized_power || 0),
+        average_power: Math.round(act.icu_average_power || act.average_watts || act.average_power || 0),
+        max_power: Math.round(act.icu_max_power || act.max_watts || act.max_power || 0),
+        average_heartrate: Math.round(act.icu_average_hr || act.average_heartrate || 0)
       });
     });
 

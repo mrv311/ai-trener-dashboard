@@ -52,12 +52,10 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
         
         let maxLength = Math.max(wattsStream.length, hrStream.length);
         
-        // Optimizacija - downsampling ako ima previše točaka (max 1500 točaka za Recharts je obično ok, ciljamo <5000)
-        // Ako je stream manji od 2000, koristimo sve
-        const step = Math.max(1, Math.ceil(maxLength / 1500)); 
+        // Optimizacija - Smanjeno na 3000 točaka za veću oštrinu
+        const step = Math.max(1, Math.ceil(maxLength / 3000)); 
         
         const finalData = [];
-        // useMemo inside effect logic is basically just reducing list here
         for (let i = 0; i < maxLength; i += step) {
           finalData.push({
             time: i,
@@ -238,7 +236,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                           return [value, name];
                         }}
                       />
-                      <Area yAxisId="left" type="monotone" dataKey="watts" stroke="#f59e0b" strokeWidth={1} fill="url(#powerZones)" isAnimationActive={false} />
+                      <Area yAxisId="left" type="linear" dataKey="watts" stroke="#f59e0b" strokeWidth={1.5} fill="url(#powerZones)" isAnimationActive={false} />
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
