@@ -5,6 +5,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import WorkoutEditorModal from './WorkoutEditorModal';
 import { updateEventDetails } from '../services/intervalsApi';
+import ActivityDetailModal from './ActivityDetailModal';
 import { extractIntensityData } from '../utils/workoutParser';
 
 const formatDur = (mins) => {
@@ -117,7 +118,7 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted 
 // ============================================================
 // WorkoutCard
 // ============================================================
-const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, onEditWorkout, isCurrentMonth }) {
+const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, onEditWorkout, onViewActivity, isCurrentMonth }) {
   const canDrag = isDesktop && isDraggable(w);
 
   const { attributes, listeners, setNodeRef } = useDraggable({
@@ -136,8 +137,12 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
       style={style}
       {...(canDrag ? { ...attributes, ...listeners } : {})}
       onClick={() => {
-        if (!isDragging && onEditWorkout && (w.isLocal || w.id.startsWith('ev-'))) {
-          onEditWorkout(w);
+        if (!isDragging) {
+          if (w.isCompleted || w.status === 'completed' || w.id.startsWith('act-')) {
+            if (onViewActivity) onViewActivity(w);
+          } else if (onEditWorkout && (w.isLocal || w.id.startsWith('ev-'))) {
+            onEditWorkout(w);
+          }
         }
       }}
       className={`workout-card-element rounded-lg flex flex-col overflow-hidden min-h-[100px] backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : ''} ${canDrag && !isDragging ? 'cursor-grab hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
@@ -228,7 +233,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
 // ============================================================
 // CalendarDay
 // ============================================================
-const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, onEditWorkout }) {
+const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, onEditWorkout, onViewActivity }) {
   const { isOver, setNodeRef } = useDroppable({
     id: dObj.dateStr,
   });
@@ -252,7 +257,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
         </div>
         <div className="flex flex-col gap-2">
           {dWorks.length > 0 ? dWorks.map(w => (
-            <WorkoutCard key={w.id} w={w} isDesktop={false} isDragging={false} onSelectWorkout={onSelectWorkout} handleUnpair={handleUnpair} handlePair={handlePair} handleDeleteLocalActivity={handleDeleteLocalActivity} onEditWorkout={onEditWorkout} />
+            <WorkoutCard key={w.id} w={w} isDesktop={false} isDragging={false} onSelectWorkout={onSelectWorkout} handleUnpair={handleUnpair} handlePair={handlePair} handleDeleteLocalActivity={handleDeleteLocalActivity} onEditWorkout={onEditWorkout} onViewActivity={onViewActivity} />
           )) : (
             <div className="text-xs text-zinc-600 italic px-2 py-2 bg-zinc-900/40 rounded-lg border border-zinc-800 border-dashed mr-auto">Odmor</div>
           )}
@@ -315,6 +320,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
             handlePair={handlePair}
             handleDeleteLocalActivity={handleDeleteLocalActivity}
             onEditWorkout={onEditWorkout}
+            onViewActivity={onViewActivity}
           />
         ))}
       </div>
@@ -365,6 +371,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [activeWidth, setActiveWidth] = useState(0);
   const [editingWorkout, setEditingWorkout] = useState(null);
+  const [viewingActivity, setViewingActivity] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const sensors = useSensors(
@@ -477,6 +484,11 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         isLoading={isUpdating}
         userFtp={profile?.ftp}
       />
+      <ActivityDetailModal
+        activity={viewingActivity}
+        isOpen={!!viewingActivity}
+        onClose={() => setViewingActivity(null)}
+      />
       <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-950/50">
         <span className="px-4 font-bold text-lg text-zinc-100 drop-shadow-sm">{monthNames[cm]} {cy}</span>
         <div className="flex bg-zinc-900/80 rounded-lg p-1 border border-zinc-800 gap-1">
@@ -506,6 +518,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             handleUnpair={handleUnpair}
             handlePair={handlePair}
             handleDeleteLocalActivity={handleDeleteLocalActivity}
+            onViewActivity={setViewingActivity}
+            onEditWorkout={setEditingWorkout}
           />
         ))}
       </div>
@@ -549,6 +563,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       handlePair={handlePair}
                       handleDeleteLocalActivity={handleDeleteLocalActivity}
                       onEditWorkout={setEditingWorkout}
+                      onViewActivity={setViewingActivity}
                     />
                   );
                 })}

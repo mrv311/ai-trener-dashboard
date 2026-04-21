@@ -158,3 +158,28 @@ export const updateEventDetails = async (intervalsId, intervalsKey, eventId, pay
 
   return res.json();
 };
+
+/**
+ * Dohvaća originalnu FIT datoteku za određenu aktivnost i pokreće preuzimanje.
+ */
+export const downloadActivityFitFile = async (intervalsId, intervalsKey, activityId) => {
+  const cleanId = String(intervalsId || '').trim();
+  const headers = getAuthHeaders(intervalsKey);
+  const url = `https://intervals.icu/api/v1/activity/${activityId}/file`;
+
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Greška pri preuzimanju datoteke: ${res.status} ${errText}`);
+  }
+
+  const blob = await res.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = downloadUrl;
+  a.download = `activity-${activityId}.fit`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(downloadUrl);
+};
