@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Pencil, Eye, Bike, Clock, Activity, Zap, BarChart3, Flame } from 'lucide-react';
+import { Save, Pencil, Eye } from 'lucide-react';
 import { parseIntervalsCode } from '../utils/workoutParser';
-import { format } from 'date-fns';
 
 
 // ============================================================
@@ -315,16 +314,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
   // ==============================
 
   const totalSecs = stats.duration || 0;
-  const intensityPct = stats.np > 0 && ftp > 0 ? Math.round((stats.np / ftp) * 100) : 0;
 
-  // Informacije o datumu treninga
-  const workoutDate = workout.date ? new Date(workout.date) : null;
-  const dayNames = ['Nedjelja', 'Ponedjeljak', 'Utorak', 'Srijeda', 'Četvrtak', 'Petak', 'Subota'];
-  const dayName = workoutDate ? dayNames[workoutDate.getDay()] : '';
-  const dateStr = workoutDate
-    ? `${workoutDate.getDate()} ${['Sij', 'Velj', 'Ožu', 'Tra', 'Svi', 'Lip', 'Srp', 'Kol', 'Ruj', 'Lis', 'Stu', 'Pro'][workoutDate.getMonth()]}`
-    : '';
-  const timeStr = workout.time || '08:00';
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in" onClick={onClose}>
@@ -332,53 +322,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
         className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-                // ============ HEADER ============
-        <div className="flex items-center gap-3 px-5 py-3.5 border-b border-zinc-800 bg-zinc-950/60" onKeyDown={e => e.stopPropagation()}>
-          {/* Ikona */}
-          <div className="bg-sky-500/10 p-2 rounded-xl border border-sky-500/20 shrink-0">
-            <Bike className="w-5 h-5 text-sky-400" />
-          </div>
 
-          {/* Naziv */}
-          <div className="flex-1 min-w-0">
-            {mode === 'edit' ? (
-              <input
-                type="text"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                className="bg-transparent border-none outline-none w-full text-base font-bold text-zinc-100 focus:ring-0 p-0"
-                placeholder="Naziv treninga..."
-              />
-            ) : (
-              <h2 className="text-base font-bold text-zinc-100 truncate">{title || 'Bez naziva'}</h2>
-            )}
-          </div>
-
-          {/* Header statistike */}
-          <div className="hidden sm:flex items-center gap-5 text-[11px] text-zinc-400 shrink-0">
-            <div className="text-center">
-              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-wider">{dayName}</div>
-              <div className="text-zinc-200 font-black text-sm leading-tight">{dateStr} {timeStr}</div>
-            </div>
-            <div className="w-px h-8 bg-zinc-800" />
-            <div className="text-center">
-              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-wider">Duration</div>
-              <div className="text-zinc-200 font-black text-sm leading-tight">{formatDurSec(totalSecs)}</div>
-            </div>
-            <div className="text-center">
-              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-wider">Load</div>
-              <div className="text-zinc-200 font-black text-sm leading-tight">{stats.tss || '-'}</div>
-            </div>
-            <div className="text-center">
-              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-wider">Intensity</div>
-              <div className="text-zinc-200 font-black text-sm leading-tight">{intensityPct > 0 ? `${intensityPct}%` : '-'}</div>
-            </div>
-          </div>
-
-          <button onClick={onClose} className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-full transition-colors ml-2 shrink-0">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
 
         {/* ============ BODY ============ */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
