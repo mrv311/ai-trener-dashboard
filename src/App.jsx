@@ -151,6 +151,8 @@ export default function App() {
                 handleCreateWorkout={handleCreateWorkout}
                 onSelectWorkout={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
                 profile={athleteProfile}
+                intervalsId={intervalsId}
+                intervalsKey={intervalsKey}
               />
             )}
 

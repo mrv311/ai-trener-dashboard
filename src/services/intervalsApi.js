@@ -3,8 +3,9 @@ const FETCH_FUTURE_MONTHS = 3;
 
 const getAuthHeaders = (apiKey) => {
   const cleanKey = String(apiKey || '').trim();
+  const authString = btoa(`API_KEY:${cleanKey}`);
   return { 
-    'Authorization': `Bearer ${cleanKey}`, 
+    'Authorization': `Basic ${authString}`, 
     'Accept': 'application/json' 
   };
 };
@@ -164,7 +165,7 @@ export const updateEventDetails = async (intervalsId, intervalsKey, eventId, pay
 export const downloadActivityFitFile = async (intervalsId, intervalsKey, activityId) => {
   const cleanId = String(intervalsId || '').trim();
   const headers = getAuthHeaders(intervalsKey);
-  const url = `https://intervals.icu/api/v1/activity/${activityId}/file`;
+  const url = `https://intervals.icu/api/v1/athlete/${cleanId}/activities/${activityId}/file`;
 
   const res = await fetch(url, { headers });
   if (!res.ok) {
@@ -189,7 +190,7 @@ export const downloadActivityFitFile = async (intervalsId, intervalsKey, activit
 export const getActivityStreams = async (intervalsId, intervalsKey, activityId) => {
   const cleanId = String(intervalsId || '').trim();
   const headers = getAuthHeaders(intervalsKey);
-  const url = `https://intervals.icu/api/v1/activity/${activityId}/streams?types=watts,heartrate,velocity_smooth`;
+  const url = `https://intervals.icu/api/v1/activity/${activityId}/streams.json?types=watts,heartrate,velocity_smooth`;
 
   const res = await fetch(url, { headers });
   if (!res.ok) {

@@ -18,7 +18,7 @@ const formatSeconds = (secs) => {
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 };
 
-export default function ActivityDetailModal({ activity, isOpen, onClose }) {
+export default function ActivityDetailModal({ activity, isOpen, onClose, intervalsId, intervalsKey }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [streamsData, setStreamsData] = useState([]);
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
@@ -32,28 +32,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose }) {
 
     let mounted = true;
     
-    // Pročitaj profile data za FTP
-    const profileStr = localStorage.getItem('userProfile');
-    if (profileStr) {
-      try {
-        const profile = JSON.parse(profileStr);
-        if (profile.ftp) setUserFtp(profile.ftp);
-      } catch (e) {
-        console.error("Greška pri čitanju profila:", e);
-      }
-    }
-
-    // Dohvati Intervals ID i ključ direktno iz localStorage-a onako kako ih useLocalStorage sprema
-    let storedId = localStorage.getItem('intervalsId') || '';
-    let storedKey = localStorage.getItem('intervalsKey') || '';
-    
-    // Safety check ako je slučajno spremljeno sa JSON navodnicima
-    if (storedId.startsWith('"') && storedId.endsWith('"')) storedId = JSON.parse(storedId);
-    if (storedKey.startsWith('"') && storedKey.endsWith('"')) storedKey = JSON.parse(storedKey);
-
-    const intervalsId = storedId.trim();
-    const intervalsKey = storedKey.trim();
-
+    // Oslanjamo se na propse koje prosljeđuje App -> CalendarTab
     if (!intervalsId || !intervalsKey || (!activity.id && !activity.actId)) {
       return;
     }
@@ -111,16 +90,6 @@ export default function ActivityDetailModal({ activity, isOpen, onClose }) {
   const handleDownload = async () => {
     try {
       setIsDownloading(true);
-      let storedId = localStorage.getItem('intervalsId') || '';
-      let storedKey = localStorage.getItem('intervalsKey') || '';
-      
-      if (storedId.startsWith('"') && storedId.endsWith('"')) storedId = JSON.parse(storedId);
-      if (storedKey.startsWith('"') && storedKey.endsWith('"')) storedKey = JSON.parse(storedKey);
-
-      const intervalsId = storedId.trim();
-      const intervalsKey = storedKey.trim();
-      
-      if (!intervalsId || !intervalsKey) throw new Error("Nedostaju Intervals.icu podaci za prijavu.");
       
       const realActivityId = activity.actId || activity.id.toString().replace('act-', '');
       await downloadActivityFitFile(intervalsId, intervalsKey, realActivityId);
