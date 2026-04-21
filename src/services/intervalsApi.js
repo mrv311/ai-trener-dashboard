@@ -3,9 +3,8 @@ const FETCH_FUTURE_MONTHS = 3;
 
 const getAuthHeaders = (apiKey) => {
   const cleanKey = String(apiKey || '').trim();
-  const authString = btoa(`API_KEY:${cleanKey}`);
   return { 
-    'Authorization': `Basic ${authString}`, 
+    'Authorization': `Bearer ${cleanKey}`, 
     'Accept': 'application/json' 
   };
 };
