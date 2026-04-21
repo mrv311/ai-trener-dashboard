@@ -45,6 +45,7 @@ export default function SupabaseSyncModule({ intervalsId, intervalsKey }) {
 
       let successCount = 0;
       let errorCount = 0;
+      let lastDbError = null;
 
       for (let i = 0; i < activities.length; i++) {
         const act = activities[i];
@@ -58,22 +59,25 @@ export default function SupabaseSyncModule({ intervalsId, intervalsKey }) {
             title: act.name || 'Trening',
             workout_source: act.source || 'Intervals.icu',
             duration_seconds: act.moving_time || 0,
-            avg_power: act.icu_average_power || act.average_watts || act.average_power || null,
-            avg_hr: act.icu_average_hr || act.average_heartrate || null,
-            avg_cadence: act.average_cadence || null,
-            np: act.icu_normalized_power || act.normalized_power || null,
-            tss: act.icu_training_load || null,
-            if_factor: act.icu_intensity || null,
+            avg_power: (act.icu_average_power || act.average_watts || act.average_power) ? Math.round(act.icu_average_power || act.average_watts || act.average_power) : null,
+            avg_hr: (act.icu_average_hr || act.average_heartrate) ? Math.round(act.icu_average_hr || act.average_heartrate) : null,
+            avg_cadence: act.average_cadence ? Math.round(act.average_cadence) : null,
+            np: (act.icu_normalized_power || act.normalized_power) ? Math.round(act.icu_normalized_power || act.normalized_power) : null,
+            tss: act.icu_training_load ? Number(act.icu_training_load) : null,
+            if_factor: act.icu_intensity ? Number((act.icu_intensity > 5 ? act.icu_intensity / 100 : act.icu_intensity).toFixed(2)) : null,
             work_kj: act.icu_joules ? Math.round(act.icu_joules / 1000) : null,
-            distance_m: act.distance || null,
-            avg_speed_kmh: act.average_speed ? (act.average_speed * 3.6).toFixed(1) : null,
-            ftp_used: act.icu_ftp || null,
-            weight_kg: act.icu_weight || null,
+            distance_m: act.distance ? Number(act.distance) : null,
+            avg_speed_kmh: act.average_speed ? Number((act.average_speed * 3.6).toFixed(1)) : null,
+            ftp_used: act.icu_ftp ? Math.round(act.icu_ftp) : null,
+            weight_kg: act.icu_weight ? Number(act.icu_weight) : null,
             stream_data: streams 
           };
 
           const { error } = await supabase.from('completed_activities').insert([record]);
-          if (error) throw error;
+          if (error) {
+              lastDbError = error.message || JSON.stringify(error);
+              throw error;
+          }
           
           successCount++;
         } catch (err) {
@@ -84,8 +88,8 @@ export default function SupabaseSyncModule({ intervalsId, intervalsKey }) {
         setProgress({ current: i + 1, total: activities.length });
       }
 
-      setStatusType('success');
-      setStatusMsg(`Sinkronizacija završena: ${successCount} uspješno, ${errorCount} s greškom.`);
+      setStatusType(errorCount > 0 ? 'error' : 'success');
+      setStatusMsg(`Sinkronizacija završena: ${successCount} uspješno, ${errorCount} s greškom. ${errorCount > 0 && lastDbError ? 'Zadnja greška: ' + lastDbError : ''}`);
 
     } catch (err) {
       console.error(err);
