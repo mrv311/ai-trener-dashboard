@@ -183,3 +183,20 @@ export const downloadActivityFitFile = async (intervalsId, intervalsKey, activit
   document.body.removeChild(a);
   window.URL.revokeObjectURL(downloadUrl);
 };
+
+/**
+ * Dohvaća sirove streamove (wats, hr, velocity) za aktivnost.
+ */
+export const getActivityStreams = async (intervalsId, intervalsKey, activityId) => {
+  const cleanId = String(intervalsId || '').trim();
+  const headers = getAuthHeaders(intervalsKey);
+  const url = `https://intervals.icu/api/v1/activity/${activityId}/streams?types=watts,heartrate,velocity_smooth`;
+
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Greška pri dohvaćanju streamova (Status ${res.status}): ${errText}`);
+  }
+
+  return res.json();
+};

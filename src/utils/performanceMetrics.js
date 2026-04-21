@@ -81,3 +81,21 @@ export function expandStepsToSeconds(steps, ftp) {
 
   return result;
 }
+
+/**
+ * Računa Efficiency Factor (EF)
+ * Odnos Normalized Power i prosječnog pulsa. Što veći, to je aerobna efikasnost bolja.
+ */
+export function calculateEF(np, avgHr) {
+  if (!np || !avgHr || avgHr <= 0) return 0;
+  return Number((np / avgHr).toFixed(2));
+}
+
+/**
+ * Računa Variability Index (VI)
+ * Odnos Normalized Power i prosječne snage. Prikazuje koliko je vožnja bila 'glatka' (ideally ~1.0 za TT, >1.2 za kriterij).
+ */
+export function calculateVI(np, avgPower) {
+  if (!np || !avgPower || avgPower <= 0) return 0;
+  return Number((np / avgPower).toFixed(2));
+}
