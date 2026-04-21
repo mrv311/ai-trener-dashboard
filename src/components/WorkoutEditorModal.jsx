@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Save, Pencil, Eye } from 'lucide-react';
+import { X, Save, Pencil, Eye } from 'lucide-react';
 import { parseIntervalsCode } from '../utils/workoutParser';
 
 
@@ -315,6 +315,15 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
 
   const totalSecs = stats.duration || 0;
 
+  // Informacije o datumu treninga
+  const workoutDate = workout.date ? new Date(workout.date) : null;
+  const dayNames = ['Nedjelja', 'Ponedjeljak', 'Utorak', 'Srijeda', 'Četvrtak', 'Petak', 'Subota'];
+  const dayName = workoutDate ? dayNames[workoutDate.getDay()] : '';
+  const dateStr = workoutDate
+    ? `${workoutDate.getDate()} ${['Sij', 'Velj', 'Ožu', 'Tra', 'Svi', 'Lip', 'Srp', 'Kol', 'Ruj', 'Lis', 'Stu', 'Pro'][workoutDate.getMonth()]}`
+    : '';
+  const timeStr = workout.time || '08:00';
+
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in" onClick={onClose}>
@@ -322,7 +331,29 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
         className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* ============ HEADER ============ */}
+        <div className="flex justify-between items-start px-5 py-4 border-b border-zinc-800 bg-zinc-950/60" onKeyDown={e => e.stopPropagation()}>
+          <div className="flex flex-col gap-0.5">
+            {mode === 'edit' ? (
+              <input
+                type="text"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                className="bg-transparent border-none outline-none w-full text-xl font-bold text-zinc-100 focus:ring-0 p-0"
+                placeholder="Naziv treninga..."
+              />
+            ) : (
+              <h1 className="text-xl font-bold text-zinc-100">{title || workout.name || 'Bez naziva'}</h1>
+            )}
+            <div className="text-sm text-zinc-400 font-medium">
+              {dayName}, {dateStr} • {timeStr}
+            </div>
+          </div>
 
+          <button onClick={onClose} className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-full transition-colors shrink-0">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
         {/* ============ BODY ============ */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
