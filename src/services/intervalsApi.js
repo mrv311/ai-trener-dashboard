@@ -23,10 +23,18 @@ const getDateRange = () => {
   return { oldest, newest };
 };
 
-export const fetchIntervalsData = async (intervalsId, intervalsKey) => {
+export const fetchIntervalsData = async (intervalsId, intervalsKey, options = {}) => {
   const cleanId = String(intervalsId || '').trim();
   const headers = getAuthHeaders(intervalsKey);
-  const { oldest, newest } = getDateRange();
+  
+  let oldest = options.oldest;
+  let newest = options.newest;
+  
+  if (!oldest || !newest) {
+    const range = getDateRange();
+    oldest = oldest || range.oldest;
+    newest = newest || range.newest;
+  }
 
   const actUrl = `https://intervals.icu/api/v1/athlete/${cleanId}/activities?oldest=${oldest}&newest=${newest}`;
   const evUrl = `https://intervals.icu/api/v1/athlete/${cleanId}/events?oldest=${oldest}&newest=${newest}`;
@@ -193,7 +201,7 @@ export const downloadActivityFitFile = async (intervalsId, intervalsKey, activit
 export const getActivityStreams = async (intervalsId, intervalsKey, activityId) => {
   const cleanId = String(intervalsId || '').trim();
   const headers = getAuthHeaders(intervalsKey);
-  const url = `https://intervals.icu/api/v1/activity/${activityId}/streams.json?types=watts,heartrate,velocity_smooth`;
+  const url = `https://intervals.icu/api/v1/activity/${activityId}/streams.json?types=watts,heartrate,velocity_smooth,cadence`;
 
   const res = await fetch(url, { headers });
   if (!res.ok) {

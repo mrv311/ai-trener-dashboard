@@ -1,5 +1,6 @@
 import React from 'react';
 import { CheckCircle, XCircle, Clock, Link as LinkIcon, Activity } from 'lucide-react';
+import SupabaseSyncModule from './SupabaseSyncModule';
 
 export default function ConnectionsTab({ connectionStatus, intervalsId, setId, intervalsKey, setKey, onSave }) {
   const saveSettings = () => { 
@@ -85,6 +86,9 @@ export default function ConnectionsTab({ connectionStatus, intervalsId, setId, i
           <DummyIntegration name="Garmin Connect" description="Sinkronizacija wellness metrike i spavanja." colorClass="text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]" bgClass="bg-cyan-500/10 border-cyan-500/20" letter="G" />
           <DummyIntegration name="TrainingPeaks" description="Uvoz kupljenih trenažnih planova." colorClass="text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]" bgClass="bg-emerald-500/10 border-emerald-500/20" letter="T" />
           <DummyIntegration name="TrainerDay" description="Preuzimanje workout blockova." colorClass="text-indigo-400 drop-shadow-[0_0_5px_rgba(129,140,248,0.5)]" bgClass="bg-indigo-500/10 border-indigo-500/20" letter="TD" />
+
+          {/* NOVI MODUL - Sinhronizacija s bazom */}
+          <SupabaseSyncModule intervalsId={intervalsId} intervalsKey={intervalsKey} />
         </div>
 
       </div>
