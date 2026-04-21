@@ -314,6 +314,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
   // ==============================
 
   const totalSecs = stats.duration || 0;
+  const intensityPct = stats.np > 0 && ftp > 0 ? Math.round((stats.np / ftp) * 100) : 0;
 
   // Informacije o datumu treninga
   const workoutDate = workout.date ? new Date(workout.date) : null;
@@ -347,6 +348,22 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
             )}
             <div className="text-sm text-zinc-400 font-medium">
               {dayName}, {dateStr} • {timeStr}
+            </div>
+          </div>
+
+          {/* Header statistike */}
+          <div className="hidden sm:flex items-center gap-6 mx-auto shrink-0">
+            <div className="text-center">
+              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-wider">Duration</div>
+              <div className="text-zinc-200 font-black text-sm leading-tight">{formatDurSec(totalSecs)}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-wider">Load</div>
+              <div className="text-zinc-200 font-black text-sm leading-tight">{stats.tss || '-'}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-wider">Intensity</div>
+              <div className="text-zinc-200 font-black text-sm leading-tight">{intensityPct > 0 ? `${intensityPct}%` : '-'}</div>
             </div>
           </div>
 
