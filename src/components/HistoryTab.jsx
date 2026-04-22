@@ -3,7 +3,8 @@ import { supabase } from '../services/supabaseClient';
 import { exportTCXFromStream, exportFITFromStream } from '../utils/exportUtils';
 import {
   Clock, Zap, Heart, Activity, Gauge, Download, Trash2, ChevronRight,
-  X, TrendingUp, Flame, Route, Timer, Loader2, AlertCircle, RefreshCw
+  X, TrendingUp, Flame, Route, Timer, Loader2, AlertCircle, RefreshCw,
+  Pencil, Check
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -80,6 +81,41 @@ export default function HistoryTab() {
   const [error, setError] = useState(null);
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [savingTitle, setSavingTitle] = useState(false);
+  const titleInputRef = React.useRef(null);
+
+  const handleStartRename = () => {
+    setTitleDraft(selectedActivity.title);
+    setEditingTitle(true);
+    setTimeout(() => titleInputRef.current?.select(), 50);
+  };
+
+  const handleSaveRename = async () => {
+    const newName = titleDraft.trim();
+    if (!newName || newName === selectedActivity.title) {
+      setEditingTitle(false);
+      return;
+    }
+    setSavingTitle(true);
+    try {
+      const { error } = await supabase
+        .from('completed_activities')
+        .update({ title: newName })
+        .eq('id', selectedActivity.id);
+      if (error) throw error;
+      // Ažuriraj lokalno
+      setSelectedActivity(prev => ({ ...prev, title: newName }));
+      setActivities(prev => prev.map(a => a.id === selectedActivity.id ? { ...a, title: newName } : a));
+      setEditingTitle(false);
+    } catch (err) {
+      console.error('Rename error:', err);
+      alert('Greška pri preimenovanju: ' + err.message);
+    } finally {
+      setSavingTitle(false);
+    }
+  };
 
   const fetchActivities = useCallback(async () => {
     setLoading(true);
@@ -310,7 +346,46 @@ export default function HistoryTab() {
             {/* Header */}
             <div className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur-md border-b border-zinc-800 px-5 md:px-8 py-4 md:py-5 flex items-center justify-between rounded-t-3xl">
               <div>
-                <h3 className="text-lg md:text-xl font-black text-zinc-100 tracking-tight">{selectedActivity.title}</h3>
+                {editingTitle ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={titleInputRef}
+                      type="text"
+                      value={titleDraft}
+                      onChange={(e) => setTitleDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); handleSaveRename(); }
+                        if (e.key === 'Escape') setEditingTitle(false);
+                      }}
+                      disabled={savingTitle}
+                      className="text-lg md:text-xl font-black text-zinc-100 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-1 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition-all w-full tracking-tight"
+                    />
+                    <button
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={handleSaveRename}
+                      disabled={savingTitle}
+                      className="p-1.5 text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg transition-colors border border-emerald-500/20 shrink-0"
+                    >
+                      {savingTitle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => setEditingTitle(false)}
+                      className="p-1.5 text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 hover:bg-zinc-700/50 rounded-lg transition-colors border border-zinc-700/30 shrink-0"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <h3
+                    className="text-lg md:text-xl font-black text-zinc-100 tracking-tight flex items-center gap-2 cursor-pointer group/title hover:text-orange-400 transition-colors"
+                    onClick={handleStartRename}
+                    title="Klikni za promjenu naziva"
+                  >
+                    {selectedActivity.title}
+                    <Pencil className="w-3.5 h-3.5 text-zinc-600 group-hover/title:text-orange-400 transition-colors" />
+                  </h3>
+                )}
                 <p className="text-xs text-zinc-500 font-medium mt-0.5">
                   {formatDate(selectedActivity.started_at)} u {formatTime(selectedActivity.started_at)}
                   <span className="mx-2 text-zinc-700">·</span>
