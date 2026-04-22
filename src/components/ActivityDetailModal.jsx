@@ -44,7 +44,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   // Sync displayTitle s activity.title kad se modal otvori
   useEffect(() => {
     if (activity) setDisplayTitle(activity.title || 'Trening');
-  }, [activity]);
+  }, [activity?.id]); // Samo kad se aktivnost promijeni, NE na svaki re-render
 
   useEffect(() => {
     if (isEditingTitle && titleInputRef.current) {
@@ -58,17 +58,22 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
     setIsEditingTitle(true);
   };
 
-  const savingRef = useRef(false);
+  const handleCancelEdit = () => {
+    setIsEditingTitle(false);
+  };
 
   const handleSaveTitle = async () => {
-    if (savingRef.current) return;
-    const newName = editTitle.trim();
+    // Čitaj direktno iz DOM-a da izbjegnemo stale closure
+    const inputVal = titleInputRef.current?.value?.trim();
+    const newName = inputVal || editTitle.trim();
+    
+    console.log('[Rename] saving:', newName, 'current:', displayTitle);
+    
     if (!newName || newName === displayTitle) {
       setIsEditingTitle(false);
       return;
     }
 
-    savingRef.current = true;
     setIsSavingTitle(true);
     try {
       // 1. Pokušaj Intervals.icu (neće raditi za Strava aktivnosti)
@@ -76,8 +81,9 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
       if (intervalsId && intervalsKey && realActId) {
         try {
           await updateActivityName(intervalsId, intervalsKey, realActId, newName);
+          console.log('[Rename] Intervals.icu updated');
         } catch (apiErr) {
-          console.warn('Intervals.icu rename skipped:', apiErr.message);
+          console.warn('[Rename] Intervals.icu skipped:', apiErr.message);
         }
       }
 
@@ -95,21 +101,24 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
       }
       if (sbId) {
         await supabase.from('completed_activities').update({ title: newName }).eq('id', sbId);
+        console.log('[Rename] Supabase updated, id:', sbId);
+      } else {
+        console.warn('[Rename] No Supabase record found for date:', activity.date);
       }
 
+      console.log('[Rename] Setting displayTitle to:', newName);
       setDisplayTitle(newName);
-      setIsEditingTitle(false);
     } catch (err) {
-      console.error('Rename error:', err);
+      console.error('[Rename] error:', err);
     } finally {
       setIsSavingTitle(false);
-      savingRef.current = false;
+      setIsEditingTitle(false);
     }
   };
 
   const handleTitleKeyDown = (e) => {
-    if (e.key === 'Enter') handleSaveTitle();
-    if (e.key === 'Escape') setIsEditingTitle(false);
+    if (e.key === 'Enter') { e.preventDefault(); handleSaveTitle(); }
+    if (e.key === 'Escape') handleCancelEdit();
   };
 
   useEffect(() => {
@@ -316,16 +325,23 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   onKeyDown={handleTitleKeyDown}
-                  onBlur={() => { if (!savingRef.current) handleSaveTitle(); }}
                   disabled={isSavingTitle}
                   className="text-xl font-black text-zinc-100 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-1 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition-all w-full"
                 />
                 <button
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={handleSaveTitle}
                   disabled={isSavingTitle}
                   className="p-1.5 text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg transition-colors border border-emerald-500/20 shrink-0"
                 >
                   {isSavingTitle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                </button>
+                <button
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleCancelEdit}
+                  className="p-1.5 text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 hover:bg-zinc-700/50 rounded-lg transition-colors border border-zinc-700/30 shrink-0"
+                >
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             ) : (
