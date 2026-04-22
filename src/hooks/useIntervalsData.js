@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { fetchIntervalsData, updateEventDate, updateEventDetails } from '../services/intervalsApi';
+import { supabase } from '../services/supabaseClient';
 
 export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError } = {}) {
   const [rawActivities, setRawActivities] = useState([]);
@@ -9,37 +10,62 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
   const [error, setError] = useState(null);
   const [unpairedList, setUnpairedList] = useState([]);
   const [localRefreshTrigger, setLocalRefreshTrigger] = useState(0);
+  const [supabaseActivities, setSupabaseActivities] = useState([]);
 
   const fetchWorkouts = useCallback(async () => {
     if (!intervalsId || !intervalsKey) {
       setRawActivities([]);
       setRawEvents([]);
       setWellnessData({});
-      return;
+      // Ali i dalje dohvaćamo Supabase aktivnosti
     }
     setIsLoading(true);
     setError(null);
     try {
-      const data = await fetchIntervalsData(intervalsId, intervalsKey);
-      
-      setRawActivities(data.activities);
-      setRawEvents(data.events);
-      
-      const mappedWellness = {};
-      data.wellness.forEach(w => {
-        const formatDur = (mins) => { 
-          const h = Math.floor(mins / 60); 
-          return `${h > 0 ? h + 'h ' : ''}${String(mins % 60).padStart(2, '0')}m`; 
-        };
-        mappedWellness[w.id] = {
-          restingHR: w.restingHR, 
-          sleep: w.sleepSecs ? formatDur(Math.round(w.sleepSecs / 60)) : null,
-          ctl: w.ctl,
-          atl: w.atl,
-          tsb: w.tsb
-        };
-      });
-      setWellnessData(mappedWellness);
+      // 1. Dohvati Intervals.icu podatke (ako postoje)
+      if (intervalsId && intervalsKey) {
+        const data = await fetchIntervalsData(intervalsId, intervalsKey);
+
+        setRawActivities(data.activities);
+        setRawEvents(data.events);
+
+        const mappedWellness = {};
+        data.wellness.forEach(w => {
+          const formatDur = (mins) => {
+            const h = Math.floor(mins / 60);
+            return `${h > 0 ? h + 'h ' : ''}${String(mins % 60).padStart(2, '0')}m`;
+          };
+          mappedWellness[w.id] = {
+            restingHR: w.restingHR,
+            sleep: w.sleepSecs ? formatDur(Math.round(w.sleepSecs / 60)) : null,
+            ctl: w.ctl,
+            atl: w.atl,
+            tsb: w.tsb
+          };
+        });
+        setWellnessData(mappedWellness);
+      }
+
+      // 2. Dohvati lokalne aktivnosti iz Supabase (zadnjih 90 dana)
+      try {
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+        const { data: supabaseData, error: supabaseError } = await supabase
+          .from('completed_activities')
+          .select('id, started_at, title, workout_source, duration_seconds, avg_power, avg_hr, np, tss, if_factor')
+          .gte('started_at', ninetyDaysAgo.toISOString())
+          .order('started_at', { ascending: false });
+
+        if (!supabaseError && supabaseData) {
+          console.log('[useIntervalsData] Dohvaćeno', supabaseData.length, 'lokalnih aktivnosti iz Supabase');
+          setSupabaseActivities(supabaseData);
+        } else if (supabaseError) {
+          console.warn('[useIntervalsData] Greška pri dohvaćanju Supabase aktivnosti:', supabaseError);
+        }
+      } catch (supabaseErr) {
+        console.warn('[useIntervalsData] Supabase dohvaćanje nije uspjelo:', supabaseErr);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -55,10 +81,12 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     const finalWorkouts = [];
     const consumedEvents = new Set();
     const consumedLocalIds = new Set();
+    const consumedSupabaseIds = new Set();
     const todayStr = new Date().toISOString().split('T')[0];
 
     const localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
 
+    // 1. Prvo dodaj Intervals.icu aktivnosti (s pairing logikom)
     rawActivities.forEach(act => {
       const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
       let pairedEvent = null;
@@ -91,12 +119,12 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         }
       }
 
-      let complianceColor = 'blue'; 
+      let complianceColor = 'blue';
       let plannedTssDisplay = null;
       let plannedDurDisplay = null;
       let eventIdObj = null;
       let diffScore = null;
-            let actCategory = null;
+      let actCategory = null;
       let workoutDoc = null;
 
       if (pairedEvent || pairedLocal) {
@@ -126,7 +154,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         else complianceColor = 'red';
       }
 
-            finalWorkouts.push({
+      finalWorkouts.push({
         id: `act-${act.id}`, actId: act.id, eventId: eventIdObj, separatedEventIds,
         date: actDate, title: act.name || 'Trening',
         duration: Math.round((act.moving_time || 0) / 60), plannedDuration: plannedDurDisplay,
@@ -142,13 +170,87 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       });
     });
 
+    // 2. Dodaj Supabase lokalne aktivnosti (koje nisu već dodane iz Intervals.icu)
+    supabaseActivities.forEach(sbAct => {
+      const actDate = sbAct.started_at ? sbAct.started_at.split('T')[0] : '';
+
+      // Provjeri je li ova aktivnost već dodana iz Intervals.icu (po datumu)
+      const alreadyExists = finalWorkouts.some(w => w.date === actDate && w.isCompleted);
+      if (alreadyExists) {
+        console.log('[useIntervalsData] Preskačem Supabase aktivnost jer već postoji iz Intervals.icu:', actDate);
+        return;
+      }
+
+      // Pokušaj spariti s lokalnim planiranim treningom
+      let pairedLocal = null;
+      let plannedTssDisplay = null;
+      let plannedDurDisplay = null;
+      let eventIdObj = null;
+      let diffScore = null;
+      let actCategory = null;
+      let workoutDoc = null;
+      let complianceColor = 'blue';
+
+      for (let lw of localScheduled) {
+        if (lw.date === actDate && !consumedLocalIds.has(lw.id)) {
+          pairedLocal = lw;
+          consumedLocalIds.add(lw.id);
+          eventIdObj = `local-${lw.id}`;
+          plannedTssDisplay = Math.round(lw.tss || 0);
+          plannedDurDisplay = lw.duration_seconds ? Math.round(lw.duration_seconds / 60) : lw.duration;
+          diffScore = lw.difficulty_score;
+          actCategory = lw.category;
+          workoutDoc = lw.steps;
+          break;
+        }
+      }
+
+      // Izračunaj compliance ako je spareno
+      if (pairedLocal) {
+        const actualTss = Math.round(sbAct.tss || 0);
+        const actualDur = Math.round((sbAct.duration_seconds || 0) / 60);
+
+        let ratio = 1;
+        if (plannedTssDisplay > 0 && actualTss > 0) ratio = actualTss / plannedTssDisplay;
+        else if (plannedDurDisplay > 0 && actualDur > 0) ratio = actualDur / plannedDurDisplay;
+
+        if (ratio >= 0.8 && ratio <= 1.2) complianceColor = 'green';
+        else if ((ratio >= 0.5 && ratio < 0.8) || (ratio > 1.2 && ratio <= 1.5)) complianceColor = 'yellow';
+        else complianceColor = 'red';
+      }
+
+      finalWorkouts.push({
+        id: `supabase-${sbAct.id}`,
+        supabaseId: sbAct.id,
+        eventId: eventIdObj,
+        date: actDate,
+        title: sbAct.title || 'Lokalni Trening',
+        duration: Math.round((sbAct.duration_seconds || 0) / 60),
+        plannedDuration: plannedDurDisplay,
+        tss: Math.round(sbAct.tss || 0),
+        plannedTss: plannedTssDisplay,
+        statusColor: complianceColor,
+        isCompleted: true,
+        isSupabase: true, // Oznaka da je iz Supabase-a
+        difficulty_score: diffScore,
+        category: actCategory,
+        workout_doc: workoutDoc,
+        np: Math.round(sbAct.np || 0),
+        average_power: Math.round(sbAct.avg_power || 0),
+        average_heartrate: Math.round(sbAct.avg_hr || 0)
+      });
+
+      consumedSupabaseIds.add(sbAct.id);
+    });
+
+    // 3. Dodaj planirane evente iz Intervals.icu
     rawEvents.forEach(ev => {
-      if (ev.category !== 'WORKOUT' || consumedEvents.has(ev.id)) return; 
-      if (ev.activity_id && !unpairedList.some(pair => pair.endsWith(`-${ev.id}`))) return; 
+      if (ev.category !== 'WORKOUT' || consumedEvents.has(ev.id)) return;
+      if (ev.activity_id && !unpairedList.some(pair => pair.endsWith(`-${ev.id}`))) return;
 
       const evDate = ev.start_date_local ? ev.start_date_local.split('T')[0] : '';
-      let complianceColor = 'grey'; 
-      if (evDate < todayStr) complianceColor = 'red-missed'; 
+      let complianceColor = 'grey';
+      if (evDate < todayStr) complianceColor = 'red-missed';
 
       finalWorkouts.push({
         id: `ev-${ev.id}`, eventId: ev.id, date: evDate, title: ev.name || 'Planirano',
@@ -159,6 +261,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       });
     });
 
+    // 4. Dodaj lokalne planirane treninze (koji nisu spareni)
     localScheduled.forEach(sched => {
       if (consumedLocalIds.has(sched.id)) return;
       let complianceColor = 'grey';
@@ -181,16 +284,16 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     });
 
     return finalWorkouts;
-  }, [rawActivities, rawEvents, unpairedList, localRefreshTrigger]); 
+  }, [rawActivities, rawEvents, supabaseActivities, unpairedList, localRefreshTrigger]);
 
-  const handleUnpair = useCallback((actId, eventId) => { 
-    if (!actId || !eventId) return; 
-    setUnpairedList(prev => [...prev, `${actId}-${eventId}`]); 
+  const handleUnpair = useCallback((actId, eventId) => {
+    if (!actId || !eventId) return;
+    setUnpairedList(prev => [...prev, `${actId}-${eventId}`]);
   }, []);
-  
-  const handlePair = useCallback((actId, eventId) => { 
-    if (!actId || !eventId) return; 
-    setUnpairedList(prev => prev.filter(pair => pair !== `${actId}-${eventId}`)); 
+
+  const handlePair = useCallback((actId, eventId) => {
+    if (!actId || !eventId) return;
+    setUnpairedList(prev => prev.filter(pair => pair !== `${actId}-${eventId}`));
   }, []);
 
   const handleDeleteLocalActivity = useCallback((localId) => {
@@ -269,8 +372,8 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       if (!oldEvent) return;
 
       // Optimistic upate
-      setRawEvents(prev => prev.map(e => 
-        String(e.id) === eventId 
+      setRawEvents(prev => prev.map(e =>
+        String(e.id) === eventId
           ? { ...e, name: title, workout_doc: workout_doc, icu_training_load: calculatedTss, moving_time: calculatedDuration * 60 }
           : e
       ));
@@ -285,7 +388,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       } catch (err) {
         console.error('Update Workout API error:', err);
         // Revert on error
-        setRawEvents(prev => prev.map(e => 
+        setRawEvents(prev => prev.map(e =>
           String(e.id) === eventId ? oldEvent : e
         ));
         throw err;
@@ -293,7 +396,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     }
   }, [rawEvents, intervalsId, intervalsKey]);
 
-    const handleCreateWorkout = useCallback(async (workoutObj) => {
+  const handleCreateWorkout = useCallback(async (workoutObj) => {
     // 1. Priprema optimističnog stanja (kreiramo lokalni zapis)
     let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
     const newLocalWorkout = {
@@ -307,7 +410,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       category: workoutObj.category || 'WORKOUT',
       type: workoutObj.type || 'ride'
     };
-    
+
     localScheduled.push(newLocalWorkout);
     localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
     setLocalRefreshTrigger(prev => prev + 1);
@@ -327,15 +430,15 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         moving_time: workoutObj.duration * 60,
         type: workoutObj.type === 'run' ? 'Run' : (workoutObj.type === 'strength' ? 'WeightTraining' : 'Ride')
       };
-      
+
       const newEvent = await createEvent(intervalsId, intervalsKey, payload);
-      
+
       // Uspješno dodano na Intervals!
       // Brišemo lokalni i dodajemo pravi event
       localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
       localScheduled = localScheduled.filter(w => w.id !== newLocalWorkout.id);
       localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
-      
+
       setRawEvents(prev => [...prev, newEvent]);
       setLocalRefreshTrigger(prev => prev + 1);
     } catch (err) {

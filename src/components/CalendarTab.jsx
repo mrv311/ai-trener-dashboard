@@ -86,29 +86,29 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted 
   const intensityArray = useMemo(() => {
     return extractIntensityData(workoutDoc);
   }, [workoutDoc]);
-  
+
   const displayData = intensityArray.length > 0 ? intensityArray : DEFAULT_INTENSITY.map(d => d.ftpPercent);
-  
+
   return (
     <div className="relative flex items-end h-10 w-full mt-2.5 bg-zinc-950/60 rounded-sm overflow-hidden">
       {displayData.map((val, i) => {
         const zone = getZoneFromFtpPercent(val);
         // Maksimalna visina je 150% FTP-a
         const heightPercent = Math.min((val / 150) * 100, 100);
-        
+
         return (
-          <div 
-            key={i} 
+          <div
+            key={i}
             // isCompleted određuje hoće li boja biti puna ili izblijedjela (opacity-40)
             className={`flex-1 transition-all duration-300 ${ZONE_COLORS[zone]} ${isCompleted ? 'opacity-100' : 'opacity-40'}`}
-            style={{ 
+            style={{
               height: `${heightPercent}%`,
               minWidth: '1px' // Sprječava da stupac potpuno nestane ako ih ima previše
             }}
           />
         );
       })}
-      
+
       {/* 100% FTP Baseline Indikator (Suptilna linija praga) */}
       <div className="absolute bottom-[66.6%] left-0 w-full border-b border-white/10 pointer-events-none" />
     </div>
@@ -138,7 +138,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
       {...(canDrag ? { ...attributes, ...listeners } : {})}
       onClick={() => {
         if (!isDragging) {
-          if (w.isCompleted || w.status === 'completed' || w.id.startsWith('act-')) {
+          if (w.isCompleted || w.status === 'completed' || w.id.startsWith('act-') || w.id.startsWith('supabase-')) {
             if (onViewActivity) onViewActivity(w);
           } else if (onEditWorkout && (w.isLocal || w.id.startsWith('ev-'))) {
             onEditWorkout(w);
@@ -207,11 +207,11 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
         <div className="flex flex-col gap-1.5 mt-2">
           <div className="flex items-center gap-2">
             <div className="flex items-baseline gap-1 bg-zinc-950/40 rounded px-1.5 py-0.5 border border-zinc-800/50">
-               <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Load</span>
-               <span className="font-mono text-xs font-semibold text-zinc-200" title={w.plannedTss ? `Plan: ${w.plannedTss} TSS` : ''}>
-                 {w.tss > 0 ? w.tss : '-'}
-               </span>
-               <span className="text-[9px] text-zinc-600 font-medium">TSS</span>
+              <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Load</span>
+              <span className="font-mono text-xs font-semibold text-zinc-200" title={w.plannedTss ? `Plan: ${w.plannedTss} TSS` : ''}>
+                {w.tss > 0 ? w.tss : '-'}
+              </span>
+              <span className="text-[9px] text-zinc-600 font-medium">TSS</span>
             </div>
           </div>
           {w.intervalDescription && (
@@ -220,9 +220,9 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
         </div>
 
         {/* Visual Graph (Interval Visualization) */}
-        <WorkoutGraph 
-           workoutDoc={w.workout_doc || w.steps} 
-           isCompleted={w.isCompleted || w.status === 'completed'} 
+        <WorkoutGraph
+          workoutDoc={w.workout_doc || w.steps}
+          isCompleted={w.isCompleted || w.status === 'completed'}
         />
 
       </div>
@@ -267,36 +267,36 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
   }
 
   return (
-        <div
-          ref={setNodeRef}
-          className={`p-3 flex flex-col group relative transition-all duration-200
+    <div
+      ref={setNodeRef}
+      className={`p-3 flex flex-col group relative transition-all duration-200
             ${dObj.isCurrentMonth ? 'bg-zinc-900/60 hover:bg-zinc-800/80 cursor-pointer' : 'bg-zinc-950/80'}
             ${isTdy ? 'ring-inset ring-2 ring-orange-500' : ''}
             ${isOver ? 'bg-orange-500/10 ring-2 ring-orange-500/50 ring-inset shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}
           `}
-          onClick={(e) => {
-             if (e.target.closest('.workout-card-element')) return;
-             if (dObj.isCurrentMonth) {
-                  const newWorkout = {
-                     id: `local-${Date.now()}`,
-                     date: dObj.dateStr,
-                     title: 'Novi Trening',
-                     duration: 60,
-                     plannedDuration: 60,
-                     tss: 0,
-                     plannedTss: 0,
-                     statusColor: 'grey',
-                     isCompleted: false,
-                     isLocal: true,
-                     category: 'WORKOUT',
-                     type: 'ride',
-                     intervalDescription: 'Slatka točka: 3x15m na 90%',
-                     steps: [{duration: 600, power: 50}, {duration: 900, power: 90}, {duration: 300, power: 50}, {duration: 900, power: 90}, {duration: 300, power: 50}, {duration: 900, power: 90}, {duration: 600, power: 50}]
-                 };
-                 onEditWorkout(newWorkout);
-             }
-          }}
-        >
+      onClick={(e) => {
+        if (e.target.closest('.workout-card-element')) return;
+        if (dObj.isCurrentMonth) {
+          const newWorkout = {
+            id: `local-${Date.now()}`,
+            date: dObj.dateStr,
+            title: 'Novi Trening',
+            duration: 60,
+            plannedDuration: 60,
+            tss: 0,
+            plannedTss: 0,
+            statusColor: 'grey',
+            isCompleted: false,
+            isLocal: true,
+            category: 'WORKOUT',
+            type: 'ride',
+            intervalDescription: 'Slatka točka: 3x15m na 90%',
+            steps: [{ duration: 600, power: 50 }, { duration: 900, power: 90 }, { duration: 300, power: 50 }, { duration: 900, power: 90 }, { duration: 300, power: 50 }, { duration: 900, power: 90 }, { duration: 600, power: 50 }]
+          };
+          onEditWorkout(newWorkout);
+        }
+      }}
+    >
       <div className="flex justify-between items-start mb-3">
         <span className={`text-xs font-bold ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.6)]' : (dObj.isCurrentMonth ? 'text-zinc-400' : 'text-zinc-600')}`}>{dObj.day}</span>
         {dWell && (
@@ -333,7 +333,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
 // ============================================================
 function DragOverlayCard({ workout, activeWidth }) {
   if (!workout) return null;
-  
+
   return (
     <div
       style={{ width: activeWidth ? `${activeWidth}px` : '200px' }}
@@ -347,12 +347,12 @@ function DragOverlayCard({ workout, activeWidth }) {
         </div>
         <span className="font-bold text-xs text-zinc-100 line-clamp-1 leading-tight">{workout.title}</span>
         <div className="flex items-baseline gap-1 bg-zinc-950/40 rounded px-1.5 py-0.5 border border-zinc-800/50 w-fit mt-1">
-           <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Load</span>
-           <span className="font-mono text-xs font-semibold text-zinc-200">{workout.tss > 0 ? workout.tss : '-'}</span>
+          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Load</span>
+          <span className="font-mono text-xs font-semibold text-zinc-200">{workout.tss > 0 ? workout.tss : '-'}</span>
         </div>
-        <WorkoutGraph 
-           workoutDoc={workout.workout_doc || workout.steps} 
-           isCompleted={workout.isCompleted || workout.status === 'completed'} 
+        <WorkoutGraph
+          workoutDoc={workout.workout_doc || workout.steps}
+          isCompleted={workout.isCompleted || workout.status === 'completed'}
         />
       </div>
     </div>
@@ -455,15 +455,15 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     setIsUpdating(true);
     try {
       if (updatedWorkout.id.startsWith('local-')) {
-          await handleCreateWorkout(updatedWorkout);
+        await handleCreateWorkout(updatedWorkout);
       } else {
-          await handleUpdateWorkout(
-              updatedWorkout.id,
-              updatedWorkout.title,
-              updatedWorkout.description,
-              updatedWorkout.tss,
-              updatedWorkout.duration
-          );
+        await handleUpdateWorkout(
+          updatedWorkout.id,
+          updatedWorkout.title,
+          updatedWorkout.description,
+          updatedWorkout.tss,
+          updatedWorkout.duration
+        );
       }
       setEditingWorkout(null);
     } catch (error) {

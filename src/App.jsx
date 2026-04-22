@@ -53,6 +53,17 @@ export default function App() {
 
   const [currentDate, setCurrentDate] = useState(new Date());
 
+  // Listener za osvježavanje workouts nakon spremanja Supabase aktivnosti
+  useEffect(() => {
+    const handleSupabaseActivitySaved = () => {
+      console.log('[App] Supabase aktivnost spremljena, osvježavam workouts...');
+      fetchWorkouts();
+    };
+
+    window.addEventListener('supabase-activity-saved', handleSupabaseActivitySaved);
+    return () => window.removeEventListener('supabase-activity-saved', handleSupabaseActivitySaved);
+  }, [fetchWorkouts]);
+
   // 2. Optimizacija statusa veze
   const connectionStatus = useMemo(() => {
     if (isLoading) return 'connecting';
@@ -90,15 +101,15 @@ export default function App() {
         </nav>
 
         <div className="p-3 border-t border-zinc-800/80 mt-auto flex flex-col gap-2">
-          
+
           {/* User Profile Banner */}
           <div className="flex items-center gap-3 px-4 py-2 mb-1 bg-zinc-900/50 rounded-xl border border-zinc-800/50">
             <div className="bg-gradient-to-br from-orange-400 to-orange-600 text-white rounded-full w-9 h-9 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(249,115,22,0.3)] shrink-0">
               {(athleteProfile.username || 'K').charAt(0).toUpperCase()}
             </div>
             <div className="flex flex-col truncate">
-               <span className="text-sm font-bold text-zinc-100 truncate" title={athleteProfile.username || 'Korisnik'}>{athleteProfile.username || 'Korisnik'}</span>
-               <span className="text-[10px] text-zinc-500 truncate">FTP: <span className="font-bold text-orange-400">{athleteProfile.ftp}W</span> | {athleteProfile.weight}kg</span>
+              <span className="text-sm font-bold text-zinc-100 truncate" title={athleteProfile.username || 'Korisnik'}>{athleteProfile.username || 'Korisnik'}</span>
+              <span className="text-[10px] text-zinc-500 truncate">FTP: <span className="font-bold text-orange-400">{athleteProfile.ftp}W</span> | {athleteProfile.weight}kg</span>
             </div>
           </div>
           <button
@@ -140,7 +151,7 @@ export default function App() {
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-orange-900/10 via-zinc-950 to-zinc-950 pointer-events-none"></div>
 
           <div className="relative z-10 w-full h-full">
-                        {activeTab === 'calendar' && (
+            {activeTab === 'calendar' && (
               <CalendarTab
                 currentDate={currentDate} setCurrentDate={setCurrentDate}
                 workouts={workouts} wellnessData={wellnessData}

@@ -15,16 +15,16 @@ const playBeep = (freq = 800, duration = 0.2) => {
     const ctx = new AudioContext();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    
+
     osc.connect(gain);
     gain.connect(ctx.destination);
-    
+
     osc.type = 'sine';
     osc.frequency.setValueAtTime(freq, ctx.currentTime);
     gain.gain.setValueAtTime(0, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-    
+
     osc.start();
     osc.stop(ctx.currentTime + duration);
   } catch (e) {
@@ -35,7 +35,7 @@ const playBeep = (freq = 800, duration = 0.2) => {
 // --- POWER MATCH PID KONTROLER ---
 class PowerMatchPID {
   constructor() {
-        this.kP = 0.5;   // Proporcionalni faktor
+    this.kP = 0.5;   // Proporcionalni faktor
     this.kI = 0.1;  // Integralni faktor (sprječava trajnu grešku)
     this.kD = 0.0;   // Derivativni faktor (prigušuje oscilacije)
     this.integral = 0;
@@ -96,7 +96,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
 
   const crankDataRef = useRef({ revs: -1, time: -1 });
-  const pmCrankDataRef = useRef({ revs: -1, time: -1 }); 
+  const pmCrankDataRef = useRef({ revs: -1, time: -1 });
   const hrDeviceRef = useRef(null);
   const trainerDeviceRef = useRef(null);
   const pmDeviceRef = useRef(null);
@@ -114,7 +114,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         const metrics = calculateCogganMetrics(pwrArray, profile?.ftp || 200);
         setLiveMetrics(metrics);
       }
-    }, 5000); 
+    }, 5000);
     return () => clearInterval(interval);
   }, [isPlaying, profile]);
 
@@ -179,7 +179,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     powerMatchEnabled, isPmConnected, isPowerConnected, isHrConnected,
     pmPower, currentPower, currentHR, currentCadence
   });
-  
+
   useEffect(() => {
     stateRef.current = {
       powerMatchEnabled, isPmConnected, isPowerConnected, isHrConnected,
@@ -215,44 +215,44 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   useEffect(() => {
     if (isPlaying && elapsedTime < totalDuration) {
       lastUpdateRef.current = Date.now();
-      
+
       workerRef.current.onmessage = () => {
         const now = Date.now();
         const deltaSecs = Math.floor((now - lastUpdateRef.current) / 1000);
-        
+
         if (deltaSecs > 0) {
           lastUpdateRef.current += deltaSecs * 1000;
-          
+
           setElapsedTime(prev => {
             const newElapsed = prev + deltaSecs;
-            
+
             const s = stateRef.current;
             const recordedPower = (s.powerMatchEnabled && s.isPmConnected) ? s.pmPower : (s.isPowerConnected ? s.currentPower : 0);
             const hr = s.isHrConnected ? s.currentHR : 0;
             const cad = (s.isPmConnected ? s.currentCadence : (s.isPowerConnected ? s.currentCadence : 0));
-            
+
             if (prev < totalDuration) {
               setWorkoutHistory(hist => {
                 const newHist = [...hist];
                 for (let i = 0; i < deltaSecs; i++) {
-                   if (prev + i + 1 <= totalDuration) {
-                     newHist.push({ time: prev + i + 1, power: recordedPower, hr, cadence: cad });
-                   }
+                  if (prev + i + 1 <= totalDuration) {
+                    newHist.push({ time: prev + i + 1, power: recordedPower, hr, cadence: cad });
+                  }
                 }
                 return newHist;
               });
             }
-            
+
             return newElapsed > totalDuration ? totalDuration : newElapsed;
           });
         }
       };
-      
+
       workerRef.current.postMessage('start');
     } else if (workerRef.current) {
       workerRef.current.postMessage('stop');
     }
-    
+
     return () => {
       if (workerRef.current) workerRef.current.postMessage('stop');
     };
@@ -299,7 +299,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
   useEffect(() => {
     if (isPlaying && stepRemaining <= 3 && stepRemaining > 0 && currentStepIndex < workoutRecipe.length - 1) {
-      playBeep(800, 0.2); 
+      playBeep(800, 0.2);
     }
   }, [elapsedTime, isPlaying]);
 
@@ -311,7 +311,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   const displayPower = useMemo(() => {
     const current = (isPmConnected ? pmPower : (isPowerConnected ? currentPower : 0));
     if (!isPlaying || workoutHistory.length === 0) return current;
-    
+
     const recent = workoutHistory.slice(-2);
     const sum = recent.reduce((acc, h) => acc + h.power, 0) + current;
     return Math.round(sum / (recent.length + 1));
@@ -479,7 +479,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     }
   };
 
-    const lastErgCommandTimeRef = useRef(0);
+  const lastErgCommandTimeRef = useRef(0);
   const lastTargetPowerRef = useRef(activeTargetPower);
 
   useEffect(() => {
@@ -505,10 +505,10 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
         if (powerMatchEnabled && isPmConnected && pmPower > 0) {
           const recentPm = workoutHistory.slice(-2).map(h => h.power);
-          const avgPmPower = recentPm.length > 0 
+          const avgPmPower = recentPm.length > 0
             ? Math.round((recentPm.reduce((a, b) => a + b, 0) + pmPower) / (recentPm.length + 1))
             : pmPower;
-            
+
           commandPower = pidController.compute(activeTargetPower, avgPmPower);
           const maxTrainerW = Math.round((profile?.ftp || 250) * 1.5);
           commandPower = Math.max(30, Math.min(maxTrainerW, commandPower));
@@ -555,7 +555,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     const pwrData = workoutHistory.filter(h => h.power > 0);
     const hrData = workoutHistory.filter(h => h.hr > 0);
     const cadData = workoutHistory.filter(h => h.cadence > 0);
-    
+
     // Provjera prava na upis razine (preko 85% dovršenosti)
     if (elapsedTime / totalDuration >= 0.85 && workoutFromCalendar && workoutFromCalendar.difficulty_score) {
       try {
@@ -570,7 +570,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         };
         localStorage.setItem('ai_trener_completed_workouts', JSON.stringify([...existingHistory, newRecord]));
         console.log("Napredak zabilježen!", newRecord);
-      } catch(e) {
+      } catch (e) {
         console.error("Greška pri spremanju napretka", e);
       }
     }
@@ -637,6 +637,14 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       } else {
         console.log('Trening automatski spremljen u Supabase!');
         setSaveStatus('saved');
+
+        // Osvježi kalendar ako postoji onClose callback (znači da je otvoren iz kalendara)
+        if (onClose) {
+          // Trigger refresh nakon 1 sekunde da se vidi "saved" status
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('supabase-activity-saved'));
+          }, 1000);
+        }
       }
     });
   };
@@ -657,13 +665,13 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   };
 
   useEffect(() => {
-        const handleKeyDown = (e) => {
+    const handleKeyDown = (e) => {
       // Allow default behavior inside text inputs or textareas
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) {
         return;
       }
 
-      if (showStopPrompt || isFinished) return;  
+      if (showStopPrompt || isFinished) return;
 
       if (e.code === 'Space') {
         e.preventDefault();
@@ -688,7 +696,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   return (
     <div className="max-w-6xl mx-auto flex flex-col min-h-[calc(100vh-8rem)] gap-4 md:gap-6 animate-in fade-in relative pb-20 md:pb-0">
 
-      <TrainerModals 
+      <TrainerModals
         showStopPrompt={showStopPrompt}
         isFinished={isFinished}
         confirmStop={confirmStop}
@@ -745,8 +753,8 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
             Trening: <span className="text-zinc-100 font-bold ml-2 uppercase">{workoutFromCalendar ? workoutFromCalendar.title : "Slobodna Vožnja"}</span>
           </div>
           {onClose && (
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={onClose}
               className="px-4 py-2.5 md:py-3 bg-zinc-800 hover:bg-zinc-700 hover:text-white transition-colors text-zinc-400 font-bold border-l border-zinc-700/50 flex items-center gap-2"
             >
               <X className="w-4 h-4 md:w-5 md:h-5" /> <span className="hidden md:inline">Zatvori</span>
@@ -879,7 +887,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
           </div>
         </div>
 
-        <TrainerGraph 
+        <TrainerGraph
           workoutRecipe={workoutRecipe}
           workoutHistory={workoutHistory}
           totalDuration={totalDuration}
