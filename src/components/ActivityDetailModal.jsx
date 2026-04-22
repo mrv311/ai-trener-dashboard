@@ -58,40 +58,52 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
     setIsEditingTitle(true);
   };
 
+  const savingRef = useRef(false);
+
   const handleSaveTitle = async () => {
+    if (savingRef.current) return;
     const newName = editTitle.trim();
     if (!newName || newName === displayTitle) {
       setIsEditingTitle(false);
       return;
     }
 
+    savingRef.current = true;
     setIsSavingTitle(true);
-    let intervalsUpdated = false;
     try {
       // 1. Pokušaj Intervals.icu (neće raditi za Strava aktivnosti)
       const realActId = activity.actId || activity.id?.toString().replace('act-', '');
       if (intervalsId && intervalsKey && realActId) {
         try {
           await updateActivityName(intervalsId, intervalsKey, realActId, newName);
-          intervalsUpdated = true;
         } catch (apiErr) {
-          // 422 = Strava aktivnost, ne može se preimenovati na ICU
           console.warn('Intervals.icu rename skipped:', apiErr.message);
         }
       }
 
-      // 2. Spremi u Supabase (uvijek radi)
-      if (supabaseMetrics?.id) {
-        await supabase.from('completed_activities').update({ title: newName }).eq('id', supabaseMetrics.id);
+      // 2. Spremi u Supabase — traži po datumu ako nemamo supabaseMetrics
+      let sbId = supabaseMetrics?.id;
+      if (!sbId && activity.date) {
+        const { data } = await supabase
+          .from('completed_activities')
+          .select('id')
+          .gte('started_at', `${activity.date}T00:00:00`)
+          .lte('started_at', `${activity.date}T23:59:59`)
+          .order('started_at', { ascending: false })
+          .limit(1);
+        if (data?.[0]) sbId = data[0].id;
+      }
+      if (sbId) {
+        await supabase.from('completed_activities').update({ title: newName }).eq('id', sbId);
       }
 
       setDisplayTitle(newName);
       setIsEditingTitle(false);
     } catch (err) {
       console.error('Rename error:', err);
-      alert('Greška: ' + err.message);
     } finally {
       setIsSavingTitle(false);
+      savingRef.current = false;
     }
   };
 
@@ -304,7 +316,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   onKeyDown={handleTitleKeyDown}
-                  onBlur={handleSaveTitle}
+                  onBlur={() => { if (!savingRef.current) handleSaveTitle(); }}
                   disabled={isSavingTitle}
                   className="text-xl font-black text-zinc-100 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-1 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition-all w-full"
                 />
