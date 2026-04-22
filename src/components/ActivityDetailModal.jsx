@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2 } from 'lucide-react';
+import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database } from 'lucide-react';
 import { downloadActivityFitFile, getActivityStreams } from '../services/intervalsApi';
 import { calculateEF, calculateVI, calculateCogganMetrics } from '../utils/performanceMetrics';
+import { supabase } from '../services/supabaseClient';
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 const formatDur = (mins) => {
@@ -24,83 +25,144 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
   const [userFtp, setUserFtp] = useState(200);
   const [streamMetrics, setStreamMetrics] = useState({ np: 0, avgPower: 0, maxPower: 0, avgHr: 0 });
+  const [supabaseMetrics, setSupabaseMetrics] = useState(null);
+  const [dataSource, setDataSource] = useState(null); // 'intervals' | 'supabase' | null
+
+  // Učitaj FTP iz profila
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('ai_trener_profile') || '{}');
+      if (stored.ftp && stored.ftp > 0) setUserFtp(stored.ftp);
+    } catch(e) {}
+  }, []);
 
   useEffect(() => {
     if (!isOpen || !activity) {
       setStreamsData([]);
+      setSupabaseMetrics(null);
+      setDataSource(null);
       return;
     }
 
     let mounted = true;
-    
-    // Oslanjamo se na propse koje prosljeđuje App -> CalendarTab
-    if (!intervalsId || !intervalsKey || (!activity.id && !activity.actId)) {
-      return;
-    }
 
-    const fetchStreams = async () => {
-      try {
-        setIsLoadingStreams(true);
-        const realActivityId = activity.actId || activity.id.toString().replace('act-', '');
-        const rawStreams = await getActivityStreams(intervalsId, intervalsKey, realActivityId);
-        
-        if (!mounted) return;
-        
-        const getStream = (type) => rawStreams.find(s => s.type === type)?.data || [];
-        
-        const wattsStream = getStream('watts');
-        const hrStream = getStream('heartrate');
-        
-        // Dinamički izračun metrika u slučaju da Intervals.icu nije poslao sumarne vrijednosti
-        let maxP = 0; 
-        let totalHr = 0; let validHr = 0;
-        
-        for (let i = 0; i < wattsStream.length; i++) {
-          if (wattsStream[i] > maxP) maxP = wattsStream[i];
-        }
-        for (let i = 0; i < hrStream.length; i++) {
-          if (hrStream[i] > 0) { 
-            totalHr += hrStream[i]; 
-            validHr++; 
+    const fetchData = async () => {
+      setIsLoadingStreams(true);
+      setDataSource(null);
+
+      // 1. Pokušaj Intervals.icu streamove
+      let intervalsSuccess = false;
+      if (intervalsId && intervalsKey && (activity.id || activity.actId)) {
+        try {
+          const realActivityId = activity.actId || activity.id.toString().replace('act-', '');
+          const rawStreams = await getActivityStreams(intervalsId, intervalsKey, realActivityId);
+          
+          if (!mounted) return;
+          
+          const getStream = (type) => rawStreams.find(s => s.type === type)?.data || [];
+          const wattsStream = getStream('watts');
+          const hrStream = getStream('heartrate');
+          
+          if (wattsStream.length > 0 || hrStream.length > 0) {
+            intervalsSuccess = true;
+            setDataSource('intervals');
+            
+            let maxP = 0; 
+            let totalHr = 0; let validHr = 0;
+            for (let i = 0; i < wattsStream.length; i++) {
+              if (wattsStream[i] > maxP) maxP = wattsStream[i];
+            }
+            for (let i = 0; i < hrStream.length; i++) {
+              if (hrStream[i] > 0) { totalHr += hrStream[i]; validHr++; }
+            }
+            
+            const cMetrics = calculateCogganMetrics(wattsStream, userFtp);
+            if (mounted) {
+              setStreamMetrics({
+                np: cMetrics.np,
+                avgPower: cMetrics.avgPower,
+                maxPower: maxP,
+                avgHr: validHr > 0 ? Math.round(totalHr / validHr) : 0
+              });
+            }
+            
+            let maxLength = Math.max(wattsStream.length, hrStream.length);
+            const step = Math.max(1, Math.ceil(maxLength / 3000)); 
+            const finalData = [];
+            for (let i = 0; i < maxLength; i += step) {
+              finalData.push({ time: i, watts: wattsStream[i] || 0, hr: hrStream[i] || 0 });
+            }
+            setStreamsData(finalData);
           }
+        } catch (err) {
+          console.warn("Intervals.icu streams nedostupni:", err.message);
         }
-        
-        const cMetrics = calculateCogganMetrics(wattsStream, userFtp);
-        if (mounted) {
-          setStreamMetrics({
-            np: cMetrics.np,
-            avgPower: cMetrics.avgPower,
-            maxPower: maxP,
-            avgHr: validHr > 0 ? Math.round(totalHr / validHr) : 0
-          });
-        }
-        
-        let maxLength = Math.max(wattsStream.length, hrStream.length);
-        
-        // Optimizacija - Smanjeno na 3000 točaka za veću oštrinu
-        const step = Math.max(1, Math.ceil(maxLength / 3000)); 
-        
-        const finalData = [];
-        for (let i = 0; i < maxLength; i += step) {
-          finalData.push({
-            time: i,
-            watts: wattsStream[i] || 0,
-            hr: hrStream[i] || 0
-          });
-        }
-        
-        setStreamsData(finalData);
-      } catch (err) {
-        console.error("Streams error", err);
-      } finally {
-        if (mounted) setIsLoadingStreams(false);
       }
+
+      // 2. Fallback: Supabase completed_activities
+      if (!intervalsSuccess && mounted) {
+        try {
+          const actDate = activity.date;
+          if (actDate) {
+            const dayStart = `${actDate}T00:00:00`;
+            const dayEnd = `${actDate}T23:59:59`;
+            
+            const { data, error } = await supabase
+              .from('completed_activities')
+              .select('id, avg_power, np, avg_hr, avg_cadence, tss, if_factor, work_kj, duration_seconds, distance_m, avg_speed_kmh, ftp_used, stream_data')
+              .gte('started_at', dayStart)
+              .lte('started_at', dayEnd)
+              .order('started_at', { ascending: false })
+              .limit(1);
+            
+            if (!mounted) return;
+            
+            if (!error && data && data.length > 0) {
+              const record = data[0];
+              setDataSource('supabase');
+              setSupabaseMetrics(record);
+              
+              // Postavi metrike iz Supabase-a
+              setStreamMetrics({
+                np: record.np || 0,
+                avgPower: record.avg_power || 0,
+                maxPower: 0, // Supabase nema max_power, izračunat ćemo iz streama
+                avgHr: record.avg_hr || 0
+              });
+              
+              // Pretvori Supabase stream format {t, p, hr, cad, spd, dist} u chart format
+              if (record.stream_data && record.stream_data.length > 0) {
+                const rawStream = record.stream_data;
+                const step = Math.max(1, Math.ceil(rawStream.length / 3000));
+                const finalData = [];
+                let maxP = 0;
+                
+                for (let i = 0; i < rawStream.length; i += step) {
+                  const pt = rawStream[i];
+                  if (pt.p > maxP) maxP = pt.p;
+                  finalData.push({ time: pt.t || i, watts: pt.p || 0, hr: pt.hr || 0 });
+                }
+                
+                // Update maxPower iz streama
+                if (maxP > 0) {
+                  setStreamMetrics(prev => ({ ...prev, maxPower: maxP }));
+                }
+                
+                setStreamsData(finalData);
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Supabase fallback error:", err);
+        }
+      }
+
+      if (mounted) setIsLoadingStreams(false);
     };
     
-    fetchStreams();
-
+    fetchData();
     return () => { mounted = false; };
-  }, [activity, isOpen]);
+  }, [activity, isOpen, intervalsId, intervalsKey, userFtp]);
 
   const maxPowerStream = useMemo(() => {
     if (!streamsData.length) return 300;
@@ -113,7 +175,6 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const handleDownload = async () => {
     try {
       setIsDownloading(true);
-      
       const realActivityId = activity.actId || activity.id.toString().replace('act-', '');
       await downloadActivityFitFile(intervalsId, intervalsKey, realActivityId);
     } catch (error) {
@@ -123,13 +184,15 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
     }
   };
 
-  const actualTss = activity.tss || activity.icu_training_load || 0;
+  // Metrike: koristimo Supabase ako je dostupan kao fallback
+  const sb = supabaseMetrics || {};
+  const actualTss = activity.tss || activity.icu_training_load || sb.tss || 0;
   const plannedTss = activity.plannedTss || 0;
-  const actualDur = activity.duration || 0;
+  const actualDur = activity.duration || (sb.duration_seconds ? Math.round(sb.duration_seconds / 60) : 0);
   const plannedDur = activity.plannedDuration || 0;
-  const actualNp = activity.np || streamMetrics.np || 0;
-  const actualAvgPower = activity.average_power || streamMetrics.avgPower || 0;
-  const actualAvgHr = activity.average_heartrate || streamMetrics.avgHr || 0;
+  const actualNp = activity.np || streamMetrics.np || sb.np || 0;
+  const actualAvgPower = activity.average_power || streamMetrics.avgPower || sb.avg_power || 0;
+  const actualAvgHr = activity.average_heartrate || streamMetrics.avgHr || sb.avg_hr || 0;
   const actualMaxPower = activity.max_power || streamMetrics.maxPower || 0;
 
   const ef = calculateEF(actualNp, actualAvgHr);
@@ -172,7 +235,14 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
               <Activity className="w-5 h-5 text-emerald-500" />
               {activity.title || "Detalji aktivnosti"}
             </h2>
-            <p className="text-sm font-medium text-zinc-500 mt-1">{activity.date}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-sm font-medium text-zinc-500">{activity.date}</p>
+              {dataSource && (
+                <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${dataSource === 'supabase' ? 'bg-violet-500/10 text-violet-400 border-violet-500/20' : 'bg-sky-500/10 text-sky-400 border-sky-500/20'}`}>
+                  {dataSource === 'supabase' ? '📊 Lokalni podaci' : '☁️ Intervals.icu'}
+                </span>
+              )}
+            </div>
           </div>
           <button 
             onClick={onClose}
@@ -208,7 +278,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
              <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-500" /> Performance Chart</h3>
              <div className="h-64 w-full relative">
                 {isLoadingStreams ? (
-                  <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm font-medium">Dohvaćanje podataka s Intervals.icu...</div>
+                  <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm font-medium">Dohvaćanje podataka...</div>
                 ) : streamsData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={streamsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
