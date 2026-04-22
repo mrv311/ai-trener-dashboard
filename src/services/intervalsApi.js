@@ -211,3 +211,28 @@ export const getActivityStreams = async (intervalsId, intervalsKey, activityId) 
 
   return res.json();
 };
+
+/**
+ * Ažurira naziv aktivnosti na Intervals.icu.
+ * PUT /api/v1/activity/{activityId}
+ */
+export const updateActivityName = async (intervalsId, intervalsKey, activityId, newName) => {
+  const headers = {
+    ...getAuthHeaders(intervalsKey),
+    'Content-Type': 'application/json'
+  };
+  const url = `https://intervals.icu/api/v1/activity/${activityId}`;
+
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ name: newName })
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Greška pri preimenovanju aktivnosti (${res.status}): ${errText}`);
+  }
+
+  return res.json();
+};

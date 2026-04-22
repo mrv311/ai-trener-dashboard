@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database } from 'lucide-react';
-import { downloadActivityFitFile, getActivityStreams } from '../services/intervalsApi';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2 } from 'lucide-react';
+import { downloadActivityFitFile, getActivityStreams, updateActivityName } from '../services/intervalsApi';
 import { calculateEF, calculateVI, calculateCogganMetrics } from '../utils/performanceMetrics';
 import { supabase } from '../services/supabaseClient';
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -27,6 +27,11 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const [streamMetrics, setStreamMetrics] = useState({ np: 0, avgPower: 0, maxPower: 0, avgHr: 0 });
   const [supabaseMetrics, setSupabaseMetrics] = useState(null);
   const [dataSource, setDataSource] = useState(null); // 'intervals' | 'supabase' | null
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
+  const [displayTitle, setDisplayTitle] = useState('');
+  const titleInputRef = useRef(null);
 
   // Učitaj FTP iz profila
   useEffect(() => {
@@ -35,6 +40,58 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
       if (stored.ftp && stored.ftp > 0) setUserFtp(stored.ftp);
     } catch(e) {}
   }, []);
+
+  // Sync displayTitle s activity.title kad se modal otvori
+  useEffect(() => {
+    if (activity) setDisplayTitle(activity.title || 'Trening');
+  }, [activity]);
+
+  useEffect(() => {
+    if (isEditingTitle && titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    }
+  }, [isEditingTitle]);
+
+  const handleStartEditTitle = () => {
+    setEditTitle(displayTitle);
+    setIsEditingTitle(true);
+  };
+
+  const handleSaveTitle = async () => {
+    const newName = editTitle.trim();
+    if (!newName || newName === displayTitle) {
+      setIsEditingTitle(false);
+      return;
+    }
+
+    setIsSavingTitle(true);
+    try {
+      // 1. Spremi na Intervals.icu ako imamo credentials i actId
+      const realActId = activity.actId || activity.id?.toString().replace('act-', '');
+      if (intervalsId && intervalsKey && realActId) {
+        await updateActivityName(intervalsId, intervalsKey, realActId, newName);
+      }
+
+      // 2. Spremi u Supabase ako postoji zapis
+      if (supabaseMetrics?.id) {
+        await supabase.from('completed_activities').update({ title: newName }).eq('id', supabaseMetrics.id);
+      }
+
+      setDisplayTitle(newName);
+      setIsEditingTitle(false);
+    } catch (err) {
+      console.error('Rename error:', err);
+      alert('Greška: ' + err.message);
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
+  const handleTitleKeyDown = (e) => {
+    if (e.key === 'Enter') handleSaveTitle();
+    if (e.key === 'Escape') setIsEditingTitle(false);
+  };
 
   useEffect(() => {
     if (!isOpen || !activity) {
@@ -231,10 +288,38 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
       >
         <div className="flex justify-between items-center p-5 border-b border-zinc-800/80 bg-zinc-950/50">
           <div>
-            <h2 className="text-xl font-black text-zinc-100 leading-tight flex items-center gap-2">
-              <Activity className="w-5 h-5 text-emerald-500" />
-              {activity.title || "Detalji aktivnosti"}
-            </h2>
+            {isEditingTitle ? (
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-emerald-500 shrink-0" />
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onKeyDown={handleTitleKeyDown}
+                  onBlur={handleSaveTitle}
+                  disabled={isSavingTitle}
+                  className="text-xl font-black text-zinc-100 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-1 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition-all w-full"
+                />
+                <button
+                  onClick={handleSaveTitle}
+                  disabled={isSavingTitle}
+                  className="p-1.5 text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg transition-colors border border-emerald-500/20 shrink-0"
+                >
+                  {isSavingTitle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                </button>
+              </div>
+            ) : (
+              <h2
+                className="text-xl font-black text-zinc-100 leading-tight flex items-center gap-2 group/title cursor-pointer hover:text-orange-400 transition-colors"
+                onClick={handleStartEditTitle}
+                title="Klikni za promjenu naziva"
+              >
+                <Activity className="w-5 h-5 text-emerald-500" />
+                {displayTitle || "Detalji aktivnosti"}
+                <Pencil className="w-3.5 h-3.5 text-zinc-600 group-hover/title:text-orange-400 transition-colors" />
+              </h2>
+            )}
             <div className="flex items-center gap-2 mt-1">
               <p className="text-sm font-medium text-zinc-500">{activity.date}</p>
               {dataSource && (
