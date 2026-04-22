@@ -19,6 +19,51 @@ const formatSeconds = (secs) => {
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 };
 
+// Parsira stream podatke koji mogu biti u Intervals formatu ili lokalnom formatu
+const parseStreamData = (raw) => {
+  if (!raw || !Array.isArray(raw) || raw.length === 0) return [];
+  
+  // Lokalni format: [{ t, p, hr, cad, spd }]
+  if ('p' in raw[0] || 'watts' in raw[0] || 'hr' in raw[0] || 't' in raw[0]) {
+    return raw.map((pt, i) => ({
+      t: pt.t !== undefined ? pt.t : i,
+      time: pt.t !== undefined ? pt.t : i,
+      p: pt.p || pt.watts || 0,
+      watts: pt.p || pt.watts || 0,
+      hr: pt.hr || pt.heartrate || 0,
+      cad: pt.cad || pt.cadence || 0,
+      spd: pt.spd || pt.velocity_smooth || 0
+    }));
+  }
+  
+  // Intervals format: [{ type: 'watts', data: [...] }, ...]
+  if ('type' in raw[0] && 'data' in raw[0]) {
+    const getStream = (type) => raw.find(s => s.type === type)?.data || [];
+    const watts = getStream('watts');
+    const hr = getStream('heartrate');
+    const cad = getStream('cadence');
+    const spd = getStream('velocity_smooth');
+    const timeStream = getStream('time');
+    
+    const maxLen = Math.max(watts.length, hr.length, cad.length, spd.length);
+    const res = [];
+    for (let i = 0; i < maxLen; i++) {
+      res.push({
+        t: timeStream[i] !== undefined ? timeStream[i] : i,
+        time: timeStream[i] !== undefined ? timeStream[i] : i,
+        p: watts[i] || 0,
+        watts: watts[i] || 0,
+        hr: hr[i] || 0,
+        cad: cad[i] || 0,
+        spd: spd[i] ? (spd[i] * 3.6) : 0 // Intervals spd is m/s
+      });
+    }
+    return res;
+  }
+  
+  return [];
+};
+
 export default function ActivityDetailModal({ activity, isOpen, onClose, intervalsId, intervalsKey }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [streamsData, setStreamsData] = useState([]);
@@ -217,15 +262,15 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
               
               // Pretvori Supabase stream format {t, p, hr, cad, spd, dist} u chart format
               if (record.stream_data && record.stream_data.length > 0) {
-                const rawStream = record.stream_data;
-                const step = Math.max(1, Math.ceil(rawStream.length / 3000));
+                const parsedData = parseStreamData(record.stream_data);
+                const step = Math.max(1, Math.ceil(parsedData.length / 3000));
                 const finalData = [];
                 let maxP = 0;
                 
-                for (let i = 0; i < rawStream.length; i += step) {
-                  const pt = rawStream[i];
-                  if (pt.p > maxP) maxP = pt.p;
-                  finalData.push({ time: pt.t || i, watts: pt.p || 0, hr: pt.hr || 0 });
+                for (let i = 0; i < parsedData.length; i += step) {
+                  const pt = parsedData[i];
+                  if (pt.watts > maxP) maxP = pt.watts;
+                  finalData.push({ time: pt.time, watts: pt.watts, hr: pt.hr });
                 }
                 
                 // Update maxPower iz streama

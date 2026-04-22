@@ -45,6 +45,49 @@ const downsampleStream = (stream, maxPoints = 200) => {
   return result;
 };
 
+// Parsira stream podatke koji mogu biti u Intervals formatu ili lokalnom formatu
+const parseStreamData = (raw) => {
+  if (!raw || !Array.isArray(raw) || raw.length === 0) return [];
+  
+  // Lokalni format: [{ t, p, hr, cad, spd }]
+  if ('p' in raw[0] || 'watts' in raw[0] || 'hr' in raw[0] || 't' in raw[0]) {
+    return raw.map((pt, i) => ({
+      t: pt.t !== undefined ? pt.t : i,
+      time: pt.t !== undefined ? pt.t : i,
+      p: pt.p || pt.watts || 0,
+      hr: pt.hr || pt.heartrate || 0,
+      cad: pt.cad || pt.cadence || 0,
+      spd: pt.spd || pt.velocity_smooth || 0
+    }));
+  }
+  
+  // Intervals format: [{ type: 'watts', data: [...] }, ...]
+  if ('type' in raw[0] && 'data' in raw[0]) {
+    const getStream = (type) => raw.find(s => s.type === type)?.data || [];
+    const watts = getStream('watts');
+    const hr = getStream('heartrate');
+    const cad = getStream('cadence');
+    const spd = getStream('velocity_smooth');
+    const timeStream = getStream('time');
+    
+    const maxLen = Math.max(watts.length, hr.length, cad.length, spd.length);
+    const res = [];
+    for (let i = 0; i < maxLen; i++) {
+      res.push({
+        t: timeStream[i] !== undefined ? timeStream[i] : i,
+        time: timeStream[i] !== undefined ? timeStream[i] : i,
+        p: watts[i] || 0,
+        hr: hr[i] || 0,
+        cad: cad[i] || 0,
+        spd: spd[i] ? (spd[i] * 3.6) : 0 // Intervals spd is m/s
+      });
+    }
+    return res;
+  }
+  
+  return [];
+};
+
 // Custom tooltip za Recharts
 const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload || payload.length === 0) return null;
@@ -209,7 +252,7 @@ export default function HistoryTab() {
 
   // Detail modal chart data
   const chartData = selectedActivity?.stream_data
-    ? downsampleStream(selectedActivity.stream_data)
+    ? downsampleStream(parseStreamData(selectedActivity.stream_data))
     : [];
 
   return (
