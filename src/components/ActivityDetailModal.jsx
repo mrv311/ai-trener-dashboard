@@ -66,14 +66,21 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
     }
 
     setIsSavingTitle(true);
+    let intervalsUpdated = false;
     try {
-      // 1. Spremi na Intervals.icu ako imamo credentials i actId
+      // 1. Pokušaj Intervals.icu (neće raditi za Strava aktivnosti)
       const realActId = activity.actId || activity.id?.toString().replace('act-', '');
       if (intervalsId && intervalsKey && realActId) {
-        await updateActivityName(intervalsId, intervalsKey, realActId, newName);
+        try {
+          await updateActivityName(intervalsId, intervalsKey, realActId, newName);
+          intervalsUpdated = true;
+        } catch (apiErr) {
+          // 422 = Strava aktivnost, ne može se preimenovati na ICU
+          console.warn('Intervals.icu rename skipped:', apiErr.message);
+        }
       }
 
-      // 2. Spremi u Supabase ako postoji zapis
+      // 2. Spremi u Supabase (uvijek radi)
       if (supabaseMetrics?.id) {
         await supabase.from('completed_activities').update({ title: newName }).eq('id', supabaseMetrics.id);
       }
