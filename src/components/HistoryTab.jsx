@@ -109,12 +109,16 @@ const ChartTooltip = ({ active, payload, label }) => {
 
 // Stat kartica u detaljnom pogledu
 function StatCard({ icon: Icon, label, value, unit, color }) {
+  // Prikaži "—" ako nema podataka
+  const displayValue = (value === null || value === undefined || value === 0 || value === '0' || value === '0.00') ? '—' : value;
+  const showUnit = displayValue !== '—';
+  
   return (
     <div className="bg-zinc-950/60 p-3 md:p-4 rounded-2xl border border-zinc-800/60 flex flex-col items-center justify-center gap-1 hover:border-zinc-700/80 transition-colors">
       <Icon className={`w-4 h-4 ${color} mb-0.5`} />
       <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest">{label}</p>
       <p className="text-lg md:text-xl font-black text-zinc-100">
-        {value} <span className="text-[11px] font-bold text-zinc-500">{unit}</span>
+        {displayValue} {showUnit && <span className="text-[11px] font-bold text-zinc-500">{unit}</span>}
       </p>
     </div>
   );
@@ -216,7 +220,9 @@ export default function HistoryTab() {
               distance_m: act.distance_m,
               avg_speed_kmh: act.avg_speed_kmh,
               ftp_used: act.ftp_used,
-              weight_kg: act.weight_kg
+              weight_kg: act.weight_kg,
+              // Označi da treba izračunati iz streamova ako nema podataka
+              needsStreamCalculation: (!act.avg_power || act.avg_power === 0 || !act.np || act.np === 0)
             });
           });
           console.log('[HistoryTab] Dohvaćeno', supabaseData.length, 'Supabase aktivnosti');
@@ -257,9 +263,34 @@ export default function HistoryTab() {
                 normalized_power: act.normalized_power,
                 icu_intensity: act.icu_intensity,
                 average_heartrate: act.average_heartrate,
-                icu_average_hr: act.icu_average_hr
+                icu_average_hr: act.icu_average_hr,
+                // Dodatni ključevi koji bi mogli postojati
+                power: act.power,
+                watts: act.watts,
+                avg_watts: act.avg_watts
               });
             }
+
+            // Izračunaj avg_power i np iz dostupnih podataka
+            const avgPower = Math.round(
+              act.average_watts || 
+              act.icu_average_watts || 
+              act.icu_average_power || 
+              act.average_power || 
+              act.watts_avg ||
+              act.power ||
+              act.watts ||
+              act.avg_watts ||
+              0
+            );
+            
+            const np = Math.round(
+              act.icu_normalized_power || 
+              act.normalized_power || 
+              act.np ||
+              act.icu_np ||
+              0
+            );
 
             allActivities.push({
               id: `intervals-${act.id}`,
@@ -270,14 +301,7 @@ export default function HistoryTab() {
               workout_source: 'intervals.icu',
               duration_seconds: act.moving_time || 0,
               // Intervals.icu može vraćati podatke pod različitim ključevima
-              avg_power: Math.round(
-                act.average_watts || 
-                act.icu_average_watts || 
-                act.icu_average_power || 
-                act.average_power || 
-                act.watts_avg || 
-                0
-              ),
+              avg_power: avgPower,
               avg_hr: Math.round(
                 act.average_heartrate || 
                 act.icu_average_hr || 
@@ -291,12 +315,7 @@ export default function HistoryTab() {
                 act.cadence_avg || 
                 0
               ),
-              np: Math.round(
-                act.icu_normalized_power || 
-                act.normalized_power || 
-                act.np || 
-                0
-              ),
+              np: np,
               tss: Math.round(
                 act.icu_training_load || 
                 act.training_load || 
@@ -327,6 +346,61 @@ export default function HistoryTab() {
       // Sortiraj sve aktivnosti po datumu (najnovije prvo)
       allActivities.sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
       
+      // Za Supabase aktivnosti koje nemaju avg_power ili np, pokušaj izračunati iz streamova
+      const activitiesNeedingCalculation = allActivities.filter(a => a.needsStreamCalculation);
+      if (activitiesNeedingCalculation.length > 0) {
+        console.log('[HistoryTab] Izračunavam podatke iz streamova za', activitiesNeedingCalculation.length, 'aktivnosti...');
+        
+        // Dohvati streamove i izračunaj podatke
+        const calculationPromises = activitiesNeedingCalculation.map(async (act) => {
+          try {
+            const { data } = await supabase
+              .from('completed_activities')
+              .select('stream_data')
+              .eq('id', act.supabase_id)
+              .single();
+            
+            if (data && data.stream_data && Array.isArray(data.stream_data)) {
+              const parsedStream = parseStreamData(data.stream_data);
+              
+              if (parsedStream.length > 0) {
+                const powerValues = parsedStream.filter(p => p.p > 0).map(p => p.p);
+                
+                if (powerValues.length > 0) {
+                  // Izračunaj Avg Power
+                  if (!act.avg_power || act.avg_power === 0) {
+                    act.avg_power = Math.round(powerValues.reduce((a, b) => a + b, 0) / powerValues.length);
+                  }
+                  
+                  // Izračunaj NP
+                  if (!act.np || act.np === 0) {
+                    const rollingAvg = [];
+                    const windowSize = 30;
+                    
+                    for (let i = 0; i < powerValues.length; i++) {
+                      const start = Math.max(0, i - windowSize + 1);
+                      const window = powerValues.slice(start, i + 1);
+                      const avg = window.reduce((a, b) => a + b, 0) / window.length;
+                      rollingAvg.push(avg);
+                    }
+                    
+                    const fourthPowers = rollingAvg.map(p => Math.pow(p, 4));
+                    const avgFourthPower = fourthPowers.reduce((a, b) => a + b, 0) / fourthPowers.length;
+                    act.np = Math.round(Math.pow(avgFourthPower, 0.25));
+                  }
+                  
+                  console.log(`[HistoryTab] Izračunato za ${act.title}: Avg Power=${act.avg_power}W, NP=${act.np}W`);
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`[HistoryTab] Greška pri izračunu za aktivnost ${act.id}:`, err);
+          }
+        });
+        
+        await Promise.all(calculationPromises);
+      }
+      
       setActivities(allActivities);
       console.log('[HistoryTab] Ukupno aktivnosti:', allActivities.length);
     } catch (err) {
@@ -342,6 +416,7 @@ export default function HistoryTab() {
   const handleViewDetail = async (activity) => {
     try {
       let streamData = null;
+      let updatedActivity = { ...activity };
       
       // Dohvati stream podatke ovisno o izvoru
       if (activity.source === 'supabase') {
@@ -353,12 +428,88 @@ export default function HistoryTab() {
 
         if (fetchError) throw fetchError;
         streamData = data.stream_data;
+        
+        // Ako osnovni podaci nemaju Avg Power ili NP, izračunaj iz streamova
+        if (streamData && Array.isArray(streamData)) {
+          const parsedStream = parseStreamData(streamData);
+          
+          if (parsedStream.length > 0) {
+            // Izračunaj Avg Power iz streamova ako nije dostupan
+            if (!updatedActivity.avg_power || updatedActivity.avg_power === 0) {
+              const powerValues = parsedStream.filter(p => p.p > 0).map(p => p.p);
+              if (powerValues.length > 0) {
+                updatedActivity.avg_power = Math.round(powerValues.reduce((a, b) => a + b, 0) / powerValues.length);
+                console.log('[HistoryTab] Izračunat Avg Power iz Supabase streamova:', updatedActivity.avg_power);
+              }
+            }
+            
+            // Izračunaj NP (Normalized Power) iz streamova ako nije dostupan
+            if (!updatedActivity.np || updatedActivity.np === 0) {
+              const powerValues = parsedStream.filter(p => p.p > 0).map(p => p.p);
+              if (powerValues.length > 0) {
+                // NP formula: 4th root of average of 4th power of 30s rolling average
+                const rollingAvg = [];
+                const windowSize = 30; // 30 sekundi
+                
+                for (let i = 0; i < powerValues.length; i++) {
+                  const start = Math.max(0, i - windowSize + 1);
+                  const window = powerValues.slice(start, i + 1);
+                  const avg = window.reduce((a, b) => a + b, 0) / window.length;
+                  rollingAvg.push(avg);
+                }
+                
+                const fourthPowers = rollingAvg.map(p => Math.pow(p, 4));
+                const avgFourthPower = fourthPowers.reduce((a, b) => a + b, 0) / fourthPowers.length;
+                updatedActivity.np = Math.round(Math.pow(avgFourthPower, 0.25));
+                console.log('[HistoryTab] Izračunat NP iz Supabase streamova:', updatedActivity.np);
+              }
+            }
+          }
+        }
       } else if (activity.source === 'intervals' && activity.intervals_id) {
         // Dohvati streamove iz Intervals.icu
         streamData = await getActivityStreams(intervalsId, intervalsKey, activity.intervals_id);
+        
+        // Ako osnovni podaci nemaju NP ili Avg Power, izračunaj iz streamova
+        if (streamData && Array.isArray(streamData)) {
+          const parsedStream = parseStreamData(streamData);
+          
+          if (parsedStream.length > 0) {
+            // Izračunaj Avg Power iz streamova ako nije dostupan
+            if (!updatedActivity.avg_power || updatedActivity.avg_power === 0) {
+              const powerValues = parsedStream.filter(p => p.p > 0).map(p => p.p);
+              if (powerValues.length > 0) {
+                updatedActivity.avg_power = Math.round(powerValues.reduce((a, b) => a + b, 0) / powerValues.length);
+                console.log('[HistoryTab] Izračunat Avg Power iz Intervals streamova:', updatedActivity.avg_power);
+              }
+            }
+            
+            // Izračunaj NP (Normalized Power) iz streamova ako nije dostupan
+            if (!updatedActivity.np || updatedActivity.np === 0) {
+              const powerValues = parsedStream.filter(p => p.p > 0).map(p => p.p);
+              if (powerValues.length > 0) {
+                // NP formula: 4th root of average of 4th power of 30s rolling average
+                const rollingAvg = [];
+                const windowSize = 30; // 30 sekundi
+                
+                for (let i = 0; i < powerValues.length; i++) {
+                  const start = Math.max(0, i - windowSize + 1);
+                  const window = powerValues.slice(start, i + 1);
+                  const avg = window.reduce((a, b) => a + b, 0) / window.length;
+                  rollingAvg.push(avg);
+                }
+                
+                const fourthPowers = rollingAvg.map(p => Math.pow(p, 4));
+                const avgFourthPower = fourthPowers.reduce((a, b) => a + b, 0) / fourthPowers.length;
+                updatedActivity.np = Math.round(Math.pow(avgFourthPower, 0.25));
+                console.log('[HistoryTab] Izračunat NP iz Intervals streamova:', updatedActivity.np);
+              }
+            }
+          }
+        }
       }
       
-      setSelectedActivity({ ...activity, stream_data: streamData });
+      setSelectedActivity({ ...updatedActivity, stream_data: streamData });
     } catch (err) {
       console.error('Greška pri dohvaćanju stream podataka:', err);
       alert('Nije moguće učitati detalje treninga: ' + err.message);

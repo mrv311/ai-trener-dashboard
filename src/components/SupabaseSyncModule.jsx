@@ -49,15 +49,26 @@ export default function SupabaseSyncModule({ intervalsId, intervalsKey }) {
 
       for (let i = 0; i < activities.length; i++) {
         const act = activities[i];
+        
         try {
           // Preuzimanje streamova (stream_data jsonb)
           const streams = await getActivityStreams(intervalsId, intervalsKey, act.id).catch(() => []);
           
-          // Formatiranje podataka prema public.completed_activities (preskacemo 'id' jer se auto-generira)
+          // Određivanje izvora aktivnosti (Garmin, Strava, itd.)
+          // Koristimo 'type' polje iz Intervals.icu API-ja koje sadrži izvor
+          let workoutSource = 'external'; // Default za vanjske aktivnosti
+          if (act.type) {
+            const typeStr = String(act.type).toLowerCase();
+            if (typeStr.includes('garmin')) workoutSource = 'garmin';
+            else if (typeStr.includes('strava')) workoutSource = 'strava';
+            else if (typeStr.includes('wahoo')) workoutSource = 'wahoo';
+          }
+          
           const record = {
             started_at: act.start_date_local,
             title: act.name || 'Trening',
-            workout_source: act.source || 'Intervals.icu',
+            workout_source: workoutSource,
+            intervals_activity_id: act.id, // Spremi Intervals.icu ID za detekciju duplikata
             duration_seconds: act.moving_time || 0,
             avg_power: (act.icu_average_power || act.average_watts || act.average_power) ? Math.round(act.icu_average_power || act.average_watts || act.average_power) : null,
             avg_hr: (act.icu_average_hr || act.average_heartrate) ? Math.round(act.icu_average_hr || act.average_heartrate) : null,
