@@ -118,7 +118,7 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted 
 // ============================================================
 // WorkoutCard
 // ============================================================
-const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, onEditWorkout, onViewActivity, isCurrentMonth }) {
+const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, isCurrentMonth }) {
   const canDrag = isDesktop && isDraggable(w);
 
   const { attributes, listeners, setNodeRef } = useDraggable({
@@ -194,6 +194,24 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                   <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
                 </button>
               )}
+              {w.isSupabase && w.isCompleted && handleDeleteCompletedActivity && (
+                <button
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={async (e) => { 
+                    e.stopPropagation(); 
+                    if (window.confirm('Sigurno želiš obrisati ovaj odrađeni trening?')) {
+                      const result = await handleDeleteCompletedActivity(w.id);
+                      if (!result.success) {
+                        alert('Greška pri brisanju: ' + (result.error || 'Nepoznata greška'));
+                      }
+                    }
+                  }}
+                  className={`text-zinc-${isDesktop ? '600' : '500'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
+                  title="Obriši odrađeni trening"
+                >
+                  <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                </button>
+              )}
             </div>
           </div>
           {/* Title */}
@@ -238,7 +256,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
 // ============================================================
 // CalendarDay
 // ============================================================
-const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, onEditWorkout, onViewActivity }) {
+const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity }) {
   const { isOver, setNodeRef } = useDroppable({
     id: dObj.dateStr,
   });
@@ -262,7 +280,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
         </div>
         <div className="flex flex-col gap-2">
           {dWorks.length > 0 ? dWorks.map(w => (
-            <WorkoutCard key={w.id} w={w} isDesktop={false} isDragging={false} onSelectWorkout={onSelectWorkout} handleUnpair={handleUnpair} handlePair={handlePair} handleDeleteLocalActivity={handleDeleteLocalActivity} onEditWorkout={onEditWorkout} onViewActivity={onViewActivity} />
+            <WorkoutCard key={w.id} w={w} isDesktop={false} isDragging={false} onSelectWorkout={onSelectWorkout} handleUnpair={handleUnpair} handlePair={handlePair} handleDeleteLocalActivity={handleDeleteLocalActivity} handleDeleteCompletedActivity={handleDeleteCompletedActivity} onEditWorkout={onEditWorkout} onViewActivity={onViewActivity} />
           )) : (
             <div className="text-xs text-zinc-600 italic px-2 py-2 bg-zinc-900/40 rounded-lg border border-zinc-800 border-dashed mr-auto">Odmor</div>
           )}
@@ -324,6 +342,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
             handleUnpair={handleUnpair}
             handlePair={handlePair}
             handleDeleteLocalActivity={handleDeleteLocalActivity}
+            handleDeleteCompletedActivity={handleDeleteCompletedActivity}
             onEditWorkout={onEditWorkout}
             onViewActivity={onViewActivity}
           />
@@ -367,7 +386,7 @@ function DragOverlayCard({ workout, activeWidth }) {
 // ============================================================
 // CalendarTab
 // ============================================================
-export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile, intervalsId, intervalsKey }) {
+export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile, intervalsId, intervalsKey }) {
   const cy = currentDate.getFullYear();
   const cm = currentDate.getMonth();
   const daysInMo = new Date(cy, cm + 1, 0).getDate();
@@ -525,6 +544,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             handleUnpair={handleUnpair}
             handlePair={handlePair}
             handleDeleteLocalActivity={handleDeleteLocalActivity}
+            handleDeleteCompletedActivity={handleDeleteCompletedActivity}
             onViewActivity={setViewingActivity}
             onEditWorkout={setEditingWorkout}
           />
@@ -569,6 +589,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       handleUnpair={handleUnpair}
                       handlePair={handlePair}
                       handleDeleteLocalActivity={handleDeleteLocalActivity}
+                      handleDeleteCompletedActivity={handleDeleteCompletedActivity}
                       onEditWorkout={setEditingWorkout}
                       onViewActivity={setViewingActivity}
                     />

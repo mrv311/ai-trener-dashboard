@@ -42,7 +42,7 @@ export default function App() {
   const [intervalsId, setIntervalsId] = useLocalStorage('intervalsId', '');
   const [intervalsKey, setIntervalsKey] = useLocalStorage('intervalsKey', '');
 
-  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey);
+  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey);
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [athleteProfile, setAthleteProfile] = useProfileSync({
@@ -157,6 +157,7 @@ export default function App() {
                 workouts={workouts} wellnessData={wellnessData}
                 handleUnpair={handleUnpair} handlePair={handlePair}
                 handleDeleteLocalActivity={handleDeleteLocalActivity}
+                handleDeleteCompletedActivity={handleDeleteCompletedActivity}
                 handleRescheduleWorkout={handleRescheduleWorkout}
                 handleUpdateWorkout={handleUpdateWorkout}
                 handleCreateWorkout={handleCreateWorkout}

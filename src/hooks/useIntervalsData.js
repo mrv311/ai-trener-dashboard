@@ -92,8 +92,40 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       const actDate = sbAct.started_at ? sbAct.started_at.split('T')[0] : '';
       supabaseDateMap.set(actDate, sbAct.id); // Označi da ovaj datum ima Supabase aktivnost
 
-      // Pokušaj spariti s lokalnim planiranim treningom
+      // Pokušaj spariti s Intervals.icu eventom PRVO (viši prioritet)
+      let pairedEvent = null;
+      let separatedEventIds = [];
+      
+      for (let e of rawEvents) {
+        if (e.category !== 'WORKOUT') continue;
+        const isDateMatch = e.start_date_local && e.start_date_local.split('T')[0] === actDate;
+        
+        if (isDateMatch) {
+          if (unpairedList.includes(`supabase-${sbAct.id}-${e.id}`)) {
+            separatedEventIds.push(e.id);
+          } else if (!consumedEvents.has(e.id) && !pairedEvent) {
+            pairedEvent = e;
+            consumedEvents.add(e.id);
+          }
+        }
+      }
+
+      // Ako nema Intervals eventa, pokušaj spariti s lokalnim planiranim treningom
       let pairedLocal = null;
+      if (!pairedEvent) {
+        for (let lw of localScheduled) {
+          if (lw.date === actDate) {
+            if (unpairedList.includes(`supabase-${sbAct.id}-local-${lw.id}`)) {
+              separatedEventIds.push(`local-${lw.id}`);
+            } else if (!consumedLocalIds.has(lw.id)) {
+              pairedLocal = lw;
+              consumedLocalIds.add(lw.id);
+              break;
+            }
+          }
+        }
+      }
+
       let plannedTssDisplay = null;
       let plannedDurDisplay = null;
       let eventIdObj = null;
@@ -102,22 +134,23 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       let workoutDoc = null;
       let complianceColor = 'blue';
 
-      for (let lw of localScheduled) {
-        if (lw.date === actDate && !consumedLocalIds.has(lw.id)) {
-          pairedLocal = lw;
-          consumedLocalIds.add(lw.id);
-          eventIdObj = `local-${lw.id}`;
-          plannedTssDisplay = Math.round(lw.tss || 0);
-          plannedDurDisplay = lw.duration_seconds ? Math.round(lw.duration_seconds / 60) : lw.duration;
-          diffScore = lw.difficulty_score;
-          actCategory = lw.category;
-          workoutDoc = lw.steps;
-          break;
-        }
+      // Postavi podatke ovisno o tome što je spareno
+      if (pairedEvent) {
+        eventIdObj = pairedEvent.id;
+        plannedTssDisplay = Math.round(pairedEvent.icu_training_load || 0);
+        plannedDurDisplay = Math.round((pairedEvent.moving_time || 0) / 60);
+        workoutDoc = pairedEvent.workout_doc;
+      } else if (pairedLocal) {
+        eventIdObj = `local-${pairedLocal.id}`;
+        plannedTssDisplay = Math.round(pairedLocal.tss || 0);
+        plannedDurDisplay = pairedLocal.duration_seconds ? Math.round(pairedLocal.duration_seconds / 60) : pairedLocal.duration;
+        diffScore = pairedLocal.difficulty_score;
+        actCategory = pairedLocal.category;
+        workoutDoc = pairedLocal.steps;
       }
 
       // Izračunaj compliance ako je spareno
-      if (pairedLocal) {
+      if (pairedEvent || pairedLocal) {
         const actualTss = Math.round(sbAct.tss || 0);
         const actualDur = Math.round((sbAct.duration_seconds || 0) / 60);
 
@@ -134,6 +167,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         id: `supabase-${sbAct.id}`,
         supabaseId: sbAct.id,
         eventId: eventIdObj,
+        separatedEventIds,
         date: actDate,
         title: sbAct.title || 'Lokalni Trening',
         duration: Math.round((sbAct.duration_seconds || 0) / 60),
@@ -307,6 +341,36 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
   }, []);
 
   /**
+   * Briše odrađenu aktivnost iz Supabase baze.
+   * Koristi se za brisanje lokalnih završenih treninga iz kalendara.
+   */
+  const handleDeleteCompletedActivity = useCallback(async (activityId) => {
+    if (!activityId) return;
+    
+    // Samo Supabase aktivnosti se mogu brisati
+    if (activityId.startsWith('supabase-')) {
+      const rawId = activityId.replace('supabase-', '');
+      try {
+        const { error } = await supabase
+          .from('completed_activities')
+          .delete()
+          .eq('id', rawId);
+        
+        if (error) throw error;
+        
+        // Osvježi podatke
+        setLocalRefreshTrigger(prev => prev + 1);
+        return { success: true };
+      } catch (err) {
+        console.error('Greška pri brisanju Supabase aktivnosti:', err);
+        return { success: false, error: err.message };
+      }
+    } else {
+      return { success: false, error: 'Samo lokalne aktivnosti se mogu brisati iz kalendara.' };
+    }
+  }, []);
+
+  /**
    * Premješta trening na novi datum (D&D reschedule).
    * Podržava lokalne treninge (localStorage) i Intervals.icu evente (API PUT).
    * Koristi optimistic UI — odmah ažurira stanje, API poziv u pozadini.
@@ -458,6 +522,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     handlePair,
     handleUnpair,
     handleDeleteLocalActivity,
+    handleDeleteCompletedActivity,
     handleRescheduleWorkout,
     handleUpdateWorkout,
     handleCreateWorkout
