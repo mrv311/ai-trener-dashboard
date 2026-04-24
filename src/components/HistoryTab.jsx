@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { exportTCXFromStream, exportFITFromStream } from '../utils/exportUtils';
+import { fetchIntervalsData, getActivityStreams, downloadActivityFitFile, updateActivityName } from '../services/intervalsApi';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 import {
   Clock, Zap, Heart, Activity, Gauge, Download, Trash2, ChevronRight,
   X, TrendingUp, Flame, Route, Timer, Loader2, AlertCircle, RefreshCw,
-  Pencil, Check
+  Pencil, Check, Database, Cloud
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -128,6 +130,10 @@ export default function HistoryTab() {
   const [titleDraft, setTitleDraft] = useState('');
   const [savingTitle, setSavingTitle] = useState(false);
   const titleInputRef = React.useRef(null);
+  
+  // Dohvati API credentials iz localStorage
+  const [intervalsId] = useLocalStorage('intervalsId', '');
+  const [intervalsKey] = useLocalStorage('intervalsKey', '');
 
   const handleStartRename = () => {
     setTitleDraft(selectedActivity.title);
@@ -143,11 +149,19 @@ export default function HistoryTab() {
     }
     setSavingTitle(true);
     try {
-      const { error } = await supabase
-        .from('completed_activities')
-        .update({ title: newName })
-        .eq('id', selectedActivity.id);
-      if (error) throw error;
+      // Ako je Supabase aktivnost
+      if (selectedActivity.source === 'supabase') {
+        const { error } = await supabase
+          .from('completed_activities')
+          .update({ title: newName })
+          .eq('id', selectedActivity.id);
+        if (error) throw error;
+      } 
+      // Ako je Intervals.icu aktivnost
+      else if (selectedActivity.source === 'intervals' && selectedActivity.intervals_id) {
+        await updateActivityName(intervalsId, intervalsKey, selectedActivity.intervals_id, newName);
+      }
+      
       // Ažuriraj lokalno
       setSelectedActivity(prev => ({ ...prev, title: newName }));
       setActivities(prev => prev.map(a => a.id === selectedActivity.id ? { ...a, title: newName } : a));
@@ -164,53 +178,160 @@ export default function HistoryTab() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fetchError } = await supabase
-        .from('completed_activities')
-        .select('id, created_at, started_at, title, workout_source, duration_seconds, avg_power, avg_hr, avg_cadence, np, tss, if_factor, work_kj, distance_m, avg_speed_kmh, ftp_used, weight_kg')
-        .order('started_at', { ascending: false });
+      const allActivities = [];
+      const supabaseDateMap = new Map(); // Za provjeru duplikata
 
-      if (fetchError) throw fetchError;
-      setActivities(data || []);
+      // 1. PRIORITET: Dohvati Supabase lokalne aktivnosti (zadnjih 12 mjeseci)
+      try {
+        const twelveMonthsAgo = new Date();
+        twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+
+        const { data: supabaseData, error: supabaseError } = await supabase
+          .from('completed_activities')
+          .select('id, created_at, started_at, title, workout_source, duration_seconds, avg_power, avg_hr, avg_cadence, np, tss, if_factor, work_kj, distance_m, avg_speed_kmh, ftp_used, weight_kg')
+          .gte('started_at', twelveMonthsAgo.toISOString())
+          .order('started_at', { ascending: false });
+
+        if (!supabaseError && supabaseData) {
+          supabaseData.forEach(act => {
+            const actDate = act.started_at ? act.started_at.split('T')[0] : '';
+            supabaseDateMap.set(actDate, act.id);
+            
+            allActivities.push({
+              id: `supabase-${act.id}`,
+              supabase_id: act.id,
+              source: 'supabase',
+              created_at: act.created_at,
+              started_at: act.started_at,
+              title: act.title,
+              workout_source: act.workout_source,
+              duration_seconds: act.duration_seconds,
+              avg_power: act.avg_power,
+              avg_hr: act.avg_hr,
+              avg_cadence: act.avg_cadence,
+              np: act.np,
+              tss: act.tss,
+              if_factor: act.if_factor,
+              work_kj: act.work_kj,
+              distance_m: act.distance_m,
+              avg_speed_kmh: act.avg_speed_kmh,
+              ftp_used: act.ftp_used,
+              weight_kg: act.weight_kg
+            });
+          });
+          console.log('[HistoryTab] Dohvaćeno', supabaseData.length, 'Supabase aktivnosti');
+        }
+      } catch (supabaseErr) {
+        console.warn('[HistoryTab] Supabase dohvaćanje nije uspjelo:', supabaseErr);
+      }
+
+      // 2. Dohvati Intervals.icu aktivnosti (samo ako postoje credentials)
+      if (intervalsId && intervalsKey) {
+        try {
+          const { activities: intervalsActivities } = await fetchIntervalsData(intervalsId, intervalsKey);
+          
+          intervalsActivities.forEach(act => {
+            const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
+            
+            // Preskoči ako već postoji Supabase aktivnost za taj datum (prioritet!)
+            if (supabaseDateMap.has(actDate)) {
+              console.log('[HistoryTab] Preskačem Intervals aktivnost jer postoji Supabase za:', actDate);
+              return;
+            }
+
+            allActivities.push({
+              id: `intervals-${act.id}`,
+              intervals_id: act.id,
+              source: 'intervals',
+              started_at: act.start_date_local,
+              title: act.name || 'Trening',
+              workout_source: 'intervals.icu',
+              duration_seconds: act.moving_time || 0,
+              avg_power: Math.round(act.icu_average_power || act.average_watts || act.average_power || 0),
+              avg_hr: Math.round(act.icu_average_hr || act.average_heartrate || 0),
+              avg_cadence: Math.round(act.average_cadence || 0),
+              np: Math.round(act.icu_normalized_power || act.normalized_power || 0),
+              tss: Math.round(act.icu_training_load || 0),
+              if_factor: act.icu_intensity || null,
+              work_kj: Math.round(act.icu_joules ? act.icu_joules / 1000 : 0),
+              distance_m: Math.round(act.distance || 0),
+              avg_speed_kmh: act.average_speed ? (act.average_speed * 3.6).toFixed(1) : null,
+              ftp_used: null,
+              weight_kg: null
+            });
+          });
+          
+          console.log('[HistoryTab] Dohvaćeno', intervalsActivities.length, 'Intervals.icu aktivnosti');
+        } catch (intervalsErr) {
+          console.warn('[HistoryTab] Intervals.icu dohvaćanje nije uspjelo:', intervalsErr);
+          // Ne bacaj error, nastavi s Supabase aktivnostima
+        }
+      }
+
+      // Sortiraj sve aktivnosti po datumu (najnovije prvo)
+      allActivities.sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
+      
+      setActivities(allActivities);
+      console.log('[HistoryTab] Ukupno aktivnosti:', allActivities.length);
     } catch (err) {
       console.error('Greška pri dohvaćanju povijesti:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [intervalsId, intervalsKey]);
 
   useEffect(() => { fetchActivities(); }, [fetchActivities]);
 
   const handleViewDetail = async (activity) => {
     try {
-      const { data, error: fetchError } = await supabase
-        .from('completed_activities')
-        .select('stream_data')
-        .eq('id', activity.id)
-        .single();
+      let streamData = null;
+      
+      // Dohvati stream podatke ovisno o izvoru
+      if (activity.source === 'supabase') {
+        const { data, error: fetchError } = await supabase
+          .from('completed_activities')
+          .select('stream_data')
+          .eq('id', activity.supabase_id)
+          .single();
 
-      if (fetchError) throw fetchError;
-      setSelectedActivity({ ...activity, stream_data: data.stream_data });
+        if (fetchError) throw fetchError;
+        streamData = data.stream_data;
+      } else if (activity.source === 'intervals' && activity.intervals_id) {
+        // Dohvati streamove iz Intervals.icu
+        streamData = await getActivityStreams(intervalsId, intervalsKey, activity.intervals_id);
+      }
+      
+      setSelectedActivity({ ...activity, stream_data: streamData });
     } catch (err) {
       console.error('Greška pri dohvaćanju stream podataka:', err);
-      alert('Nije moguće učitati detalje treninga.');
+      alert('Nije moguće učitati detalje treninga: ' + err.message);
     }
   };
 
   const handleDelete = async (id) => {
     try {
-      const { error: delError } = await supabase
-        .from('completed_activities')
-        .delete()
-        .eq('id', id);
+      const activity = activities.find(a => a.id === id);
+      if (!activity) return;
 
-      if (delError) throw delError;
-      setActivities(prev => prev.filter(a => a.id !== id));
-      setDeleteConfirm(null);
-      if (selectedActivity?.id === id) setSelectedActivity(null);
+      // Samo Supabase aktivnosti se mogu brisati
+      if (activity.source === 'supabase') {
+        const { error: delError } = await supabase
+          .from('completed_activities')
+          .delete()
+          .eq('id', activity.supabase_id);
+
+        if (delError) throw delError;
+        setActivities(prev => prev.filter(a => a.id !== id));
+        setDeleteConfirm(null);
+        if (selectedActivity?.id === id) setSelectedActivity(null);
+      } else {
+        alert('Intervals.icu aktivnosti se ne mogu brisati iz ove aplikacije. Obriši ih direktno na Intervals.icu.');
+        setDeleteConfirm(null);
+      }
     } catch (err) {
       console.error('Greška pri brisanju:', err);
-      alert('Brisanje nije uspjelo.');
+      alert('Brisanje nije uspjelo: ' + err.message);
     }
   };
 
@@ -218,15 +339,21 @@ export default function HistoryTab() {
     const doExport = async () => {
       let streamData = activity.stream_data;
       if (!streamData) {
-        const { data } = await supabase
-          .from('completed_activities')
-          .select('stream_data')
-          .eq('id', activity.id)
-          .single();
-        streamData = data?.stream_data;
+        if (activity.source === 'supabase') {
+          const { data } = await supabase
+            .from('completed_activities')
+            .select('stream_data')
+            .eq('id', activity.supabase_id)
+            .single();
+          streamData = data?.stream_data;
+        } else if (activity.source === 'intervals' && activity.intervals_id) {
+          streamData = await getActivityStreams(intervalsId, intervalsKey, activity.intervals_id);
+        }
       }
       if (streamData) {
         exportTCXFromStream(streamData, activity.title, activity.started_at);
+      } else {
+        alert('Nema dostupnih stream podataka za export.');
       }
     };
     doExport();
@@ -234,17 +361,35 @@ export default function HistoryTab() {
 
   const handleExportFIT = (activity) => {
     const doExport = async () => {
+      // Ako je Intervals.icu aktivnost, pokušaj preuzeti originalnu FIT datoteku
+      if (activity.source === 'intervals' && activity.intervals_id) {
+        try {
+          await downloadActivityFitFile(intervalsId, intervalsKey, activity.intervals_id);
+          return;
+        } catch (err) {
+          console.warn('Originalna FIT datoteka nije dostupna, generiram novu:', err);
+          // Nastavi s generiranjem iz streamova
+        }
+      }
+
+      // Generiraj FIT iz streamova
       let streamData = activity.stream_data;
       if (!streamData) {
-        const { data } = await supabase
-          .from('completed_activities')
-          .select('stream_data')
-          .eq('id', activity.id)
-          .single();
-        streamData = data?.stream_data;
+        if (activity.source === 'supabase') {
+          const { data } = await supabase
+            .from('completed_activities')
+            .select('stream_data')
+            .eq('id', activity.supabase_id)
+            .single();
+          streamData = data?.stream_data;
+        } else if (activity.source === 'intervals' && activity.intervals_id) {
+          streamData = await getActivityStreams(intervalsId, intervalsKey, activity.intervals_id);
+        }
       }
       if (streamData) {
         exportFITFromStream(streamData, activity.title, activity.started_at);
+      } else {
+        alert('Nema dostupnih stream podataka za export.');
       }
     };
     doExport();
@@ -331,7 +476,17 @@ export default function HistoryTab() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="text-sm md:text-base font-bold text-zinc-100 truncate">{a.title}</h3>
-                    {a.workout_source && (
+                    {a.source === 'supabase' && (
+                      <span className="text-[9px] font-black uppercase tracking-wider bg-violet-500/10 text-violet-400 px-2 py-0.5 rounded-full border border-violet-500/20 shrink-0 flex items-center gap-1">
+                        <Database className="w-2.5 h-2.5" /> Lokalno
+                      </span>
+                    )}
+                    {a.source === 'intervals' && (
+                      <span className="text-[9px] font-black uppercase tracking-wider bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full border border-sky-500/20 shrink-0 flex items-center gap-1">
+                        <Cloud className="w-2.5 h-2.5" /> Intervals
+                      </span>
+                    )}
+                    {a.workout_source && a.source !== 'intervals' && (
                       <span className="text-[9px] font-black uppercase tracking-wider bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full border border-zinc-700/50 shrink-0">
                         {a.workout_source}
                       </span>
@@ -356,13 +511,15 @@ export default function HistoryTab() {
                   >
                     <Download className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm(a.id); }}
-                    className="p-2.5 rounded-xl hover:bg-red-500/10 text-zinc-500 hover:text-red-400 transition-colors"
-                    title="Obriši"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {a.source === 'supabase' && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteConfirm(a.id); }}
+                      className="p-2.5 rounded-xl hover:bg-red-500/10 text-zinc-500 hover:text-red-400 transition-colors"
+                      title="Obriši"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                   <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-zinc-400 transition-colors ml-1" />
                 </div>
               </div>
@@ -370,10 +527,18 @@ export default function HistoryTab() {
               {/* Delete confirmation inline */}
               {deleteConfirm === a.id && (
                 <div className="flex items-center justify-between bg-red-500/5 border-t border-red-500/10 px-5 py-3 animate-in slide-in-from-top-2">
-                  <p className="text-xs font-bold text-red-400">Sigurno želiš obrisati ovaj trening?</p>
+                  <p className="text-xs font-bold text-red-400">
+                    {a.source === 'intervals' 
+                      ? 'Intervals.icu aktivnosti se ne mogu brisati ovdje. Obriši ih na Intervals.icu.' 
+                      : 'Sigurno želiš obrisati ovaj trening?'}
+                  </p>
                   <div className="flex gap-2">
-                    <button onClick={() => setDeleteConfirm(null)} className="px-3 py-1.5 text-xs font-bold text-zinc-400 hover:text-zinc-200 bg-zinc-800 rounded-lg transition-colors">Ne</button>
-                    <button onClick={() => handleDelete(a.id)} className="px-3 py-1.5 text-xs font-bold text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors">Da, obriši</button>
+                    <button onClick={() => setDeleteConfirm(null)} className="px-3 py-1.5 text-xs font-bold text-zinc-400 hover:text-zinc-200 bg-zinc-800 rounded-lg transition-colors">
+                      {a.source === 'intervals' ? 'Zatvori' : 'Ne'}
+                    </button>
+                    {a.source === 'supabase' && (
+                      <button onClick={() => handleDelete(a.id)} className="px-3 py-1.5 text-xs font-bold text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors">Da, obriši</button>
+                    )}
                   </div>
                 </div>
               )}
@@ -433,6 +598,22 @@ export default function HistoryTab() {
                   {formatDate(selectedActivity.started_at)} u {formatTime(selectedActivity.started_at)}
                   <span className="mx-2 text-zinc-700">·</span>
                   {formatDuration(selectedActivity.duration_seconds)}
+                  {selectedActivity.source === 'supabase' && (
+                    <>
+                      <span className="mx-2 text-zinc-700">·</span>
+                      <span className="inline-flex items-center gap-1 text-violet-400">
+                        <Database className="w-3 h-3" /> Lokalno
+                      </span>
+                    </>
+                  )}
+                  {selectedActivity.source === 'intervals' && (
+                    <>
+                      <span className="mx-2 text-zinc-700">·</span>
+                      <span className="inline-flex items-center gap-1 text-sky-400">
+                        <Cloud className="w-3 h-3" /> Intervals.icu
+                      </span>
+                    </>
+                  )}
                 </p>
               </div>
               <div className="flex items-center gap-2">
