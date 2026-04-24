@@ -200,6 +200,11 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} text-zinc-100 leading-tight line-clamp-1`}>
             {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-500 align-middle pointer-events-none" />}
             {w.title}
+            {w.isSupabase && (
+              <span className="ml-1.5 inline-flex items-center bg-violet-500/10 text-violet-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-violet-500/20">
+                Lokalno
+              </span>
+            )}
           </div>
         </div>
 

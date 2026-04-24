@@ -82,13 +82,88 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     const consumedEvents = new Set();
     const consumedLocalIds = new Set();
     const consumedSupabaseIds = new Set();
+    const supabaseDateMap = new Map(); // Mapa za brzu provjeru Supabase aktivnosti po datumu
     const todayStr = new Date().toISOString().split('T')[0];
 
     const localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
 
-    // 1. Prvo dodaj Intervals.icu aktivnosti (s pairing logikom)
+    // 0. PRIORITET: Prvo dodaj Supabase lokalne aktivnosti (najsvježije, upravo završene)
+    supabaseActivities.forEach(sbAct => {
+      const actDate = sbAct.started_at ? sbAct.started_at.split('T')[0] : '';
+      supabaseDateMap.set(actDate, sbAct.id); // Označi da ovaj datum ima Supabase aktivnost
+
+      // Pokušaj spariti s lokalnim planiranim treningom
+      let pairedLocal = null;
+      let plannedTssDisplay = null;
+      let plannedDurDisplay = null;
+      let eventIdObj = null;
+      let diffScore = null;
+      let actCategory = null;
+      let workoutDoc = null;
+      let complianceColor = 'blue';
+
+      for (let lw of localScheduled) {
+        if (lw.date === actDate && !consumedLocalIds.has(lw.id)) {
+          pairedLocal = lw;
+          consumedLocalIds.add(lw.id);
+          eventIdObj = `local-${lw.id}`;
+          plannedTssDisplay = Math.round(lw.tss || 0);
+          plannedDurDisplay = lw.duration_seconds ? Math.round(lw.duration_seconds / 60) : lw.duration;
+          diffScore = lw.difficulty_score;
+          actCategory = lw.category;
+          workoutDoc = lw.steps;
+          break;
+        }
+      }
+
+      // Izračunaj compliance ako je spareno
+      if (pairedLocal) {
+        const actualTss = Math.round(sbAct.tss || 0);
+        const actualDur = Math.round((sbAct.duration_seconds || 0) / 60);
+
+        let ratio = 1;
+        if (plannedTssDisplay > 0 && actualTss > 0) ratio = actualTss / plannedTssDisplay;
+        else if (plannedDurDisplay > 0 && actualDur > 0) ratio = actualDur / plannedDurDisplay;
+
+        if (ratio >= 0.8 && ratio <= 1.2) complianceColor = 'green';
+        else if ((ratio >= 0.5 && ratio < 0.8) || (ratio > 1.2 && ratio <= 1.5)) complianceColor = 'yellow';
+        else complianceColor = 'red';
+      }
+
+      finalWorkouts.push({
+        id: `supabase-${sbAct.id}`,
+        supabaseId: sbAct.id,
+        eventId: eventIdObj,
+        date: actDate,
+        title: sbAct.title || 'Lokalni Trening',
+        duration: Math.round((sbAct.duration_seconds || 0) / 60),
+        plannedDuration: plannedDurDisplay,
+        tss: Math.round(sbAct.tss || 0),
+        plannedTss: plannedTssDisplay,
+        statusColor: complianceColor,
+        isCompleted: true,
+        isSupabase: true, // Oznaka da je iz Supabase-a (prioritet!)
+        difficulty_score: diffScore,
+        category: actCategory,
+        workout_doc: workoutDoc,
+        np: Math.round(sbAct.np || 0),
+        average_power: Math.round(sbAct.avg_power || 0),
+        average_heartrate: Math.round(sbAct.avg_hr || 0)
+      });
+
+      consumedSupabaseIds.add(sbAct.id);
+    });
+
+    // 1. Dodaj Intervals.icu aktivnosti (samo ako NE postoji Supabase aktivnost za taj datum)
     rawActivities.forEach(act => {
       const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
+      
+      // PROVJERA: Preskoči ako već postoji Supabase aktivnost za ovaj datum (prioritet!)
+      if (supabaseDateMap.has(actDate)) {
+        console.log('[useIntervalsData] Preskačem Intervals.icu aktivnost jer postoji Supabase aktivnost za:', actDate);
+        return;
+      }
+
       let pairedEvent = null;
       let separatedEventIds = [];
 
@@ -170,80 +245,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       });
     });
 
-    // 2. Dodaj Supabase lokalne aktivnosti (koje nisu već dodane iz Intervals.icu)
-    supabaseActivities.forEach(sbAct => {
-      const actDate = sbAct.started_at ? sbAct.started_at.split('T')[0] : '';
-
-      // Provjeri je li ova aktivnost već dodana iz Intervals.icu (po datumu)
-      const alreadyExists = finalWorkouts.some(w => w.date === actDate && w.isCompleted);
-      if (alreadyExists) {
-        console.log('[useIntervalsData] Preskačem Supabase aktivnost jer već postoji iz Intervals.icu:', actDate);
-        return;
-      }
-
-      // Pokušaj spariti s lokalnim planiranim treningom
-      let pairedLocal = null;
-      let plannedTssDisplay = null;
-      let plannedDurDisplay = null;
-      let eventIdObj = null;
-      let diffScore = null;
-      let actCategory = null;
-      let workoutDoc = null;
-      let complianceColor = 'blue';
-
-      for (let lw of localScheduled) {
-        if (lw.date === actDate && !consumedLocalIds.has(lw.id)) {
-          pairedLocal = lw;
-          consumedLocalIds.add(lw.id);
-          eventIdObj = `local-${lw.id}`;
-          plannedTssDisplay = Math.round(lw.tss || 0);
-          plannedDurDisplay = lw.duration_seconds ? Math.round(lw.duration_seconds / 60) : lw.duration;
-          diffScore = lw.difficulty_score;
-          actCategory = lw.category;
-          workoutDoc = lw.steps;
-          break;
-        }
-      }
-
-      // Izračunaj compliance ako je spareno
-      if (pairedLocal) {
-        const actualTss = Math.round(sbAct.tss || 0);
-        const actualDur = Math.round((sbAct.duration_seconds || 0) / 60);
-
-        let ratio = 1;
-        if (plannedTssDisplay > 0 && actualTss > 0) ratio = actualTss / plannedTssDisplay;
-        else if (plannedDurDisplay > 0 && actualDur > 0) ratio = actualDur / plannedDurDisplay;
-
-        if (ratio >= 0.8 && ratio <= 1.2) complianceColor = 'green';
-        else if ((ratio >= 0.5 && ratio < 0.8) || (ratio > 1.2 && ratio <= 1.5)) complianceColor = 'yellow';
-        else complianceColor = 'red';
-      }
-
-      finalWorkouts.push({
-        id: `supabase-${sbAct.id}`,
-        supabaseId: sbAct.id,
-        eventId: eventIdObj,
-        date: actDate,
-        title: sbAct.title || 'Lokalni Trening',
-        duration: Math.round((sbAct.duration_seconds || 0) / 60),
-        plannedDuration: plannedDurDisplay,
-        tss: Math.round(sbAct.tss || 0),
-        plannedTss: plannedTssDisplay,
-        statusColor: complianceColor,
-        isCompleted: true,
-        isSupabase: true, // Oznaka da je iz Supabase-a
-        difficulty_score: diffScore,
-        category: actCategory,
-        workout_doc: workoutDoc,
-        np: Math.round(sbAct.np || 0),
-        average_power: Math.round(sbAct.avg_power || 0),
-        average_heartrate: Math.round(sbAct.avg_hr || 0)
-      });
-
-      consumedSupabaseIds.add(sbAct.id);
-    });
-
-    // 3. Dodaj planirane evente iz Intervals.icu
+    // 2. Dodaj planirane evente iz Intervals.icu
     rawEvents.forEach(ev => {
       if (ev.category !== 'WORKOUT' || consumedEvents.has(ev.id)) return;
       if (ev.activity_id && !unpairedList.some(pair => pair.endsWith(`-${ev.id}`))) return;
@@ -261,7 +263,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       });
     });
 
-    // 4. Dodaj lokalne planirane treninze (koji nisu spareni)
+    // 3. Dodaj lokalne planirane treninze (koji nisu spareni)
     localScheduled.forEach(sched => {
       if (consumedLocalIds.has(sched.id)) return;
       let complianceColor = 'grey';
