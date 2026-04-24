@@ -230,6 +230,8 @@ export default function HistoryTab() {
         try {
           const { activities: intervalsActivities } = await fetchIntervalsData(intervalsId, intervalsKey);
           
+          console.log('[HistoryTab] Sample Intervals activity:', intervalsActivities[0]); // DEBUG
+          
           intervalsActivities.forEach(act => {
             const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
             
@@ -237,6 +239,26 @@ export default function HistoryTab() {
             if (supabaseDateMap.has(actDate)) {
               console.log('[HistoryTab] Preskačem Intervals aktivnost jer postoji Supabase za:', actDate);
               return;
+            }
+
+            // Debug: Isprintaj prvu aktivnost da vidimo strukturu podataka
+            if (allActivities.length === 0) {
+              console.log('[HistoryTab] Sample Intervals activity structure:', {
+                id: act.id,
+                name: act.name,
+                moving_time: act.moving_time,
+                icu_training_load: act.icu_training_load,
+                average_watts: act.average_watts,
+                icu_average_watts: act.icu_average_watts,
+                icu_average_power: act.icu_average_power,
+                average_power: act.average_power,
+                watts_avg: act.watts_avg,
+                icu_normalized_power: act.icu_normalized_power,
+                normalized_power: act.normalized_power,
+                icu_intensity: act.icu_intensity,
+                average_heartrate: act.average_heartrate,
+                icu_average_hr: act.icu_average_hr
+              });
             }
 
             allActivities.push({
@@ -247,13 +269,47 @@ export default function HistoryTab() {
               title: act.name || 'Trening',
               workout_source: 'intervals.icu',
               duration_seconds: act.moving_time || 0,
-              avg_power: Math.round(act.icu_average_power || act.average_watts || act.average_power || 0),
-              avg_hr: Math.round(act.icu_average_hr || act.average_heartrate || 0),
-              avg_cadence: Math.round(act.average_cadence || 0),
-              np: Math.round(act.icu_normalized_power || act.normalized_power || 0),
-              tss: Math.round(act.icu_training_load || 0),
-              if_factor: act.icu_intensity || null,
-              work_kj: Math.round(act.icu_joules ? act.icu_joules / 1000 : 0),
+              // Intervals.icu može vraćati podatke pod različitim ključevima
+              avg_power: Math.round(
+                act.average_watts || 
+                act.icu_average_watts || 
+                act.icu_average_power || 
+                act.average_power || 
+                act.watts_avg || 
+                0
+              ),
+              avg_hr: Math.round(
+                act.average_heartrate || 
+                act.icu_average_hr || 
+                act.average_hr || 
+                act.hr_avg || 
+                0
+              ),
+              avg_cadence: Math.round(
+                act.average_cadence || 
+                act.icu_average_cadence || 
+                act.cadence_avg || 
+                0
+              ),
+              np: Math.round(
+                act.icu_normalized_power || 
+                act.normalized_power || 
+                act.np || 
+                0
+              ),
+              tss: Math.round(
+                act.icu_training_load || 
+                act.training_load || 
+                act.tss || 
+                0
+              ),
+              if_factor: parseFloat(act.icu_intensity || act.intensity || 0).toFixed(2),
+              work_kj: Math.round(
+                act.icu_joules ? act.icu_joules / 1000 : 
+                act.joules ? act.joules / 1000 : 
+                act.work ? act.work / 1000 : 
+                0
+              ),
               distance_m: Math.round(act.distance || 0),
               avg_speed_kmh: act.average_speed ? (act.average_speed * 3.6).toFixed(1) : null,
               ftp_used: null,
