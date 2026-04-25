@@ -758,6 +758,49 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               ? `${wStart.day}–${wEnd.day} ${mn[wStart.month]}`
               : `${wStart.day} ${mn[wStart.month]} – ${wEnd.day} ${mn[wEnd.month]}`;
 
+            // CTL/ATL/TSB — uzimamo nedjelju (zadnji dan tjedna) ili najbliži dostupni datum unatrag
+            let weekCtl = null, weekAtl = null;
+            for (let di = 6; di >= 0; di--) {
+              const wd = wellnessData[days[di].dateStr];
+              if (wd && (wd.ctl != null || wd.atl != null)) {
+                weekCtl = wd.ctl != null ? Math.round(wd.ctl) : null;
+                weekAtl = wd.atl != null ? Math.round(wd.atl) : null;
+                break;
+              }
+            }
+            const weekTsb = (weekCtl != null && weekAtl != null) ? weekCtl - weekAtl : null;
+
+            // Ramp Rate — CTL prošlog tjedna (7 dana ranije od Monday ovog tjedna)
+            let prevWeekCtl = null;
+            const mondayDate = new Date(days[0].year, days[0].month, days[0].day);
+            for (let di = 6; di >= 0; di--) {
+              const prevDate = new Date(mondayDate);
+              prevDate.setDate(prevDate.getDate() - 7 + di);
+              const prevDateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+              const pwd = wellnessData[prevDateStr];
+              if (pwd && pwd.ctl != null) {
+                prevWeekCtl = Math.round(pwd.ctl);
+                break;
+              }
+            }
+            const rampRate = (weekCtl != null && prevWeekCtl != null) ? weekCtl - prevWeekCtl : null;
+
+            const getTsbColor = (tsb) => {
+              if (tsb == null) return 'text-zinc-600';
+              if (tsb > 25) return 'text-amber-400';
+              if (tsb >= 5)  return 'text-emerald-400';
+              if (tsb >= -10) return 'text-zinc-400';
+              return 'text-rose-400';
+            };
+            const getRampColor = (rr) => {
+              if (rr == null) return 'text-zinc-600';
+              if (rr > 8)  return 'text-orange-400';  // agresivan ramp — rizik
+              if (rr >= 3) return 'text-emerald-400'; // optimalan ramp
+              if (rr >= 0) return 'text-zinc-400';    // umjeren / neutralan
+              if (rr >= -5) return 'text-sky-400';    // lagani taper
+              return 'text-rose-400';                  // agresivan taper / pad
+            };
+
             return (
               <div
                 key={wi}
@@ -826,6 +869,43 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                         <span className="text-zinc-500 font-medium">{pT}</span>
                       </div>
                     </div>
+
+                    {/* CTL / ATL / TSB blok */}
+                    {(weekCtl != null || weekAtl != null) && (
+                      <div className={`pt-1.5 border-t ${isActive ? 'border-zinc-700' : 'border-zinc-800'}`}>
+                        <p className={`text-[8px] font-black uppercase tracking-tighter mb-1 ${isActive ? 'text-sky-500' : 'text-zinc-600'}`}>Forma</p>
+                        <div className="flex flex-col gap-0.5 items-end">
+                          {weekCtl != null && (
+                            <div className="flex items-center gap-1 text-[9px]">
+                              <span className="text-zinc-600 font-bold">CTL</span>
+                              <span className={`font-mono font-bold ${isActive ? 'text-sky-400' : 'text-zinc-500'}`}>{weekCtl}</span>
+                            </div>
+                          )}
+                          {weekAtl != null && (
+                            <div className="flex items-center gap-1 text-[9px]">
+                              <span className="text-zinc-600 font-bold">ATL</span>
+                              <span className={`font-mono font-bold ${isActive ? 'text-purple-400' : 'text-zinc-500'}`}>{weekAtl}</span>
+                            </div>
+                          )}
+                          {weekTsb != null && (
+                            <div className={`flex items-center gap-1 text-[9px] mt-0.5 px-1 rounded ${isActive ? 'bg-zinc-800/60' : 'bg-zinc-900/60'}`}>
+                              <span className="text-zinc-600 font-bold">TSB</span>
+                              <span className={`font-mono font-bold ${getTsbColor(weekTsb)}`}>
+                                {weekTsb > 0 ? `+${weekTsb}` : weekTsb}
+                              </span>
+                            </div>
+                          )}
+                          {rampRate != null && (
+                            <div className={`flex items-center gap-1 text-[9px] mt-0.5 px-1 rounded ${isActive ? 'bg-zinc-800/60' : 'bg-zinc-900/60'}`} title="Ramp Rate: tjedna promjena CTL-a. Optimalno: +3 do +8">
+                              <span className="text-zinc-600 font-bold">RR</span>
+                              <span className={`font-mono font-bold ${getRampColor(rampRate)}`}>
+                                {rampRate > 0 ? `+${rampRate}` : rampRate}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
