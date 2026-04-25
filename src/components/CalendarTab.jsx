@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical, Bike } from 'lucide-react';
 import { DndContext, pointerWithin, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
@@ -118,7 +118,7 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted 
 // ============================================================
 // WorkoutCard
 // ============================================================
-const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, isCurrentMonth }) {
+const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, isCurrentMonth, compact }) {
   const canDrag = isDesktop && isDraggable(w);
 
   const { attributes, listeners, setNodeRef } = useDraggable({
@@ -145,128 +145,129 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           }
         }
       }}
-      className={`workout-card-element rounded-lg flex flex-col overflow-hidden min-h-[100px] backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : ''} ${canDrag && !isDragging ? 'cursor-grab hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
+      className={`workout-card-element rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : 'min-h-[100px]'} backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : ''} ${canDrag && !isDragging ? 'cursor-grab hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
     >
       <div className={`h-1.5 w-full shrink-0 ${getTopCol(w.statusColor)}`} />
-      <div className={`${isDesktop ? 'p-3' : 'p-3.5'} flex flex-col justify-between flex-1`}>
-        {/* Header: Sport icon, duration */}
-        <div className="flex flex-col gap-1 w-full">
-          <div className="flex justify-between items-start w-full">
-            <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-wide">
-              <Bike className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
-              <span title={w.plannedDuration ? `Plan: ${formatDur(w.plannedDuration)}` : ''}>
-                {formatDur(w.duration)}
-                {!isDesktop && w.plannedDuration && <span className="text-zinc-600 text-[9px] ml-1">/ {formatDur(w.plannedDuration)}</span>}
-              </span>
-            </div>
-            {/* Actions */}
-            <div className="flex items-center gap-1 shrink-0 ml-1" onPointerDown={(e) => { }}>
-              {!w.isCompleted && onSelectWorkout && (
-                <button
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
-                  className={`text-orange-400 hover:text-white bg-orange-500/10 hover:bg-orange-500 ${isDesktop ? 'rounded-md p-1' : 'rounded-lg p-1.5 shadow-[0_0_8px_rgba(249,115,22,0.2)] hover:shadow-[0_0_12px_rgba(249,115,22,0.6)]'} transition-all border border-orange-500/20`}
-                  title="Pošalji na trenažer"
-                >
-                  <Play className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} fill-current`} />
-                </button>
-              )}
-              {w.actId && w.eventId && (
-                <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleUnpair(w.actId, w.eventId); }} className="text-zinc-500 hover:text-orange-400 transition-colors" title="Razdvoji planirano i odrađeno">
-                  <Unlink className="w-3.5 h-3.5" />
-                </button>
-              )}
-              {w.actId && w.separatedEventIds && w.separatedEventIds.map(sepId => (
-                <button key={sepId} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom">
-                  <Link2 className="w-3.5 h-3.5" />
-                </button>
-              ))}
-              {w.statusColor === 'green' && <CheckCircle2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-emerald-400 drop-shadow-[0_0_${isDesktop ? '3' : '5'}px_rgba(16,185,129,0.5)]`} />}
-              {w.statusColor === 'red-missed' && <XCircle className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-rose-500`} />}
-              {w.statusColor === 'grey' && !w.isLocal && <Target className="w-3.5 h-3.5 text-zinc-500" />}
-              {w.isLocal && !w.isCompleted && handleDeleteLocalActivity && (
-                <button
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
-                  className={`text-zinc-${isDesktop ? '600' : '500'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
-                  title="Obriši planirani trening"
-                >
-                  <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
-                </button>
-              )}
-              {w.isSupabase && w.isCompleted && handleDeleteCompletedActivity && (
-                <button
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={async (e) => { 
-                    e.stopPropagation(); 
-                    if (window.confirm('Sigurno želiš obrisati ovaj odrađeni trening?')) {
-                      const result = await handleDeleteCompletedActivity(w.id);
-                      if (!result.success) {
-                        alert('Greška pri brisanju: ' + (result.error || 'Nepoznata greška'));
+      <div className={`${isDesktop ? (compact ? 'p-1.5' : 'p-3') : 'p-3.5'} flex flex-col justify-between flex-1`}>
+        {compact ? (
+          // Compact: just title + duration + status icon
+          <div className="flex items-center gap-1.5 w-full">
+            <span className="text-[9px] font-bold text-zinc-300 truncate flex-1">{w.title}</span>
+            <span className="text-[9px] text-zinc-500 shrink-0">{formatDur(w.duration)}</span>
+            {w.statusColor === 'green' && <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />}
+            {w.statusColor === 'red-missed' && <XCircle className="w-3 h-3 text-rose-500 shrink-0" />}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1 w-full">
+            {/* Header: Sport icon, duration, actions */}
+            <div className="flex justify-between items-start w-full">
+              <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-wide">
+                <Bike className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                <span title={w.plannedDuration ? `Plan: ${formatDur(w.plannedDuration)}` : ''}>
+                  {formatDur(w.duration)}
+                  {!isDesktop && w.plannedDuration && <span className="text-zinc-600 text-[9px] ml-1">/ {formatDur(w.plannedDuration)}</span>}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0 ml-1" onPointerDown={(e) => { }}>
+                {!w.isCompleted && onSelectWorkout && (
+                  <button
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
+                    className={`text-orange-400 hover:text-white bg-orange-500/10 hover:bg-orange-500 ${isDesktop ? 'rounded-md p-1' : 'rounded-lg p-1.5 shadow-[0_0_8px_rgba(249,115,22,0.2)] hover:shadow-[0_0_12px_rgba(249,115,22,0.6)]'} transition-all border border-orange-500/20`}
+                    title="Pošalji na trenažer"
+                  >
+                    <Play className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} fill-current`} />
+                  </button>
+                )}
+                {w.actId && w.eventId && (
+                  <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleUnpair(w.actId, w.eventId); }} className="text-zinc-500 hover:text-orange-400 transition-colors" title="Razdvoji planirano i odrađeno">
+                    <Unlink className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {w.actId && w.separatedEventIds && w.separatedEventIds.map(sepId => (
+                  <button key={sepId} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom">
+                    <Link2 className="w-3.5 h-3.5" />
+                  </button>
+                ))}
+                {w.statusColor === 'green' && <CheckCircle2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-emerald-400 drop-shadow-[0_0_${isDesktop ? '3' : '5'}px_rgba(16,185,129,0.5)]`} />}
+                {w.statusColor === 'red-missed' && <XCircle className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-rose-500`} />}
+                {w.statusColor === 'grey' && !w.isLocal && <Target className="w-3.5 h-3.5 text-zinc-500" />}
+                {w.isLocal && !w.isCompleted && handleDeleteLocalActivity && (
+                  <button
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
+                    className={`text-zinc-${isDesktop ? '600' : '500'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
+                    title="Obriši planirani trening"
+                  >
+                    <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                  </button>
+                )}
+                {w.isSupabase && w.isCompleted && handleDeleteCompletedActivity && (
+                  <button
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (window.confirm('Sigurno želiš obrisati ovaj odrađeni trening?')) {
+                        const result = await handleDeleteCompletedActivity(w.id);
+                        if (!result.success) alert('Greška pri brisanju: ' + (result.error || 'Nepoznata greška'));
                       }
-                    }
-                  }}
-                  className={`text-zinc-${isDesktop ? '600' : '500'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
-                  title="Obriši odrađeni trening"
-                >
-                  <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
-                </button>
+                    }}
+                    className={`text-zinc-${isDesktop ? '600' : '500'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
+                    title="Obriši odrađeni trening"
+                  >
+                    <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                  </button>
+                )}
+              </div>
+            </div>
+            {/* Title */}
+            <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} text-zinc-100 leading-tight line-clamp-1`}>
+              {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-500 align-middle pointer-events-none" />}
+              {w.title}
+              {w.isSupabase && w.workout_source && (
+                <span className="ml-1.5 inline-flex items-center bg-violet-500/10 text-violet-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-violet-500/20">
+                  {w.workout_source === 'calendar' ? '📅 Kalendar' :
+                   w.workout_source === 'library' ? '📚 Knjižnica' :
+                   w.workout_source === 'free_ride' ? '🚴 Slobodno' :
+                   w.workout_source === 'garmin' ? '🟢 Garmin' :
+                   w.workout_source === 'strava' ? '🟠 Strava' :
+                   w.workout_source === 'wahoo' ? '🔵 Wahoo' :
+                   w.workout_source === 'external' ? '🌐 Vanjski' :
+                   w.workout_source}
+                </span>
               )}
             </div>
-          </div>
-          {/* Title */}
-          <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} text-zinc-100 leading-tight line-clamp-1`}>
-            {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-500 align-middle pointer-events-none" />}
-            {w.title}
-            {w.isSupabase && w.workout_source && (
-              <span className="ml-1.5 inline-flex items-center bg-violet-500/10 text-violet-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-violet-500/20">
-                {w.workout_source === 'calendar' ? '📅 Kalendar' : 
-                 w.workout_source === 'library' ? '📚 Knjižnica' : 
-                 w.workout_source === 'free_ride' ? '🚴 Slobodno' :
-                 w.workout_source === 'garmin' ? '🟢 Garmin' :
-                 w.workout_source === 'strava' ? '🟠 Strava' :
-                 w.workout_source === 'wahoo' ? '🔵 Wahoo' :
-                 w.workout_source === 'external' ? '🌐 Vanjski' :
-                 w.workout_source}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Metrics Row: Load (TSS) & Description */}
-        <div className="flex flex-col gap-1.5 mt-2">
-          <div className="flex items-center gap-2">
-            <div className="flex items-baseline gap-1 bg-zinc-950/40 rounded px-1.5 py-0.5 border border-zinc-800/50">
-              <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Load</span>
-              <span className="font-mono text-xs font-semibold text-zinc-200" title={w.plannedTss ? `Plan: ${w.plannedTss} TSS` : ''}>
-                {w.tss > 0 ? w.tss : '-'}
-              </span>
-              <span className="text-[9px] text-zinc-600 font-medium">TSS</span>
+            {/* Metrics */}
+            <div className="flex flex-col gap-1.5 mt-2">
+              <div className="flex items-center gap-2">
+                <div className="flex items-baseline gap-1 bg-zinc-950/40 rounded px-1.5 py-0.5 border border-zinc-800/50">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Load</span>
+                  <span className="font-mono text-xs font-semibold text-zinc-200" title={w.plannedTss ? `Plan: ${w.plannedTss} TSS` : ''}>
+                    {w.tss > 0 ? w.tss : '-'}
+                  </span>
+                  <span className="text-[9px] text-zinc-600 font-medium">TSS</span>
+                </div>
+              </div>
+              {w.intervalDescription && (
+                <span className="text-[10px] text-zinc-400/80 leading-tight line-clamp-1 italic">{w.intervalDescription}</span>
+              )}
             </div>
+            {/* Graph */}
+            <WorkoutGraph
+              workoutDoc={w.workout_doc || w.steps}
+              isCompleted={w.isCompleted || w.status === 'completed'}
+            />
           </div>
-          {w.intervalDescription && (
-            <span className="text-[10px] text-zinc-400/80 leading-tight line-clamp-1 italic">{w.intervalDescription}</span>
-          )}
-        </div>
-
-        {/* Visual Graph (Interval Visualization) */}
-        <WorkoutGraph
-          workoutDoc={w.workout_doc || w.steps}
-          isCompleted={w.isCompleted || w.status === 'completed'}
-        />
-
+        )}
       </div>
     </div>
   );
 });
-
 // ============================================================
 // CalendarDay
 // ============================================================
-const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity }) {
-  const { isOver, setNodeRef } = useDroppable({
-    id: dObj.dateStr,
-  });
+const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, compact }) {
+  const { isOver, setNodeRef } = useDroppable({ id: dObj.dateStr });
 
   if (!isDesktop) {
     const dayNames = ["PON", "UTO", "SRI", "ČET", "PET", "SUB", "NED"];
@@ -299,14 +300,15 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
   return (
     <div
       ref={setNodeRef}
-      className={`p-3 flex flex-col group relative transition-all duration-200
-            ${dObj.isCurrentMonth ? 'bg-zinc-900/60 hover:bg-zinc-800/80 cursor-pointer' : 'bg-zinc-950/80'}
-            ${isTdy ? 'ring-inset ring-2 ring-orange-500' : ''}
-            ${isOver ? 'bg-orange-500/10 ring-2 ring-orange-500/50 ring-inset shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}
-          `}
+      className={`flex flex-col group relative transition-all duration-200
+        ${compact ? 'p-1.5' : 'p-3'}
+        ${dObj.isCurrentMonth ? 'bg-zinc-900/60 hover:bg-zinc-800/80 cursor-pointer' : 'bg-zinc-950/80'}
+        ${isTdy ? 'ring-inset ring-2 ring-orange-500' : ''}
+        ${isOver ? 'bg-orange-500/10 ring-2 ring-orange-500/50 ring-inset shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}
+      `}
       onClick={(e) => {
         if (e.target.closest('.workout-card-element')) return;
-        if (dObj.isCurrentMonth) {
+        if (!compact && dObj.isCurrentMonth) {
           const newWorkout = {
             id: `local-${Date.now()}`,
             date: dObj.dateStr,
@@ -327,17 +329,21 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
         }
       }}
     >
-      <div className="flex justify-between items-start mb-3">
-        <span className={`text-xs font-bold ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.6)]' : (dObj.isCurrentMonth ? 'text-zinc-400' : 'text-zinc-600')}`}>{dObj.day}</span>
-        {dWell && (
+      <div className={`flex justify-between items-start ${compact ? 'mb-1' : 'mb-3'}`}>
+        <span className={`font-bold ${compact ? 'text-[10px]' : 'text-xs'} ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.6)]' : (dObj.isCurrentMonth ? 'text-zinc-400' : 'text-zinc-600')}`}>{dObj.day}</span>
+        {!compact && dWell && (
           <div className="flex gap-2 text-[10px] font-bold text-zinc-500">
             {dWell.restingHR && <span className="flex items-center text-rose-500/80"><Heart className="w-3 h-3 mr-0.5" fill="currentColor" />{dWell.restingHR}</span>}
             {dWell.sleep && <span className="flex items-center text-indigo-400/80"><Moon className="w-3 h-3 mr-0.5" fill="currentColor" />{dWell.sleep}</span>}
           </div>
         )}
+        {compact && dWell && (
+          <div className="flex gap-1 text-[9px] font-bold text-zinc-600">
+            {dWell.restingHR && <span className="flex items-center text-rose-500/60"><Heart className="w-2.5 h-2.5" fill="currentColor" />{dWell.restingHR}</span>}
+          </div>
+        )}
       </div>
-
-      <div className="flex-1 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
+      <div className={`flex-1 overflow-y-auto pr-1 custom-scrollbar ${compact ? 'space-y-1' : 'space-y-3'}`}>
         {dWorks.map(w => (
           <WorkoutCard
             key={w.id}
@@ -345,13 +351,14 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
             isDesktop={true}
             isDragging={activeId === w.id}
             isCurrentMonth={dObj.isCurrentMonth}
-            onSelectWorkout={onSelectWorkout}
-            handleUnpair={handleUnpair}
-            handlePair={handlePair}
-            handleDeleteLocalActivity={handleDeleteLocalActivity}
-            handleDeleteCompletedActivity={handleDeleteCompletedActivity}
-            onEditWorkout={onEditWorkout}
+            onSelectWorkout={compact ? null : onSelectWorkout}
+            handleUnpair={compact ? null : handleUnpair}
+            handlePair={compact ? null : handlePair}
+            handleDeleteLocalActivity={compact ? null : handleDeleteLocalActivity}
+            handleDeleteCompletedActivity={compact ? null : handleDeleteCompletedActivity}
+            onEditWorkout={compact ? null : onEditWorkout}
             onViewActivity={onViewActivity}
+            compact={compact}
           />
         ))}
       </div>
@@ -396,14 +403,48 @@ function DragOverlayCard({ workout, activeWidth }) {
 export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile, intervalsId, intervalsKey }) {
   const cy = currentDate.getFullYear();
   const cm = currentDate.getMonth();
-  const daysInMo = new Date(cy, cm + 1, 0).getDate();
-  const startOff = new Date(cy, cm, 1).getDay() === 0 ? 6 : new Date(cy, cm, 1).getDay() - 1;
   const [activeId, setActiveId] = useState(null);
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [activeWidth, setActiveWidth] = useState(0);
   const [editingWorkout, setEditingWorkout] = useState(null);
   const [viewingActivity, setViewingActivity] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [pickerMonth, setPickerMonth] = useState(cm);
+  const [pickerYear, setPickerYear] = useState(cy);
+  const monthPickerRef = useRef(null);
+
+  // Sync picker with currentDate when it changes externally
+  useEffect(() => {
+    setPickerMonth(cm);
+    setPickerYear(cy);
+  }, [cm, cy]);
+
+  // Close picker on outside click
+  useEffect(() => {
+    if (!showMonthPicker) return;
+    const handler = (e) => {
+      if (monthPickerRef.current && !monthPickerRef.current.contains(e.target)) {
+        setShowMonthPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showMonthPicker]);
+
+  const goWeekBack = () => {
+    const d = new Date(currentDate);
+    d.setDate(d.getDate() - 7);
+    setCurrentDate(d);
+  };
+
+  const goWeekForward = () => {
+    const d = new Date(currentDate);
+    d.setDate(d.getDate() + 7);
+    setCurrentDate(d);
+  };
+
+  const goToday = () => setCurrentDate(new Date());
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -413,29 +454,73 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     })
   );
 
-  const calDays = useMemo(() => {
-    const days = [];
-    const daysPrev = new Date(cy, cm, 0).getDate();
+  // Build a 7-day week (Mon–Sun) offset by N weeks from currentDate
+  const buildWeek = useCallback((offsetWeeks) => {
+    const dow = currentDate.getDay();
+    const diff = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(currentDate);
+    monday.setDate(currentDate.getDate() + diff + offsetWeeks * 7);
+    monday.setHours(0, 0, 0, 0);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return { day: d.getDate(), dateStr, month: d.getMonth(), year: d.getFullYear() };
+    });
+  }, [currentDate]);
 
-    for (let i = startOff - 1; i >= 0; i--) {
-      days.push({ day: daysPrev - i, dateStr: `${cy}-${String(cm).padStart(2, '0')}-${String(daysPrev - i).padStart(2, '0')}`, isCurrentMonth: false });
-    }
-    for (let i = 1; i <= daysInMo; i++) {
-      days.push({ day: i, dateStr: `${cy}-${String(cm + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`, isCurrentMonth: true });
-    }
-    let nx = 1;
-    while (days.length % 7 !== 0) {
-      days.push({ day: nx, dateStr: `${cy}-${String(cm + 2).padStart(2, '0')}-${String(nx).padStart(2, '0')}`, isCurrentMonth: false });
-      nx++;
+  const prevWeek    = useMemo(() => buildWeek(-1), [buildWeek]);
+  const currentWeek = useMemo(() => buildWeek(0),  [buildWeek]);
+  const nextWeek    = useMemo(() => buildWeek(1),  [buildWeek]);
+
+  const threeWeeks = [
+    { days: prevWeek,    isActive: false },
+    { days: currentWeek, isActive: true  },
+    { days: nextWeek,    isActive: false },
+  ];
+
+  // Month picker sync — use the month of Monday of current week
+  const weekStartMonth = currentWeek[0].month;
+  const weekStartYear  = currentWeek[0].year;
+
+  // Header label: month(s) and year of the active week
+  const headerLabel = useMemo(() => {
+    const start = currentWeek[0];
+    const end   = currentWeek[6];
+    const mn = ["Siječanj","Veljača","Ožujak","Travanj","Svibanj","Lipanj","Srpanj","Kolovoz","Rujan","Listopad","Studeni","Prosinac"];
+    if (start.month === end.month) return `${mn[start.month]} ${start.year}`;
+    if (start.year !== end.year)   return `${mn[start.month]} ${start.year} – ${mn[end.month]} ${end.year}`;
+    return `${mn[start.month]} – ${mn[end.month]} ${end.year}`;
+  }, [currentWeek]);
+
+  // Keep picker in sync with week start
+  useEffect(() => {
+    setPickerMonth(weekStartMonth);
+    setPickerYear(weekStartYear);
+  }, [weekStartMonth, weekStartYear]);
+
+  // calDays for mobile (shows current month days)
+  const calDays = useMemo(() => {
+    const cy2 = weekStartYear;
+    const cm2 = weekStartMonth;
+    const firstOfMonth = new Date(cy2, cm2, 1);
+    const firstDow = firstOfMonth.getDay();
+    const mondayOffset = firstDow === 0 ? -6 : 1 - firstDow;
+    const startDate = new Date(cy2, cm2, 1 + mondayOffset);
+    const lastOfMonth = new Date(cy2, cm2 + 1, 0);
+    const lastDow = lastOfMonth.getDay();
+    const sundayOffset = lastDow === 0 ? 0 : 7 - lastDow;
+    const endDate = new Date(cy2, cm2 + 1, sundayOffset);
+    const days = [];
+    const cur = new Date(startDate);
+    while (cur <= endDate) {
+      const d = new Date(cur);
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      days.push({ day: d.getDate(), dateStr, isCurrentMonth: d.getMonth() === cm2 });
+      cur.setDate(cur.getDate() + 1);
     }
     return days;
-  }, [cy, cm, daysInMo, startOff]);
-
-  const weeks = useMemo(() => {
-    const w = [];
-    for (let i = 0; i < calDays.length; i += 7) w.push(calDays.slice(i, i + 7));
-    return w;
-  }, [calDays]);
+  }, [weekStartYear, weekStartMonth]);
 
   const workoutsByDate = useMemo(() => {
     const map = {};
@@ -523,11 +608,108 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         intervalsKey={intervalsKey}
       />
       <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-950/50">
-        <span className="px-4 font-bold text-lg text-zinc-100 drop-shadow-sm">{monthNames[cm]} {cy}</span>
+        {/* Month/Year button that opens mini calendar picker */}
+        <div className="relative" ref={monthPickerRef}>
+          <button
+            onClick={() => setShowMonthPicker(v => !v)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors group"
+          >
+            <span className="font-bold text-lg text-zinc-100 drop-shadow-sm">{headerLabel}</span>
+            <ChevronRight className={`w-4 h-4 text-zinc-400 group-hover:text-zinc-200 transition-all duration-200 ${showMonthPicker ? 'rotate-90' : 'rotate-0'}`} />
+          </button>
+
+          {/* Mini calendar dropdown */}
+          {showMonthPicker && (
+            <div className="absolute top-full left-0 mt-2 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-4 w-72 select-none">
+              {/* Picker header */}
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  onClick={() => {
+                    if (pickerMonth === 0) { setPickerMonth(11); setPickerYear(y => y - 1); }
+                    else setPickerMonth(m => m - 1);
+                  }}
+                  className="p-1.5 hover:bg-zinc-700 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="font-bold text-sm text-zinc-100">{monthNames[pickerMonth]} {pickerYear}</span>
+                <button
+                  onClick={() => {
+                    if (pickerMonth === 11) { setPickerMonth(0); setPickerYear(y => y + 1); }
+                    else setPickerMonth(m => m + 1);
+                  }}
+                  className="p-1.5 hover:bg-zinc-700 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Day headers */}
+              <div className="grid grid-cols-7 mb-1">
+                {["Po","Ut","Sr","Če","Pe","Su","Ne"].map(d => (
+                  <div key={d} className="text-center text-[10px] font-bold text-zinc-500 uppercase py-1">{d}</div>
+                ))}
+              </div>
+
+              {/* Days grid */}
+              {(() => {
+                const firstDay = new Date(pickerYear, pickerMonth, 1).getDay();
+                const offset = firstDay === 0 ? 6 : firstDay - 1;
+                const daysInMonth = new Date(pickerYear, pickerMonth + 1, 0).getDate();
+                const prevDays = new Date(pickerYear, pickerMonth, 0).getDate();
+                const cells = [];
+
+                for (let i = offset - 1; i >= 0; i--) {
+                  cells.push({ day: prevDays - i, month: pickerMonth - 1, year: pickerMonth === 0 ? pickerYear - 1 : pickerYear, current: false });
+                }
+                for (let i = 1; i <= daysInMonth; i++) {
+                  cells.push({ day: i, month: pickerMonth, year: pickerYear, current: true });
+                }
+                let nx = 1;
+                while (cells.length % 7 !== 0) {
+                  cells.push({ day: nx++, month: pickerMonth + 1, year: pickerMonth === 11 ? pickerYear + 1 : pickerYear, current: false });
+                }
+
+                const todayD = new Date();
+                const rows = [];
+                for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+
+                return rows.map((row, ri) => (
+                  <div key={ri} className="grid grid-cols-7">
+                    {row.map((cell, ci) => {
+                      const isToday = cell.day === todayD.getDate() && cell.month === todayD.getMonth() && cell.year === todayD.getFullYear();
+                      const isSelected = cell.day === currentDate.getDate() && cell.month === currentDate.getMonth() && cell.year === currentDate.getFullYear();
+                      return (
+                        <button
+                          key={ci}
+                          onClick={() => {
+                            setCurrentDate(new Date(cell.year, cell.month, cell.day));
+                            setShowMonthPicker(false);
+                          }}
+                          className={`
+                            text-center text-xs py-1.5 rounded-full mx-0.5 my-0.5 transition-colors font-medium
+                            ${isSelected ? 'bg-orange-500 text-white font-bold' : ''}
+                            ${isToday && !isSelected ? 'ring-1 ring-orange-500 text-orange-400' : ''}
+                            ${!isSelected && !isToday && cell.current ? 'text-zinc-200 hover:bg-zinc-700' : ''}
+                            ${!isSelected && !isToday && !cell.current ? 'text-zinc-600 hover:bg-zinc-800' : ''}
+                          `}
+                        >
+                          {cell.day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
+            </div>
+          )}
+        </div>
+
+        {/* Week navigation */}
         <div className="flex bg-zinc-900/80 rounded-lg p-1 border border-zinc-800 gap-1">
-          <button onClick={() => setCurrentDate(new Date(cy, cm - 1, 1))} className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-          <button onClick={() => setCurrentDate(new Date())} className="px-4 py-1.5 hover:bg-zinc-800 rounded-md text-[11px] font-bold text-zinc-300 uppercase transition-colors">Danas</button>
-          <button onClick={() => setCurrentDate(new Date(cy, cm + 1, 1))} className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"><ChevronRight className="w-4 h-4" /></button>
+          <button onClick={goWeekBack} title="Prošli tjedan" className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+          <button onClick={goToday} title="Idi na današnji tjedan" className="px-4 py-1.5 hover:bg-zinc-800 rounded-md text-[11px] font-bold text-zinc-300 uppercase transition-colors">Danas</button>
+          <button onClick={goWeekForward} title="Sljedeći tjedan" className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"><ChevronRight className="w-4 h-4" /></button>
         </div>
       </div>
 
@@ -566,11 +748,26 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         onDragCancel={handleDragCancel}
       >
         <div className="hidden md:flex flex-1 flex-col bg-zinc-800 border-l border-zinc-800 gap-[1px]">
-          {weeks.map((wk, wi) => {
+          {threeWeeks.map(({ days, isActive }, wi) => {
             let aT = 0; let pT = 0; let aD = 0; let pD = 0;
+            // Week label: date range
+            const wStart = days[0];
+            const wEnd   = days[6];
+            const mn = ["Sij","Velj","Ožu","Tra","Svi","Lip","Srp","Kol","Ruj","Lis","Stu","Pro"];
+            const weekRangeLabel = wStart.month === wEnd.month
+              ? `${wStart.day}–${wEnd.day} ${mn[wStart.month]}`
+              : `${wStart.day} ${mn[wStart.month]} – ${wEnd.day} ${mn[wEnd.month]}`;
+
             return (
-              <div key={wi} className="grid grid-cols-8 gap-[1px] flex-1 min-h-[180px]">
-                {wk.map((dObj) => {
+              <div
+                key={wi}
+                className={`grid grid-cols-8 gap-[1px] flex-1 transition-all
+                  ${isActive
+                    ? 'min-h-[160px] ring-1 ring-inset ring-orange-500/50'
+                    : 'min-h-[110px] opacity-60 hover:opacity-80'
+                  }`}
+              >
+                {days.map((dObj) => {
                   const dWorks = workoutsByDate[dObj.dateStr] || [];
                   dWorks.forEach(w => {
                     if (w.isCompleted) {
@@ -581,7 +778,6 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       pT += w.tss; pD += w.duration;
                     }
                   });
-
                   return (
                     <CalendarDay
                       key={dObj.dateStr}
@@ -599,18 +795,37 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       handleDeleteCompletedActivity={handleDeleteCompletedActivity}
                       onEditWorkout={setEditingWorkout}
                       onViewActivity={setViewingActivity}
+                      compact={!isActive}
                     />
                   );
                 })}
 
-                <div className="bg-gradient-to-b from-orange-500/5 to-transparent p-4 flex flex-col justify-end items-end border-l border-zinc-800 bg-zinc-900/40 text-right space-y-3">
-                  <div className="w-full">
-                    <p className="text-[9px] font-black text-orange-500 uppercase tracking-tighter mb-1">Ukupno Vrijeme</p>
-                    <div className="flex items-center justify-end gap-1.5 text-xs"><Clock className="w-3.5 h-3.5 text-orange-500 drop-shadow-[0_0_4px_rgba(249,115,22,0.5)]" /><span className="font-bold text-zinc-100">{formatDur(aD)}</span><span className="text-zinc-700">/</span><span className="text-zinc-400 font-medium">{formatDur(pD)}</span></div>
-                  </div>
-                  <div className="pt-2 border-t border-zinc-800 w-full">
-                    <p className="text-[9px] font-black text-orange-500 uppercase tracking-tighter mb-1">Ukupno TSS</p>
-                    <div className="flex items-center justify-end gap-1.5 text-xs"><Activity className="w-3.5 h-3.5 text-orange-500 drop-shadow-[0_0_4px_rgba(249,115,22,0.5)]" /><span className="font-bold text-zinc-100">{aT}</span><span className="text-zinc-700">/</span><span className="text-zinc-400 font-medium">{pT}</span></div>
+                {/* Week summary column */}
+                <div className={`p-3 flex flex-col justify-between border-l border-zinc-800 text-right
+                  ${isActive ? 'bg-gradient-to-b from-orange-500/8 to-transparent bg-zinc-900/40' : 'bg-zinc-900/20'}`}
+                >
+                  <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isActive ? 'text-orange-400' : 'text-zinc-600'}`}>
+                    {weekRangeLabel}
+                  </p>
+                  <div className="space-y-2">
+                    <div>
+                      <p className={`text-[8px] font-black uppercase tracking-tighter mb-0.5 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`}>Vrijeme</p>
+                      <div className="flex items-center justify-end gap-1 text-[10px]">
+                        <Clock className={`w-3 h-3 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`} />
+                        <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{formatDur(aD)}</span>
+                        <span className="text-zinc-700">/</span>
+                        <span className="text-zinc-500 font-medium">{formatDur(pD)}</span>
+                      </div>
+                    </div>
+                    <div className={`pt-1.5 border-t ${isActive ? 'border-zinc-700' : 'border-zinc-800'}`}>
+                      <p className={`text-[8px] font-black uppercase tracking-tighter mb-0.5 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`}>TSS</p>
+                      <div className="flex items-center justify-end gap-1 text-[10px]">
+                        <Activity className={`w-3 h-3 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`} />
+                        <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{aT}</span>
+                        <span className="text-zinc-700">/</span>
+                        <span className="text-zinc-500 font-medium">{pT}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
