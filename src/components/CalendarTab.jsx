@@ -509,10 +509,19 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const headerLabel = useMemo(() => {
     const start = currentWeek[0];
     const end   = currentWeek[6];
-    const mn = ["Siječanj","Veljača","Ožujak","Travanj","Svibanj","Lipanj","Srpanj","Kolovoz","Rujan","Listopad","Studeni","Prosinac"];
-    if (start.month === end.month) return `${mn[start.month]} ${start.year}`;
-    if (start.year !== end.year)   return `${mn[start.month]} ${start.year} – ${mn[end.month]} ${end.year}`;
-    return `${mn[start.month]} – ${mn[end.month]} ${end.year}`;
+    const mn = ["siječnja","veljače","ožujka","travnja","svibnja","lipnja","srpnja","kolovoza","rujna","listopada","studenog","prosinca"];
+    const mnKratki = ["Sij","Velj","Ožu","Tra","Svi","Lip","Srp","Kol","Ruj","Lis","Stu","Pro"];
+
+    if (start.month === end.month) {
+      // Isti mjesec: "21. – 27. travnja 2026"
+      return `${start.day}. – ${end.day}. ${mn[start.month]} ${start.year}`;
+    }
+    if (start.year !== end.year) {
+      // Različite godine: "29. pro 2025 – 4. sij 2026"
+      return `${start.day}. ${mnKratki[start.month]} ${start.year} – ${end.day}. ${mnKratki[end.month]} ${end.year}`;
+    }
+    // Ista godina, različiti mjeseci: "28. tra – 4. svi 2026"
+    return `${start.day}. ${mnKratki[start.month]} – ${end.day}. ${mnKratki[end.month]} ${end.year}`;
   }, [currentWeek]);
 
   // Keep picker in sync with week start
@@ -654,7 +663,21 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <span className="font-bold text-sm text-zinc-100">{monthNames[pickerMonth]} {pickerYear}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-zinc-100">{monthNames[pickerMonth]}</span>
+                  {/* Godina s +/- gumbima */}
+                  <div className="flex items-center gap-1 bg-zinc-800 rounded-lg px-2 py-0.5">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPickerYear(y => y - 1); }}
+                      className="text-zinc-400 hover:text-zinc-200 transition-colors text-xs font-bold"
+                    >‹</button>
+                    <span className="font-bold text-sm text-orange-400 min-w-[36px] text-center">{pickerYear}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPickerYear(y => y + 1); }}
+                      className="text-zinc-400 hover:text-zinc-200 transition-colors text-xs font-bold"
+                    >›</button>
+                  </div>
+                </div>
                 <button
                   onClick={() => {
                     if (pickerMonth === 11) { setPickerMonth(0); setPickerYear(y => y + 1); }
