@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2 } from 'lucide-react';
+import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2, Upload, Trash2 } from 'lucide-react';
 import { downloadActivityFitFile, getActivityStreams, updateActivityName } from '../services/intervalsApi';
 import { calculateEF, calculateVI, calculateCogganMetrics } from '../utils/performanceMetrics';
 import { supabase } from '../services/supabaseClient';
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { parseFitFile, validateFitFile, calculateTSS } from '../utils/fitParser';
 
 const formatDur = (mins) => {
   if (!mins) return '-';
@@ -84,7 +85,10 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const [editTitle, setEditTitle] = useState('');
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [displayTitle, setDisplayTitle] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const titleInputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Učitaj FTP iz profila
   useEffect(() => {
@@ -410,6 +414,139 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
     }
   };
 
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validacija
+    const validation = validateFitFile(file);
+    if (!validation.valid) {
+      alert(validation.error);
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      // Parsiraj FIT datoteku
+      const fitData = await parseFitFile(file);
+      console.log('[ActivityDetailModal] Parsirani FIT podaci:', fitData);
+
+      // Izračunaj TSS ako nije dostupan
+      if (!fitData.tss && fitData.np && userFtp) {
+        fitData.tss = calculateTSS(fitData.np, fitData.duration_seconds, userFtp);
+      }
+
+      // Dohvati trenutni profil za weight_kg
+      let weightKg = null;
+      try {
+        const storedProfile = JSON.parse(localStorage.getItem('ai_trener_profile') || '{}');
+        weightKg = storedProfile.weight || null;
+      } catch (e) {}
+
+      // Spremi u Supabase
+      const activityData = {
+        started_at: fitData.started_at,
+        title: activity.title || displayTitle || 'Garmin Trening',
+        workout_source: 'garmin', // Ili 'external' ako nije Garmin
+        duration_seconds: fitData.duration_seconds,
+        avg_power: fitData.avg_power,
+        np: fitData.np,
+        avg_hr: fitData.avg_hr,
+        avg_cadence: fitData.avg_cadence,
+        tss: fitData.tss,
+        if_factor: fitData.if_factor,
+        work_kj: fitData.work_kj,
+        distance_m: fitData.distance_m,
+        avg_speed_kmh: fitData.avg_speed_kmh,
+        ftp_used: userFtp,
+        weight_kg: weightKg,
+        stream_data: fitData.stream_data
+      };
+
+      // Ako je Supabase aktivnost, ažuriraj postojeću
+      if (activity.isSupabase && activity.supabaseId) {
+        const { error } = await supabase
+          .from('completed_activities')
+          .update(activityData)
+          .eq('id', activity.supabaseId);
+
+        if (error) throw error;
+
+        alert('✅ Aktivnost uspješno ažurirana iz FIT datoteke!');
+      } else {
+        // Inače, kreiraj novu aktivnost
+        const { data, error } = await supabase
+          .from('completed_activities')
+          .insert([activityData])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        alert('✅ Nova aktivnost uspješno kreirana iz FIT datoteke!');
+      }
+
+      // Osvježi prikaz
+      onClose();
+      window.location.reload(); // Jednostavno rješenje za osvježavanje
+    } catch (error) {
+      console.error('[ActivityDetailModal] Greška pri uploadu:', error);
+      alert('❌ Greška pri importu FIT datoteke: ' + error.message);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleDeleteActivity = async () => {
+    console.log('[ActivityDetailModal] handleDeleteActivity pozvan za aktivnost:', {
+      id: activity.id,
+      isSupabase: activity.isSupabase,
+      supabaseId: activity.supabaseId,
+      title: activity.title
+    });
+
+    if (!window.confirm('⚠️ Sigurno želiš obrisati ovaj trening? Ova radnja se ne može poništiti.')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      // Samo Supabase aktivnosti se mogu brisati
+      if (activity.isSupabase && activity.supabaseId) {
+        console.log('[ActivityDetailModal] Brišem Supabase aktivnost ID:', activity.supabaseId);
+        
+        const { error } = await supabase
+          .from('completed_activities')
+          .delete()
+          .eq('id', activity.supabaseId);
+
+        if (error) {
+          console.error('[ActivityDetailModal] Supabase delete error:', error);
+          throw error;
+        }
+
+        console.log('[ActivityDetailModal] Aktivnost uspješno obrisana iz Supabase');
+        alert('✅ Trening uspješno obrisan!');
+        onClose();
+        window.location.reload(); // Osvježi stranicu
+      } else {
+        console.warn('[ActivityDetailModal] Aktivnost nije Supabase ili nema supabaseId:', {
+          isSupabase: activity.isSupabase,
+          supabaseId: activity.supabaseId
+        });
+        alert('❌ Samo lokalno spremljeni treninzi se mogu brisati iz ove aplikacije.');
+      }
+    } catch (error) {
+      console.error('[ActivityDetailModal] Greška pri brisanju:', error);
+      alert('❌ Greška pri brisanju: ' + error.message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Metrike: koristimo Supabase ako je dostupan kao fallback
   const sb = supabaseMetrics || {};
   const actualTss = activity.tss || activity.icu_training_load || sb.tss || 0;
@@ -423,6 +560,11 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
   const ef = calculateEF(actualNp, actualAvgHr);
   const vi = calculateVI(actualNp, actualAvgPower);
+
+  // Detekcija "prazne" aktivnosti (nema power podataka)
+  const hasNoPowerData = !actualAvgPower && !actualNp && (!streamsData || streamsData.length === 0);
+  const isExternalActivity = activity.workout_source === 'external' || supabaseMetrics?.workout_source === 'external';
+  const needsFitUpload = hasNoPowerData && isExternalActivity;
 
   // Compliance calculations
   let tssColor = "text-zinc-100"; let tssBgColor = "bg-zinc-800/50";
@@ -514,6 +656,37 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
         </div>
 
         <div className="p-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
+
+          {/* Banner za upload .FIT kada nema podataka o snazi */}
+          {needsFitUpload && !isLoadingStreams && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex items-center gap-3 flex-1">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0">
+                  <Upload className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-amber-300">Nema podataka o snazi</p>
+                  <p className="text-xs text-amber-500/80 mt-0.5">
+                    Ova aktivnost je sinkronizirana s Intervals.icu ali nema power stream podatke.
+                    Uploadaj originalnu <strong>.FIT datoteku</strong> s Garmina da dobiješ sve metrike.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm rounded-xl transition-all shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:shadow-[0_0_20px_rgba(245,158,11,0.5)] disabled:opacity-50"
+              >
+                {isUploading ? (
+                  <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                Uploadaj .FIT
+              </button>
+            </div>
+          )}
+
           {/* Glavne Metrike - Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-4 flex flex-col items-center justify-center shadow-inner">
@@ -596,8 +769,21 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-zinc-600 font-medium text-sm border border-dashed border-zinc-800 rounded-lg">
-                  Graf nije dostupan (nema podataka)
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 border border-dashed border-zinc-800 rounded-lg">
+                  {needsFitUpload ? (
+                    <>
+                      <Upload className="w-8 h-8 text-zinc-600" />
+                      <p className="text-zinc-500 font-medium text-sm">Uploadaj .FIT datoteku za prikaz grafa</p>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-bold border border-amber-500/20 transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" /> Odaberi .FIT datoteku
+                      </button>
+                    </>
+                  ) : (
+                    <p className="text-zinc-600 font-medium text-sm">Graf nije dostupan (nema podataka)</p>
+                  )}
                 </div>
               )}
             </div>
@@ -673,27 +859,68 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
           </div>
         </div>
 
-        <div className="flex justify-end p-5 border-t border-zinc-800/80 bg-zinc-950/50 gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2.5 rounded-xl font-semibold text-sm text-zinc-300 bg-zinc-800/50 hover:bg-zinc-700/50 hover:text-white transition-all border border-zinc-700/50"
-          >
-            Zatvori
-          </button>
-
-          <button
-            onClick={handleDownload}
-            disabled={isDownloading || (!activity.id && !activity.actId)}
-            className="px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(37,99,235,0.3)] hover:shadow-[0_0_20px_rgba(37,99,235,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isDownloading ? (
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-            ) : (
-              <Download className="w-4 h-4" />
+        <div className="flex justify-between p-5 border-t border-zinc-800/80 bg-zinc-950/50 gap-3">
+          <div className="flex gap-3">
+            {/* Brisanje (samo za Supabase aktivnosti) */}
+            {activity.isSupabase && (
+              <button
+                onClick={handleDeleteActivity}
+                disabled={isDeleting}
+                className="px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-red-600 hover:bg-red-500 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(220,38,38,0.3)] hover:shadow-[0_0_20px_rgba(220,38,38,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? (
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                Obriši
+              </button>
             )}
-            Preuzmi .FIT datoteku
-          </button>
+
+            {/* Upload FIT datoteke */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-emerald-600 hover:bg-emerald-500 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isUploading ? (
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              ) : (
+                <Upload className="w-4 h-4" />
+              )}
+              {activity.isSupabase ? 'Zamijeni s .FIT' : 'Importaj .FIT'}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".fit"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-xl font-semibold text-sm text-zinc-300 bg-zinc-800/50 hover:bg-zinc-700/50 hover:text-white transition-all border border-zinc-700/50"
+            >
+              Zatvori
+            </button>
+
+            <button
+              onClick={handleDownload}
+              disabled={isDownloading || (!activity.id && !activity.actId)}
+              className="px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(37,99,235,0.3)] hover:shadow-[0_0_20px_rgba(37,99,235,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isDownloading ? (
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              Preuzmi .FIT
+            </button>
+          </div>
         </div>
       </div>
     </div>

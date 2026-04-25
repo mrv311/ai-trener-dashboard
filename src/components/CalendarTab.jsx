@@ -221,7 +221,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               </div>
             </div>
             {/* Title */}
-            <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} text-zinc-100 leading-tight line-clamp-1`}>
+            <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} text-zinc-100 leading-tight line-clamp-3`}>
               {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-500 align-middle pointer-events-none" />}
               {w.title}
               {w.isSupabase && w.workout_source && (
@@ -238,15 +238,37 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               )}
             </div>
             {/* Metrics */}
-            <div className="flex flex-col gap-1.5 mt-2">
-              <div className="flex items-center gap-2">
-                <div className="flex items-baseline gap-1 bg-zinc-950/40 rounded px-1.5 py-0.5 border border-zinc-800/50">
-                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Load</span>
-                  <span className="font-mono text-xs font-semibold text-zinc-200" title={w.plannedTss ? `Plan: ${w.plannedTss} TSS` : ''}>
-                    {w.tss > 0 ? w.tss : '-'}
-                  </span>
-                  <span className="text-[9px] text-zinc-600 font-medium">TSS</span>
-                </div>
+            <div className="flex flex-col gap-1 mt-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {w.isCompleted ? (
+                  // Odrađeni trening: TSS ostvareni / planirani + postotak u boji kartice
+                  <>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">TSS</span>
+                    <span className="font-mono text-xs font-semibold text-zinc-200">{w.tss > 0 ? w.tss : '-'}</span>
+                    {w.plannedTss > 0 && (
+                      <>
+                        <span className="text-[9px] text-zinc-600">/</span>
+                        <span className="font-mono text-xs text-zinc-500">{w.plannedTss}</span>
+                      </>
+                    )}
+                    {w.plannedTss > 0 && w.tss > 0 && (
+                      <span className={`text-[9px] font-black ${
+                        w.statusColor === 'green' ? 'text-emerald-400' :
+                        w.statusColor === 'yellow' ? 'text-amber-400' :
+                        w.statusColor === 'red' ? 'text-rose-400' :
+                        'text-zinc-400'
+                      }`}>
+                        {Math.round((w.tss / w.plannedTss) * 100)}%
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  // Planirani trening: samo planirani TSS
+                  <>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">TSS</span>
+                    <span className="font-mono text-xs font-semibold text-zinc-400">{w.plannedTss > 0 ? w.plannedTss : '-'}</span>
+                  </>
+                )}
               </div>
               {w.intervalDescription && (
                 <span className="text-[10px] text-zinc-400/80 leading-tight line-clamp-1 italic">{w.intervalDescription}</span>

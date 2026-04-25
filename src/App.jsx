@@ -177,7 +177,15 @@ export default function App() {
               />
             </div>
 
-            {activeTab === 'history' && <HistoryTab />}
+            {activeTab === 'history' && (
+              <HistoryTab
+                workouts={workouts}
+                intervalsId={intervalsId}
+                intervalsKey={intervalsKey}
+                handleDeleteCompletedActivity={handleDeleteCompletedActivity}
+                onRefresh={fetchWorkouts}
+              />
+            )}
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
             {activeTab === 'progression' && <ProgressionTab workouts={workouts} />}
             {activeTab === 'library' && (

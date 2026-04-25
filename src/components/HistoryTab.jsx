@@ -3,10 +3,12 @@ import { supabase } from '../services/supabaseClient';
 import { exportTCXFromStream, exportFITFromStream } from '../utils/exportUtils';
 import { fetchIntervalsData, getActivityStreams, downloadActivityFitFile, updateActivityName } from '../services/intervalsApi';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { parseFitFile, validateFitFile, calculateTSS } from '../utils/fitParser';
+import '../utils/supabaseDirectDelete'; // Učitaj debug funkcije
 import {
   Clock, Zap, Heart, Activity, Gauge, Download, Trash2, ChevronRight,
   X, TrendingUp, Flame, Route, Timer, Loader2, AlertCircle, RefreshCw,
-  Pencil, Check, Database, Cloud
+  Pencil, Check, Database, Cloud, Upload
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -124,7 +126,7 @@ function StatCard({ icon: Icon, label, value, unit, color }) {
   );
 }
 
-export default function HistoryTab() {
+export default function HistoryTab({ workouts: sharedWorkouts, intervalsId: propIntervalsId, intervalsKey: propIntervalsKey, handleDeleteCompletedActivity: sharedDelete, onRefresh }) {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -133,11 +135,15 @@ export default function HistoryTab() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [savingTitle, setSavingTitle] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const titleInputRef = React.useRef(null);
+  const fileInputRef = React.useRef(null);
   
-  // Dohvati API credentials iz localStorage
-  const [intervalsId] = useLocalStorage('intervalsId', '');
-  const [intervalsKey] = useLocalStorage('intervalsKey', '');
+  // Koristi props ako su dostupni, inače fallback na localStorage
+  const [localIntervalsId] = useLocalStorage('intervalsId', '');
+  const [localIntervalsKey] = useLocalStorage('intervalsKey', '');
+  const intervalsId = propIntervalsId || localIntervalsId;
+  const intervalsKey = propIntervalsKey || localIntervalsKey;
 
   const handleStartRename = () => {
     setTitleDraft(selectedActivity.title);
@@ -197,6 +203,9 @@ export default function HistoryTab() {
           .order('started_at', { ascending: false });
 
         if (!supabaseError && supabaseData) {
+          console.log('[HistoryTab] Dohvaćeno', supabaseData.length, 'Supabase aktivnosti');
+          console.log('[HistoryTab] Prva aktivnost iz baze:', supabaseData[0]); // Debug log
+          
           supabaseData.forEach(act => {
             const actDate = act.started_at ? act.started_at.split('T')[0] : '';
             supabaseDateMap.set(actDate, act.id);
@@ -204,6 +213,8 @@ export default function HistoryTab() {
             allActivities.push({
               id: `supabase-${act.id}`,
               supabase_id: act.id,
+              supabaseId: act.id, // Dodano za kompatibilnost s ActivityDetailModal
+              isSupabase: true, // Dodano za kompatibilnost s ActivityDetailModal
               source: 'supabase',
               created_at: act.created_at,
               started_at: act.started_at,
@@ -411,9 +422,80 @@ export default function HistoryTab() {
     }
   }, [intervalsId, intervalsKey]);
 
-  useEffect(() => { fetchActivities(); }, [fetchActivities]);
+  // Ako imamo shared workouts iz App.jsx, konvertiraj ih u format za HistoryTab
+  // Inače koristi vlastiti fetchActivities
+  useEffect(() => {
+    if (sharedWorkouts && sharedWorkouts.length > 0) {
+      // Konvertiraj workouts format u activities format
+      const converted = sharedWorkouts
+        .filter(w => w.isCompleted) // Samo završeni treninzi
+        .map(w => {
+          if (w.isSupabase) {
+            return {
+              id: `supabase-${w.supabaseId}`,
+              supabase_id: w.supabaseId,
+              supabaseId: w.supabaseId,
+              isSupabase: true,
+              source: 'supabase',
+              started_at: w.date + 'T00:00:00',
+              title: w.title,
+              workout_source: w.workout_source,
+              duration_seconds: w.duration * 60,
+              avg_power: w.average_power || 0,
+              avg_hr: w.average_heartrate || 0,
+              avg_cadence: 0,
+              np: w.np || 0,
+              tss: w.tss || 0,
+              if_factor: null,
+              work_kj: 0,
+              distance_m: 0,
+              avg_speed_kmh: null,
+              ftp_used: null,
+              weight_kg: null,
+              needsStreamCalculation: !w.average_power && !w.np
+            };
+          } else {
+            return {
+              id: `intervals-${w.actId}`,
+              intervals_id: w.actId,
+              source: 'intervals',
+              started_at: w.date + 'T00:00:00',
+              title: w.title,
+              workout_source: 'intervals.icu',
+              duration_seconds: w.duration * 60,
+              avg_power: w.average_power || 0,
+              avg_hr: w.average_heartrate || 0,
+              avg_cadence: 0,
+              np: w.np || 0,
+              tss: w.tss || 0,
+              if_factor: null,
+              work_kj: 0,
+              distance_m: 0,
+              avg_speed_kmh: null,
+              ftp_used: null,
+              weight_kg: null
+            };
+          }
+        })
+        .sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
+
+      setActivities(converted);
+      setLoading(false);
+    } else {
+      fetchActivities();
+    }
+  }, [sharedWorkouts, fetchActivities]);
 
   const handleViewDetail = async (activity) => {
+    console.log('[HistoryTab] handleViewDetail pozvan za aktivnost:', {
+      id: activity.id,
+      source: activity.source,
+      isSupabase: activity.isSupabase,
+      supabaseId: activity.supabaseId,
+      supabase_id: activity.supabase_id,
+      title: activity.title
+    });
+
     try {
       let streamData = null;
       let updatedActivity = { ...activity };
@@ -516,28 +598,109 @@ export default function HistoryTab() {
     }
   };
 
+  const handleCloneToSupabase = async (activity) => {
+    if (!window.confirm('🔄 Želiš li klonirati ovaj Intervals.icu trening u lokalnu bazu? To će ti omogućiti brisanje i ažuriranje podataka.')) {
+      return;
+    }
+
+    try {
+      // Dohvati FTP iz profila
+      let userFtp = 200;
+      let weightKg = null;
+      try {
+        const storedProfile = JSON.parse(localStorage.getItem('ai_trener_profile') || '{}');
+        userFtp = storedProfile.ftp || 200;
+        weightKg = storedProfile.weight || null;
+      } catch (e) {}
+
+      // Dohvati stream podatke iz Intervals.icu
+      let streamData = null;
+      if (activity.intervals_id) {
+        try {
+          streamData = await getActivityStreams(intervalsId, intervalsKey, activity.intervals_id);
+          console.log('[HistoryTab] Dohvaćeni streamovi za kloniranje:', streamData?.length);
+        } catch (err) {
+          console.warn('[HistoryTab] Nema stream podataka za kloniranje:', err);
+        }
+      }
+
+      // Kreiraj Supabase zapis
+      const activityData = {
+        started_at: activity.started_at,
+        title: activity.title || 'Klonirani trening',
+        workout_source: 'intervals_clone',
+        duration_seconds: activity.duration_seconds || (activity.duration * 60),
+        avg_power: activity.avg_power || 0,
+        np: activity.np || 0,
+        avg_hr: activity.avg_hr || 0,
+        avg_cadence: activity.avg_cadence || 0,
+        tss: activity.tss || 0,
+        if_factor: activity.if_factor || null,
+        work_kj: activity.work_kj || 0,
+        distance_m: activity.distance_m || 0,
+        avg_speed_kmh: activity.avg_speed_kmh || null,
+        ftp_used: userFtp,
+        weight_kg: weightKg,
+        stream_data: streamData || []
+      };
+
+      console.log('[HistoryTab] Kreiram Supabase klon:', activityData);
+
+      const { data, error } = await supabase
+        .from('completed_activities')
+        .insert([activityData])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      alert('✅ Trening uspješno kloniran u lokalnu bazu! Sada ga možeš brisati i ažurirati.');
+      
+      // Osvježi listu
+      fetchActivities();
+      setSelectedActivity(null); // Zatvori modal
+    } catch (error) {
+      console.error('[HistoryTab] Greška pri kloniranju:', error);
+      alert('❌ Greška pri kloniranju: ' + error.message);
+    }
+  };
+
   const handleDelete = async (id) => {
+    console.log('[HistoryTab] handleDelete pozvan za ID:', id);
+    
     try {
       const activity = activities.find(a => a.id === id);
-      if (!activity) return;
+      if (!activity) {
+        console.error('[HistoryTab] Aktivnost nije pronađena za ID:', id);
+        return;
+      }
 
-      // Samo Supabase aktivnosti se mogu brisati
       if (activity.source === 'supabase') {
-        const { error: delError } = await supabase
-          .from('completed_activities')
-          .delete()
-          .eq('id', activity.supabase_id);
+        // Ako imamo shared delete iz App.jsx, koristi ga (osvježava i Kalendar!)
+        if (sharedDelete) {
+          const result = await sharedDelete(id);
+          if (result?.success === false) throw new Error(result.error);
+        } else {
+          // Fallback: direktno brisanje
+          const { error: delError } = await supabase
+            .from('completed_activities')
+            .delete()
+            .eq('id', activity.supabase_id);
+          if (delError) throw delError;
+        }
 
-        if (delError) throw delError;
         setActivities(prev => prev.filter(a => a.id !== id));
         setDeleteConfirm(null);
         if (selectedActivity?.id === id) setSelectedActivity(null);
+        
+        // Osvježi i App.jsx podatke ako je dostupno
+        if (onRefresh) onRefresh();
       } else {
         alert('Intervals.icu aktivnosti se ne mogu brisati iz ove aplikacije. Obriši ih direktno na Intervals.icu.');
         setDeleteConfirm(null);
       }
     } catch (err) {
-      console.error('Greška pri brisanju:', err);
+      console.error('[HistoryTab] Greška pri brisanju:', err);
       alert('Brisanje nije uspjelo: ' + err.message);
     }
   };
@@ -602,6 +765,125 @@ export default function HistoryTab() {
     doExport();
   };
 
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validacija
+    const validation = validateFitFile(file);
+    if (!validation.valid) {
+      alert(validation.error);
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      // Parsiraj FIT datoteku
+      const fitData = await parseFitFile(file);
+      console.log('[HistoryTab] Parsirani FIT podaci:', fitData);
+
+      // Dohvati FTP iz profila
+      let userFtp = 200;
+      let weightKg = null;
+      try {
+        const storedProfile = JSON.parse(localStorage.getItem('ai_trener_profile') || '{}');
+        userFtp = storedProfile.ftp || 200;
+        weightKg = storedProfile.weight || null;
+      } catch (e) {}
+
+      // Izračunaj TSS ako nije dostupan
+      if (!fitData.tss && fitData.np && userFtp) {
+        fitData.tss = calculateTSS(fitData.np, fitData.duration_seconds, userFtp);
+      }
+
+      // Ako je detail modal otvoren za postojeću aktivnost, ažuriraj je
+      if (selectedActivity && selectedActivity.source === 'supabase') {
+        console.log('[HistoryTab] Ažuriram postojeću Supabase aktivnost:', selectedActivity.supabase_id);
+        
+        const activityData = {
+          started_at: fitData.started_at,
+          title: selectedActivity.title, // Zadrži postojeći naziv
+          workout_source: 'garmin',
+          duration_seconds: fitData.duration_seconds,
+          avg_power: fitData.avg_power,
+          np: fitData.np,
+          avg_hr: fitData.avg_hr,
+          avg_cadence: fitData.avg_cadence,
+          tss: fitData.tss,
+          if_factor: fitData.if_factor,
+          work_kj: fitData.work_kj,
+          distance_m: fitData.distance_m,
+          avg_speed_kmh: fitData.avg_speed_kmh,
+          ftp_used: userFtp,
+          weight_kg: weightKg,
+          stream_data: fitData.stream_data
+        };
+
+        const { error } = await supabase
+          .from('completed_activities')
+          .update(activityData)
+          .eq('id', selectedActivity.supabase_id);
+
+        if (error) throw error;
+
+        console.log('[HistoryTab] Aktivnost uspješno ažurirana:', {
+          id: selectedActivity.supabase_id,
+          duration_seconds: activityData.duration_seconds,
+          avg_power: activityData.avg_power,
+          np: activityData.np
+        });
+
+        alert('✅ Aktivnost uspješno ažurirana iz FIT datoteke!');
+        
+        // Osvježi podatke
+        fetchActivities();
+        setSelectedActivity(null); // Zatvori modal
+      } else {
+        // Inače kreiraj novu aktivnost
+        const activityData = {
+          started_at: fitData.started_at,
+          title: file.name.replace('.fit', '').replace(/_/g, ' ') || 'Garmin Trening',
+          workout_source: 'garmin',
+          duration_seconds: fitData.duration_seconds,
+          avg_power: fitData.avg_power,
+          np: fitData.np,
+          avg_hr: fitData.avg_hr,
+          avg_cadence: fitData.avg_cadence,
+          tss: fitData.tss,
+          if_factor: fitData.if_factor,
+          work_kj: fitData.work_kj,
+          distance_m: fitData.distance_m,
+          avg_speed_kmh: fitData.avg_speed_kmh,
+          ftp_used: userFtp,
+          weight_kg: weightKg,
+          stream_data: fitData.stream_data
+        };
+
+        const { data, error } = await supabase
+          .from('completed_activities')
+          .insert([activityData])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        alert('✅ Trening uspješno importiran iz FIT datoteke!');
+        
+        // Osvježi listu
+        fetchActivities();
+        setSelectedActivity(null); // Zatvori modal
+      }
+    } catch (error) {
+      console.error('[HistoryTab] Greška pri uploadu:', error);
+      alert('❌ Greška pri importu FIT datoteke: ' + error.message);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   // Detail modal chart data
   const chartData = selectedActivity?.stream_data
     ? downsampleStream(parseStreamData(selectedActivity.stream_data))
@@ -618,14 +900,35 @@ export default function HistoryTab() {
             {activities.length} {activities.length === 1 ? 'trening' : 'treninga'} ukupno
           </p>
         </div>
-        <button
-          onClick={fetchActivities}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-300 rounded-xl text-xs font-bold border border-zinc-800 transition-all hover:border-zinc-700"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Osvježi
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold border border-emerald-500/20 transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isUploading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Upload className="w-4 h-4" />
+            )}
+            Importaj .FIT
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".fit"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+          <button
+            onClick={() => { if (onRefresh) onRefresh(); fetchActivities(); }}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900/50 hover:bg-zinc-800 text-zinc-300 rounded-xl text-xs font-bold border border-zinc-800 transition-all hover:border-zinc-700"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Osvježi
+          </button>
+        </div>
       </div>
 
       {/* LOADING */}
@@ -682,7 +985,19 @@ export default function HistoryTab() {
                 {/* Glavni info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-sm md:text-base font-bold text-zinc-100 truncate">{a.title}</h3>
+                    <div className="min-w-0 flex-1">
+                      <h3
+                        className="text-sm md:text-base font-bold text-zinc-100 leading-snug"
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        {a.title}
+                      </h3>
+                    </div>
                     {a.source === 'supabase' && (
                       <span className="text-[9px] font-black uppercase tracking-wider bg-violet-500/10 text-violet-400 px-2 py-0.5 rounded-full border border-violet-500/20 shrink-0 flex items-center gap-1">
                         <Database className="w-2.5 h-2.5" /> Lokalno
@@ -718,9 +1033,25 @@ export default function HistoryTab() {
                   >
                     <Download className="w-4 h-4" />
                   </button>
+                  {a.source === 'intervals' && (
+                    <button
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        handleCloneToSupabase(a);
+                      }}
+                      className="p-2.5 rounded-xl hover:bg-orange-500/10 text-zinc-500 hover:text-orange-400 transition-colors"
+                      title="Kloniraj u lokalnu bazu"
+                    >
+                      <Database className="w-4 h-4" />
+                    </button>
+                  )}
                   {a.source === 'supabase' && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setDeleteConfirm(a.id); }}
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        console.log('[HistoryTab] Postavljam deleteConfirm za:', a.id, a);
+                        setDeleteConfirm(a.id); 
+                      }}
                       className="p-2.5 rounded-xl hover:bg-red-500/10 text-zinc-500 hover:text-red-400 transition-colors"
                       title="Obriši"
                     >
@@ -824,6 +1155,45 @@ export default function HistoryTab() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {selectedActivity.source === 'supabase' && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('⚠️ Sigurno želiš obrisati ovaj trening? Ova radnja se ne može poništiti.')) {
+                        handleDelete(selectedActivity.id);
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-xs font-bold border border-red-500/20 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Obriši
+                  </button>
+                )}
+                {selectedActivity.source === 'intervals' && (
+                  <button
+                    onClick={() => handleCloneToSupabase(selectedActivity)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 rounded-xl text-xs font-bold border border-orange-500/20 transition-colors"
+                  >
+                    <Database className="w-3.5 h-3.5" /> Kloniraj lokalno
+                  </button>
+                )}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 rounded-xl text-xs font-bold border border-violet-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isUploading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5" />
+                  )}
+                  {selectedActivity.source === 'supabase' ? 'Zamijeni .FIT' : 'Importaj .FIT'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".fit"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
                 <button
                   onClick={() => handleExportFIT(selectedActivity)}
                   className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl text-xs font-bold border border-emerald-500/20 transition-colors"
@@ -902,6 +1272,7 @@ export default function HistoryTab() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

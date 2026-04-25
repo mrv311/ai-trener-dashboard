@@ -54,21 +54,23 @@ export default function SupabaseSyncModule({ intervalsId, intervalsKey }) {
           // Preuzimanje streamova (stream_data jsonb)
           const streams = await getActivityStreams(intervalsId, intervalsKey, act.id).catch(() => []);
           
-          // Određivanje izvora aktivnosti (Garmin, Strava, itd.)
-          // Koristimo 'type' polje iz Intervals.icu API-ja koje sadrži izvor
-          let workoutSource = 'external'; // Default za vanjske aktivnosti
-          if (act.type) {
-            const typeStr = String(act.type).toLowerCase();
-            if (typeStr.includes('garmin')) workoutSource = 'garmin';
-            else if (typeStr.includes('strava')) workoutSource = 'strava';
-            else if (typeStr.includes('wahoo')) workoutSource = 'wahoo';
-          }
+          // Određivanje izvora aktivnosti
+          // Intervals.icu koristi 'file_sport_index' ili 'type' za izvor
+          let workoutSource = 'external';
+          const actType = String(act.type || '').toLowerCase();
+          const actSource = String(act.source || act.workout_source || '').toLowerCase();
+          
+          if (actSource.includes('garmin') || actType.includes('garmin')) workoutSource = 'garmin';
+          else if (actSource.includes('strava') || actType.includes('strava')) workoutSource = 'strava';
+          else if (actSource.includes('wahoo') || actType.includes('wahoo')) workoutSource = 'wahoo';
+          // Garmin Connect direktno uploadane aktivnosti nemaju poseban source tag
+          // ali imaju power podatke - ako ima power, vjerojatno je Garmin
+          else if (act.icu_average_power || act.average_watts) workoutSource = 'garmin';
           
           const record = {
             started_at: act.start_date_local,
             title: act.name || 'Trening',
             workout_source: workoutSource,
-            intervals_activity_id: act.id, // Spremi Intervals.icu ID za detekciju duplikata
             duration_seconds: act.moving_time || 0,
             avg_power: (act.icu_average_power || act.average_watts || act.average_power) ? Math.round(act.icu_average_power || act.average_watts || act.average_power) : null,
             avg_hr: (act.icu_average_hr || act.average_heartrate) ? Math.round(act.icu_average_hr || act.average_heartrate) : null,

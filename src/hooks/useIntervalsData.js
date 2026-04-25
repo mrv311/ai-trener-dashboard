@@ -53,7 +53,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
         const { data: supabaseData, error: supabaseError } = await supabase
           .from('completed_activities')
-          .select('id, started_at, title, workout_source, duration_seconds, avg_power, avg_hr, np, tss, if_factor, intervals_activity_id')
+          .select('id, started_at, title, workout_source, duration_seconds, avg_power, avg_hr, np, tss, if_factor')
           .gte('started_at', ninetyDaysAgo.toISOString())
           .order('started_at', { ascending: false });
 
@@ -85,7 +85,6 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     const consumedLocalIds = new Set();
     const consumedSupabaseIds = new Set();
     const supabaseDateMap = new Map(); // Mapa za brzu provjeru Supabase aktivnosti po datumu
-    const supabaseIntervalsIdMap = new Map(); // Mapa Intervals.icu ID -> Supabase aktivnost (za detekciju duplikata)
     const todayStr = new Date().toISOString().split('T')[0];
 
     const localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
@@ -100,12 +99,6 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       }
       
       supabaseDateMap.set(actDate, sbAct.id); // Označi da ovaj datum ima Supabase aktivnost
-      
-      // Ako ova Supabase aktivnost ima intervals_activity_id, spremi ga u mapu za detekciju duplikata
-      if (sbAct.intervals_activity_id) {
-        supabaseIntervalsIdMap.set(sbAct.intervals_activity_id, sbAct.id);
-        console.log('[useIntervalsData] Mapiran Intervals.icu ID', sbAct.intervals_activity_id, '-> Supabase ID', sbAct.id);
-      }
 
       // Pokušaj spariti s Intervals.icu eventom PRVO (viši prioritet)
       let pairedEvent = null;
@@ -208,13 +201,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     rawActivities.forEach(act => {
       const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
       
-      // PROVJERA 1: Preskoči ako ova Intervals.icu aktivnost već postoji u Supabase-u (po ID-u)
-      if (supabaseIntervalsIdMap.has(act.id)) {
-        console.log('[useIntervalsData] ✓ Preskačem Intervals.icu aktivnost', act.id, 'jer je već sinkronizirana u Supabase kao ID', supabaseIntervalsIdMap.get(act.id));
-        return;
-      }
-      
-      // PROVJERA 2: Preskoči ako već postoji Supabase aktivnost za ovaj datum (fallback za stare aktivnosti bez intervals_activity_id)
+      // PROVJERA: Preskoči ako već postoji Supabase aktivnost za ovaj datum
       if (supabaseDateMap.has(actDate)) {
         console.log('[useIntervalsData] ✓ Preskačem Intervals.icu aktivnost', act.id, 'jer postoji Supabase aktivnost', supabaseDateMap.get(actDate), 'za datum:', actDate);
         return;
@@ -341,7 +328,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       });
     });
 
-    console.log('[useIntervalsData] Završeno računanje. Ukupno workouts:', finalWorkouts.length, 'Supabase datumi u mapi:', Array.from(supabaseDateMap.keys()).sort(), 'Intervals ID mapiranja:', supabaseIntervalsIdMap.size);
+    console.log('[useIntervalsData] Završeno računanje. Ukupno workouts:', finalWorkouts.length, 'Supabase datumi u mapi:', Array.from(supabaseDateMap.keys()).sort());
     
     return finalWorkouts;
   }, [rawActivities, rawEvents, supabaseActivities, unpairedList, localRefreshTrigger]);
@@ -381,6 +368,9 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
           .eq('id', rawId);
         
         if (error) throw error;
+        
+        // Odmah ukloni iz lokalnog stanja
+        setSupabaseActivities(prev => prev.filter(act => act.id !== rawId));
         
         // Osvježi podatke
         setLocalRefreshTrigger(prev => prev + 1);
