@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare } from 'lucide-react';
-import { getZoneColorForTrainer } from '../utils/workoutUtils';
+import { getZoneColorForTrainer } from '../utils/performanceMetrics';
 import { parseWorkoutFile } from '../utils/workoutParser';
 import { calculateCogganMetrics, expandStepsToSeconds } from '../utils/performanceMetrics';
 

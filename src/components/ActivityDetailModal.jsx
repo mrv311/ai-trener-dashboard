@@ -21,7 +21,7 @@ const formatSeconds = (secs) => {
 };
 
 // Parsira stream podatke koji mogu biti u Intervals formatu ili lokalnom formatu
-const parseStreamData = useCallback((raw) => {
+const parseStreamData = (raw) => {
   if (!raw || !Array.isArray(raw) || raw.length === 0) {
     console.log('[parseStreamData] Nema podataka ili nije array');
     return [];
@@ -71,7 +71,7 @@ const parseStreamData = useCallback((raw) => {
 
   console.warn('[parseStreamData] Nepoznat format podataka');
   return [];
-}, []);
+};
 
 export default function ActivityDetailModal({ activity, isOpen, onClose, intervalsId, intervalsKey }) {
   const [isDownloading, setIsDownloading] = useState(false);

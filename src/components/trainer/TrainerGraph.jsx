@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { getZoneColorForTrainer } from '../../utils/workoutUtils';
+import { getZoneColorForTrainer } from '../../utils/performanceMetrics';
 
 export default function TrainerGraph({
   workoutRecipe,
