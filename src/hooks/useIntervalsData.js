@@ -111,8 +111,6 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     const localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
 
     // 0. PRIORITET: Prvo dodaj Supabase lokalne aktivnosti (najsvježije, upravo završene)
-=======
-    // 0. PRIORITET: Prvo dodaj Supabase lokalne aktivnosti (najsvježije, upravo završene)
     supabaseActivities.forEach(sbAct => {
       const actDate = sbAct.started_at ? sbAct.started_at.split('T')[0] : '';
       
