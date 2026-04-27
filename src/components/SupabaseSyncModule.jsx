@@ -49,15 +49,28 @@ export default function SupabaseSyncModule({ intervalsId, intervalsKey }) {
 
       for (let i = 0; i < activities.length; i++) {
         const act = activities[i];
+        
         try {
           // Preuzimanje streamova (stream_data jsonb)
           const streams = await getActivityStreams(intervalsId, intervalsKey, act.id).catch(() => []);
           
-          // Formatiranje podataka prema public.completed_activities (preskacemo 'id' jer se auto-generira)
+          // Određivanje izvora aktivnosti
+          // Intervals.icu koristi 'file_sport_index' ili 'type' za izvor
+          let workoutSource = 'external';
+          const actType = String(act.type || '').toLowerCase();
+          const actSource = String(act.source || act.workout_source || '').toLowerCase();
+          
+          if (actSource.includes('garmin') || actType.includes('garmin')) workoutSource = 'garmin';
+          else if (actSource.includes('strava') || actType.includes('strava')) workoutSource = 'strava';
+          else if (actSource.includes('wahoo') || actType.includes('wahoo')) workoutSource = 'wahoo';
+          // Garmin Connect direktno uploadane aktivnosti nemaju poseban source tag
+          // ali imaju power podatke - ako ima power, vjerojatno je Garmin
+          else if (act.icu_average_power || act.average_watts) workoutSource = 'garmin';
+          
           const record = {
             started_at: act.start_date_local,
             title: act.name || 'Trening',
-            workout_source: act.source || 'Intervals.icu',
+            workout_source: workoutSource,
             duration_seconds: act.moving_time || 0,
             avg_power: (act.icu_average_power || act.average_watts || act.average_power) ? Math.round(act.icu_average_power || act.average_watts || act.average_power) : null,
             avg_hr: (act.icu_average_hr || act.average_heartrate) ? Math.round(act.icu_average_hr || act.average_heartrate) : null,

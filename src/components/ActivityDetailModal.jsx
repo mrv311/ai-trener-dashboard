@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2, Upload } from 'lucide-react';
+import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2, Upload, Trash2 } from 'lucide-react';
 import { downloadActivityFitFile, getActivityStreams, updateActivityName } from '../services/intervalsApi';
 import { calculateEF, calculateVI, calculateCogganMetrics } from '../utils/performanceMetrics';
 import { supabase } from '../services/supabaseClient';
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { parseTCX } from '../utils/tcxParser';
+import { parseFitFile, validateFitFile, calculateTSS } from '../utils/fitParser';
 
 const formatDur = (mins) => {
   if (!mins) return '-';
@@ -16,8 +16,8 @@ const formatSeconds = (secs) => {
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
   const s = secs % 60;
-  if(h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 
 // Parsira stream podatke koji mogu biti u Intervals formatu ili lokalnom formatu
@@ -26,9 +26,9 @@ const parseStreamData = (raw) => {
     console.log('[parseStreamData] Nema podataka ili nije array');
     return [];
   }
-  
+
   console.log('[parseStreamData] Primljeno:', raw.length, 'točaka, prvi element:', raw[0]);
-  
+
   // Lokalni format: [{ t, p, hr, cad, spd, dist }] ili [{ time, power, hr, cadence }]
   if ('p' in raw[0] || 'watts' in raw[0] || 'power' in raw[0] || 'hr' in raw[0] || 't' in raw[0] || 'time' in raw[0]) {
     console.log('[parseStreamData] Detektiran lokalni format');
@@ -42,7 +42,7 @@ const parseStreamData = (raw) => {
       spd: pt.spd || pt.velocity_smooth || 0
     }));
   }
-  
+
   // Intervals format: [{ type: 'watts', data: [...] }, ...]
   if ('type' in raw[0] && 'data' in raw[0]) {
     console.log('[parseStreamData] Detektiran Intervals.icu format');
@@ -52,7 +52,7 @@ const parseStreamData = (raw) => {
     const cad = getStream('cadence');
     const spd = getStream('velocity_smooth');
     const timeStream = getStream('time');
-    
+
     const maxLen = Math.max(watts.length, hr.length, cad.length, spd.length);
     const res = [];
     for (let i = 0; i < maxLen; i++) {
@@ -68,7 +68,7 @@ const parseStreamData = (raw) => {
     }
     return res;
   }
-  
+
   console.warn('[parseStreamData] Nepoznat format podataka');
   return [];
 };
@@ -85,9 +85,9 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const [editTitle, setEditTitle] = useState('');
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [displayTitle, setDisplayTitle] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const titleInputRef = useRef(null);
-  const [isUploadingTcx, setIsUploadingTcx] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState(null); // null | 'success' | 'error'
   const fileInputRef = useRef(null);
 
   // Učitaj FTP iz profila
@@ -95,7 +95,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
     try {
       const stored = JSON.parse(localStorage.getItem('ai_trener_profile') || '{}');
       if (stored.ftp && stored.ftp > 0) setUserFtp(stored.ftp);
-    } catch(e) {}
+    } catch (e) { }
   }, []);
 
   // Sync displayTitle s activity.title kad se modal otvori
@@ -123,9 +123,9 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
     // Čitaj direktno iz DOM-a da izbjegnemo stale closure
     const inputVal = titleInputRef.current?.value?.trim();
     const newName = inputVal || editTitle.trim();
-    
+
     console.log('[Rename] saving:', newName, 'current:', displayTitle);
-    
+
     if (!newName || newName === displayTitle) {
       setIsEditingTitle(false);
       return;
@@ -165,11 +165,6 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
       console.log('[Rename] Setting displayTitle to:', newName);
       setDisplayTitle(newName);
-      
-      // Trigger refresh kalendara
-      window.dispatchEvent(new CustomEvent('activity-title-updated', { 
-        detail: { activityId: activity.id, newTitle: newName } 
-      }));
     } catch (err) {
       console.error('[Rename] error:', err);
     } finally {
@@ -181,128 +176,6 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const handleTitleKeyDown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); handleSaveTitle(); }
     if (e.key === 'Escape') handleCancelEdit();
-  };
-
-  const handleTcxUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Provjeri ekstenziju
-    if (!file.name.toLowerCase().endsWith('.tcx')) {
-      setUploadStatus('error');
-      alert('Molimo odaberite TCX datoteku (.tcx)');
-      return;
-    }
-
-    setIsUploadingTcx(true);
-    setUploadStatus(null);
-
-    try {
-      // Čitaj datoteku
-      const text = await file.text();
-      
-      // Parsiraj TCX
-      console.log('[TCX Upload] Parsiram TCX datoteku...');
-      const { stream, metadata } = parseTCX(text);
-      console.log('[TCX Upload] Parsirano:', stream.length, 'točaka');
-      console.log('[TCX Upload] Metadata:', metadata);
-
-      // Pronađi Supabase zapis za ovu aktivnost
-      let sbId = null;
-      
-      // Prvo pokušaj iz supabaseMetrics ako postoji
-      if (supabaseMetrics?.id) {
-        sbId = supabaseMetrics.id;
-        console.log('[TCX Upload] Koristim supabaseMetrics.id:', sbId);
-      }
-      // Zatim pokušaj iz activity.supabaseId
-      else if (activity.supabaseId) {
-        sbId = activity.supabaseId;
-        console.log('[TCX Upload] Koristim activity.supabaseId:', sbId);
-      }
-      // Konačno, traži po datumu
-      else if (activity.date) {
-        console.log('[TCX Upload] Tražim po datumu:', activity.date);
-        const dayStart = `${activity.date}T00:00:00`;
-        const dayEnd = `${activity.date}T23:59:59`;
-        
-        const { data, error: searchError } = await supabase
-          .from('completed_activities')
-          .select('id, title, started_at')
-          .gte('started_at', dayStart)
-          .lte('started_at', dayEnd)
-          .order('started_at', { ascending: false });
-        
-        console.log('[TCX Upload] Pronađeno zapisa:', data?.length);
-        console.log('[TCX Upload] Zapisi:', data);
-        
-        if (searchError) {
-          console.error('[TCX Upload] Greška pri pretraživanju:', searchError);
-        }
-        
-        if (data && data.length > 0) {
-          // Ako ima više zapisa, prikaži korisniku da odabere
-          if (data.length > 1) {
-            const choice = confirm(
-              `Pronađeno ${data.length} zapisa za datum ${activity.date}.\n\n` +
-              data.map((r, i) => `${i + 1}. ${r.title} (${r.started_at})`).join('\n') +
-              `\n\nŽelite li ažurirati prvi zapis (${data[0].title})?`
-            );
-            if (!choice) {
-              setIsUploadingTcx(false);
-              return;
-            }
-          }
-          sbId = data[0].id;
-          console.log('[TCX Upload] Odabran zapis:', sbId);
-        }
-      }
-
-      if (!sbId) {
-        throw new Error(
-          'Nije pronađen Supabase zapis za ovu aktivnost.\n\n' +
-          `Datum aktivnosti: ${activity.date || 'nepoznat'}\n` +
-          `Activity ID: ${activity.id || 'nepoznat'}\n\n` +
-          'Provjerite je li aktivnost spremljena u Supabase tablicu.'
-        );
-      }
-
-      // Ažuriraj Supabase zapis sa stream podacima i metadatama
-      console.log('[TCX Upload] Ažuriram Supabase zapis:', sbId);
-      const { error: updateError } = await supabase
-        .from('completed_activities')
-        .update({
-          stream_data: stream,
-          duration_seconds: metadata.duration_seconds,
-          distance_m: metadata.distance_m,
-          avg_hr: metadata.avg_hr,
-          avg_power: metadata.avg_power
-        })
-        .eq('id', sbId);
-
-      if (updateError) throw updateError;
-
-      console.log('[TCX Upload] Uspješno ažurirano!');
-      setUploadStatus('success');
-
-      // Osvježi prikaz - reload stream podataka
-      setTimeout(() => {
-        window.location.reload(); // Jednostavno reload da se vide novi podaci
-      }, 1500);
-
-    } catch (error) {
-      console.error('[TCX Upload] Greška:', error);
-      setUploadStatus('error');
-      alert(`Greška pri uploadu TCX datoteke:\n\n${error.message}`);
-    } finally {
-      setIsUploadingTcx(false);
-      // Reset file input
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
   };
 
   useEffect(() => {
@@ -328,9 +201,9 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
             .select('id, title, avg_power, np, avg_hr, avg_cadence, tss, if_factor, work_kj, duration_seconds, distance_m, avg_speed_kmh, ftp_used, stream_data')
             .eq('id', activity.supabaseId)
             .single();
-          
+
           if (!mounted) return;
-          
+
           if (!error && data) {
             console.log('[ActivityDetail] Pronađen Supabase zapis:', {
               id: data.id,
@@ -339,38 +212,38 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
               np: data.np,
               stream_length: data.stream_data?.length
             });
-            
+
             setDataSource('supabase');
             setSupabaseMetrics(data);
-            
+
             setStreamMetrics({
               np: data.np || 0,
               avgPower: data.avg_power || 0,
               maxPower: 0,
               avgHr: data.avg_hr || 0
             });
-            
+
             if (data.stream_data && data.stream_data.length > 0) {
               console.log('[ActivityDetail] Parsiram stream_data, duljina:', data.stream_data.length);
               const parsedData = parseStreamData(data.stream_data);
               console.log('[ActivityDetail] Parsirano:', parsedData.length, 'točaka');
-              
+
               const step = Math.max(1, Math.ceil(parsedData.length / 3000));
               const finalData = [];
               let maxP = 0;
-              
+
               for (let i = 0; i < parsedData.length; i += step) {
                 const pt = parsedData[i];
                 if (pt.watts > maxP) maxP = pt.watts;
                 finalData.push({ time: pt.time, watts: pt.watts, hr: pt.hr });
               }
-              
+
               console.log('[ActivityDetail] Finalni podaci za graf:', finalData.length, 'točaka, maxPower:', maxP);
-              
+
               if (maxP > 0) {
                 setStreamMetrics(prev => ({ ...prev, maxPower: maxP }));
               }
-              
+
               setStreamsData(finalData);
             } else {
               console.warn('[ActivityDetail] Nema stream_data u zapisu');
@@ -381,7 +254,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
         } catch (err) {
           console.error('[ActivityDetail] Supabase greška:', err);
         }
-        
+
         if (mounted) setIsLoadingStreams(false);
         return;
       }
@@ -392,18 +265,18 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
         try {
           const realActivityId = activity.actId || activity.id.toString().replace('act-', '');
           const rawStreams = await getActivityStreams(intervalsId, intervalsKey, realActivityId);
-          
+
           if (!mounted) return;
-          
+
           const getStream = (type) => rawStreams.find(s => s.type === type)?.data || [];
           const wattsStream = getStream('watts');
           const hrStream = getStream('heartrate');
-          
+
           if (wattsStream.length > 0 || hrStream.length > 0) {
             intervalsSuccess = true;
             setDataSource('intervals');
-            
-            let maxP = 0; 
+
+            let maxP = 0;
             let totalHr = 0; let validHr = 0;
             for (let i = 0; i < wattsStream.length; i++) {
               if (wattsStream[i] > maxP) maxP = wattsStream[i];
@@ -411,7 +284,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
             for (let i = 0; i < hrStream.length; i++) {
               if (hrStream[i] > 0) { totalHr += hrStream[i]; validHr++; }
             }
-            
+
             const cMetrics = calculateCogganMetrics(wattsStream, userFtp);
             if (mounted) {
               setStreamMetrics({
@@ -421,9 +294,9 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                 avgHr: validHr > 0 ? Math.round(totalHr / validHr) : 0
               });
             }
-            
+
             let maxLength = Math.max(wattsStream.length, hrStream.length);
-            const step = Math.max(1, Math.ceil(maxLength / 3000)); 
+            const step = Math.max(1, Math.ceil(maxLength / 3000));
             const finalData = [];
             for (let i = 0; i < maxLength; i += step) {
               finalData.push({ time: i, watts: wattsStream[i] || 0, hr: hrStream[i] || 0 });
@@ -440,11 +313,11 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
         try {
           const actDate = activity.date;
           console.log('[ActivityDetail] Tražim Supabase podatke za datum:', actDate);
-          
+
           if (actDate) {
             const dayStart = `${actDate}T00:00:00`;
             const dayEnd = `${actDate}T23:59:59`;
-            
+
             const { data, error } = await supabase
               .from('completed_activities')
               .select('id, title, avg_power, np, avg_hr, avg_cadence, tss, if_factor, work_kj, duration_seconds, distance_m, avg_speed_kmh, ftp_used, stream_data')
@@ -452,11 +325,11 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
               .lte('started_at', dayEnd)
               .order('started_at', { ascending: false })
               .limit(1);
-            
+
             if (!mounted) return;
-            
+
             console.log('[ActivityDetail] Supabase odgovor:', { error, dataLength: data?.length, hasStreamData: !!data?.[0]?.stream_data });
-            
+
             if (!error && data && data.length > 0) {
               const record = data[0];
               console.log('[ActivityDetail] Pronađen zapis:', {
@@ -466,10 +339,10 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                 np: record.np,
                 stream_length: record.stream_data?.length
               });
-              
+
               setDataSource('supabase');
               setSupabaseMetrics(record);
-              
+
               // Postavi metrike iz Supabase-a
               setStreamMetrics({
                 np: record.np || 0,
@@ -477,30 +350,30 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                 maxPower: 0, // Supabase nema max_power, izračunat ćemo iz streama
                 avgHr: record.avg_hr || 0
               });
-              
+
               // Pretvori Supabase stream format {t, p, hr, cad, spd, dist} u chart format
               if (record.stream_data && record.stream_data.length > 0) {
                 console.log('[ActivityDetail] Parsiram stream_data, duljina:', record.stream_data.length);
                 const parsedData = parseStreamData(record.stream_data);
                 console.log('[ActivityDetail] Parsirano:', parsedData.length, 'točaka');
-                
+
                 const step = Math.max(1, Math.ceil(parsedData.length / 3000));
                 const finalData = [];
                 let maxP = 0;
-                
+
                 for (let i = 0; i < parsedData.length; i += step) {
                   const pt = parsedData[i];
                   if (pt.watts > maxP) maxP = pt.watts;
                   finalData.push({ time: pt.time, watts: pt.watts, hr: pt.hr });
                 }
-                
+
                 console.log('[ActivityDetail] Finalni podaci za graf:', finalData.length, 'točaka, maxPower:', maxP);
-                
+
                 // Update maxPower iz streama
                 if (maxP > 0) {
                   setStreamMetrics(prev => ({ ...prev, maxPower: maxP }));
                 }
-                
+
                 setStreamsData(finalData);
               } else {
                 console.warn('[ActivityDetail] Nema stream_data u zapisu');
@@ -516,7 +389,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
       if (mounted) setIsLoadingStreams(false);
     };
-    
+
     fetchData();
     return () => { mounted = false; };
   }, [activity, isOpen, intervalsId, intervalsKey, userFtp]);
@@ -541,6 +414,139 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
     }
   };
 
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validacija
+    const validation = validateFitFile(file);
+    if (!validation.valid) {
+      alert(validation.error);
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      // Parsiraj FIT datoteku
+      const fitData = await parseFitFile(file);
+      console.log('[ActivityDetailModal] Parsirani FIT podaci:', fitData);
+
+      // Izračunaj TSS ako nije dostupan
+      if (!fitData.tss && fitData.np && userFtp) {
+        fitData.tss = calculateTSS(fitData.np, fitData.duration_seconds, userFtp);
+      }
+
+      // Dohvati trenutni profil za weight_kg
+      let weightKg = null;
+      try {
+        const storedProfile = JSON.parse(localStorage.getItem('ai_trener_profile') || '{}');
+        weightKg = storedProfile.weight || null;
+      } catch (e) {}
+
+      // Spremi u Supabase
+      const activityData = {
+        started_at: fitData.started_at,
+        title: activity.title || displayTitle || 'Garmin Trening',
+        workout_source: 'garmin', // Ili 'external' ako nije Garmin
+        duration_seconds: fitData.duration_seconds,
+        avg_power: fitData.avg_power,
+        np: fitData.np,
+        avg_hr: fitData.avg_hr,
+        avg_cadence: fitData.avg_cadence,
+        tss: fitData.tss,
+        if_factor: fitData.if_factor,
+        work_kj: fitData.work_kj,
+        distance_m: fitData.distance_m,
+        avg_speed_kmh: fitData.avg_speed_kmh,
+        ftp_used: userFtp,
+        weight_kg: weightKg,
+        stream_data: fitData.stream_data
+      };
+
+      // Ako je Supabase aktivnost, ažuriraj postojeću
+      if (activity.isSupabase && activity.supabaseId) {
+        const { error } = await supabase
+          .from('completed_activities')
+          .update(activityData)
+          .eq('id', activity.supabaseId);
+
+        if (error) throw error;
+
+        alert('✅ Aktivnost uspješno ažurirana iz FIT datoteke!');
+      } else {
+        // Inače, kreiraj novu aktivnost
+        const { data, error } = await supabase
+          .from('completed_activities')
+          .insert([activityData])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        alert('✅ Nova aktivnost uspješno kreirana iz FIT datoteke!');
+      }
+
+      // Osvježi prikaz
+      onClose();
+      window.location.reload(); // Jednostavno rješenje za osvježavanje
+    } catch (error) {
+      console.error('[ActivityDetailModal] Greška pri uploadu:', error);
+      alert('❌ Greška pri importu FIT datoteke: ' + error.message);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleDeleteActivity = async () => {
+    console.log('[ActivityDetailModal] handleDeleteActivity pozvan za aktivnost:', {
+      id: activity.id,
+      isSupabase: activity.isSupabase,
+      supabaseId: activity.supabaseId,
+      title: activity.title
+    });
+
+    if (!window.confirm('⚠️ Sigurno želiš obrisati ovaj trening? Ova radnja se ne može poništiti.')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      // Samo Supabase aktivnosti se mogu brisati
+      if (activity.isSupabase && activity.supabaseId) {
+        console.log('[ActivityDetailModal] Brišem Supabase aktivnost ID:', activity.supabaseId);
+        
+        const { error } = await supabase
+          .from('completed_activities')
+          .delete()
+          .eq('id', activity.supabaseId);
+
+        if (error) {
+          console.error('[ActivityDetailModal] Supabase delete error:', error);
+          throw error;
+        }
+
+        console.log('[ActivityDetailModal] Aktivnost uspješno obrisana iz Supabase');
+        alert('✅ Trening uspješno obrisan!');
+        onClose();
+        window.location.reload(); // Osvježi stranicu
+      } else {
+        console.warn('[ActivityDetailModal] Aktivnost nije Supabase ili nema supabaseId:', {
+          isSupabase: activity.isSupabase,
+          supabaseId: activity.supabaseId
+        });
+        alert('❌ Samo lokalno spremljeni treninzi se mogu brisati iz ove aplikacije.');
+      }
+    } catch (error) {
+      console.error('[ActivityDetailModal] Greška pri brisanju:', error);
+      alert('❌ Greška pri brisanju: ' + error.message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Metrike: koristimo Supabase ako je dostupan kao fallback
   const sb = supabaseMetrics || {};
   const actualTss = activity.tss || activity.icu_training_load || sb.tss || 0;
@@ -554,6 +560,11 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
   const ef = calculateEF(actualNp, actualAvgHr);
   const vi = calculateVI(actualNp, actualAvgPower);
+
+  // Detekcija "prazne" aktivnosti (nema power podataka)
+  const hasNoPowerData = !actualAvgPower && !actualNp && (!streamsData || streamsData.length === 0);
+  const isExternalActivity = activity.workout_source === 'external' || supabaseMetrics?.workout_source === 'external';
+  const needsFitUpload = hasNoPowerData && isExternalActivity;
 
   // Compliance calculations
   let tssColor = "text-zinc-100"; let tssBgColor = "bg-zinc-800/50";
@@ -582,7 +593,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div 
+      <div
         className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] transform transition-all"
         onClick={(e) => e.stopPropagation()}
       >
@@ -636,7 +647,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
               )}
             </div>
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="p-2 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-rose-500/20 rounded-lg transition-colors border border-transparent hover:border-rose-500/30"
           >
@@ -645,6 +656,37 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
         </div>
 
         <div className="p-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
+
+          {/* Banner za upload .FIT kada nema podataka o snazi */}
+          {needsFitUpload && !isLoadingStreams && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex items-center gap-3 flex-1">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0">
+                  <Upload className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-amber-300">Nema podataka o snazi</p>
+                  <p className="text-xs text-amber-500/80 mt-0.5">
+                    Ova aktivnost je sinkronizirana s Intervals.icu ali nema power stream podatke.
+                    Uploadaj originalnu <strong>.FIT datoteku</strong> s Garmina da dobiješ sve metrike.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm rounded-xl transition-all shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:shadow-[0_0_20px_rgba(245,158,11,0.5)] disabled:opacity-50"
+              >
+                {isUploading ? (
+                  <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                Uploadaj .FIT
+              </button>
+            </div>
+          )}
+
           {/* Glavne Metrike - Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-4 flex flex-col items-center justify-center shadow-inner">
@@ -667,86 +709,89 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
           {/* Performance Chart */}
           <div className="bg-zinc-950/30 border border-zinc-800/80 rounded-xl p-5">
-             <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-500" /> Performance Chart</h3>
-             <div className="h-64 w-full relative">
-                {isLoadingStreams ? (
-                  <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm font-medium">Dohvaćanje podataka...</div>
-                ) : streamsData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={streamsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="powerZones" x1="0" y1="1" x2="0" y2="0">
-                          {/* Y-axis ide od 0 dolje do 1 gore za gradient */}
-                          <stop offset="0%" stopColor="#64748b" stopOpacity={0.6} /> {/* Z1 Slate */}
-                          <stop offset={`${z1}%`} stopColor="#64748b" stopOpacity={0.6} />
-                          
-                          <stop offset={`${z1}%`} stopColor="#10b981" stopOpacity={0.6} /> {/* Z2 Emerald */}
-                          <stop offset={`${z2}%`} stopColor="#10b981" stopOpacity={0.6} />
-                          
-                          <stop offset={`${z2}%`} stopColor="#fbbf24" stopOpacity={0.6} /> {/* Z3 Amber */}
-                          <stop offset={`${z3}%`} stopColor="#fbbf24" stopOpacity={0.6} />
-                          
-                          <stop offset={`${z3}%`} stopColor="#f97316" stopOpacity={0.6} /> {/* Z4 Orange */}
-                          <stop offset={`${z4}%`} stopColor="#f97316" stopOpacity={0.6} />
-                          
-                          <stop offset={`${z4}%`} stopColor="#f43f5e" stopOpacity={0.6} /> {/* Z5 Rose */}
-                          <stop offset={`${z5}%`} stopColor="#f43f5e" stopOpacity={0.6} />
-                          
-                          <stop offset={`${z5}%`} stopColor="#a855f7" stopOpacity={0.6} /> {/* Z6 Purple */}
-                          <stop offset={`${z6}%`} stopColor="#a855f7" stopOpacity={0.6} />
+            <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-500" /> Performance Chart</h3>
+            <div className="h-64 w-full relative">
+              {isLoadingStreams ? (
+                <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm font-medium">Dohvaćanje podataka...</div>
+              ) : streamsData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={streamsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="powerZones" x1="0" y1="1" x2="0" y2="0">
+                        {/* Y-axis ide od 0 dolje do 1 gore za gradient */}
+                        <stop offset="0%" stopColor="#64748b" stopOpacity={0.6} /> {/* Z1 Slate */}
+                        <stop offset={`${z1}%`} stopColor="#64748b" stopOpacity={0.6} />
 
-                          <stop offset={`${z6}%`} stopColor="#d946ef" stopOpacity={0.6} /> {/* Z7 Fuchsia */}
-                          <stop offset="100%" stopColor="#d946ef" stopOpacity={0.6} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                      <XAxis 
-                         dataKey="time" 
-                         tickFormatter={formatSeconds} 
-                         stroke="#52525b" 
-                         tick={{ fill: '#71717a', fontSize: 10 }}
-                         minTickGap={30}
-                      />
-                      <YAxis 
-                         yAxisId="left"
-                         stroke="#52525b" 
-                         tick={{ fill: '#71717a', fontSize: 10 }}
-                         domain={[0, 'dataMax']}
-                      />
-                      <RechartsTooltip 
-                        contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '12px' }}
-                        itemStyle={{ color: '#e4e4e7' }}
-                        labelFormatter={formatSeconds}
-                        formatter={(value, name) => {
-                          if (name === 'watts') return [<span className="font-bold text-amber-500">{value} W</span>, 'Snaga'];
-                          if (name === 'hr') return [<span className="font-bold text-rose-500">{value} bpm</span>, 'Puls'];
-                          return [value, name];
-                        }}
-                      />
-                      <Area yAxisId="left" type="linear" dataKey="watts" stroke="#f59e0b" strokeWidth={1.5} fill="url(#powerZones)" isAnimationActive={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 font-medium text-sm border border-dashed border-zinc-800 rounded-lg p-4">
-                     <Activity className="w-8 h-8 text-zinc-700 mb-2" />
-                     <p className="text-center">Graf nije dostupan</p>
-                     {dataSource === 'supabase' && (
-                       <p className="text-xs text-zinc-700 mt-1 text-center">Stream podaci nisu dostupni za ovu aktivnost</p>
-                     )}
-                     {!dataSource && activity.id?.startsWith('act-') && (
-                       <p className="text-xs text-amber-600 mt-1 text-center max-w-md">
-                         ⚠️ Strava aktivnosti ne mogu prikazati graf zbog API ograničenja. 
-                         Za prikaz grafa, izvršite trening direktno u aplikaciji.
-                       </p>
-                     )}
-                  </div>
-                )}
-             </div>
+                        <stop offset={`${z1}%`} stopColor="#10b981" stopOpacity={0.6} /> {/* Z2 Emerald */}
+                        <stop offset={`${z2}%`} stopColor="#10b981" stopOpacity={0.6} />
+
+                        <stop offset={`${z2}%`} stopColor="#fbbf24" stopOpacity={0.6} /> {/* Z3 Amber */}
+                        <stop offset={`${z3}%`} stopColor="#fbbf24" stopOpacity={0.6} />
+
+                        <stop offset={`${z3}%`} stopColor="#f97316" stopOpacity={0.6} /> {/* Z4 Orange */}
+                        <stop offset={`${z4}%`} stopColor="#f97316" stopOpacity={0.6} />
+
+                        <stop offset={`${z4}%`} stopColor="#f43f5e" stopOpacity={0.6} /> {/* Z5 Rose */}
+                        <stop offset={`${z5}%`} stopColor="#f43f5e" stopOpacity={0.6} />
+
+                        <stop offset={`${z5}%`} stopColor="#a855f7" stopOpacity={0.6} /> {/* Z6 Purple */}
+                        <stop offset={`${z6}%`} stopColor="#a855f7" stopOpacity={0.6} />
+
+                        <stop offset={`${z6}%`} stopColor="#d946ef" stopOpacity={0.6} /> {/* Z7 Fuchsia */}
+                        <stop offset="100%" stopColor="#d946ef" stopOpacity={0.6} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                    <XAxis
+                      dataKey="time"
+                      tickFormatter={formatSeconds}
+                      stroke="#52525b"
+                      tick={{ fill: '#71717a', fontSize: 10 }}
+                      minTickGap={30}
+                    />
+                    <YAxis
+                      yAxisId="left"
+                      stroke="#52525b"
+                      tick={{ fill: '#71717a', fontSize: 10 }}
+                      domain={[0, 'dataMax']}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '12px' }}
+                      itemStyle={{ color: '#e4e4e7' }}
+                      labelFormatter={formatSeconds}
+                      formatter={(value, name) => {
+                        if (name === 'watts') return [<span className="font-bold text-amber-500">{value} W</span>, 'Snaga'];
+                        if (name === 'hr') return [<span className="font-bold text-rose-500">{value} bpm</span>, 'Puls'];
+                        return [value, name];
+                      }}
+                    />
+                    <Area yAxisId="left" type="linear" dataKey="watts" stroke="#f59e0b" strokeWidth={1.5} fill="url(#powerZones)" isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 border border-dashed border-zinc-800 rounded-lg">
+                  {needsFitUpload ? (
+                    <>
+                      <Upload className="w-8 h-8 text-zinc-600" />
+                      <p className="text-zinc-500 font-medium text-sm">Uploadaj .FIT datoteku za prikaz grafa</p>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-bold border border-amber-500/20 transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" /> Odaberi .FIT datoteku
+                      </button>
+                    </>
+                  ) : (
+                    <p className="text-zinc-600 font-medium text-sm">Graf nije dostupan (nema podataka)</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Usporedba i Advanced Metrics */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
+
             <div className="flex flex-col gap-3">
               <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-800 pb-2">Plan vs Realizacija</h3>
               <div className="overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/30">
@@ -766,7 +811,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                       <td className="px-4 py-3 font-semibold text-zinc-200">{actualDur ? formatDur(actualDur) : '-'}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold border ${durBgColor} ${durColor}`}>
-                           {plannedDur ? `${Math.round((actualDur/plannedDur)*100)}%` : 'N/A'}
+                          {plannedDur ? `${Math.round((actualDur / plannedDur) * 100)}%` : 'N/A'}
                         </span>
                       </td>
                     </tr>
@@ -776,7 +821,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                       <td className="px-4 py-3 font-semibold text-zinc-200">{actualTss || actualTss === 0 ? actualTss : '-'}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold border ${tssBgColor} ${tssColor}`}>
-                           {plannedTss ? `${Math.round((actualTss/plannedTss)*100)}%` : 'N/A'}
+                          {plannedTss ? `${Math.round((actualTss / plannedTss) * 100)}%` : 'N/A'}
                         </span>
                       </td>
                     </tr>
@@ -814,68 +859,68 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
           </div>
         </div>
 
-        <div className="flex justify-end p-5 border-t border-zinc-800/80 bg-zinc-950/50 gap-3">
-          {/* Hidden file input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".tcx"
-            onChange={handleTcxUpload}
-            className="hidden"
-          />
-          
-          {/* Upload TCX gumb - prikaži samo ako nema stream podataka */}
-          {streamsData.length === 0 && !isLoadingStreams && (
-            <button
-              onClick={handleUploadClick}
-              disabled={isUploadingTcx}
-              className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 border ${
-                uploadStatus === 'success'
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                  : uploadStatus === 'error'
-                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                  : 'text-white bg-violet-600 hover:bg-violet-500 border-violet-500/30 shadow-[0_0_15px_rgba(139,92,246,0.3)] hover:shadow-[0_0_20px_rgba(139,92,246,0.5)]'
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              {isUploadingTcx ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Učitavanje...
-                </>
-              ) : uploadStatus === 'success' ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  Uspješno!
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4" />
-                  Upload TCX
-                </>
-              )}
-            </button>
-          )}
-          
-          <button 
-            type="button" 
-            onClick={onClose}
-            className="px-5 py-2.5 rounded-xl font-semibold text-sm text-zinc-300 bg-zinc-800/50 hover:bg-zinc-700/50 hover:text-white transition-all border border-zinc-700/50"
-          >
-            Zatvori
-          </button>
-          
-          <button
-            onClick={handleDownload}
-            disabled={isDownloading || (!activity.id && !activity.actId)}
-            className="px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(37,99,235,0.3)] hover:shadow-[0_0_20px_rgba(37,99,235,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isDownloading ? (
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-            ) : (
-              <Download className="w-4 h-4" />
+        <div className="flex justify-between p-5 border-t border-zinc-800/80 bg-zinc-950/50 gap-3">
+          <div className="flex gap-3">
+            {/* Brisanje (samo za Supabase aktivnosti) */}
+            {activity.isSupabase && (
+              <button
+                onClick={handleDeleteActivity}
+                disabled={isDeleting}
+                className="px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-red-600 hover:bg-red-500 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(220,38,38,0.3)] hover:shadow-[0_0_20px_rgba(220,38,38,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? (
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                Obriši
+              </button>
             )}
-            Preuzmi .FIT datoteku
-          </button>
+
+            {/* Upload FIT datoteke */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-emerald-600 hover:bg-emerald-500 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isUploading ? (
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              ) : (
+                <Upload className="w-4 h-4" />
+              )}
+              {activity.isSupabase ? 'Zamijeni s .FIT' : 'Importaj .FIT'}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".fit"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-xl font-semibold text-sm text-zinc-300 bg-zinc-800/50 hover:bg-zinc-700/50 hover:text-white transition-all border border-zinc-700/50"
+            >
+              Zatvori
+            </button>
+
+            <button
+              onClick={handleDownload}
+              disabled={isDownloading || (!activity.id && !activity.actId)}
+              className="px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(37,99,235,0.3)] hover:shadow-[0_0_20px_rgba(37,99,235,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isDownloading ? (
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              Preuzmi .FIT
+            </button>
+          </div>
         </div>
       </div>
     </div>
