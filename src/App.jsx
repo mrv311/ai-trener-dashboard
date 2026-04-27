@@ -53,6 +53,17 @@ export default function App() {
 
   const [currentDate, setCurrentDate] = useState(new Date());
 
+  // Listener za osvježavanje workouts nakon spremanja Supabase aktivnosti
+  useEffect(() => {
+    const handleSupabaseActivitySaved = () => {
+      console.log('[App] Supabase aktivnost spremljena, osvježavam workouts...');
+      fetchWorkouts();
+    };
+    
+    window.addEventListener('supabase-activity-saved', handleSupabaseActivitySaved);
+    return () => window.removeEventListener('supabase-activity-saved', handleSupabaseActivitySaved);
+  }, [fetchWorkouts]);
+
   // 2. Optimizacija statusa veze
   const connectionStatus = useMemo(() => {
     if (isLoading) return 'connecting';

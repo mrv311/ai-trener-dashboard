@@ -138,7 +138,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
       {...(canDrag ? { ...attributes, ...listeners } : {})}
       onClick={() => {
         if (!isDragging) {
-          if (w.isCompleted || w.status === 'completed' || w.id.startsWith('act-')) {
+          if (w.isCompleted || w.status === 'completed' || w.id.startsWith('act-') || w.id.startsWith('supabase-')) {
             if (onViewActivity) onViewActivity(w);
           } else if (onEditWorkout && (w.isLocal || w.id.startsWith('ev-'))) {
             onEditWorkout(w);

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2 } from 'lucide-react';
+import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2, Upload } from 'lucide-react';
 import { downloadActivityFitFile, getActivityStreams, updateActivityName } from '../services/intervalsApi';
 import { calculateEF, calculateVI, calculateCogganMetrics } from '../utils/performanceMetrics';
 import { supabase } from '../services/supabaseClient';
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { parseTCX } from '../utils/tcxParser';
 
 const formatDur = (mins) => {
   if (!mins) return '-';
@@ -21,15 +22,21 @@ const formatSeconds = (secs) => {
 
 // Parsira stream podatke koji mogu biti u Intervals formatu ili lokalnom formatu
 const parseStreamData = (raw) => {
-  if (!raw || !Array.isArray(raw) || raw.length === 0) return [];
+  if (!raw || !Array.isArray(raw) || raw.length === 0) {
+    console.log('[parseStreamData] Nema podataka ili nije array');
+    return [];
+  }
   
-  // Lokalni format: [{ t, p, hr, cad, spd }]
-  if ('p' in raw[0] || 'watts' in raw[0] || 'hr' in raw[0] || 't' in raw[0]) {
+  console.log('[parseStreamData] Primljeno:', raw.length, 'točaka, prvi element:', raw[0]);
+  
+  // Lokalni format: [{ t, p, hr, cad, spd, dist }] ili [{ time, power, hr, cadence }]
+  if ('p' in raw[0] || 'watts' in raw[0] || 'power' in raw[0] || 'hr' in raw[0] || 't' in raw[0] || 'time' in raw[0]) {
+    console.log('[parseStreamData] Detektiran lokalni format');
     return raw.map((pt, i) => ({
-      t: pt.t !== undefined ? pt.t : i,
-      time: pt.t !== undefined ? pt.t : i,
-      p: pt.p || pt.watts || 0,
-      watts: pt.p || pt.watts || 0,
+      t: pt.t !== undefined ? pt.t : (pt.time !== undefined ? pt.time : i),
+      time: pt.t !== undefined ? pt.t : (pt.time !== undefined ? pt.time : i),
+      p: pt.p || pt.watts || pt.power || 0,
+      watts: pt.p || pt.watts || pt.power || 0,
       hr: pt.hr || pt.heartrate || 0,
       cad: pt.cad || pt.cadence || 0,
       spd: pt.spd || pt.velocity_smooth || 0
@@ -38,6 +45,7 @@ const parseStreamData = (raw) => {
   
   // Intervals format: [{ type: 'watts', data: [...] }, ...]
   if ('type' in raw[0] && 'data' in raw[0]) {
+    console.log('[parseStreamData] Detektiran Intervals.icu format');
     const getStream = (type) => raw.find(s => s.type === type)?.data || [];
     const watts = getStream('watts');
     const hr = getStream('heartrate');
@@ -61,6 +69,7 @@ const parseStreamData = (raw) => {
     return res;
   }
   
+  console.warn('[parseStreamData] Nepoznat format podataka');
   return [];
 };
 
@@ -77,6 +86,9 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [displayTitle, setDisplayTitle] = useState('');
   const titleInputRef = useRef(null);
+  const [isUploadingTcx, setIsUploadingTcx] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState(null); // null | 'success' | 'error'
+  const fileInputRef = useRef(null);
 
   // Učitaj FTP iz profila
   useEffect(() => {
@@ -153,6 +165,11 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
       console.log('[Rename] Setting displayTitle to:', newName);
       setDisplayTitle(newName);
+      
+      // Trigger refresh kalendara
+      window.dispatchEvent(new CustomEvent('activity-title-updated', { 
+        detail: { activityId: activity.id, newTitle: newName } 
+      }));
     } catch (err) {
       console.error('[Rename] error:', err);
     } finally {
@@ -164,6 +181,128 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const handleTitleKeyDown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); handleSaveTitle(); }
     if (e.key === 'Escape') handleCancelEdit();
+  };
+
+  const handleTcxUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Provjeri ekstenziju
+    if (!file.name.toLowerCase().endsWith('.tcx')) {
+      setUploadStatus('error');
+      alert('Molimo odaberite TCX datoteku (.tcx)');
+      return;
+    }
+
+    setIsUploadingTcx(true);
+    setUploadStatus(null);
+
+    try {
+      // Čitaj datoteku
+      const text = await file.text();
+      
+      // Parsiraj TCX
+      console.log('[TCX Upload] Parsiram TCX datoteku...');
+      const { stream, metadata } = parseTCX(text);
+      console.log('[TCX Upload] Parsirano:', stream.length, 'točaka');
+      console.log('[TCX Upload] Metadata:', metadata);
+
+      // Pronađi Supabase zapis za ovu aktivnost
+      let sbId = null;
+      
+      // Prvo pokušaj iz supabaseMetrics ako postoji
+      if (supabaseMetrics?.id) {
+        sbId = supabaseMetrics.id;
+        console.log('[TCX Upload] Koristim supabaseMetrics.id:', sbId);
+      }
+      // Zatim pokušaj iz activity.supabaseId
+      else if (activity.supabaseId) {
+        sbId = activity.supabaseId;
+        console.log('[TCX Upload] Koristim activity.supabaseId:', sbId);
+      }
+      // Konačno, traži po datumu
+      else if (activity.date) {
+        console.log('[TCX Upload] Tražim po datumu:', activity.date);
+        const dayStart = `${activity.date}T00:00:00`;
+        const dayEnd = `${activity.date}T23:59:59`;
+        
+        const { data, error: searchError } = await supabase
+          .from('completed_activities')
+          .select('id, title, started_at')
+          .gte('started_at', dayStart)
+          .lte('started_at', dayEnd)
+          .order('started_at', { ascending: false });
+        
+        console.log('[TCX Upload] Pronađeno zapisa:', data?.length);
+        console.log('[TCX Upload] Zapisi:', data);
+        
+        if (searchError) {
+          console.error('[TCX Upload] Greška pri pretraživanju:', searchError);
+        }
+        
+        if (data && data.length > 0) {
+          // Ako ima više zapisa, prikaži korisniku da odabere
+          if (data.length > 1) {
+            const choice = confirm(
+              `Pronađeno ${data.length} zapisa za datum ${activity.date}.\n\n` +
+              data.map((r, i) => `${i + 1}. ${r.title} (${r.started_at})`).join('\n') +
+              `\n\nŽelite li ažurirati prvi zapis (${data[0].title})?`
+            );
+            if (!choice) {
+              setIsUploadingTcx(false);
+              return;
+            }
+          }
+          sbId = data[0].id;
+          console.log('[TCX Upload] Odabran zapis:', sbId);
+        }
+      }
+
+      if (!sbId) {
+        throw new Error(
+          'Nije pronađen Supabase zapis za ovu aktivnost.\n\n' +
+          `Datum aktivnosti: ${activity.date || 'nepoznat'}\n` +
+          `Activity ID: ${activity.id || 'nepoznat'}\n\n` +
+          'Provjerite je li aktivnost spremljena u Supabase tablicu.'
+        );
+      }
+
+      // Ažuriraj Supabase zapis sa stream podacima i metadatama
+      console.log('[TCX Upload] Ažuriram Supabase zapis:', sbId);
+      const { error: updateError } = await supabase
+        .from('completed_activities')
+        .update({
+          stream_data: stream,
+          duration_seconds: metadata.duration_seconds,
+          distance_m: metadata.distance_m,
+          avg_hr: metadata.avg_hr,
+          avg_power: metadata.avg_power
+        })
+        .eq('id', sbId);
+
+      if (updateError) throw updateError;
+
+      console.log('[TCX Upload] Uspješno ažurirano!');
+      setUploadStatus('success');
+
+      // Osvježi prikaz - reload stream podataka
+      setTimeout(() => {
+        window.location.reload(); // Jednostavno reload da se vide novi podaci
+      }, 1500);
+
+    } catch (error) {
+      console.error('[TCX Upload] Greška:', error);
+      setUploadStatus('error');
+      alert(`Greška pri uploadu TCX datoteke:\n\n${error.message}`);
+    } finally {
+      setIsUploadingTcx(false);
+      // Reset file input
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   useEffect(() => {
@@ -179,6 +318,73 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
     const fetchData = async () => {
       setIsLoadingStreams(true);
       setDataSource(null);
+
+      // 0. Ako je Supabase aktivnost, dohvati direktno po ID-u
+      if (activity.isSupabase && activity.supabaseId) {
+        console.log('[ActivityDetail] Dohvaćam Supabase aktivnost po ID-u:', activity.supabaseId);
+        try {
+          const { data, error } = await supabase
+            .from('completed_activities')
+            .select('id, title, avg_power, np, avg_hr, avg_cadence, tss, if_factor, work_kj, duration_seconds, distance_m, avg_speed_kmh, ftp_used, stream_data')
+            .eq('id', activity.supabaseId)
+            .single();
+          
+          if (!mounted) return;
+          
+          if (!error && data) {
+            console.log('[ActivityDetail] Pronađen Supabase zapis:', {
+              id: data.id,
+              title: data.title,
+              avg_power: data.avg_power,
+              np: data.np,
+              stream_length: data.stream_data?.length
+            });
+            
+            setDataSource('supabase');
+            setSupabaseMetrics(data);
+            
+            setStreamMetrics({
+              np: data.np || 0,
+              avgPower: data.avg_power || 0,
+              maxPower: 0,
+              avgHr: data.avg_hr || 0
+            });
+            
+            if (data.stream_data && data.stream_data.length > 0) {
+              console.log('[ActivityDetail] Parsiram stream_data, duljina:', data.stream_data.length);
+              const parsedData = parseStreamData(data.stream_data);
+              console.log('[ActivityDetail] Parsirano:', parsedData.length, 'točaka');
+              
+              const step = Math.max(1, Math.ceil(parsedData.length / 3000));
+              const finalData = [];
+              let maxP = 0;
+              
+              for (let i = 0; i < parsedData.length; i += step) {
+                const pt = parsedData[i];
+                if (pt.watts > maxP) maxP = pt.watts;
+                finalData.push({ time: pt.time, watts: pt.watts, hr: pt.hr });
+              }
+              
+              console.log('[ActivityDetail] Finalni podaci za graf:', finalData.length, 'točaka, maxPower:', maxP);
+              
+              if (maxP > 0) {
+                setStreamMetrics(prev => ({ ...prev, maxPower: maxP }));
+              }
+              
+              setStreamsData(finalData);
+            } else {
+              console.warn('[ActivityDetail] Nema stream_data u zapisu');
+            }
+          } else {
+            console.error('[ActivityDetail] Greška pri dohvaćanju Supabase aktivnosti:', error);
+          }
+        } catch (err) {
+          console.error('[ActivityDetail] Supabase greška:', err);
+        }
+        
+        if (mounted) setIsLoadingStreams(false);
+        return;
+      }
 
       // 1. Pokušaj Intervals.icu streamove
       let intervalsSuccess = false;
@@ -229,17 +435,19 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
         }
       }
 
-      // 2. Fallback: Supabase completed_activities
+      // 2. Fallback: Supabase completed_activities (po datumu)
       if (!intervalsSuccess && mounted) {
         try {
           const actDate = activity.date;
+          console.log('[ActivityDetail] Tražim Supabase podatke za datum:', actDate);
+          
           if (actDate) {
             const dayStart = `${actDate}T00:00:00`;
             const dayEnd = `${actDate}T23:59:59`;
             
             const { data, error } = await supabase
               .from('completed_activities')
-              .select('id, avg_power, np, avg_hr, avg_cadence, tss, if_factor, work_kj, duration_seconds, distance_m, avg_speed_kmh, ftp_used, stream_data')
+              .select('id, title, avg_power, np, avg_hr, avg_cadence, tss, if_factor, work_kj, duration_seconds, distance_m, avg_speed_kmh, ftp_used, stream_data')
               .gte('started_at', dayStart)
               .lte('started_at', dayEnd)
               .order('started_at', { ascending: false })
@@ -247,8 +455,18 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
             
             if (!mounted) return;
             
+            console.log('[ActivityDetail] Supabase odgovor:', { error, dataLength: data?.length, hasStreamData: !!data?.[0]?.stream_data });
+            
             if (!error && data && data.length > 0) {
               const record = data[0];
+              console.log('[ActivityDetail] Pronađen zapis:', {
+                id: record.id,
+                title: record.title,
+                avg_power: record.avg_power,
+                np: record.np,
+                stream_length: record.stream_data?.length
+              });
+              
               setDataSource('supabase');
               setSupabaseMetrics(record);
               
@@ -262,7 +480,10 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
               
               // Pretvori Supabase stream format {t, p, hr, cad, spd, dist} u chart format
               if (record.stream_data && record.stream_data.length > 0) {
+                console.log('[ActivityDetail] Parsiram stream_data, duljina:', record.stream_data.length);
                 const parsedData = parseStreamData(record.stream_data);
+                console.log('[ActivityDetail] Parsirano:', parsedData.length, 'točaka');
+                
                 const step = Math.max(1, Math.ceil(parsedData.length / 3000));
                 const finalData = [];
                 let maxP = 0;
@@ -273,17 +494,23 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                   finalData.push({ time: pt.time, watts: pt.watts, hr: pt.hr });
                 }
                 
+                console.log('[ActivityDetail] Finalni podaci za graf:', finalData.length, 'točaka, maxPower:', maxP);
+                
                 // Update maxPower iz streama
                 if (maxP > 0) {
                   setStreamMetrics(prev => ({ ...prev, maxPower: maxP }));
                 }
                 
                 setStreamsData(finalData);
+              } else {
+                console.warn('[ActivityDetail] Nema stream_data u zapisu');
               }
+            } else {
+              console.warn('[ActivityDetail] Nije pronađen zapis u Supabase za datum:', actDate);
             }
           }
         } catch (err) {
-          console.error("Supabase fallback error:", err);
+          console.error("[ActivityDetail] Supabase fallback error:", err);
         }
       }
 
@@ -500,8 +727,18 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-zinc-600 font-medium text-sm border border-dashed border-zinc-800 rounded-lg">
-                     Graf nije dostupan (nema podataka)
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 font-medium text-sm border border-dashed border-zinc-800 rounded-lg p-4">
+                     <Activity className="w-8 h-8 text-zinc-700 mb-2" />
+                     <p className="text-center">Graf nije dostupan</p>
+                     {dataSource === 'supabase' && (
+                       <p className="text-xs text-zinc-700 mt-1 text-center">Stream podaci nisu dostupni za ovu aktivnost</p>
+                     )}
+                     {!dataSource && activity.id?.startsWith('act-') && (
+                       <p className="text-xs text-amber-600 mt-1 text-center max-w-md">
+                         ⚠️ Strava aktivnosti ne mogu prikazati graf zbog API ograničenja. 
+                         Za prikaz grafa, izvršite trening direktno u aplikaciji.
+                       </p>
+                     )}
                   </div>
                 )}
              </div>
@@ -578,6 +815,47 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
         </div>
 
         <div className="flex justify-end p-5 border-t border-zinc-800/80 bg-zinc-950/50 gap-3">
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".tcx"
+            onChange={handleTcxUpload}
+            className="hidden"
+          />
+          
+          {/* Upload TCX gumb - prikaži samo ako nema stream podataka */}
+          {streamsData.length === 0 && !isLoadingStreams && (
+            <button
+              onClick={handleUploadClick}
+              disabled={isUploadingTcx}
+              className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 border ${
+                uploadStatus === 'success'
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : uploadStatus === 'error'
+                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                  : 'text-white bg-violet-600 hover:bg-violet-500 border-violet-500/30 shadow-[0_0_15px_rgba(139,92,246,0.3)] hover:shadow-[0_0_20px_rgba(139,92,246,0.5)]'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {isUploadingTcx ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Učitavanje...
+                </>
+              ) : uploadStatus === 'success' ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  Uspješno!
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Upload TCX
+                </>
+              )}
+            </button>
+          )}
+          
           <button 
             type="button" 
             onClick={onClose}

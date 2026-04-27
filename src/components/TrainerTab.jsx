@@ -580,7 +580,10 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
     // Izračun virtualne udaljenosti
     const mass = profile?.weight || 75;
+    console.log('[TrainerTab] workoutHistory duljina:', workoutHistory.length);
     const distResult = calculateDistanceStream(workoutHistory, mass);
+    console.log('[TrainerTab] distResult.stream duljina:', distResult.stream.length);
+    console.log('[TrainerTab] Prvi stream element:', distResult.stream[0]);
     const distanceKm = Math.round((distResult.totalDistanceM / 1000) * 10) / 10;
     const avgSpeedKmh = distResult.avgSpeedKmh;
 
@@ -613,6 +616,11 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     }
 
     setSaveStatus('saving');
+    console.log('[TrainerTab] Spremam u Supabase, stream_data duljina:', distResult.stream.length);
+    
+    // Eksplicitno pretvori stream u JSON format
+    const streamDataToSave = distResult.stream.length > 0 ? distResult.stream : null;
+    
     supabase.from('completed_activities').insert({
       started_at: startedAt.toISOString(),
       title: workoutTitle,
@@ -629,14 +637,24 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       avg_speed_kmh: avgSpeedKmh,
       ftp_used: profile?.ftp || 200,
       weight_kg: mass,
-      stream_data: distResult.stream
-    }).then(({ error: saveErr }) => {
+      stream_data: streamDataToSave
+    }).then(({ error: saveErr, data: savedData }) => {
       if (saveErr) {
         console.error('Greška pri spremanju u Supabase:', saveErr);
         setSaveStatus('error');
       } else {
         console.log('Trening automatski spremljen u Supabase!');
+        console.log('Spremljeni podaci:', savedData);
+        console.log('Stream data duljina:', streamDataToSave?.length || 0);
         setSaveStatus('saved');
+        
+        // Osvježi kalendar ako postoji onClose callback (znači da je otvoren iz kalendara)
+        if (onClose) {
+          // Trigger refresh nakon 1 sekunde da se vidi "saved" status
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('supabase-activity-saved'));
+          }, 1000);
+        }
       }
     });
   };
