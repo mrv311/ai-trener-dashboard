@@ -28,11 +28,15 @@ export function parseTCX(tcxText) {
     const stream = [];
     let startTime = null;
     let totalDistance = 0;
+    let skippedPoints = 0;
     
     trackpoints.forEach((tp, index) => {
       // Vrijeme
       const timeEl = tp.querySelector('Time');
-      if (!timeEl) return;
+      if (!timeEl) {
+        skippedPoints++;
+        return;
+      }
       
       const timestamp = new Date(timeEl.textContent);
       if (!startTime) startTime = timestamp;
@@ -70,6 +74,15 @@ export function parseTCX(tcxText) {
         dist: Math.round(distance * 10) / 10
       });
     });
+    
+    // Provjera kvalitete podataka
+    if (skippedPoints > trackpoints.length * 0.5) {
+      throw new Error(`Previše nevažećih točaka u TCX datoteci (${skippedPoints}/${trackpoints.length}). Datoteka može biti oštećena.`);
+    }
+    
+    if (skippedPoints > 0) {
+      console.warn(`[TCX Parser] Preskočeno ${skippedPoints} nevažećih točaka od ukupno ${trackpoints.length}`);
+    }
     
     // Metadata
     const activityEl = xmlDoc.querySelector('Activity');

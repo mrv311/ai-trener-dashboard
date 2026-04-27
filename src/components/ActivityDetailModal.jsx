@@ -21,7 +21,7 @@ const formatSeconds = (secs) => {
 };
 
 // Parsira stream podatke koji mogu biti u Intervals formatu ili lokalnom formatu
-const parseStreamData = (raw) => {
+const parseStreamData = useCallback((raw) => {
   if (!raw || !Array.isArray(raw) || raw.length === 0) {
     console.log('[parseStreamData] Nema podataka ili nije array');
     return [];
@@ -71,7 +71,7 @@ const parseStreamData = (raw) => {
 
   console.warn('[parseStreamData] Nepoznat format podataka');
   return [];
-};
+}, []);
 
 export default function ActivityDetailModal({ activity, isOpen, onClose, intervalsId, intervalsKey }) {
   const [isDownloading, setIsDownloading] = useState(false);
@@ -121,8 +121,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
   const handleSaveTitle = async () => {
     // Čitaj direktno iz DOM-a da izbjegnemo stale closure
-    const inputVal = titleInputRef.current?.value?.trim();
-    const newName = inputVal || editTitle.trim();
+    const newName = titleInputRef.current?.value?.trim();
 
     console.log('[Rename] saving:', newName, 'current:', displayTitle);
 
@@ -240,11 +239,11 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
               console.log('[ActivityDetail] Finalni podaci za graf:', finalData.length, 'točaka, maxPower:', maxP);
 
-              if (maxP > 0) {
+              if (maxP > 0 && mounted) {
                 setStreamMetrics(prev => ({ ...prev, maxPower: maxP }));
               }
 
-              setStreamsData(finalData);
+              if (mounted) setStreamsData(finalData);
             } else {
               console.warn('[ActivityDetail] Nema stream_data u zapisu');
             }
@@ -274,6 +273,8 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
           if (wattsStream.length > 0 || hrStream.length > 0) {
             intervalsSuccess = true;
+            if (!mounted) return;
+            
             setDataSource('intervals');
 
             let maxP = 0;
@@ -301,7 +302,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
             for (let i = 0; i < maxLength; i += step) {
               finalData.push({ time: i, watts: wattsStream[i] || 0, hr: hrStream[i] || 0 });
             }
-            setStreamsData(finalData);
+            if (mounted) setStreamsData(finalData);
           }
         } catch (err) {
           console.warn("Intervals.icu streams nedostupni:", err.message);
@@ -340,6 +341,8 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                 stream_length: record.stream_data?.length
               });
 
+              if (!mounted) return;
+
               setDataSource('supabase');
               setSupabaseMetrics(record);
 
@@ -370,11 +373,11 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                 console.log('[ActivityDetail] Finalni podaci za graf:', finalData.length, 'točaka, maxPower:', maxP);
 
                 // Update maxPower iz streama
-                if (maxP > 0) {
+                if (maxP > 0 && mounted) {
                   setStreamMetrics(prev => ({ ...prev, maxPower: maxP }));
                 }
 
-                setStreamsData(finalData);
+                if (mounted) setStreamsData(finalData);
               } else {
                 console.warn('[ActivityDetail] Nema stream_data u zapisu');
               }

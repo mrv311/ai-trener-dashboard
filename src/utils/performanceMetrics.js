@@ -5,6 +5,20 @@
  */
 
 /**
+ * Vraća Tailwind CSS klasu za boju zone ovisno o postotku FTP-a
+ * @param {number} percentFTP - Postotak FTP-a (0-200+)
+ * @returns {string} - Tailwind CSS klasa
+ */
+export const getZoneColorForTrainer = (percentFTP) => {
+  if (percentFTP < 55) return 'bg-zinc-500';
+  if (percentFTP < 75) return 'bg-sky-500';
+  if (percentFTP < 90) return 'bg-emerald-500';
+  if (percentFTP < 105) return 'bg-amber-500';
+  if (percentFTP < 120) return 'bg-rose-500';
+  return 'bg-purple-500';
+};
+
+/**
  * Računa detaljne Coggan metrike iz apsolutnog polja wata
  * @param {number[]} powerArray - Niz wata sekundu-po-sekundu 
  * @param {number} ftp - Korisnikov FTP (ili default)
@@ -21,30 +35,44 @@ export function calculateCogganMetrics(powerArray, ftp) {
   let sumPwr4 = 0;
   let currentWindowSum = 0;
   
-  // O(N) prolazak uz O(1) operacije Sliding prozora
-  for (let i = 0; i < powerArray.length; i++) {
+  // Inicijaliziraj prvi 30-sekundni prozor
+  const windowSize = 30;
+  for (let i = 0; i < Math.min(windowSize, powerArray.length); i++) {
     const p = powerArray[i] || 0;
-    totalWorkJ += p; // 1W = 1 Joul per second
-    
+    totalWorkJ += p;
     currentWindowSum += p;
-    // Oduzimanje vrijednosti koja izlazi iz 30-sekundnog prozora
-    if (i >= 30) {
-      currentWindowSum -= (powerArray[i - 30] || 0);
-    }
-    
-    let windowSize = Math.min(i + 1, 30);
-    let avg30 = currentWindowSum / windowSize;
-    
-    sumPwr4 += Math.pow(avg30, 4);
   }
   
-  let avgPower = Math.round(totalWorkJ / powerArray.length);
-  // Izvlačenje četvrtog korijena za NP
+  // Ako imamo manje od 30 sekundi, koristimo što imamo
+  if (powerArray.length < windowSize) {
+    const avg = currentWindowSum / powerArray.length;
+    sumPwr4 = Math.pow(avg, 4) * powerArray.length;
+  } else {
+    // Dodaj prvi puni prozor
+    const avg30 = currentWindowSum / windowSize;
+    sumPwr4 += Math.pow(avg30, 4);
+    
+    // Sliding window za ostatak - O(1) po iteraciji
+    for (let i = windowSize; i < powerArray.length; i++) {
+      const p = powerArray[i] || 0;
+      totalWorkJ += p;
+      
+      // Pomakni prozor: dodaj novi, oduzmi stari
+      currentWindowSum += p;
+      currentWindowSum -= (powerArray[i - windowSize] || 0);
+      
+      const avg30 = currentWindowSum / windowSize;
+      sumPwr4 += Math.pow(avg30, 4);
+    }
+  }
+  
+  // Zaštita od dijeljenja s nulom
+  let avgPower = powerArray.length > 0 ? Math.round(totalWorkJ / powerArray.length) : 0;
   let np = powerArray.length > 0 ? Math.round(Math.pow(sumPwr4 / powerArray.length, 0.25)) : 0;
   
-  let IF = np / validFtp;
-  // TSS formula = (hr * IF^2 * 100)
-  let tss = (powerArray.length / 3600) * (IF * IF) * 100;
+  // Zaštita od dijeljenja s nulom i Infinity
+  let IF = (validFtp > 0 && np > 0) ? (np / validFtp) : 0;
+  let tss = powerArray.length > 0 ? (powerArray.length / 3600) * (IF * IF) * 100 : 0;
   let workKj = totalWorkJ / 1000;
   
   return {

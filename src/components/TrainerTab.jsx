@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X } from 'lucide-react';
 import TrainerModals from './trainer/TrainerModals';
 import TrainerGraph from './trainer/TrainerGraph';
-import { getZoneColorForTrainer } from '../utils/workoutUtils';
+import { getZoneColorForTrainer } from '../utils/performanceMetrics';
 import { exportToTCX, exportToFIT } from '../utils/exportUtils';
 import { calculateCogganMetrics } from '../utils/performanceMetrics';
 import { calculateDistanceStream } from '../utils/virtualDistance';

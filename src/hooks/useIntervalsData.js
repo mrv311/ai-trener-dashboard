@@ -110,6 +110,22 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
     const localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
 
+    // Kreiraj Map objekte za O(1) lookup - OPTIMIZACIJA
+    const eventsByDate = new Map();
+    rawEvents.forEach(e => {
+      if (e.category !== 'WORKOUT') return;
+      const date = e.start_date_local?.split('T')[0];
+      if (!date) return;
+      if (!eventsByDate.has(date)) eventsByDate.set(date, []);
+      eventsByDate.get(date).push(e);
+    });
+
+    const localByDate = new Map();
+    localScheduled.forEach(lw => {
+      if (!localByDate.has(lw.date)) localByDate.set(lw.date, []);
+      localByDate.get(lw.date).push(lw);
+    });
+
     // 0. PRIORITET: Prvo dodaj Supabase lokalne aktivnosti (najsvježije, upravo završene)
     supabaseActivities.forEach(sbAct => {
       const actDate = sbAct.started_at ? sbAct.started_at.split('T')[0] : '';
@@ -121,36 +137,31 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       
       supabaseDateMap.set(actDate, sbAct.id); // Označi da ovaj datum ima Supabase aktivnost
 
-      // Pokušaj spariti s Intervals.icu eventom PRVO (viši prioritet)
+      // Pokušaj spariti s Intervals.icu eventom PRVO (viši prioritet) - O(k) gdje je k broj evenata za datum
       let pairedEvent = null;
       let separatedEventIds = [];
       
-      for (let e of rawEvents) {
-        if (e.category !== 'WORKOUT') continue;
-        const isDateMatch = e.start_date_local && e.start_date_local.split('T')[0] === actDate;
-        
-        if (isDateMatch) {
-          if (unpairedList.includes(`supabase-${sbAct.id}-${e.id}`)) {
-            separatedEventIds.push(e.id);
-          } else if (!consumedEvents.has(e.id) && !pairedEvent) {
-            pairedEvent = e;
-            consumedEvents.add(e.id);
-          }
+      const eventsForDate = eventsByDate.get(actDate) || [];
+      for (let e of eventsForDate) {
+        if (unpairedList.includes(`supabase-${sbAct.id}-${e.id}`)) {
+          separatedEventIds.push(e.id);
+        } else if (!consumedEvents.has(e.id) && !pairedEvent) {
+          pairedEvent = e;
+          consumedEvents.add(e.id);
         }
       }
 
       // Ako nema Intervals eventa, pokušaj spariti s lokalnim planiranim treningom
       let pairedLocal = null;
       if (!pairedEvent) {
-        for (let lw of localScheduled) {
-          if (lw.date === actDate) {
-            if (unpairedList.includes(`supabase-${sbAct.id}-local-${lw.id}`)) {
-              separatedEventIds.push(`local-${lw.id}`);
-            } else if (!consumedLocalIds.has(lw.id)) {
-              pairedLocal = lw;
-              consumedLocalIds.add(lw.id);
-              break;
-            }
+        const localForDate = localByDate.get(actDate) || [];
+        for (let lw of localForDate) {
+          if (unpairedList.includes(`supabase-${sbAct.id}-local-${lw.id}`)) {
+            separatedEventIds.push(`local-${lw.id}`);
+          } else if (!consumedLocalIds.has(lw.id)) {
+            pairedLocal = lw;
+            consumedLocalIds.add(lw.id);
+            break;
           }
         }
       }
@@ -227,22 +238,15 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         console.log('[useIntervalsData] ✓ Preskačem Intervals.icu aktivnost', act.id, 'jer postoji Supabase aktivnost', supabaseDateMap.get(actDate), 'za datum:', actDate);
         return;
       }
-      
-      // PROVJERA: Preskoči ako već postoji Supabase aktivnost za ovaj datum
-      if (supabaseDateMap.has(actDate)) {
-        console.log('[useIntervalsData] ✓ Preskačem Intervals.icu aktivnost', act.id, 'jer postoji Supabase aktivnost', supabaseDateMap.get(actDate), 'za datum:', actDate);
-        return;
-      }
 
       let pairedEvent = null;
       let separatedEventIds = [];
 
-      for (let e of rawEvents) {
-        if (e.category !== 'WORKOUT') continue;
-        const isDateMatch = e.start_date_local && e.start_date_local.split('T')[0] === actDate;
+      // O(k) lookup umjesto O(n)
+      const eventsForDate = eventsByDate.get(actDate) || [];
+      for (let e of eventsForDate) {
         const isIdMatch = e.activity_id === act.id;
-
-        if (isDateMatch || isIdMatch) {
+        if (isIdMatch || true) { // Uvijek provjeravamo datum match jer smo već filtrirali po datumu
           if (unpairedList.includes(`${act.id}-${e.id}`)) {
             separatedEventIds.push(e.id);
           } else if (!consumedEvents.has(e.id) && !pairedEvent) {
@@ -253,14 +257,13 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       }
 
       let pairedLocal = null;
-      for (let lw of localScheduled) {
-        if (lw.date === actDate) {
-          if (unpairedList.includes(`${act.id}-local-${lw.id}`)) {
-            separatedEventIds.push(`local-${lw.id}`);
-          } else if (!pairedEvent && !pairedLocal && !consumedLocalIds.has(lw.id)) {
-            pairedLocal = lw;
-            consumedLocalIds.add(lw.id);
-          }
+      const localForDate = localByDate.get(actDate) || [];
+      for (let lw of localForDate) {
+        if (unpairedList.includes(`${act.id}-local-${lw.id}`)) {
+          separatedEventIds.push(`local-${lw.id}`);
+        } else if (!pairedEvent && !pairedLocal && !consumedLocalIds.has(lw.id)) {
+          pairedLocal = lw;
+          consumedLocalIds.add(lw.id);
         }
       }
 

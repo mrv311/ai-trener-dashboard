@@ -50,6 +50,12 @@ export const parseFitFile = (file) => {
           const session = data.sessions?.[0] || {};
           const activity = data.activity || {};
           
+          // Provjera da li postoje timestamp podaci
+          if (!session.start_time && !activity.timestamp) {
+            reject(new Error('FIT datoteka ne sadrži timestamp podatke'));
+            return;
+          }
+          
           // Izvuci record podatke (stream)
           const records = data.records || [];
 
