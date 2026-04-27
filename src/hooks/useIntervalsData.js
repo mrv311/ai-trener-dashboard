@@ -219,7 +219,6 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     });
 
     // 1. Dodaj Intervals.icu aktivnosti (samo ako NE postoji Supabase aktivnost za taj datum)
->>>>>>> 83955f013886694570d2ca4dfd5171746afa3ce1
     rawActivities.forEach(act => {
       const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
       
