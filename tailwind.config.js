@@ -13,12 +13,32 @@ export default {
       colors: {
         // Centraliziramo brand boje za lakšu promjenu u cijeloj aplikaciji
         brand: {
-          DEFAULT: '#f97316', // orange-500
-          dark: '#ea580c',    // orange-600
-          glow: 'rgba(249, 115, 22, 0.4)',
+          DEFAULT: '#B2BD7E', // Muted Olive
+          dark: '#9ba763',    // Darker Muted Olive
+          glow: 'rgba(178, 189, 126, 0.4)',
+        },
+        orange: {
+          400: '#749C75', // Sage Green
+          500: '#B2BD7E', // Muted Olive
+          600: '#9ba763', // Darker Muted Olive
+          900: '#2A2030', // Very Dark Grape
+        },
+        red: {
+          400: '#6A5D7B', // Dusty Lavender
+          500: '#6A5D7B',
         },
         zinc: {
-          950: '#09090b', // Ultra dark za dashboard pozadinu
+          50: '#ffffff',
+          100: '#ffffff', // Pure White (Main text for max contrast)
+          200: '#f4f0f7', // Light tinted white
+          300: '#e5deeb', 
+          400: '#c5b8d0', // Light Grape (Secondary text)
+          500: '#a392b2', // Mid Grape
+          600: '#9b8ba9', // Muted Grape (Inactive text, ensuring it's light enough to read on dark backgrounds)
+          700: '#6A5D7B', // Dusty Lavender (Hover states, active elements)
+          800: '#5D4A66', // Vintage Grape (Borders, subtle cards)
+          900: '#403247', // Dark Grape (Cards, Sidebars)
+          950: '#2A2030', // Very Dark Grape (Main app background)
         }
       },
       animation: {
@@ -26,8 +46,8 @@ export default {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
       boxShadow: {
-        // Definiramo tvoj specifični 'orange glow' kao utility klasu
-        'orange-glow': '0 0 15px rgba(249, 115, 22, 0.4)',
+        // Definiramo tvoj specifični glow kao utility klasu (Muted Olive boja)
+        'orange-glow': '0 0 15px rgba(178, 189, 126, 0.4)',
       }
     },
   },

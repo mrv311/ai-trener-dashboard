@@ -191,7 +191,6 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                 ))}
                 {w.statusColor === 'green' && <CheckCircle2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-emerald-400 drop-shadow-[0_0_${isDesktop ? '3' : '5'}px_rgba(16,185,129,0.5)]`} />}
                 {w.statusColor === 'red-missed' && <XCircle className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-rose-500`} />}
-                {w.statusColor === 'grey' && !w.isLocal && <Target className="w-3.5 h-3.5 text-zinc-500" />}
                 {!w.isCompleted && handleDeleteLocalActivity && (
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
@@ -344,7 +343,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
       }}
     >
       <div className={`flex justify-between items-start ${compact ? 'mb-1' : 'mb-3'}`}>
-        <span className={`font-bold ${compact ? 'text-[10px]' : 'text-xs'} ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.6)]' : (dObj.isCurrentMonth ? 'text-zinc-400' : 'text-zinc-600')}`}>{dObj.day}</span>
+        <span className={`font-bold text-xs ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.6)]' : (dObj.isCurrentMonth ? 'text-zinc-400' : 'text-zinc-600')}`}>{dObj.day}</span>
         {!compact && dWell && (
           <div className="flex gap-2 text-[10px] font-bold text-zinc-500">
             {dWell.restingHR && <span className="flex items-center text-rose-500/80"><Heart className="w-3 h-3 mr-0.5" fill="currentColor" />{dWell.restingHR}</span>}
@@ -851,7 +850,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         </div>
       </div>
 
-      <div className="hidden md:grid grid-cols-8 border-b border-zinc-800/80 bg-zinc-900/80 font-bold text-[10px] text-zinc-500 uppercase tracking-widest">
+      <div className="hidden md:grid grid-cols-8 border-b border-zinc-800/80 bg-zinc-900/80 font-bold text-xs text-zinc-400 uppercase tracking-widest">
         {dayNames.map((d, i) => <div key={i} className="py-3 px-3 border-r border-zinc-800/80">{d}</div>)}
         <div className="py-3 text-center bg-orange-500/10 text-orange-400 border-l border-zinc-800 shadow-[inset_0_0_10px_rgba(249,115,22,0.05)]">Sažetak</div>
       </div>
@@ -987,23 +986,23 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                 <div className={`p-3 flex flex-col justify-between border-l border-zinc-800 text-right
                   ${isActive ? 'bg-gradient-to-b from-orange-500/8 to-transparent bg-zinc-900/40' : 'bg-zinc-900/20'}`}
                 >
-                  <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isActive ? 'text-orange-400' : 'text-zinc-600'}`}>
+                  <p className={`text-[11px] font-bold uppercase tracking-wider mb-1 ${isActive ? 'text-orange-400' : 'text-zinc-600'}`}>
                     {weekRangeLabel}
                   </p>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div>
-                      <p className={`text-[8px] font-black uppercase tracking-tighter mb-0.5 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`}>Vrijeme</p>
-                      <div className="flex items-center justify-end gap-1 text-[10px]">
-                        <Clock className={`w-3 h-3 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`} />
+                      <p className={`text-[10px] font-black uppercase tracking-tighter mb-0.5 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`}>Vrijeme</p>
+                      <div className="flex items-center justify-end gap-1 text-xs">
+                        <Clock className={`w-4 h-4 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`} />
                         <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{formatDur(aD)}</span>
                         <span className="text-zinc-700">/</span>
                         <span className="text-zinc-500 font-medium">{formatDur(pD)}</span>
                       </div>
                     </div>
                     <div className={`pt-1.5 border-t ${isActive ? 'border-zinc-700' : 'border-zinc-800'}`}>
-                      <p className={`text-[8px] font-black uppercase tracking-tighter mb-0.5 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`}>TSS</p>
-                      <div className="flex items-center justify-end gap-1 text-[10px]">
-                        <Activity className={`w-3 h-3 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`} />
+                      <p className={`text-[10px] font-black uppercase tracking-tighter mb-0.5 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`}>TSS</p>
+                      <div className="flex items-center justify-end gap-1 text-xs">
+                        <Activity className={`w-4 h-4 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`} />
                         <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{aT}</span>
                         <span className="text-zinc-700">/</span>
                         <span className="text-zinc-500 font-medium">{pT}</span>
@@ -1013,22 +1012,22 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     {/* CTL / ATL / TSB blok */}
                     {(weekCtl != null || weekAtl != null) && (
                       <div className={`pt-1.5 border-t ${isActive ? 'border-zinc-700' : 'border-zinc-800'}`}>
-                        <p className={`text-[8px] font-black uppercase tracking-tighter mb-1 ${isActive ? 'text-sky-500' : 'text-zinc-600'}`}>Forma</p>
+                        <p className={`text-[10px] font-black uppercase tracking-tighter mb-1 ${isActive ? 'text-sky-500' : 'text-zinc-600'}`}>Forma</p>
                         <div className="flex flex-col gap-0.5 items-end">
                           {weekCtl != null && (
-                            <div className="flex items-center gap-1 text-[9px]">
+                            <div className="flex items-center gap-1 text-[11px]">
                               <span className="text-zinc-600 font-bold">CTL</span>
                               <span className={`font-mono font-bold ${isActive ? 'text-sky-400' : 'text-zinc-500'}`}>{weekCtl}</span>
                             </div>
                           )}
                           {weekAtl != null && (
-                            <div className="flex items-center gap-1 text-[9px]">
+                            <div className="flex items-center gap-1 text-[11px]">
                               <span className="text-zinc-600 font-bold">ATL</span>
                               <span className={`font-mono font-bold ${isActive ? 'text-purple-400' : 'text-zinc-500'}`}>{weekAtl}</span>
                             </div>
                           )}
                           {weekTsb != null && (
-                            <div className={`flex items-center gap-1 text-[9px] mt-0.5 px-1 rounded ${isActive ? 'bg-zinc-800/60' : 'bg-zinc-900/60'}`}>
+                            <div className={`flex items-center gap-1 text-[11px] mt-0.5 px-1 rounded ${isActive ? 'bg-zinc-800/60' : 'bg-zinc-900/60'}`}>
                               <span className="text-zinc-600 font-bold">TSB</span>
                               <span className={`font-mono font-bold ${getTsbColor(weekTsb)}`}>
                                 {weekTsb > 0 ? `+${weekTsb}` : weekTsb}
@@ -1036,7 +1035,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                             </div>
                           )}
                           {rampRate != null && (
-                            <div className={`flex items-center gap-1 text-[9px] mt-0.5 px-1 rounded ${isActive ? 'bg-zinc-800/60' : 'bg-zinc-900/60'}`} title="Ramp Rate: tjedna promjena CTL-a. Optimalno: +3 do +8">
+                            <div className={`flex items-center gap-1 text-[11px] mt-0.5 px-1 rounded ${isActive ? 'bg-zinc-800/60' : 'bg-zinc-900/60'}`} title="Ramp Rate: tjedna promjena CTL-a. Optimalno: +3 do +8">
                               <span className="text-zinc-600 font-bold">RR</span>
                               <span className={`font-mono font-bold ${getRampColor(rampRate)}`}>
                                 {rampRate > 0 ? `+${rampRate}` : rampRate}
