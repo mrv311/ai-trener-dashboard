@@ -373,13 +373,29 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     setUnpairedList(prev => prev.filter(pair => pair !== `${actId}-${eventId}`));
   }, []);
 
-  const handleDeleteLocalActivity = useCallback((localId) => {
-    const rawId = localId.replace('local-', '');
-    let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
-    localScheduled = localScheduled.filter(w => w.id !== rawId);
-    localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
-    setLocalRefreshTrigger(prev => prev + 1);
-  }, []);
+  const handleDeleteLocalActivity = useCallback(async (workoutId) => {
+    if (!workoutId) return;
+    
+    if (workoutId.startsWith('local-')) {
+      const rawId = workoutId.replace('local-', '');
+      let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+      localScheduled = localScheduled.filter(w => w.id !== rawId);
+      localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
+      setLocalRefreshTrigger(prev => prev + 1);
+    } else if (workoutId.startsWith('ev-')) {
+      const rawId = workoutId.replace('ev-', '');
+      // Optimistic delete
+      setRawEvents(prev => prev.filter(e => String(e.id) !== rawId));
+      try {
+        const { deleteEvent } = await import('../services/intervalsApi');
+        await deleteEvent(intervalsId, intervalsKey, rawId);
+        setLocalRefreshTrigger(prev => prev + 1);
+      } catch (err) {
+        console.error('Delete Event API error:', err);
+        // Fallback u slučaju greške bi bio ponovno učitavanje, ali za sad samo logiramo
+      }
+    }
+  }, [intervalsId, intervalsKey]);
 
   /**
    * Briše odrađenu aktivnost iz Supabase baze.
@@ -533,9 +549,9 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       const { createEvent } = await import('../services/intervalsApi');
       const payload = {
         start_date_local: `${workoutObj.date}T08:00:00`,
-        category: workoutObj.category || 'WORKOUT',
+        category: 'WORKOUT',
         name: workoutObj.title,
-        workout_doc: workoutObj.description,
+        description: workoutObj.description,
         icu_training_load: workoutObj.tss,
         moving_time: workoutObj.duration * 60,
         type: workoutObj.type === 'run' ? 'Run' : (workoutObj.type === 'strength' ? 'WeightTraining' : 'Ride')

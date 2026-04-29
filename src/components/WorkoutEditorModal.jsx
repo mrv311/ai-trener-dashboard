@@ -482,20 +482,18 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
             >
               Close
             </button>
-            {mode === 'edit' && (
-              <button
-                onClick={handleSave}
-                disabled={isLoading}
-                className="flex items-center gap-1.5 px-4 py-1.5 bg-orange-500 hover:bg-orange-400 text-zinc-950 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(249,115,22,0.3)]"
-              >
-                {isLoading ? (
-                  <span className="animate-spin w-3.5 h-3.5 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full" />
-                ) : (
-                  <Save className="w-3.5 h-3.5" />
-                )}
-                Spremi
-              </button>
-            )}
+            <button
+              onClick={handleSave}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-orange-500 hover:bg-orange-400 text-zinc-950 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(249,115,22,0.3)]"
+            >
+              {isLoading ? (
+                <span className="animate-spin w-3.5 h-3.5 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              Spremi
+            </button>
           </div>
         </div>
       </div>

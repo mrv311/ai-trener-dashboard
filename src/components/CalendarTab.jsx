@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical, Bike } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical, Bike, Upload, PenLine } from 'lucide-react';
 import { DndContext, pointerWithin, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import WorkoutEditorModal from './WorkoutEditorModal';
 import { updateEventDetails } from '../services/intervalsApi';
 import ActivityDetailModal from './ActivityDetailModal';
-import { extractIntensityData } from '../utils/workoutParser';
+import { extractIntensityData, parseWorkoutFile } from '../utils/workoutParser';
 
 const formatDur = (mins) => {
   const h = Math.floor(mins / 60);
@@ -145,7 +145,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           }
         }
       }}
-      className={`workout-card-element rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : 'min-h-[100px]'} backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : ''} ${canDrag && !isDragging ? 'cursor-grab hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
+      className={`workout-card-element rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : 'min-h-[100px]'} backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : 'cursor-pointer'} ${canDrag && !isDragging ? 'hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
     >
       <div className={`h-1.5 w-full shrink-0 ${getTopCol(w.statusColor)}`} />
       <div className={`${isDesktop ? (compact ? 'p-1.5' : 'p-3') : 'p-3.5'} flex flex-col justify-between flex-1`}>
@@ -192,7 +192,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                 {w.statusColor === 'green' && <CheckCircle2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-emerald-400 drop-shadow-[0_0_${isDesktop ? '3' : '5'}px_rgba(16,185,129,0.5)]`} />}
                 {w.statusColor === 'red-missed' && <XCircle className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-rose-500`} />}
                 {w.statusColor === 'grey' && !w.isLocal && <Target className="w-3.5 h-3.5 text-zinc-500" />}
-                {w.isLocal && !w.isCompleted && handleDeleteLocalActivity && (
+                {!w.isCompleted && handleDeleteLocalActivity && (
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
@@ -288,14 +288,22 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
 // ============================================================
 // CalendarDay
 // ============================================================
-const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, compact }) {
+const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, compact, onAddWorkoutClick }) {
   const { isOver, setNodeRef } = useDroppable({ id: dObj.dateStr });
 
   if (!isDesktop) {
     const dayNames = ["PON", "UTO", "SRI", "ČET", "PET", "SUB", "NED"];
     const dayOfWeek = dayNames[(new Date(dObj.dateStr).getDay() + 6) % 7];
     return (
-      <div className={`p-4 flex flex-col bg-zinc-900/60 ${isTdy ? 'border-l-4 border-l-orange-500 shadow-[inset_4px_0_10px_rgba(249,115,22,0.1)]' : ''}`}>
+      <div 
+        className={`p-4 flex flex-col cursor-pointer bg-zinc-900/60 ${isTdy ? 'border-l-4 border-l-orange-500 shadow-[inset_4px_0_10px_rgba(249,115,22,0.1)]' : ''}`}
+        onClick={(e) => {
+          if (e.target.closest('.workout-card-element')) return;
+          if (onAddWorkoutClick) {
+            onAddWorkoutClick(dObj.dateStr);
+          }
+        }}
+      >
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-2">
             <span className={`text-sm font-black ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.6)]' : 'text-zinc-200'}`}>{dObj.day}.</span>
@@ -322,32 +330,16 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col group relative transition-all duration-200
+      className={`flex flex-col group relative transition-all duration-200 cursor-pointer hover:bg-zinc-800/80
         ${compact ? 'p-1.5' : 'p-3'}
-        ${dObj.isCurrentMonth ? 'bg-zinc-900/60 hover:bg-zinc-800/80 cursor-pointer' : 'bg-zinc-950/80'}
+        ${dObj.isCurrentMonth ? 'bg-zinc-900/60' : 'bg-zinc-950/80'}
         ${isTdy ? 'ring-inset ring-2 ring-orange-500' : ''}
         ${isOver ? 'bg-orange-500/10 ring-2 ring-orange-500/50 ring-inset shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}
       `}
       onClick={(e) => {
         if (e.target.closest('.workout-card-element')) return;
-        if (!compact && dObj.isCurrentMonth) {
-          const newWorkout = {
-            id: `local-${Date.now()}`,
-            date: dObj.dateStr,
-            title: 'Novi Trening',
-            duration: 60,
-            plannedDuration: 60,
-            tss: 0,
-            plannedTss: 0,
-            statusColor: 'grey',
-            isCompleted: false,
-            isLocal: true,
-            category: 'WORKOUT',
-            type: 'ride',
-            intervalDescription: 'Slatka točka: 3x15m na 90%',
-            steps: [{ duration: 600, power: 50 }, { duration: 900, power: 90 }, { duration: 300, power: 50 }, { duration: 900, power: 90 }, { duration: 300, power: 50 }, { duration: 900, power: 90 }, { duration: 600, power: 50 }]
-          };
-          onEditWorkout(newWorkout);
+        if (onAddWorkoutClick) {
+          onAddWorkoutClick(dObj.dateStr);
         }
       }}
     >
@@ -430,11 +422,13 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const [activeWidth, setActiveWidth] = useState(0);
   const [editingWorkout, setEditingWorkout] = useState(null);
   const [viewingActivity, setViewingActivity] = useState(null);
+  const [selectedDateForNew, setSelectedDateForNew] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [pickerMonth, setPickerMonth] = useState(cm);
   const [pickerYear, setPickerYear] = useState(cy);
   const monthPickerRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Sync picker with currentDate when it changes externally
   useEffect(() => {
@@ -487,7 +481,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      return { day: d.getDate(), dateStr, month: d.getMonth(), year: d.getFullYear() };
+      return { day: d.getDate(), dateStr, month: d.getMonth(), year: d.getFullYear(), isCurrentMonth: d.getMonth() === currentDate.getMonth() };
     });
   }, [currentDate]);
 
@@ -621,8 +615,63 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     }
   };
 
+  const handleManualCreate = () => {
+    const newWorkout = {
+      id: `local-${Date.now()}`,
+      date: selectedDateForNew,
+      title: 'Novi Trening',
+      duration: 0,
+      plannedDuration: 0,
+      tss: 0,
+      plannedTss: 0,
+      statusColor: 'grey',
+      isCompleted: false,
+      isLocal: true,
+      category: 'WORKOUT',
+      type: 'ride',
+      steps: []
+    };
+    setSelectedDateForNew(null);
+    setEditingWorkout(newWorkout);
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = await parseWorkoutFile(text, file.name);
+      
+      const newWorkout = {
+        id: `local-${Date.now()}`,
+        date: selectedDateForNew,
+        title: parsed.title || 'Učitani Trening',
+        duration: Math.round(parsed.duration_seconds / 60) || 60,
+        plannedDuration: Math.round(parsed.duration_seconds / 60) || 60,
+        tss: 0, // WorkoutEditorModal will recalculate this
+        plannedTss: 0,
+        statusColor: 'grey',
+        isCompleted: false,
+        isLocal: true,
+        category: parsed.category || 'WORKOUT',
+        type: 'ride',
+        workout_doc: parsed.steps
+      };
+      
+      setSelectedDateForNew(null);
+      setEditingWorkout(newWorkout);
+    } catch (err) {
+      alert("Greška pri učitavanju datoteke: " + err.message);
+    } finally {
+      // Reset input so the same file can be selected again
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 flex flex-col min-h-[700px] animate-in fade-in overflow-hidden">
+      {/* Modali */}
       <WorkoutEditorModal
         workout={editingWorkout}
         isOpen={!!editingWorkout}
@@ -638,6 +687,50 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         intervalsId={intervalsId}
         intervalsKey={intervalsKey}
       />
+      {selectedDateForNew && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setSelectedDateForNew(null)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4 relative" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setSelectedDateForNew(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition-colors">
+              <XCircle className="w-5 h-5" />
+            </button>
+            <h2 className="text-xl font-bold text-zinc-100 mb-2">Novi Trening</h2>
+            
+            <button 
+              onClick={handleManualCreate}
+              className="flex items-center gap-4 w-full p-4 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700 hover:border-orange-500/50 transition-all group"
+            >
+              <div className="bg-orange-500/10 p-3 rounded-lg text-orange-400 group-hover:bg-orange-500 group-hover:text-zinc-950 transition-colors">
+                <PenLine className="w-6 h-6" />
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="font-bold text-zinc-200">Ručni unos</span>
+                <span className="text-xs text-zinc-500">Upiši Intervals.icu kod ručno</span>
+              </div>
+            </button>
+
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-4 w-full p-4 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700 hover:border-sky-500/50 transition-all group"
+            >
+              <div className="bg-sky-500/10 p-3 rounded-lg text-sky-400 group-hover:bg-sky-500 group-hover:text-zinc-950 transition-colors">
+                <Upload className="w-6 h-6" />
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="font-bold text-zinc-200">Učitaj datoteku</span>
+                <span className="text-xs text-zinc-500">Podržani formati: .ZWO, .ERG</span>
+              </div>
+            </button>
+            <input 
+              type="file" 
+              accept=".zwo,.erg" 
+              ref={fileInputRef} 
+              style={{display: 'none'}} 
+              onChange={handleFileUpload} 
+            />
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-950/50">
         {/* Month/Year button that opens mini calendar picker */}
         <div className="relative" ref={monthPickerRef}>
@@ -781,6 +874,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             handleDeleteCompletedActivity={handleDeleteCompletedActivity}
             onViewActivity={setViewingActivity}
             onEditWorkout={setEditingWorkout}
+            onAddWorkoutClick={setSelectedDateForNew}
           />
         ))}
       </div>
@@ -883,6 +977,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       handleDeleteCompletedActivity={handleDeleteCompletedActivity}
                       onEditWorkout={setEditingWorkout}
                       onViewActivity={setViewingActivity}
+                      onAddWorkoutClick={setSelectedDateForNew}
                       compact={!isActive}
                     />
                   );

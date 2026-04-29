@@ -99,10 +99,18 @@ export const createEvent = async (intervalsId, intervalsKey, payload) => {
 
   const url = `https://intervals.icu/api/v1/athlete/${cleanId}/events`;
   
+  let cleanPayload = { ...payload };
+  if (cleanPayload.workout_doc) {
+    if (!cleanPayload.description && typeof cleanPayload.workout_doc === 'string') {
+      cleanPayload.description = cleanPayload.workout_doc;
+    }
+    delete cleanPayload.workout_doc;
+  }
+
   const res = await fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify(payload)
+    body: JSON.stringify(cleanPayload)
   });
 
   if (!res.ok) {
@@ -111,6 +119,26 @@ export const createEvent = async (intervalsId, intervalsKey, payload) => {
   }
 
   return res.json();
+};
+
+/**
+ * Briše event na Intervals.icu
+ */
+export const deleteEvent = async (intervalsId, intervalsKey, eventId) => {
+  const cleanId = String(intervalsId || '').trim();
+  const headers = getAuthHeaders(intervalsKey);
+  const url = `https://intervals.icu/api/v1/athlete/${cleanId}/events/${eventId}`;
+
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Greška pri brisanju treninga: ${res.status} ${errText}`);
+  }
+  return res.json().catch(() => ({}));
 };
 
 /**
