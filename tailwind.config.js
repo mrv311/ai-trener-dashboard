@@ -7,52 +7,53 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        // Montserrat je odličan izbor za sportske metrike (čitljivost brojeva)
         sans: ['Montserrat', 'sans-serif'],
       },
       colors: {
-        // Centraliziramo brand boje za lakšu promjenu u cijeloj aplikaciji
+        // BOJA 1: Prigušeni akcent (Muted Accent) - Zamjenjuje neon zelenu
+        // Koristi se za ključne podatke, grafove i primarne gumbe, bez "vrištanja"
         brand: {
-          DEFAULT: '#B2BD7E', // Muted Olive
-          dark: '#9ba763',    // Darker Muted Olive
-          glow: 'rgba(178, 189, 126, 0.4)',
+          DEFAULT: '#738794', // Muted Slate/Steel (Prilagodi točnom HEX-u s tvoje slike)
+          dark: '#586a75',
+          glow: 'rgba(115, 135, 148, 0.2)', // Drastično smanjen intenzitet sjene
         },
         orange: {
-          400: '#749C75', // Sage Green
-          500: '#B2BD7E', // Muted Olive
-          600: '#9ba763', // Darker Muted Olive
-          900: '#2A2030', // Very Dark Grape
+          400: '#8ba2b3',
+          500: '#738794', // Pregaženo: Mapirano na Boju 1
+          600: '#586a75',
+          900: '#1a1d21', // Pregaženo: Mapirano na pozadinu
         },
         red: {
-          400: '#6A5D7B', // Dusty Lavender
-          500: '#6A5D7B',
+          400: '#343a40',
+          500: '#343a40',
         },
         zinc: {
-          50: '#ffffff',
-          100: '#ffffff', // Pure White (Main text for max contrast)
-          200: '#f4f0f7', // Light tinted white
-          300: '#e5deeb', 
-          400: '#c5b8d0', // Light Grape (Secondary text)
-          500: '#a392b2', // Mid Grape
-          600: '#9b8ba9', // Muted Grape (Inactive text, ensuring it's light enough to read on dark backgrounds)
-          700: '#6A5D7B', // Dusty Lavender (Hover states, active elements)
-          800: '#5D4A66', // Vintage Grape (Borders, subtle cards)
-          900: '#403247', // Dark Grape (Cards, Sidebars)
-          950: '#2A2030', // Very Dark Grape (Main app background)
+          // BOJA 2: Svijetli tekst (Off-White/Light Gray) - Nije apsolutno bijela radi smanjenja kontrasta
+          50: '#f8f9fa',
+          100: '#e9ecef',
+          200: '#dee2e6',
+          300: '#ced4da',
+
+          // BOJA 3: Srednja površina (Surface/Borders) - Za kartice, tablice i neaktivne elemente
+          400: '#adb5bd',
+          500: '#6c757d',
+          600: '#495057',
+          700: '#343a40', // Hover stanja
+          800: '#212529', // Obrubi kartica
+
+          // BOJA 4: Tamna baza (Deep Base) - Glavna pozadina
+          900: '#1a1d21', // Surface pozadine (Modali)
+          950: '#121417', // Glavna podloga (Prilagodi točnom tamnom HEX-u s tvoje slike)
         }
       },
       animation: {
-        // Dodajemo custom pulsiranje za "Live" trening ili "Connecting" status
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
       boxShadow: {
-        // Definiramo tvoj specifični glow kao utility klasu (Muted Olive boja)
-        'orange-glow': '0 0 15px rgba(178, 189, 126, 0.4)',
+        // Umjesto neonskog sjaja, koristimo suptilnu dubinu
+        'orange-glow': '0 4px 12px rgba(0, 0, 0, 0.3)',
       }
     },
   },
-  plugins: [
-    // Preporuka: dodaj tailwind-scrollbar ako želiš sakriti ružne default scrollbare u Sidebar-u
-    // require('tailwind-scrollbar'),
-  ],
+  plugins: [],
 }
