@@ -24,8 +24,8 @@ export default {
           900: '#1a1d21', // Pregaženo: Mapirano na pozadinu
         },
         red: {
-          400: '#343a40',
-          500: '#343a40',
+          400: '#e57373', // Muted Red 400
+          500: '#ef5350', // Muted Red 500
         },
         zinc: {
           // BOJA 2: Svijetli tekst (Off-White/Light Gray) - Nije apsolutno bijela radi smanjenja kontrasta
