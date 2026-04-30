@@ -205,6 +205,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
       finalWorkouts.push({
         id: `supabase-${sbAct.id}`,
+        actId: `supabase-${sbAct.id}`,
         supabaseId: sbAct.id,
         eventId: eventIdObj,
         separatedEventIds,

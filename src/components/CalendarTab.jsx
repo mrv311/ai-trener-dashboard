@@ -977,7 +977,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       onEditWorkout={setEditingWorkout}
                       onViewActivity={setViewingActivity}
                       onAddWorkoutClick={setSelectedDateForNew}
-                      compact={!isActive}
+                      compact={false}
                     />
                   );
                 })}
