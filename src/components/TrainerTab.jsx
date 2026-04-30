@@ -104,6 +104,50 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   const historyRef = useRef([]);
   useEffect(() => { historyRef.current = workoutHistory; }, [workoutHistory]);
 
+  // --- Centralizirana funkcija za odspajanje svih BLE senzora ---
+  const disconnectAllSensors = useCallback(() => {
+    try {
+      if (hrDeviceRef.current && hrDeviceRef.current.gatt?.connected) {
+        hrDeviceRef.current.gatt.disconnect();
+      }
+    } catch (e) { console.warn('HR disconnect error:', e); }
+    hrDeviceRef.current = null;
+    setIsHrConnected(false);
+    setCurrentHR(0);
+
+    try {
+      if (trainerDeviceRef.current && trainerDeviceRef.current.gatt?.connected) {
+        trainerDeviceRef.current.gatt.disconnect();
+      }
+    } catch (e) { console.warn('Trainer disconnect error:', e); }
+    trainerDeviceRef.current = null;
+    setIsPowerConnected(false);
+    setCurrentPower(0);
+    setFtmsControlChar(null);
+
+    try {
+      if (pmDeviceRef.current && pmDeviceRef.current.gatt?.connected) {
+        pmDeviceRef.current.gatt.disconnect();
+      }
+    } catch (e) { console.warn('PM disconnect error:', e); }
+    pmDeviceRef.current = null;
+    setIsPmConnected(false);
+    setPmPower(0);
+    setPowerMatchEnabled(false);
+    pidController.reset();
+
+    setCurrentCadence(0);
+    crankDataRef.current = { revs: -1, time: -1 };
+    pmCrankDataRef.current = { revs: -1, time: -1 };
+  }, []);
+
+  // Čišćenje BLE konekcija pri unmount-u komponente
+  useEffect(() => {
+    return () => {
+      disconnectAllSensors();
+    };
+  }, [disconnectAllSensors]);
+
   const [liveMetrics, setLiveMetrics] = useState({ np: 0, ifFactor: "0.00", tss: 0, workKj: 0 });
 
   useEffect(() => {
@@ -190,6 +234,32 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   const lastUpdateRef = useRef(Date.now());
   const workerRef = useRef(null);
 
+  // --- Zatvaranje treninga: reset svih lokalnih stateova + poziv onClose propa ---
+  const handleCloseWorkout = useCallback(() => {
+    // Zaustavi worker/timer
+    if (workerRef.current) workerRef.current.postMessage('stop');
+
+    // Odspoji sve senzore
+    disconnectAllSensors();
+
+    // Reset svih lokalnih stanja trenažera
+    setIsPlaying(false);
+    setElapsedTime(0);
+    setWorkoutHistory([]);
+    setIsFinished(false);
+    setShowStopPrompt(false);
+    setSummaryStats(null);
+    setUploadStatus(null);
+    setSaveStatus(null);
+    setErgIntensity(100);
+    setResistanceLevel(30);
+    setControlMode('ERG');
+    setLiveMetrics({ np: 0, ifFactor: "0.00", tss: 0, workKj: 0 });
+
+    // Pozovi parent callback za navigaciju
+    if (onClose) onClose();
+  }, [disconnectAllSensors, onClose]);
+
   // Inicijalizacija Web Workera za precizno mjerenje vremena (zaobilazi pozadinsko usporavanje taba)
   useEffect(() => {
     const workerCode = `
@@ -266,10 +336,11 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
   useEffect(() => {
     const anyPower = (isPmConnected ? pmPower : 0) || (isPowerConnected ? currentPower : 0);
-    if (!isPlaying && !isFinished && !showStopPrompt && anyPower > 10) {
+    // Ne pokreći automatski ako je trening završen ili modal otvoren ili ako je već bilo podataka (stari trening)
+    if (!isPlaying && !isFinished && !showStopPrompt && !summaryStats && anyPower > 10) {
       setIsPlaying(true);
     }
-  }, [currentPower, pmPower, isPlaying, isFinished, showStopPrompt, isPowerConnected, isPmConnected]);
+  }, [currentPower, pmPower, isPlaying, isFinished, showStopPrompt, summaryStats, isPowerConnected, isPmConnected]);
 
   useEffect(() => {
     pidController.reset();
@@ -717,7 +788,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         uploadStatus={uploadStatus}
         setUploadStatus={setUploadStatus}
         saveStatus={saveStatus}
-        handleReset={() => { setIsFinished(false); setUploadStatus(null); setSaveStatus(null); setElapsedTime(0); setWorkoutHistory([]); }}
+        handleReset={handleCloseWorkout}
         handleExportTcx={() => exportToTCX(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja')}
         handleExportFit={() => exportToFIT(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja')}
       />
