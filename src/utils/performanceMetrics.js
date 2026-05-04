@@ -127,3 +127,116 @@ export function calculateVI(np, avgPower) {
   if (!np || !avgPower || avgPower <= 0) return 0;
   return Number((np / avgPower).toFixed(2));
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// eFTP (Estimated FTP) Detection — Single-Workout Analysis
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Finds the peak (maximum) average power over a given duration using an O(n)
+ * sliding window algorithm. No array copies or nested loops are created.
+ *
+ * @param {Array<{timestamp: number, power: number, heartRate: number, cadence: number}>} sensorData
+ *   Array of 1 Hz sensor samples. Each object must contain at least a numeric
+ *   `power` field; missing or falsy values are treated as 0 W.
+ * @param {number} windowSeconds
+ *   Duration of the averaging window in seconds (e.g. 300 for 5 min).
+ * @returns {number|null}
+ *   The peak average power (watts, rounded to nearest integer) for the
+ *   requested duration, or `null` if the recording is shorter than `windowSeconds`.
+ *
+ * @example
+ *   const peak5 = getPeakPowerForDuration(ride, 300);  // 5-min peak
+ *   const peak20 = getPeakPowerForDuration(ride, 1200); // 20-min peak
+ */
+export function getPeakPowerForDuration(sensorData, windowSeconds) {
+  if (
+    !Array.isArray(sensorData) ||
+    sensorData.length < windowSeconds ||
+    windowSeconds <= 0
+  ) {
+    return null;
+  }
+
+  // Seed the window with the first `windowSeconds` samples
+  let windowSum = 0;
+  for (let i = 0; i < windowSeconds; i++) {
+    windowSum += (sensorData[i].power || 0);
+  }
+
+  let maxSum = windowSum;
+
+  // Slide one sample at a time — O(n)
+  for (let i = windowSeconds; i < sensorData.length; i++) {
+    windowSum += (sensorData[i].power || 0);
+    windowSum -= (sensorData[i - windowSeconds].power || 0);
+
+    if (windowSum > maxSum) {
+      maxSum = windowSum;
+    }
+  }
+
+  return Math.round(maxSum / windowSeconds);
+}
+
+/**
+ * Estimates FTP from a single workout using a hybrid approach:
+ *
+ * 1. **CP 2-Parameter Model** — Extracts 5-min and 20-min peak powers,
+ *    computes total work (W = P × t) for each, and solves for the slope
+ *    (Critical Power) of the Work–Time relationship:
+ *
+ *        CP = (W_20 − W_5) / (t_20 − t_5)
+ *
+ * 2. **Classic 95 % Rule** — Takes 95 % of the 20-minute peak power,
+ *    the well-established Allen & Coggan heuristic.
+ *
+ * The final estimate is the **average** of both values, providing a more
+ * robust single-ride eFTP that smooths out the weaknesses of each method.
+ *
+ * @param {Array<{timestamp: number, power: number, heartRate: number, cadence: number}>} sensorData
+ *   Array of 1 Hz sensor samples (same format as `getPeakPowerForDuration`).
+ * @returns {number|null}
+ *   Estimated FTP in watts (integer), or `null` if the recording is shorter
+ *   than 20 minutes (1 200 samples at 1 Hz).
+ *
+ * @example
+ *   const eFTP = estimateFTPFromWorkout(rideData);
+ *   if (eFTP !== null) {
+ *     console.log(`Estimated FTP: ${eFTP} W`);
+ *   }
+ */
+export function estimateFTPFromWorkout(sensorData) {
+  const T5 = 300;   // 5 minutes in seconds
+  const T20 = 1200; // 20 minutes in seconds
+
+  // Guard: need at least 20 minutes of data
+  if (!Array.isArray(sensorData) || sensorData.length < T20) {
+    return null;
+  }
+
+  const peak5 = getPeakPowerForDuration(sensorData, T5);
+  const peak20 = getPeakPowerForDuration(sensorData, T20);
+
+  // Safety check — peaks should never be null given the length guard above,
+  // but defend against corrupted / all-zero data.
+  if (peak5 === null || peak20 === null || peak5 === 0 || peak20 === 0) {
+    return null;
+  }
+
+  // ── CP 2-Parameter Model ──────────────────────────────────────────────
+  // Work (joules) = Power (watts) × Duration (seconds)
+  const work5 = peak5 * T5;
+  const work20 = peak20 * T20;
+
+  // Critical Power = slope of the W–t line through the two points
+  const criticalPower = (work20 - work5) / (T20 - T5);
+
+  // ── Classic 95 % of 20-min Rule ──────────────────────────────────────
+  const ftp95 = peak20 * 0.95;
+
+  // ── Hybrid Average ────────────────────────────────────────────────────
+  const eFTP = Math.round((criticalPower + ftp95) / 2);
+
+  return eFTP;
+}

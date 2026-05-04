@@ -187,7 +187,7 @@ export default function App() {
               />
             )}
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
-            {activeTab === 'progression' && <ProgressionTab workouts={workouts} />}
+            {activeTab === 'progression' && <ProgressionTab workouts={workouts} profile={athleteProfile} setProfile={setAthleteProfile} />}
             {activeTab === 'library' && (
               <LibraryTab
                 ftp={athleteProfile.ftp}
