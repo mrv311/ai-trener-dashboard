@@ -149,12 +149,16 @@ const DROP_PCT = 0.02;
  */
 export function calculateLongitudinalFTP(baseFTP, blockWorkouts) {
   // ── Input validation ────────────────────────────────────────────────────
-  if (!baseFTP || baseFTP <= 0) {
-    return _buildResult(baseFTP || 0, 0, 'hold', 0, 0, 0);
+  // Coerce to number — profile.ftp can arrive as a string from localStorage,
+  // and "275" + 0 = "2750" (string concatenation!) instead of 275.
+  const safeFTP = Number(baseFTP) || 0;
+
+  if (safeFTP <= 0) {
+    return _buildResult(safeFTP, 0, 'hold', 0, 0, 0);
   }
 
   if (!Array.isArray(blockWorkouts) || blockWorkouts.length === 0) {
-    return _buildResult(baseFTP, 0, 'hold', 0, 0, 0);
+    return _buildResult(safeFTP, 0, 'hold', 0, 0, 0);
   }
 
   // ── Single O(n) pass ──────────────────────────────────────────────────
@@ -184,7 +188,7 @@ export function calculateLongitudinalFTP(baseFTP, blockWorkouts) {
 
   // Need at least 2 interval sessions to compute a trend
   if (intervalCount < 2 || sumTargetNP === 0) {
-    return _buildResult(baseFTP, 0, 'hold', 0, 0, intervalCount);
+    return _buildResult(safeFTP, 0, 'hold', 0, 0, intervalCount);
   }
 
   // ── Plan Adherence ────────────────────────────────────────────────────
@@ -229,8 +233,8 @@ export function calculateLongitudinalFTP(baseFTP, blockWorkouts) {
     growthFactor = -DROP_PCT;
   }
 
-  const delta = Math.round(baseFTP * growthFactor);
-  return _buildResult(baseFTP, delta, decision, adherence, efTrend, intervalCount);
+  const delta = Math.round(safeFTP * growthFactor);
+  return _buildResult(safeFTP, delta, decision, adherence, efTrend, intervalCount);
 }
 
 // ── Private helper ──────────────────────────────────────────────────────────

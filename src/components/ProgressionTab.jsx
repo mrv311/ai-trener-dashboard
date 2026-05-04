@@ -69,27 +69,43 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
   //    or the profile FTP actually changes — NOT on every parent re-render.
   //    MUST be declared before handleApplyFTP which depends on it.
   const longitudinalResult = useMemo(() => {
+    const ftp = Number(profile?.ftp) || 0;
+    if (ftp <= 0) return null;
+
     // Build the blockWorkouts summary array from recent completed workouts
     const completedWorkouts = workouts.filter(w => w.isCompleted);
-    if (completedWorkouts.length === 0 || !profile?.ftp) return null;
+    if (completedWorkouts.length === 0) return null;
 
-    // Take the last 21 days (≈3 week block)
-    const threeWeeksAgo = new Date();
-    threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
+    // Look back 30 days for a full training block
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const blockWorkouts = completedWorkouts
-      .filter(w => new Date(w.date) > threeWeeksAgo)
-      .map(w => ({
-        actualNP: w.np || w.average_power || 0,
-        targetNP: w.targetNP || w.np || w.average_power || 0,
-        avgHR: w.average_heartrate || w.avg_hr || 0,
-        duration: (w.duration || 0) * 60,
-        isInterval: !!(w.category && ['Threshold', 'VO2 Max', 'Sweet Spot', 'Anaerobni'].includes(w.category)),
-      }));
+      .filter(w => new Date(w.date) > thirtyDaysAgo)
+      .map(w => {
+        const np = Number(w.np) || Number(w.average_power) || 0;
+        const hr = Number(w.average_heartrate) || Number(w.avg_hr) || 0;
+
+        // Detect interval sessions by intensity:
+        // IF (Intensity Factor) = NP / FTP. Sessions at ≥ 75% FTP
+        // are considered structured intensity work (Sweet Spot+).
+        // Falls back to category label when available.
+        const intensityFactor = ftp > 0 ? np / ftp : 0;
+        const hasIntensityCategory = !!(w.category && ['Threshold', 'VO2 Max', 'Sweet Spot', 'Anaerobni'].includes(w.category));
+        const isInterval = hasIntensityCategory || intensityFactor >= 0.75;
+
+        return {
+          actualNP: np,
+          targetNP: Number(w.targetNP) || np || 0,
+          avgHR: hr,
+          duration: (Number(w.duration) || 0) * 60,
+          isInterval,
+        };
+      });
 
     if (blockWorkouts.length < 2) return null;
 
-    return calculateLongitudinalFTP(profile.ftp, blockWorkouts);
+    return calculateLongitudinalFTP(ftp, blockWorkouts);
   }, [workouts, profile?.ftp]);
 
   // ── Apply detected FTP to profile ───────────────────────────────────────
@@ -246,19 +262,12 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
                 {cooldown.allowed ? (
                   <><ShieldCheck className="w-4 h-4" /> Primijeni eFTP</>
                 ) : (
-                  <><Lock className="w-4 h-4" /> Zaključano</>
+                  <>
+                    <Lock className="w-4 h-4 shrink-0" />
+                    <span>Sljedeća procjena moguća za <span className="text-amber-500/90 tabular-nums">{cooldown.daysRemaining}</span> {cooldown.daysRemaining === 1 ? 'dan' : 'dana'}</span>
+                  </>
                 )}
               </button>
-
-              {/* Cooldown warning — non-intrusive, below the button */}
-              {!cooldown.allowed && (
-                <p className="mt-2.5 text-[11px] text-zinc-600 font-medium text-center flex items-center justify-center gap-1.5">
-                  <Clock className="w-3 h-3 text-zinc-700 shrink-0" />
-                  Sljedeća detekcija moguća za
-                  <span className="text-amber-500/80 font-bold tabular-nums">{cooldown.daysRemaining}</span>
-                  {cooldown.daysRemaining === 1 ? 'dan' : 'dana'}
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -269,7 +278,7 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
             <div className="bg-zinc-950/50 p-2 rounded-xl border border-zinc-800">
               <TrendingUp className="w-5 h-5 text-emerald-400" />
             </div>
-            <span className="text-xs font-black uppercase tracking-widest text-zinc-500">Progresija (3 tjedna)</span>
+            <span className="text-xs font-black uppercase tracking-widest text-zinc-500">Progresija (30 dana)</span>
           </div>
 
           {longitudinalResult ? (
