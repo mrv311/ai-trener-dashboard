@@ -64,23 +64,10 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
     [profile?.lastFtpUpdate]
   );
 
-  // ── Apply detected FTP to profile ───────────────────────────────────────
-  const handleApplyFTP = useCallback(() => {
-    if (!cooldown.allowed || !longitudinalResult || !setProfile) return;
-
-    const newFTP = longitudinalResult.newFTP;
-    if (!newFTP || newFTP <= 0) return;
-
-    setProfile(prev => ({
-      ...prev,
-      ftp: newFTP,
-      lastFtpUpdate: new Date().toISOString(),
-    }));
-  }, [cooldown.allowed, longitudinalResult, setProfile]);
-
   // ── Longitudinal FTP progression (memoized, O(n)) ───────────────────────
   //    useMemo ensures this only recomputes when the workouts array reference
   //    or the profile FTP actually changes — NOT on every parent re-render.
+  //    MUST be declared before handleApplyFTP which depends on it.
   const longitudinalResult = useMemo(() => {
     // Build the blockWorkouts summary array from recent completed workouts
     const completedWorkouts = workouts.filter(w => w.isCompleted);
@@ -104,6 +91,20 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
 
     return calculateLongitudinalFTP(profile.ftp, blockWorkouts);
   }, [workouts, profile?.ftp]);
+
+  // ── Apply detected FTP to profile ───────────────────────────────────────
+  const handleApplyFTP = useCallback(() => {
+    if (!cooldown.allowed || !longitudinalResult || !setProfile) return;
+
+    const newFTP = longitudinalResult.newFTP;
+    if (!newFTP || newFTP <= 0) return;
+
+    setProfile(prev => ({
+      ...prev,
+      ftp: newFTP,
+      lastFtpUpdate: new Date().toISOString(),
+    }));
+  }, [cooldown.allowed, longitudinalResult, setProfile]);
 
   // ── Batch eFTP results summary (memoized) ───────────────────────────────
   const batchSummary = useMemo(() => {
