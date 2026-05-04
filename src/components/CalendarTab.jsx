@@ -145,7 +145,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           }
         }
       }}
-      className={`workout-card-element rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : 'min-h-[100px]'} backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isCurrentMonth === false ? 'opacity-60 saturate-50' : ''} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : 'cursor-pointer'} ${canDrag && !isDragging ? 'hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
+      className={`workout-card-element rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : 'min-h-[100px]'} backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : 'cursor-pointer'} ${canDrag && !isDragging ? 'hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
     >
       <div className={`h-1.5 w-full shrink-0 ${getTopCol(w.statusColor)}`} />
       <div className={`${isDesktop ? (compact ? 'p-1.5' : 'p-3') : 'p-3.5'} flex flex-col justify-between flex-1`}>
