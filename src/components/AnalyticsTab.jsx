@@ -7,7 +7,15 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
   const [wellnessData, setWellnessData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [timeFilter, setTimeFilter] = useState('3M');
+  const [dateRange, setDateRange] = useState(() => {
+    const today = new Date();
+    const pastDate = new Date();
+    pastDate.setMonth(today.getMonth() - 3);
+    return {
+      startDate: pastDate.toISOString().split('T')[0],
+      endDate: today.toISOString().split('T')[0]
+    };
+  });
   const [zoneType, setZoneType] = useState('power');
 
   useEffect(() => {
@@ -23,16 +31,8 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
       try {
         const authString = btoa(`API_KEY:${String(intervalsKey || '').trim()}`);
 
-        const today = new Date();
-        const pastDate = new Date();
-
-        if (timeFilter === '1M') pastDate.setMonth(today.getMonth() - 1);
-        else if (timeFilter === '3M') pastDate.setMonth(today.getMonth() - 3);
-        else if (timeFilter === '6M') pastDate.setMonth(today.getMonth() - 6);
-        else if (timeFilter === '1Y') pastDate.setFullYear(today.getFullYear() - 1);
-
-        const oldest = pastDate.toISOString().split('T')[0];
-        const newest = today.toISOString().split('T')[0];
+        const oldest = dateRange.startDate;
+        const newest = dateRange.endDate;
 
         const [activitiesResponse, wellnessResponse] = await Promise.all([
           fetch(
@@ -66,7 +66,7 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
     };
 
     fetchAnalytics();
-  }, [intervalsId, intervalsKey, timeFilter]);
+  }, [intervalsId, intervalsKey, dateRange]);
 
   // === POPRAVLJENA LOGIKA ZA ZONE SNAGE ===
   const zoneData = useMemo(() => {
@@ -124,10 +124,10 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
       const day = d.getDay() || 7;
       d.setHours(-24 * (day - 1));
 
-      const weekStart = d.toISOString().split('T')[0].substring(5, 10);
+      const weekStart = `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear().toString().substring(2, 4)}.`;
 
       if (!weeksMap[weekStart]) {
-        weeksMap[weekStart] = { name: weekStart, tss: 0, hours: 0, originalDate: d };
+        weeksMap[weekStart] = { name: weekStart, tss: 0, hours: 0, originalDate: new Date(d) };
       }
 
       weeksMap[weekStart].tss += act.icu_training_load || 0;
@@ -150,7 +150,7 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
       .filter(act => act.icu_ftp > 0 && act.start_date_local)
       .map(act => ({
         date: act.start_date_local.substring(0, 10),
-        displayDate: `${act.start_date_local.substring(8, 10)}.${act.start_date_local.substring(5, 7)}.`,
+        displayDate: `${act.start_date_local.substring(8, 10)}.${act.start_date_local.substring(5, 7)}.${act.start_date_local.substring(2, 4)}.`,
         ftp: act.icu_ftp
       }))
       .sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -175,24 +175,22 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
       .filter(w => w.restingHR > 0 || w.hrv > 0)
       .map(w => ({
         date: w.id,
-        displayDate: `${w.id.substring(8, 10)}.${w.id.substring(5, 7)}.`,
+        displayDate: `${w.id.substring(8, 10)}.${w.id.substring(5, 7)}.${w.id.substring(2, 4)}.`,
         rhr: w.restingHR,
         hrv: w.hrv ? Math.round(w.hrv) : null
       }))
       .sort((a, b) => new Date(a.date) - new Date(b.date));
   }, [wellnessData]);
 
-  const FilterButton = ({ label, value }) => (
-    <button
-      onClick={() => setTimeFilter(value)}
-      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all uppercase tracking-wider border shadow-sm ${timeFilter === value
-        ? 'bg-zinc-800 text-zinc-100 border-zinc-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]'
-        : 'bg-zinc-950/50 text-zinc-500 hover:bg-zinc-800 border-zinc-800/80 hover:text-zinc-300'
-        }`}
-    >
-      {label}
-    </button>
-  );
+  const handleQuickFilter = (months) => {
+    const today = new Date();
+    const pastDate = new Date();
+    pastDate.setMonth(today.getMonth() - months);
+    setDateRange({
+      startDate: pastDate.toISOString().split('T')[0],
+      endDate: today.toISOString().split('T')[0]
+    });
+  };
 
   const renderCustomizedLabel = ({ cx, cy, midAngle, outerRadius, percent }) => {
     if (percent < 0.02) return null;
@@ -244,12 +242,32 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-1 md:gap-2 bg-zinc-950/50 p-1 md:p-1.5 rounded-xl border border-zinc-800 w-full sm:w-auto overflow-x-auto shrink-0">
-          <CalendarDays className="w-4 h-4 text-zinc-500 ml-2 mr-1 shrink-0" />
-          <FilterButton label="1 Mjesec" value="1M" />
-          <FilterButton label="3 Mjeseca" value="3M" />
-          <FilterButton label="6 Mjeseci" value="6M" />
-          <FilterButton label="1 Godina" value="1Y" />
+        <div className="flex flex-col sm:flex-row items-center gap-2 bg-zinc-950/50 p-2 rounded-xl border border-zinc-800 shrink-0">
+          <div className="flex items-center gap-1">
+            <button onClick={() => handleQuickFilter(1)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">1M</button>
+            <button onClick={() => handleQuickFilter(3)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">3M</button>
+            <button onClick={() => handleQuickFilter(6)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">6M</button>
+            <button onClick={() => handleQuickFilter(12)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">1Y</button>
+          </div>
+          <div className="hidden sm:block w-px h-6 bg-zinc-800"></div>
+          <div className="flex items-center gap-2">
+            <CalendarDays className="w-4 h-4 text-zinc-500 shrink-0 hidden sm:block" />
+            <input
+              type="date"
+              value={dateRange.startDate}
+              onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+              style={{ colorScheme: 'dark' }}
+              className="bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-orange-500 transition-colors cursor-pointer"
+            />
+            <span className="text-zinc-500 text-xs font-bold">-</span>
+            <input
+              type="date"
+              value={dateRange.endDate}
+              onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+              style={{ colorScheme: 'dark' }}
+              className="bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-orange-500 transition-colors cursor-pointer"
+            />
+          </div>
         </div>
       </div>
 
