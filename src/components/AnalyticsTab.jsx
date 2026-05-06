@@ -4,6 +4,7 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as
 
 export default function AnalyticsTab({ intervalsId, intervalsKey }) {
   const [activities, setActivities] = useState([]);
+  const [wellnessData, setWellnessData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [timeFilter, setTimeFilter] = useState('3M');
@@ -33,31 +34,30 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
         const oldest = pastDate.toISOString().split('T')[0];
         const newest = today.toISOString().split('T')[0];
 
-        const response = await fetch(
-          `https://intervals.icu/api/v1/athlete/${String(intervalsId || '').trim()}/activities?oldest=${oldest}&newest=${newest}`,
-          {
-            headers: {
-              'Authorization': `Basic ${authString}`,
-              'Accept': 'application/json'
-            }
-          }
-        );
+        const [activitiesResponse, wellnessResponse] = await Promise.all([
+          fetch(
+            `https://intervals.icu/api/v1/athlete/${String(intervalsId || '').trim()}/activities?oldest=${oldest}&newest=${newest}`,
+            { headers: { 'Authorization': `Basic ${authString}`, 'Accept': 'application/json' } }
+          ),
+          fetch(
+            `https://intervals.icu/api/v1/athlete/${String(intervalsId || '').trim()}/wellness?oldest=${oldest}&newest=${newest}`,
+            { headers: { 'Authorization': `Basic ${authString}`, 'Accept': 'application/json' } }
+          )
+        ]);
 
-        if (!response.ok) throw new Error("Nije moguće preuzeti vožnje za analitiku.");
+        if (!activitiesResponse.ok) throw new Error("Nije moguće preuzeti vožnje za analitiku.");
+        if (!wellnessResponse.ok) throw new Error("Nije moguće preuzeti wellness podatke.");
 
-        const data = await response.json();
+        const data = await activitiesResponse.json();
+        const wData = await wellnessResponse.json();
 
         const validActivities = data.filter(
           act => (act.type === 'Ride' || act.type === 'VirtualRide') && act.icu_training_load > 0
         );
 
         setActivities(validActivities);
+        setWellnessData(wData);
 
-        // Debug - možeš obrisati kasnije
-        if (validActivities.length > 0) {
-          console.log('Prva aktivnost - power zones:', validActivities[0]?.icu_zone_times?.slice(0, 3));
-          console.log('Prva aktivnost - HR zones:', validActivities[0]?.icu_hr_zone_times?.slice(0, 3));
-        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -168,14 +168,27 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
     return uniqueData;
   }, [activities]);
 
+  const wellnessChartData = useMemo(() => {
+    if (!wellnessData.length) return [];
+
+    return wellnessData
+      .filter(w => w.restingHR > 0 || w.hrv > 0)
+      .map(w => ({
+        date: w.id,
+        displayDate: `${w.id.substring(8, 10)}.${w.id.substring(5, 7)}.`,
+        rhr: w.restingHR,
+        hrv: w.hrv ? Math.round(w.hrv) : null
+      }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+  }, [wellnessData]);
+
   const FilterButton = ({ label, value }) => (
     <button
       onClick={() => setTimeFilter(value)}
-      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all uppercase tracking-wider border shadow-sm ${
-        timeFilter === value
-          ? 'bg-zinc-800 text-zinc-100 border-zinc-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]'
-          : 'bg-zinc-950/50 text-zinc-500 hover:bg-zinc-800 border-zinc-800/80 hover:text-zinc-300'
-      }`}
+      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all uppercase tracking-wider border shadow-sm ${timeFilter === value
+        ? 'bg-zinc-800 text-zinc-100 border-zinc-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]'
+        : 'bg-zinc-950/50 text-zinc-500 hover:bg-zinc-800 border-zinc-800/80 hover:text-zinc-300'
+        }`}
     >
       {label}
     </button>
@@ -264,17 +277,15 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
               <div className="flex items-center bg-zinc-950/50 rounded-lg p-1 border border-zinc-800">
                 <button
                   onClick={() => setZoneType('power')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                    zoneType === 'power' ? 'bg-zinc-800 text-orange-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]' : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors ${zoneType === 'power' ? 'bg-zinc-800 text-orange-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]' : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
                 >
                   <Zap className="w-3 h-3" /> Snaga
                 </button>
                 <button
                   onClick={() => setZoneType('hr')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                    zoneType === 'hr' ? 'bg-zinc-800 text-rose-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]' : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors ${zoneType === 'hr' ? 'bg-zinc-800 text-rose-500 shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]' : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
                 >
                   <Heart className="w-3 h-3" /> Puls
                 </button>
@@ -305,7 +316,7 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <RechartsTooltip 
+                    <RechartsTooltip
                       contentStyle={{ borderRadius: '12px', backgroundColor: 'rgba(24,24,27,0.85)', backdropFilter: 'blur(8px)', border: '1px solid #3f3f46', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}
                       itemStyle={{ color: '#f4f4f5', fontWeight: 'bold' }}
                     />
@@ -321,7 +332,7 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 text-sm italic text-center px-4 bg-zinc-950/40 rounded-xl border border-zinc-800 mt-4">
                 <p>Nema zabilježenih podataka o zonama {zoneType === 'power' ? 'snage' : 'pulsa'} za odabrani period.</p>
-                
+
                 {zoneType === 'power' && (
                   <p className="text-amber-500/80 text-xs mt-3">
                     Napomena: Neke vožnje nemaju power meter ili nisu imale postavljen FTP.
@@ -352,8 +363,8 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
                   />
                   <YAxis yAxisId="left" orientation="left" tick={{ fontSize: 11, fill: '#a1a1aa' }} axisLine={false} tickLine={false} />
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#a1a1aa' }} axisLine={false} tickLine={false} />
-                  <RechartsTooltip 
-                    cursor={{ fill: 'rgba(255,255,255,0.05)' }} 
+                  <RechartsTooltip
+                    cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                     contentStyle={{ borderRadius: '12px', backgroundColor: 'rgba(24,24,27,0.85)', backdropFilter: 'blur(8px)', border: '1px solid #3f3f46', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}
                     itemStyle={{ color: '#f4f4f5', fontWeight: 'bold' }}
                   />
@@ -410,6 +421,81 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
             ) : (
               <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm italic text-center px-4">
                 Nema zabilježenih podataka o snazi ili promjenama FTP-a u odabranom periodu.
+              </div>
+            )}
+          </div>
+
+          {/* Wellness Podaci (RHR & HRV) */}
+          <div className="bg-zinc-900/40 backdrop-blur-md rounded-2xl shadow-xl border border-zinc-800/80 p-4 md:p-6 flex flex-col lg:col-span-3 relative h-[300px] md:h-[350px]">
+            <h3 className="text-zinc-100 font-bold mb-1 flex items-center gap-2">
+              <Heart className="w-4 h-4 text-rose-500" /> Wellness Podaci (RHR & HRV)
+            </h3>
+            <p className="text-[11px] text-zinc-500 font-medium mb-6 uppercase tracking-widest">
+              Trendovi pulsa u mirovanju i varijabilnosti srčanog ritma
+            </p>
+
+            {wellnessChartData.length > 0 ? (
+              <div className="flex-1 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={wellnessChartData} margin={{ top: 10, right: 30, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3f3f46" />
+                    <XAxis
+                      dataKey="displayDate"
+                      tick={{ fontSize: 11, fill: '#a1a1aa', fontWeight: 600 }}
+                      tickMargin={10}
+                      axisLine={false}
+                      tickLine={false}
+                      minTickGap={30}
+                    />
+                    <YAxis
+                      yAxisId="left"
+                      orientation="left"
+                      domain={['dataMin - 5', 'dataMax + 5']}
+                      tick={{ fontSize: 11, fill: '#a1a1aa' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      domain={['auto', 'auto']}
+                      tick={{ fontSize: 11, fill: '#a1a1aa' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{ borderRadius: '12px', backgroundColor: 'rgba(24,24,27,0.85)', backdropFilter: 'blur(8px)', border: '1px solid #3f3f46', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}
+                      itemStyle={{ fontWeight: 'bold' }}
+                    />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px', color: '#a1a1aa' }} />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="rhr"
+                      name="RHR (bpm)"
+                      stroke="#f43f5e"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 5, fill: '#f43f5e', strokeWidth: 0 }}
+                      connectNulls
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="hrv"
+                      name="HRV (ms)"
+                      stroke="#38bdf8"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 5, fill: '#38bdf8', strokeWidth: 0 }}
+                      connectNulls
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm italic text-center px-4">
+                Nema zabilježenih wellness podataka za odabrani period.
               </div>
             )}
           </div>
