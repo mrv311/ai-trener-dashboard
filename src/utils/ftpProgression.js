@@ -164,8 +164,8 @@ export function calculateLongitudinalFTP(baseFTP, blockWorkouts) {
   // ── Single O(n) pass ──────────────────────────────────────────────────
   // Collect interval-only workouts and their metrics in one sweep.
   const intervals = [];
-  let sumActualNP = 0;
-  let sumTargetNP = 0;
+  let totalAdherenceScore = 0;
+  let validAdherenceCount = 0;
 
   for (let i = 0; i < blockWorkouts.length; i++) {
     const w = blockWorkouts[i];
@@ -176,8 +176,12 @@ export function calculateLongitudinalFTP(baseFTP, blockWorkouts) {
     const target = w.targetNP || 0;
     const hr = w.avgHR || 0;
 
-    sumActualNP += actual;
-    sumTargetNP += target;
+    if (target > 0) {
+      // Cap individual adherence at 1.2 (120%) to prevent over-performing from skewing
+      const score = Math.min(actual / target, 1.2);
+      totalAdherenceScore += score;
+      validAdherenceCount++;
+    }
 
     // EF = NP / HR  (only meaningful when HR > 0)
     const ef = hr > 0 ? actual / hr : 0;
@@ -187,12 +191,12 @@ export function calculateLongitudinalFTP(baseFTP, blockWorkouts) {
   const intervalCount = intervals.length;
 
   // Need at least 2 interval sessions to compute a trend
-  if (intervalCount < 2 || sumTargetNP === 0) {
+  if (intervalCount < 2) {
     return _buildResult(safeFTP, 0, 'hold', 0, 0, intervalCount);
   }
 
   // ── Plan Adherence ────────────────────────────────────────────────────
-  const adherence = sumActualNP / sumTargetNP;
+  const adherence = validAdherenceCount > 0 ? (totalAdherenceScore / validAdherenceCount) : 1;
 
   // ── EF Trend (first half vs second half) ──────────────────────────────
   const midpoint = Math.floor(intervalCount / 2);

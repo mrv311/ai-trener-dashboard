@@ -96,7 +96,7 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
 
         return {
           actualNP: np,
-          targetNP: Number(w.targetNP) || np || 0,
+          targetNP: Number(w.targetNP) || 0,
           avgHR: hr,
           duration: (Number(w.duration) || 0) * 60,
           isInterval,
