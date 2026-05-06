@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Loader2, BarChart2, PieChart as PieChartIcon, Activity, CalendarDays, Zap, Heart, TrendingUp } from 'lucide-react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area } from 'recharts';
 
 export default function AnalyticsTab({ intervalsId, intervalsKey }) {
   const [activities, setActivities] = useState([]);
@@ -388,8 +388,14 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
             {ftpData.length > 0 ? (
               <div className="flex-1 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={ftpData} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3f3f46" />
+                  <AreaChart data={ftpData} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorFtp" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ea580c" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#ea580c" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3f3f46" opacity={0.5} />
                     <XAxis
                       dataKey="displayDate"
                       tick={{ fontSize: 11, fill: '#a1a1aa', fontWeight: 600 }}
@@ -404,18 +410,18 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <RechartsTooltip content={<CustomFtpTooltip />} cursor={{ stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '4 4' }} />
-                    <Line
+                    <RechartsTooltip content={<CustomFtpTooltip />} cursor={{ stroke: '#f59e0b', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                    <Area
                       type="stepAfter"
                       dataKey="ftp"
                       name="FTP (W)"
                       stroke="#ea580c"
                       strokeWidth={3}
-                      dot={{ r: 4, fill: '#18181b', stroke: '#ea580c', strokeWidth: 2 }}
-                      activeDot={{ r: 7, fill: '#ea580c', strokeWidth: 0 }}
-                      style={{ filter: 'drop-shadow(0 0 5px rgba(234,88,12,0.6))' }}
+                      fillOpacity={1}
+                      fill="url(#colorFtp)"
+                      activeDot={{ r: 6, fill: '#ea580c', stroke: '#18181b', strokeWidth: 2 }}
                     />
-                  </LineChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             ) : (
