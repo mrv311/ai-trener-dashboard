@@ -163,39 +163,42 @@ export function calculateLongitudinalFTP(baseFTP, blockWorkouts) {
 
   // ── Single O(n) pass ──────────────────────────────────────────────────
   // Collect interval-only workouts and their metrics in one sweep.
-  const intervals = [];
+  const validEFWorkouts = [];
   let totalAdherenceScore = 0;
   let validAdherenceCount = 0;
 
   for (let i = 0; i < blockWorkouts.length; i++) {
     const w = blockWorkouts[i];
-    if (!w.isInterval) continue;
 
     // Guard against invalid / missing fields
     const actual = w.actualNP || 0;
     const target = w.targetNP || 0;
     const hr = w.avgHR || 0;
 
-    // Only score adherence if BOTH target and actual power exist.
-    // This prevents workouts with missing power data (actual === 0) from dragging adherence down to 0.
-    if (target > 0 && actual > 0) {
-      // Cap individual adherence at 1.2 (120%) to prevent over-performing from skewing
-      const score = Math.min(actual / target, 1.2);
-      totalAdherenceScore += score;
-      validAdherenceCount++;
+    if (w.isInterval) {
+      // Only score adherence if BOTH target and actual power exist.
+      // This prevents workouts with missing power data (actual === 0) from dragging adherence down to 0.
+      if (target > 0 && actual > 0) {
+        // Cap individual adherence at 1.2 (120%) to prevent over-performing from skewing
+        const score = Math.min(actual / target, 1.2);
+        totalAdherenceScore += score;
+        validAdherenceCount++;
+      }
     }
 
-    // EF = NP / HR  (only meaningful when HR > 0)
-    const ef = hr > 0 ? actual / hr : 0;
-    intervals.push(ef);
+    // EF = NP / HR  (only meaningful when HR > 0 and NP > 0)
+    if (hr > 0 && actual > 0) {
+      const ef = actual / hr;
+      validEFWorkouts.push(ef);
+    }
   }
 
-  const intervalCount = intervals.length;
+  const intervalCount = validEFWorkouts.length;
 
 
-  // Need at least 2 interval sessions to compute a trend
+  // Need at least 2 workouts with valid HR and NP to compute a trend
   if (intervalCount < 2) {
-    return _buildResult(safeFTP, 0, 'hold', 0, 0, intervalCount);
+    return _buildResult(safeFTP, 0, 'hold', 0, 1, intervalCount);
   }
 
   // ── Plan Adherence ────────────────────────────────────────────────────
@@ -209,18 +212,20 @@ export function calculateLongitudinalFTP(baseFTP, blockWorkouts) {
 
   // First half: indices [0, midpoint)
   for (let i = 0; i < midpoint; i++) {
-    efSumFirst += intervals[i];
+    efSumFirst += validEFWorkouts[i];
   }
   // Second half: indices [midpoint, end)
   for (let i = midpoint; i < intervalCount; i++) {
-    efSumSecond += intervals[i];
+    efSumSecond += validEFWorkouts[i];
   }
 
   const efMeanFirst = efSumFirst / midpoint;
   const efMeanSecond = efSumSecond / (intervalCount - midpoint);
 
-  // Protect against zero-division (all-zero HR data)
-  const efTrend = efMeanFirst > 0 ? efMeanSecond / efMeanFirst : 1;
+  // First half (indices 0 to midpoint-1) are the NEWEST workouts (array is descending).
+  // Second half (indices midpoint to end) are the OLDEST workouts.
+  // We want efTrend = NEWEST / OLDEST to see if efficiency is improving.
+  const efTrend = efMeanSecond > 0 ? efMeanFirst / efMeanSecond : 1;
 
   // ── Decision Matrix ───────────────────────────────────────────────────
   let decision = 'hold';
