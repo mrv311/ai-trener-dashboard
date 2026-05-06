@@ -176,7 +176,9 @@ export function calculateLongitudinalFTP(baseFTP, blockWorkouts) {
     const target = w.targetNP || 0;
     const hr = w.avgHR || 0;
 
-    if (target > 0) {
+    // Only score adherence if BOTH target and actual power exist.
+    // This prevents workouts with missing power data (actual === 0) from dragging adherence down to 0.
+    if (target > 0 && actual > 0) {
       // Cap individual adherence at 1.2 (120%) to prevent over-performing from skewing
       const score = Math.min(actual / target, 1.2);
       totalAdherenceScore += score;
@@ -189,6 +191,7 @@ export function calculateLongitudinalFTP(baseFTP, blockWorkouts) {
   }
 
   const intervalCount = intervals.length;
+
 
   // Need at least 2 interval sessions to compute a trend
   if (intervalCount < 2) {
