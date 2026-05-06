@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { fetchIntervalsData, updateEventDate, updateEventDetails } from '../services/intervalsApi';
 import { supabase } from '../services/supabaseClient';
-import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
+import { parseWorkoutDoc, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
 
 export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError } = {}) {
   const [rawActivities, setRawActivities] = useState([]);
@@ -249,7 +249,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         try {
           // parse intervals code to extract difficulty
           const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
-          const parsed = parseIntervalsCode(pairedEvent.workout_doc, ftp);
+          const parsed = parseWorkoutDoc(pairedEvent.workout_doc, ftp);
           if (parsed && parsed.allSteps && parsed.allSteps.length > 0) {
             actCategory = categorizeWorkout(parsed.allSteps);
             diffScore = calculateCategoryDifficulty(parsed.allSteps, actCategory);
@@ -372,7 +372,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         try {
           const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
           const docToParse = workoutDoc || act.description;
-          const parsed = parseIntervalsCode(docToParse, ftp);
+          const parsed = parseWorkoutDoc(docToParse, ftp);
           if (parsed && parsed.allSteps && parsed.allSteps.length > 0) {
             actCategory = categorizeWorkout(parsed.allSteps);
             diffScore = calculateCategoryDifficulty(parsed.allSteps, actCategory);
@@ -416,7 +416,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         try {
           const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
           const docToParse = ev.workout_doc || ev.description;
-          const parsed = parseIntervalsCode(docToParse, ftp);
+          const parsed = parseWorkoutDoc(docToParse, ftp);
           if (parsed && parsed.allSteps && parsed.allSteps.length > 0) {
             actCategory = categorizeWorkout(parsed.allSteps);
             diffScore = calculateCategoryDifficulty(parsed.allSteps, actCategory);

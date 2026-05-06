@@ -274,7 +274,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
           if (wattsStream.length > 0 || hrStream.length > 0) {
             intervalsSuccess = true;
             if (!mounted) return;
-            
+
             setDataSource('intervals');
 
             let maxP = 0;
@@ -444,7 +444,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
       try {
         const storedProfile = JSON.parse(localStorage.getItem('ai_trener_profile') || '{}');
         weightKg = storedProfile.weight || null;
-      } catch (e) {}
+      } catch (e) { }
 
       // Spremi u Supabase
       const activityData = {
@@ -520,7 +520,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
       // Samo Supabase aktivnosti se mogu brisati
       if (activity.isSupabase && activity.supabaseId) {
         console.log('[ActivityDetailModal] Brišem Supabase aktivnost ID:', activity.supabaseId);
-        
+
         const { error } = await supabase
           .from('completed_activities')
           .delete()
@@ -830,6 +830,25 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-800 pb-2">Kategorizacija</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center shadow-inner">
+                  <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">Zona fokusa</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-lg font-black text-zinc-100">{activity.category || 'N/A'}</span>
+                  </div>
+                </div>
+                <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center shadow-inner">
+                  <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">Težina (Score)</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-black text-orange-400">{activity.difficulty_score ? activity.difficulty_score.toFixed(1) : '-'}</span>
+                    <span className="text-xs text-zinc-500 font-medium">/ 10</span>
+                  </div>
+                </div>
               </div>
             </div>
 

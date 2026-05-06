@@ -226,13 +226,13 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               {w.isSupabase && w.workout_source && (
                 <span className="ml-1.5 inline-flex items-center bg-violet-500/10 text-violet-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-violet-500/20">
                   {w.workout_source === 'calendar' ? '📅 Kalendar' :
-                   w.workout_source === 'library' ? '📚 Knjižnica' :
-                   w.workout_source === 'free_ride' ? '🚴 Slobodno' :
-                   w.workout_source === 'garmin' ? '🟢 Garmin' :
-                   w.workout_source === 'strava' ? '🟠 Strava' :
-                   w.workout_source === 'wahoo' ? '🔵 Wahoo' :
-                   w.workout_source === 'external' ? '🌐 Vanjski' :
-                   w.workout_source}
+                    w.workout_source === 'library' ? '📚 Knjižnica' :
+                      w.workout_source === 'free_ride' ? '🚴 Slobodno' :
+                        w.workout_source === 'garmin' ? '🟢 Garmin' :
+                          w.workout_source === 'strava' ? '🟠 Strava' :
+                            w.workout_source === 'wahoo' ? '🔵 Wahoo' :
+                              w.workout_source === 'external' ? '🌐 Vanjski' :
+                                w.workout_source}
                 </span>
               )}
             </div>
@@ -251,12 +251,11 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                       </>
                     )}
                     {w.plannedTss > 0 && w.tss > 0 && (
-                      <span className={`text-[9px] font-black ${
-                        w.statusColor === 'green' ? 'text-emerald-400' :
-                        w.statusColor === 'yellow' ? 'text-amber-400' :
-                        w.statusColor === 'red' ? 'text-rose-400' :
-                        'text-zinc-400'
-                      }`}>
+                      <span className={`text-[9px] font-black ${w.statusColor === 'green' ? 'text-emerald-400' :
+                          w.statusColor === 'yellow' ? 'text-amber-400' :
+                            w.statusColor === 'red' ? 'text-rose-400' :
+                              'text-zinc-400'
+                        }`}>
                         {Math.round((w.tss / w.plannedTss) * 100)}%
                       </span>
                     )}
@@ -271,6 +270,12 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               </div>
               {w.intervalDescription && (
                 <span className="text-[10px] text-zinc-400/80 leading-tight line-clamp-1 italic">{w.intervalDescription}</span>
+              )}
+              {w.category && w.difficulty_score && (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="bg-zinc-800 text-zinc-300 text-[9px] font-bold px-1.5 py-0.5 rounded border border-zinc-700">{w.category}</span>
+                  <span className="text-orange-400 text-[10px] font-black">{w.difficulty_score.toFixed(1)}</span>
+                </div>
               )}
             </div>
             {/* Graph */}
@@ -294,7 +299,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
     const dayNames = ["PON", "UTO", "SRI", "ČET", "PET", "SUB", "NED"];
     const dayOfWeek = dayNames[(new Date(dObj.dateStr).getDay() + 6) % 7];
     return (
-      <div 
+      <div
         className={`p-4 flex flex-col cursor-pointer bg-zinc-900/60 ${isTdy ? 'border-l-4 border-l-orange-500 shadow-[inset_4px_0_10px_rgba(249,115,22,0.1)]' : ''}`}
         onClick={(e) => {
           if (e.target.closest('.workout-card-element')) return;
@@ -484,26 +489,26 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     });
   }, [currentDate]);
 
-  const prevWeek    = useMemo(() => buildWeek(-1), [buildWeek]);
-  const currentWeek = useMemo(() => buildWeek(0),  [buildWeek]);
-  const nextWeek    = useMemo(() => buildWeek(1),  [buildWeek]);
+  const prevWeek = useMemo(() => buildWeek(-1), [buildWeek]);
+  const currentWeek = useMemo(() => buildWeek(0), [buildWeek]);
+  const nextWeek = useMemo(() => buildWeek(1), [buildWeek]);
 
   const threeWeeks = [
-    { days: prevWeek,    isActive: false },
-    { days: currentWeek, isActive: true  },
-    { days: nextWeek,    isActive: false },
+    { days: prevWeek, isActive: false },
+    { days: currentWeek, isActive: true },
+    { days: nextWeek, isActive: false },
   ];
 
   // Month picker sync — use the month of Monday of current week
   const weekStartMonth = currentWeek[0].month;
-  const weekStartYear  = currentWeek[0].year;
+  const weekStartYear = currentWeek[0].year;
 
   // Header label: month(s) and year of the active week
   const headerLabel = useMemo(() => {
     const start = currentWeek[0];
-    const end   = currentWeek[6];
-    const mn = ["siječnja","veljače","ožujka","travnja","svibnja","lipnja","srpnja","kolovoza","rujna","listopada","studenog","prosinca"];
-    const mnKratki = ["Sij","Velj","Ožu","Tra","Svi","Lip","Srp","Kol","Ruj","Lis","Stu","Pro"];
+    const end = currentWeek[6];
+    const mn = ["siječnja", "veljače", "ožujka", "travnja", "svibnja", "lipnja", "srpnja", "kolovoza", "rujna", "listopada", "studenog", "prosinca"];
+    const mnKratki = ["Sij", "Velj", "Ožu", "Tra", "Svi", "Lip", "Srp", "Kol", "Ruj", "Lis", "Stu", "Pro"];
 
     if (start.month === end.month) {
       // Isti mjesec: "21. – 27. travnja 2026"
@@ -641,7 +646,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     try {
       const text = await file.text();
       const parsed = await parseWorkoutFile(text, file.name);
-      
+
       const newWorkout = {
         id: `local-${Date.now()}`,
         date: selectedDateForNew,
@@ -657,7 +662,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         type: 'ride',
         workout_doc: parsed.steps
       };
-      
+
       setSelectedDateForNew(null);
       setEditingWorkout(newWorkout);
     } catch (err) {
@@ -693,8 +698,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               <XCircle className="w-5 h-5" />
             </button>
             <h2 className="text-xl font-bold text-zinc-100 mb-2">Novi Trening</h2>
-            
-            <button 
+
+            <button
               onClick={handleManualCreate}
               className="flex items-center gap-4 w-full p-4 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700 hover:border-orange-500/50 transition-all group"
             >
@@ -707,7 +712,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               </div>
             </button>
 
-            <button 
+            <button
               onClick={() => fileInputRef.current?.click()}
               className="flex items-center gap-4 w-full p-4 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700 hover:border-sky-500/50 transition-all group"
             >
@@ -719,12 +724,12 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                 <span className="text-xs text-zinc-500">Podržani formati: .ZWO, .ERG</span>
               </div>
             </button>
-            <input 
-              type="file" 
-              accept=".zwo,.erg" 
-              ref={fileInputRef} 
-              style={{display: 'none'}} 
-              onChange={handleFileUpload} 
+            <input
+              type="file"
+              accept=".zwo,.erg"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleFileUpload}
             />
           </div>
         </div>
@@ -783,7 +788,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
               {/* Day headers */}
               <div className="grid grid-cols-7 mb-1">
-                {["Po","Ut","Sr","Če","Pe","Su","Ne"].map(d => (
+                {["Po", "Ut", "Sr", "Če", "Pe", "Su", "Ne"].map(d => (
                   <div key={d} className="text-center text-[10px] font-bold text-zinc-500 uppercase py-1">{d}</div>
                 ))}
               </div>
@@ -890,8 +895,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             let aT = 0; let pT = 0; let aD = 0; let pD = 0;
             // Week label: date range
             const wStart = days[0];
-            const wEnd   = days[6];
-            const mn = ["Sij","Velj","Ožu","Tra","Svi","Lip","Srp","Kol","Ruj","Lis","Stu","Pro"];
+            const wEnd = days[6];
+            const mn = ["Sij", "Velj", "Ožu", "Tra", "Svi", "Lip", "Srp", "Kol", "Ruj", "Lis", "Stu", "Pro"];
             const weekRangeLabel = wStart.month === wEnd.month
               ? `${wStart.day}–${wEnd.day} ${mn[wStart.month]}`
               : `${wStart.day} ${mn[wStart.month]} – ${wEnd.day} ${mn[wEnd.month]}`;
@@ -926,13 +931,13 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             const getTsbColor = (tsb) => {
               if (tsb == null) return 'text-zinc-600';
               if (tsb > 25) return 'text-amber-400';
-              if (tsb >= 5)  return 'text-emerald-400';
+              if (tsb >= 5) return 'text-emerald-400';
               if (tsb >= -10) return 'text-zinc-400';
               return 'text-rose-400';
             };
             const getRampColor = (rr) => {
               if (rr == null) return 'text-zinc-600';
-              if (rr > 8)  return 'text-orange-400';  // agresivan ramp — rizik
+              if (rr > 8) return 'text-orange-400';  // agresivan ramp — rizik
               if (rr >= 3) return 'text-emerald-400'; // optimalan ramp
               if (rr >= 0) return 'text-zinc-400';    // umjeren / neutralan
               if (rr >= -5) return 'text-sky-400';    // lagani taper

@@ -104,6 +104,22 @@ function stepsToTextLines(steps, indent = '') {
   return lines;
 }
 
+export const parseWorkoutDoc = (workoutDoc, ftp = 200) => {
+  if (!workoutDoc) return null;
+  if (Array.isArray(workoutDoc)) {
+    const codeStr = stepsToTextLines(workoutDoc).join('\n');
+    return parseIntervalsCode(codeStr, ftp);
+  }
+  if (typeof workoutDoc === 'string') {
+    return parseIntervalsCode(workoutDoc, ftp);
+  }
+  if (workoutDoc.steps && Array.isArray(workoutDoc.steps)) {
+    const codeStr = stepsToTextLines(workoutDoc.steps).join('\n');
+    return parseIntervalsCode(codeStr, ftp);
+  }
+  return null;
+};
+
 export const parseIntervalsCode = (code, ftp = 200) => {
   if (!code) return { duration: 0, tss: 0, np: 0, blocks: [], allSteps: [], zones: { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, z7: 0 } };
 
