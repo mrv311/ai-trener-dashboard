@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart,
   User, Loader2, Monitor, LogOut, Link as LinkIcon,
-  MoreHorizontal, X, Database, TrendingUp, ClipboardList
+  MoreHorizontal, X, Database, TrendingUp, ClipboardList, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 
 import CalendarTab from './components/CalendarTab';
@@ -39,6 +39,7 @@ const TABS = {
 export default function App() {
   const [activeTab, setActiveTab] = useState('calendar');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useLocalStorage('sidebarCollapsed', false);
   const [intervalsId, setIntervalsId] = useLocalStorage('intervalsId', '');
   const [intervalsKey, setIntervalsKey] = useLocalStorage('intervalsKey', '');
 
@@ -80,15 +81,36 @@ export default function App() {
     <div className="flex h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-orange-500/30">
 
       {/* SIDEBAR (Desktop) */}
-      <div className="hidden md:flex w-64 bg-zinc-900/60 backdrop-blur-xl border-r border-zinc-800/80 flex-col shadow-2xl z-10 shrink-0">
-        <div className="h-16 flex items-center px-6 border-b border-zinc-800/80">
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-1.5 rounded-lg mr-3 shadow-[0_0_15px_rgba(249,115,22,0.4)]">
-            <Activity className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-bold text-lg tracking-tight text-zinc-100 drop-shadow-sm">Make it Green!</span>
+      <div className={`hidden md:flex bg-zinc-900/60 backdrop-blur-xl border-r border-zinc-800/80 flex-col shadow-2xl z-10 shrink-0 transition-all duration-300 ease-in-out relative ${isSidebarCollapsed ? 'w-[72px]' : 'w-64'}`}>
+        <div className={`h-16 flex items-center border-b border-zinc-800/80 ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
+          {!isSidebarCollapsed ? (
+            <>
+              <div className="flex items-center">
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-[0_0_15px_rgba(249,115,22,0.4)] flex items-center justify-center p-1.5 mr-3">
+                  <Activity className="w-5 h-5 text-white" />
+                </div>
+                <span className="font-bold text-lg tracking-tight text-zinc-100 drop-shadow-sm whitespace-nowrap">Make it Green!</span>
+              </div>
+              <button
+                onClick={() => setIsSidebarCollapsed(true)}
+                className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                title="Sažmi izbornik"
+              >
+                <PanelLeftClose className="w-5 h-5" />
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setIsSidebarCollapsed(false)}
+              className="text-zinc-400 hover:text-zinc-200 transition-colors flex items-center justify-center w-full h-full"
+              title="Proširi izbornik"
+            >
+              <PanelLeftOpen className="w-6 h-6" />
+            </button>
+          )}
         </div>
 
-        <nav className="mt-6 flex-1 px-3 space-y-2">
+        <nav className="mt-6 flex-1 px-3 space-y-2 overflow-y-auto hide-scrollbar">
           {['calendar', 'library', 'trainer', 'history', 'fitness', 'progression', 'power', 'analytics', 'settings', 'profile'].map(tabId => (
             <NavItem
               key={tabId}
@@ -96,6 +118,7 @@ export default function App() {
               label={TABS[tabId].label.split(' ')[0]} // Kraći labeli za sidebar
               active={activeTab === tabId}
               onClick={() => handleTabChange(tabId)}
+              collapsed={isSidebarCollapsed}
             />
           ))}
         </nav>
@@ -103,29 +126,40 @@ export default function App() {
         <div className="p-3 border-t border-zinc-800/80 mt-auto flex flex-col gap-2">
 
           {/* User Profile Banner */}
-          <div className="flex items-center gap-3 px-4 py-2 mb-1 bg-zinc-900/50 rounded-xl border border-zinc-800/50">
-            <div className="bg-gradient-to-br from-orange-400 to-orange-600 text-white rounded-full w-9 h-9 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(249,115,22,0.3)] shrink-0">
-              {(athleteProfile.username || 'K').charAt(0).toUpperCase()}
+          {!isSidebarCollapsed ? (
+            <div className="flex items-center gap-3 px-4 py-2 mb-1 bg-zinc-900/50 rounded-xl border border-zinc-800/50">
+              <div className="bg-gradient-to-br from-orange-400 to-orange-600 text-white rounded-full w-9 h-9 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(249,115,22,0.3)] shrink-0">
+                {(athleteProfile.username || 'K').charAt(0).toUpperCase()}
+              </div>
+              <div className="flex flex-col truncate">
+                <span className="text-sm font-bold text-zinc-100 truncate" title={athleteProfile.username || 'Korisnik'}>{athleteProfile.username || 'Korisnik'}</span>
+                <span className="text-[10px] text-zinc-500 truncate">FTP: <span className="font-bold text-orange-400">{athleteProfile.ftp}W</span> | {athleteProfile.weight}kg</span>
+              </div>
             </div>
-            <div className="flex flex-col truncate">
-              <span className="text-sm font-bold text-zinc-100 truncate" title={athleteProfile.username || 'Korisnik'}>{athleteProfile.username || 'Korisnik'}</span>
-              <span className="text-[10px] text-zinc-500 truncate">FTP: <span className="font-bold text-orange-400">{athleteProfile.ftp}W</span> | {athleteProfile.weight}kg</span>
+          ) : (
+            <div className="flex justify-center mb-1">
+              <div className="bg-gradient-to-br from-orange-400 to-orange-600 text-white rounded-full w-9 h-9 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(249,115,22,0.3)] shrink-0 cursor-pointer" title={athleteProfile.username} onClick={() => handleTabChange('profile')}>
+                {(athleteProfile.username || 'K').charAt(0).toUpperCase()}
+              </div>
             </div>
-          </div>
+          )}
+
           <button
             onClick={() => handleTabChange('connections')}
-            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all ${activeTab === 'connections' ? 'bg-orange-500/10 text-orange-400 font-semibold border border-orange-500/20 shadow-[0_0_10px_rgba(249,115,22,0.1)]' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'}`}
+            title="API Veze"
+            className={`w-full flex items-center justify-center md:justify-start px-0 md:px-4 py-3 rounded-xl transition-all ${activeTab === 'connections' ? 'bg-orange-500/10 text-orange-400 font-semibold border border-orange-500/20 shadow-[0_0_10px_rgba(249,115,22,0.1)]' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'}`}
           >
             <LinkIcon className={`w-5 h-5 ${activeTab === 'connections' ? 'text-orange-500' : 'text-zinc-500'}`} />
-            <span className="ml-3 text-sm font-medium">API Veze</span>
+            {!isSidebarCollapsed && <span className="ml-3 text-sm font-medium">API Veze</span>}
           </button>
 
           <button
             onClick={() => { setIntervalsId(''); setIntervalsKey(''); }}
-            className="w-full flex items-center px-4 py-3 rounded-xl transition-all text-zinc-500 hover:bg-red-500/10 hover:text-red-400"
+            title="Odjava"
+            className="w-full flex items-center justify-center md:justify-start px-0 md:px-4 py-3 rounded-xl transition-all text-zinc-500 hover:bg-red-500/10 hover:text-red-400"
           >
             <LogOut className="w-5 h-5" />
-            <span className="ml-3 text-sm font-medium">Odjava</span>
+            {!isSidebarCollapsed && <span className="ml-3 text-sm font-medium">Odjava</span>}
           </button>
         </div>
       </div>
@@ -147,10 +181,10 @@ export default function App() {
           )}
         </header>
 
-        <main className="flex-1 overflow-auto p-3 md:p-8 bg-zinc-950 md:pb-8 pb-20 relative">
+        <main className={`flex-1 ${activeTab === 'trainer' ? 'overflow-hidden p-2 md:p-4 pb-20 md:pb-4' : 'overflow-auto p-3 md:p-8 pb-20 md:pb-8'} bg-zinc-950 relative flex flex-col`}>
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-orange-900/10 via-zinc-950 to-zinc-950 pointer-events-none"></div>
 
-          <div className="relative z-10 w-full h-full">
+          <div className={`relative z-10 w-full ${activeTab === 'trainer' ? 'flex-1 flex flex-col min-h-0' : ''}`}>
             {activeTab === 'calendar' && (
               <CalendarTab
                 currentDate={currentDate} setCurrentDate={setCurrentDate}
@@ -169,7 +203,7 @@ export default function App() {
             )}
 
             {/* Persistence-critical tab */}
-            <div className={activeTab === 'trainer' ? 'block h-full' : 'hidden'}>
+            <div className={activeTab === 'trainer' ? 'flex-1 flex flex-col min-h-0 w-full overflow-hidden pb-1 md:pb-2' : 'hidden'}>
               <TrainerTab
                 profile={athleteProfile}
                 workoutFromCalendar={selectedWorkout}
@@ -240,12 +274,16 @@ export default function App() {
 }
 
 // 3. Sub-komponente s React.memo bi bile idealne ovdje ako postanu kompleksnije
-function NavItem({ icon, label, active, onClick }) {
+function NavItem({ icon, label, active, onClick, collapsed }) {
   return (
-    <button onClick={onClick} className={`w-full flex items-center px-4 py-3 rounded-xl transition-all relative ${active ? 'bg-gradient-to-r from-orange-500/20 to-transparent text-orange-400 font-bold border border-orange-500/20' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'}`}>
+    <button
+      onClick={onClick}
+      title={collapsed ? label : undefined}
+      className={`w-full flex items-center justify-center md:justify-start px-0 md:px-4 py-3 rounded-xl transition-all relative ${active ? 'bg-gradient-to-r from-orange-500/20 to-transparent text-orange-400 font-bold border border-orange-500/20' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'}`}
+    >
       {active && <div className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-orange-500 rounded-r-md shadow-[0_0_10px_rgba(249,115,22,0.8)]" />}
       {React.cloneElement(icon, { className: `w-5 h-5 ${active ? 'text-orange-500' : 'text-zinc-500'}` })}
-      <span className="ml-3 text-sm">{label}</span>
+      {!collapsed && <span className="ml-3 text-sm">{label}</span>}
     </button>
   );
 }
