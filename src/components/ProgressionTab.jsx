@@ -165,14 +165,23 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
           'Threshold': 1.0, 'VO2 Max': 1.0, 'Anaerobni': 1.0
         };
 
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const now = new Date();
 
         allCompleted.forEach(w => {
           const wDate = new Date(w.date);
-          if (wDate > thirtyDaysAgo && currentLevels[w.category] !== undefined) {
-            if (w.difficulty_score > currentLevels[w.category]) {
-              currentLevels[w.category] = w.difficulty_score;
+          const ageDays = (now - wDate) / (1000 * 60 * 60 * 24);
+
+          if (currentLevels[w.category] !== undefined) {
+            // Apply gradual decay instead of a hard 30-day cliff:
+            // Score drops by 0.2 points for every week after 14 days
+            let decayedScore = w.difficulty_score;
+            if (ageDays > 14) {
+              const weeksOld = (ageDays - 14) / 7;
+              decayedScore -= (weeksOld * 0.2);
+            }
+
+            if (decayedScore > currentLevels[w.category]) {
+              currentLevels[w.category] = decayedScore;
             }
           }
         });
@@ -210,7 +219,7 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
           <div className="flex-1 text-center md:text-left">
             <h2 className="text-3xl md:text-4xl font-black text-zinc-100 tracking-tight lowercase">Faktor <span className="text-orange-500">n</span>apretka</h2>
             <p className="text-zinc-400 font-medium text-sm mt-2 max-w-2xl mx-auto md:mx-0">
-              Prati tvoju trenutnu sposobnost i izdržljivost unutar različitih zona snage. Završetkom težih treninga (iznad 85% trajanja) podižeš svoj Faktor Težine! Razine polagano propadaju ako se sustavno ne treniraju zadnjih 30 dana.
+              Prati tvoju trenutnu sposobnost i izdržljivost unutar različitih zona snage. Završetkom težih treninga (iznad 85% trajanja) podižeš svoj Faktor Težine! Razine polagano propadaju tijekom vremena (nakon 14 dana) ako se sustavno ne treniraju.
             </p>
           </div>
         </div>
@@ -253,11 +262,10 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
                 id="detect-ftp-btn"
                 disabled={!cooldown.allowed || !longitudinalResult}
                 onClick={handleApplyFTP}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all border ${
-                  cooldown.allowed && longitudinalResult
-                    ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white border-orange-500/30 hover:shadow-[0_0_20px_rgba(249,115,22,0.35)] hover:scale-[1.02] active:scale-[0.98]'
-                    : 'bg-zinc-900/60 text-zinc-600 border-zinc-800/60 opacity-50 cursor-not-allowed'
-                }`}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all border ${cooldown.allowed && longitudinalResult
+                  ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white border-orange-500/30 hover:shadow-[0_0_20px_rgba(249,115,22,0.35)] hover:scale-[1.02] active:scale-[0.98]'
+                  : 'bg-zinc-900/60 text-zinc-600 border-zinc-800/60 opacity-50 cursor-not-allowed'
+                  }`}
               >
                 {cooldown.allowed ? (
                   <><ShieldCheck className="w-4 h-4" /> Primijeni eFTP</>
@@ -303,13 +311,12 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
                 </div>
                 <div className="h-2.5 w-full bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
                   <div
-                    className={`h-full rounded-full transition-all duration-1000 ease-out ${
-                      longitudinalResult.decision === 'increase'
-                        ? 'bg-gradient-to-r from-emerald-500 to-emerald-400'
-                        : longitudinalResult.decision === 'decrease'
+                    className={`h-full rounded-full transition-all duration-1000 ease-out ${longitudinalResult.decision === 'increase'
+                      ? 'bg-gradient-to-r from-emerald-500 to-emerald-400'
+                      : longitudinalResult.decision === 'decrease'
                         ? 'bg-gradient-to-r from-rose-600 to-rose-400'
                         : 'bg-zinc-600'
-                    }`}
+                      }`}
                     style={{
                       width: `${Math.min(100, Math.max(5, ((longitudinalResult.newFTP) / ((profile?.ftp || 200) * 1.1)) * 100))}%`,
                     }}
@@ -375,8 +382,17 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
           const hasAdvanced = currentLevel > 1.0;
 
           const heroWorkout = history
-            .filter(w => w.category === zone.id && new Date(w.date) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
-            .sort((a, b) => b.difficulty_score - a.difficulty_score)[0];
+            .filter(w => w.category === zone.id)
+            .sort((a, b) => {
+              const now = new Date();
+              const getDecayed = (wk) => {
+                const ageDays = (now - new Date(wk.date)) / (1000 * 60 * 60 * 24);
+                let score = wk.difficulty_score;
+                if (ageDays > 14) score -= ((ageDays - 14) / 7) * 0.2;
+                return score;
+              };
+              return getDecayed(b) - getDecayed(a);
+            })[0];
 
           return (
             <div key={zone.id} className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/80 rounded-3xl p-6 flex flex-col relative overflow-hidden group hover:border-zinc-700 transition-colors">
@@ -433,11 +449,10 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
 /** Small metric pill used inside the progression cards */
 function MetricPill({ label, value, highlight = false }) {
   return (
-    <div className={`rounded-xl px-3 py-2.5 border transition-colors ${
-      highlight
-        ? 'bg-emerald-500/5 border-emerald-500/20'
-        : 'bg-zinc-950/50 border-zinc-800/60'
-    }`}>
+    <div className={`rounded-xl px-3 py-2.5 border transition-colors ${highlight
+      ? 'bg-emerald-500/5 border-emerald-500/20'
+      : 'bg-zinc-950/50 border-zinc-800/60'
+      }`}>
       <p className="text-[9px] font-black uppercase text-zinc-600 tracking-widest mb-0.5">{label}</p>
       <p className={`text-sm font-black tabular-nums ${highlight ? 'text-emerald-400' : 'text-zinc-200'}`}>{value}</p>
     </div>
