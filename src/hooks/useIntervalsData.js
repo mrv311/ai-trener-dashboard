@@ -38,6 +38,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
           };
           mappedWellness[w.id] = {
             restingHR: w.restingHR,
+            hrv: w.hrv,
             sleep: w.sleepSecs ? formatDur(Math.round(w.sleepSecs / 60)) : null,
             ctl: w.ctl,
             atl: w.atl,

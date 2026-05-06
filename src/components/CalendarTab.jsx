@@ -252,9 +252,9 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                     )}
                     {w.plannedTss > 0 && w.tss > 0 && (
                       <span className={`text-[9px] font-black ${w.statusColor === 'green' ? 'text-emerald-400' :
-                          w.statusColor === 'yellow' ? 'text-amber-400' :
-                            w.statusColor === 'red' ? 'text-rose-400' :
-                              'text-zinc-400'
+                        w.statusColor === 'yellow' ? 'text-amber-400' :
+                          w.statusColor === 'red' ? 'text-rose-400' :
+                            'text-zinc-400'
                         }`}>
                         {Math.round((w.tss / w.plannedTss) * 100)}%
                       </span>
@@ -316,6 +316,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
           {dWell && (
             <div className="flex gap-3 text-xs font-bold text-zinc-400 bg-zinc-950/50 px-3 py-1 rounded-full border border-zinc-800 shadow-inner">
               {dWell.restingHR && <span className="flex items-center text-rose-500 drop-shadow-[0_0_4px_rgba(244,63,94,0.5)]"><Heart className="w-3.5 h-3.5 mr-1" fill="currentColor" />{dWell.restingHR}</span>}
+              {dWell.hrv && <span className="flex items-center text-sky-400 drop-shadow-[0_0_4px_rgba(56,189,248,0.5)]" title="HRV"><Activity className="w-3.5 h-3.5 mr-1" />{Math.round(dWell.hrv)}ms</span>}
               {dWell.sleep && <span className="flex items-center text-indigo-400 drop-shadow-[0_0_4px_rgba(129,140,248,0.5)]"><Moon className="w-3.5 h-3.5 mr-1" fill="currentColor" />{dWell.sleep}</span>}
             </div>
           )}
@@ -352,12 +353,14 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
         {!compact && dWell && (
           <div className="flex gap-2 text-[10px] font-bold text-zinc-500">
             {dWell.restingHR && <span className="flex items-center text-rose-500/80"><Heart className="w-3 h-3 mr-0.5" fill="currentColor" />{dWell.restingHR}</span>}
+            {dWell.hrv && <span className="flex items-center text-sky-400/80" title="HRV"><Activity className="w-3 h-3 mr-0.5" />{Math.round(dWell.hrv)}</span>}
             {dWell.sleep && <span className="flex items-center text-indigo-400/80"><Moon className="w-3 h-3 mr-0.5" fill="currentColor" />{dWell.sleep}</span>}
           </div>
         )}
         {compact && dWell && (
           <div className="flex gap-1 text-[9px] font-bold text-zinc-600">
             {dWell.restingHR && <span className="flex items-center text-rose-500/60"><Heart className="w-2.5 h-2.5" fill="currentColor" />{dWell.restingHR}</span>}
+            {dWell.hrv && <span className="flex items-center text-sky-400/60" title="HRV"><Activity className="w-2.5 h-2.5" />{Math.round(dWell.hrv)}</span>}
           </div>
         )}
       </div>
