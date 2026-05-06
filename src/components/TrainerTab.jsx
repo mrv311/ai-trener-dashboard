@@ -688,11 +688,11 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
     setSaveStatus('saving');
     console.log('[TrainerTab] Spremam u Supabase, stream_data duljina:', distResult.stream.length);
-    
+
     // Eksplicitno pretvori stream u JSON format
     const streamDataToSave = distResult.stream.length > 0 ? distResult.stream : null;
-    
-    supabase.from('completed_activities').insert({
+
+    const activityPayload = {
       started_at: startedAt.toISOString(),
       title: workoutTitle,
       workout_source: workoutSource,
@@ -709,14 +709,36 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       ftp_used: profile?.ftp || 200,
       weight_kg: mass,
       stream_data: streamDataToSave
-    }).then(({ error: saveErr, data: savedData }) => {
+    };
+
+    // 1. Spremi u localStorage (OFFLINE BACKUP)
+    try {
+      const localActivities = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities') || '[]');
+      const localId = 'local_act_' + Date.now();
+      const localActivity = { id: localId, ...activityPayload };
+
+      // Ograniči na zadnjih 50 aktivnosti da ne napunimo localStorage
+      const updatedLocal = [localActivity, ...localActivities].slice(0, 50);
+      localStorage.setItem('ai_trener_local_completed_activities', JSON.stringify(updatedLocal));
+      console.log('[TrainerTab] Spremljeno u localStorage backup');
+    } catch (e) {
+      console.warn('Nije uspjelo spremanje u localStorage backup', e);
+    }
+
+    // 2. Pokušaj spremiti u Supabase
+    supabase.from('completed_activities').insert(activityPayload).then(({ error: saveErr, data: savedData }) => {
       if (saveErr) {
         console.error('Greška pri spremanju u Supabase:', saveErr);
         setSaveStatus('error');
+        // Pošalji event svejedno kako bi se ažuriralo iz localStorage-a
+        if (onClose) {
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('supabase-activity-saved'));
+          }, 1000);
+        }
       } else {
         console.log('Trening automatski spremljen u Supabase!');
         console.log('Spremljeni podaci:', savedData);
-        console.log('Stream data duljina:', streamDataToSave?.length || 0);
         setSaveStatus('saved');
 
         // Osvježi kalendar ako postoji onClose callback (znači da je otvoren iz kalendara)

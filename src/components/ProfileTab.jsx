@@ -28,7 +28,13 @@ export default function ProfileTab({ profile, setProfile }) {
   };
 
   const handleSave = () => {
-    setProfile(formData);
+    // Ako se FTP promijenio ručno, želimo zabilježiti datum kako bi se resetirao cooldown
+    const updatedData = { ...formData };
+    if (formData.ftp !== profile?.ftp) {
+      updatedData.lastFtpUpdate = new Date().toISOString();
+    }
+
+    setProfile(updatedData);
     // U pravoj aplikaciji ovdje bismo spremili u localStorage ili bazu
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
@@ -36,14 +42,14 @@ export default function ProfileTab({ profile, setProfile }) {
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-6 animate-in fade-in h-full pb-8">
-      
+
       {/* ZAGLAVLJE */}
       <div className="bg-zinc-950/50 rounded-3xl shadow-2xl border border-zinc-800/80 p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between shrink-0 gap-6 relative overflow-hidden backdrop-blur-md">
-        <div className="absolute top-0 right-0 p-6 opacity-10"><BrainCircuit className="w-32 h-32 text-orange-500 drop-shadow-[0_0_15px_rgba(249,115,22,1)]"/></div>
-        
+        <div className="absolute top-0 right-0 p-6 opacity-10"><BrainCircuit className="w-32 h-32 text-orange-500 drop-shadow-[0_0_15px_rgba(249,115,22,1)]" /></div>
+
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-2">
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-2 rounded-xl shadow-[0_0_10px_rgba(249,115,22,0.4)]"><User className="w-6 h-6 text-white"/></div>
+            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-2 rounded-xl shadow-[0_0_10px_rgba(249,115,22,0.4)]"><User className="w-6 h-6 text-white" /></div>
             <h2 className="text-2xl font-black text-zinc-100 tracking-tight">Atletski Profil</h2>
           </div>
           <p className="text-zinc-400 font-medium max-w-xl text-sm leading-relaxed">
@@ -51,11 +57,10 @@ export default function ProfileTab({ profile, setProfile }) {
           </p>
         </div>
 
-        <button 
+        <button
           onClick={handleSave}
-          className={`relative z-10 flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all shadow-lg ${
-            isSaved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white shadow-[0_4px_15px_rgba(249,115,22,0.3)] border border-orange-500/50'
-          }`}
+          className={`relative z-10 flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all shadow-lg ${isSaved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white shadow-[0_4px_15px_rgba(249,115,22,0.3)] border border-orange-500/50'
+            }`}
         >
           {isSaved ? <CheckCircle2 className="w-5 h-5" /> : <Save className="w-5 h-5" />}
           {isSaved ? 'Profil Spremljen' : 'Spremi Promjene'}
@@ -63,13 +68,13 @@ export default function ProfileTab({ profile, setProfile }) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
+
         {/* 1. BIOMETRIJA I ISKUSTVO */}
         <div className="bg-zinc-900/40 backdrop-blur-md rounded-3xl shadow-xl border border-zinc-800/80 p-6 flex flex-col gap-5 relative overflow-hidden">
           <div className="flex items-center gap-2 text-zinc-100 font-bold border-b border-zinc-800/80 pb-3">
             <User className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]" /> Fizički Podaci & Iskustvo
           </div>
-          
+
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Korisničko Ime</label>
@@ -105,11 +110,18 @@ export default function ProfileTab({ profile, setProfile }) {
           <div className="flex items-center gap-2 text-zinc-100 font-bold border-b border-zinc-800/80 pb-3">
             <Zap className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]" /> Fiziološki Profil
           </div>
-          
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Trenutni FTP (W)</label>
-              <input type="number" name="ftp" value={formData.ftp} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all focus:shadow-[0_0_10px_rgba(249,115,22,0.2)]" />
+              <div className="flex flex-col gap-2">
+                <input type="number" name="ftp" value={formData.ftp} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all focus:shadow-[0_0_10px_rgba(249,115,22,0.2)]" />
+                {profile?.lastFtpUpdate && (
+                  <span className="text-[10px] text-zinc-500 font-medium">
+                    Zadnja procjena/promjena: {new Date(profile.lastFtpUpdate).toLocaleDateString('hr-HR')}
+                  </span>
+                )}
+              </div>
             </div>
             <div>
               <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Tip Vozača</label>
@@ -137,15 +149,15 @@ export default function ProfileTab({ profile, setProfile }) {
           <div className="flex items-center gap-2 text-zinc-100 font-bold border-b border-zinc-800/80 pb-3">
             <Target className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]" /> Ciljevi i Logistika
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="md:col-span-1 border-r-0 md:border-r border-zinc-800/80 md:pr-6 flex flex-col gap-4">
               <div>
-                 <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5"/> Sati tjedno</label>
-                 <div className="flex items-center gap-3">
-                   <input type="range" name="hoursPerWeek" min="3" max="25" value={formData.hoursPerWeek} onChange={handleChange} className="flex-1 accent-orange-500" />
-                   <span className="font-bold text-zinc-100 w-12 text-right">{formData.hoursPerWeek} h</span>
-                 </div>
+                <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Sati tjedno</label>
+                <div className="flex items-center gap-3">
+                  <input type="range" name="hoursPerWeek" min="3" max="25" value={formData.hoursPerWeek} onChange={handleChange} className="flex-1 accent-orange-500" />
+                  <span className="font-bold text-zinc-100 w-12 text-right">{formData.hoursPerWeek} h</span>
+                </div>
               </div>
               <p className="text-xs text-zinc-500 font-medium">Realno procijeni koliko sati tjedno možeš odvojiti za trening. AI će prilagoditi volumen kako ne bi došlo do "burnouta".</p>
             </div>

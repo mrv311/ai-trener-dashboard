@@ -57,14 +57,43 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
           .gte('started_at', ninetyDaysAgo.toISOString())
           .order('started_at', { ascending: false });
 
+        let combinedLocalActivities = [];
+
         if (!supabaseError && supabaseData) {
           console.log('[useIntervalsData] Dohvaćeno', supabaseData.length, 'lokalnih aktivnosti iz Supabase');
-          setSupabaseActivities(supabaseData);
+          combinedLocalActivities = [...supabaseData];
         } else if (supabaseError) {
           console.warn('[useIntervalsData] Greška pri dohvaćanju Supabase aktivnosti:', supabaseError);
         }
+
+        // Pročitaj i localStorage fallback aktivnosti
+        try {
+          const localFallback = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities') || '[]');
+
+          // Dodaj one iz localStorage-a koje već nemamo u Supabase podacima
+          // Uspoređujemo po started_at (isti trening bi trebao imati vrlo sličan timestamp)
+          localFallback.forEach(localAct => {
+            // Provjeri postoji li već aktivnost s istim vremenom početka (±1 minutu tolerancije)
+            const localTime = new Date(localAct.started_at).getTime();
+            const existsInSupabase = combinedLocalActivities.some(sbAct => {
+              const sbTime = new Date(sbAct.started_at).getTime();
+              return Math.abs(sbTime - localTime) < 60000;
+            });
+
+            if (!existsInSupabase) {
+              combinedLocalActivities.push(localAct);
+            }
+          });
+        } catch (e) {
+          console.warn('[useIntervalsData] Greška pri čitanju localStorage aktivnosti:', e);
+        }
+
+        // Sortiraj descending po datumu
+        combinedLocalActivities.sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
+        setSupabaseActivities(combinedLocalActivities);
+
       } catch (supabaseErr) {
-        console.warn('[useIntervalsData] Supabase dohvaćanje nije uspjelo:', supabaseErr);
+        console.warn('[useIntervalsData] Lokalno dohvaćanje nije uspjelo:', supabaseErr);
       }
     } catch (err) {
       setError(err.message);
@@ -82,25 +111,25 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     const handleTitleUpdate = (event) => {
       const { activityId, newTitle } = event.detail;
       console.log('[useIntervalsData] Ažuriram naziv aktivnosti:', activityId, 'na:', newTitle);
-      
+
       // Ažuriraj u rawActivities ako postoji
-      setRawActivities(prev => prev.map(act => 
+      setRawActivities(prev => prev.map(act =>
         `act-${act.id}` === activityId || act.id.toString() === activityId.replace('act-', '')
           ? { ...act, name: newTitle }
           : act
       ));
-      
+
       // Trigger refresh da se workouts useMemo ponovno izračuna
       setLocalRefreshTrigger(prev => prev + 1);
     };
-    
+
     window.addEventListener('activity-title-updated', handleTitleUpdate);
     return () => window.removeEventListener('activity-title-updated', handleTitleUpdate);
   }, []);
 
   const workouts = useMemo(() => {
     console.log('[useIntervalsData] Računam workouts. Supabase aktivnosti:', supabaseActivities.length, 'Intervals aktivnosti:', rawActivities.length);
-    
+
     const finalWorkouts = [];
     const consumedEvents = new Set();
     const consumedLocalIds = new Set();
@@ -128,19 +157,24 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
     // 0. PRIORITET: Prvo dodaj Supabase lokalne aktivnosti (najsvježije, upravo završene)
     supabaseActivities.forEach(sbAct => {
-      const actDate = sbAct.started_at ? sbAct.started_at.split('T')[0] : '';
-      
+      let actDate = '';
+      if (sbAct.started_at) {
+        // Parse date in local timezone to avoid UTC boundary issues
+        const d = new Date(sbAct.started_at);
+        actDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+
       // Debug logging za provjeru duplikata
       if (supabaseDateMap.has(actDate)) {
         console.warn('[useIntervalsData] DUPLIKAT DETEKTIRAN: Već postoji Supabase aktivnost za datum', actDate, 'ID:', supabaseDateMap.get(actDate), 'Nova ID:', sbAct.id);
       }
-      
+
       supabaseDateMap.set(actDate, sbAct.id); // Označi da ovaj datum ima Supabase aktivnost
 
       // Pokušaj spariti s Intervals.icu eventom PRVO (viši prioritet) - O(k) gdje je k broj evenata za datum
       let pairedEvent = null;
       let separatedEventIds = [];
-      
+
       const eventsForDate = eventsByDate.get(actDate) || [];
       for (let e of eventsForDate) {
         if (unpairedList.includes(`supabase-${sbAct.id}-${e.id}`)) {
@@ -233,7 +267,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     // 1. Dodaj Intervals.icu aktivnosti (samo ako NE postoji Supabase aktivnost za taj datum)
     rawActivities.forEach(act => {
       const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
-      
+
       // PROVJERA: Preskoči ako već postoji Supabase aktivnost za ovaj datum
       if (supabaseDateMap.has(actDate)) {
         console.log('[useIntervalsData] ✓ Preskačem Intervals.icu aktivnost', act.id, 'jer postoji Supabase aktivnost', supabaseDateMap.get(actDate), 'za datum:', actDate);
@@ -360,7 +394,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     });
 
     console.log('[useIntervalsData] Završeno računanje. Ukupno workouts:', finalWorkouts.length, 'Supabase datumi u mapi:', Array.from(supabaseDateMap.keys()).sort());
-    
+
     return finalWorkouts;
   }, [rawActivities, rawEvents, supabaseActivities, unpairedList, localRefreshTrigger]);
 
@@ -376,7 +410,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
   const handleDeleteLocalActivity = useCallback(async (workoutId) => {
     if (!workoutId) return;
-    
+
     if (workoutId.startsWith('local-')) {
       const rawId = workoutId.replace('local-', '');
       let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
@@ -404,7 +438,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
    */
   const handleDeleteCompletedActivity = useCallback(async (activityId) => {
     if (!activityId) return;
-    
+
     // Samo Supabase aktivnosti se mogu brisati
     if (activityId.startsWith('supabase-')) {
       const rawId = activityId.replace('supabase-', '');
@@ -413,17 +447,28 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
           .from('completed_activities')
           .delete()
           .eq('id', rawId);
-        
-        if (error) throw error;
-        
+
+        if (error) {
+          console.warn('Greška pri brisanju Supabase aktivnosti, pokušavam obrisati samo lokalno:', error);
+        }
+
+        // Obriši i iz localStorage fallbacka
+        try {
+          const localFallback = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities') || '[]');
+          const updatedFallback = localFallback.filter(act => act.id !== rawId && act.id !== `local_act_${rawId}`);
+          localStorage.setItem('ai_trener_local_completed_activities', JSON.stringify(updatedFallback));
+        } catch (e) {
+          console.warn('Greška pri brisanju iz localStorage:', e);
+        }
+
         // Odmah ukloni iz lokalnog stanja
-        setSupabaseActivities(prev => prev.filter(act => act.id !== rawId));
-        
+        setSupabaseActivities(prev => prev.filter(act => act.id !== rawId && act.id !== `local_act_${rawId}`));
+
         // Osvježi podatke
         setLocalRefreshTrigger(prev => prev + 1);
         return { success: true };
       } catch (err) {
-        console.error('Greška pri brisanju Supabase aktivnosti:', err);
+        console.error('Kritična greška pri brisanju:', err);
         return { success: false, error: err.message };
       }
     } else {
