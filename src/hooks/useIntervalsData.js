@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { fetchIntervalsData, updateEventDate, updateEventDetails } from '../services/intervalsApi';
 import { supabase } from '../services/supabaseClient';
+import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
 
 export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError } = {}) {
   const [rawActivities, setRawActivities] = useState([]);
@@ -235,6 +236,28 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         if (ratio >= 0.8 && ratio <= 1.2) complianceColor = 'green';
         else if ((ratio >= 0.5 && ratio < 0.8) || (ratio > 1.2 && ratio <= 1.5)) complianceColor = 'yellow';
         else complianceColor = 'red';
+      } else {
+        // Fallback ako nije spareno s planiranim treningom (free ride ili garmin sync)
+        if (sbAct.tss > 0 || sbAct.duration_seconds > 0) {
+          complianceColor = 'green'; // Zelen je ako je odrađen (barem ima tss ili trajanje)
+        }
+      }
+
+      // Ako je spojen event s intervalima, procesiraj za difficulty
+      let targetNpVal = null;
+      if (pairedEvent && !diffScore && pairedEvent.workout_doc) {
+        try {
+          // parse intervals code to extract difficulty
+          const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
+          const parsed = parseIntervalsCode(pairedEvent.workout_doc, ftp);
+          if (parsed && parsed.allSteps && parsed.allSteps.length > 0) {
+            actCategory = categorizeWorkout(parsed.allSteps);
+            diffScore = calculateCategoryDifficulty(parsed.allSteps, actCategory);
+            targetNpVal = parsed.np;
+          }
+        } catch (e) {
+          console.error("Error parsing intervals code for supabase activity:", e);
+        }
       }
 
       finalWorkouts.push({
@@ -256,6 +279,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         difficulty_score: diffScore,
         category: actCategory,
         workout_doc: workoutDoc,
+        targetNP: targetNpVal ? Math.round(targetNpVal) : null,
         np: Math.round(sbAct.np || 0),
         average_power: Math.round(sbAct.avg_power || 0),
         average_heartrate: Math.round(sbAct.avg_hr || 0)
@@ -309,6 +333,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       let diffScore = null;
       let actCategory = null;
       let workoutDoc = null;
+      let targetNpVal = null;
 
       if (pairedEvent || pairedLocal) {
         if (pairedEvent) {
@@ -335,6 +360,27 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         if (ratio >= 0.8 && ratio <= 1.2) complianceColor = 'green';
         else if ((ratio >= 0.5 && ratio < 0.8) || (ratio > 1.2 && ratio <= 1.5)) complianceColor = 'yellow';
         else complianceColor = 'red';
+      } else {
+        // Fallback ako nije spareno s planiranim treningom (free ride ili garmin sync)
+        if (act.icu_training_load > 0 || act.moving_time > 0) {
+          complianceColor = 'green';
+        }
+      }
+
+      // Ako je to Intervals aktivnost, pokušaj parsati opis (koji bi trebao sadržavati workout_doc)
+      if (!diffScore && (workoutDoc || act.description)) {
+        try {
+          const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
+          const docToParse = workoutDoc || act.description;
+          const parsed = parseIntervalsCode(docToParse, ftp);
+          if (parsed && parsed.allSteps && parsed.allSteps.length > 0) {
+            actCategory = categorizeWorkout(parsed.allSteps);
+            diffScore = calculateCategoryDifficulty(parsed.allSteps, actCategory);
+            targetNpVal = parsed.np;
+          }
+        } catch (e) {
+          console.error("Error parsing intervals code for activity:", e);
+        }
       }
 
       finalWorkouts.push({
@@ -346,6 +392,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         difficulty_score: diffScore,
         category: actCategory,
         workout_doc: workoutDoc,
+        targetNP: targetNpVal ? Math.round(targetNpVal) : null,
         np: Math.round(act.icu_normalized_power || act.normalized_power || 0),
         average_power: Math.round(act.icu_average_power || act.average_watts || act.average_power || 0),
         max_power: Math.round(act.icu_max_power || act.max_watts || act.max_power || 0),
@@ -362,12 +409,31 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       let complianceColor = 'grey';
       if (evDate < todayStr) complianceColor = 'red-missed';
 
+      let diffScore = null;
+      let actCategory = null;
+
+      if (ev.workout_doc || ev.description) {
+        try {
+          const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
+          const docToParse = ev.workout_doc || ev.description;
+          const parsed = parseIntervalsCode(docToParse, ftp);
+          if (parsed && parsed.allSteps && parsed.allSteps.length > 0) {
+            actCategory = categorizeWorkout(parsed.allSteps);
+            diffScore = calculateCategoryDifficulty(parsed.allSteps, actCategory);
+          }
+        } catch (e) {
+          console.error("Error parsing intervals code for event:", e);
+        }
+      }
+
       finalWorkouts.push({
         id: `ev-${ev.id}`, eventId: ev.id, date: evDate, title: ev.name || 'Planirano',
         duration: Math.round((ev.moving_time || 0) / 60), plannedDuration: Math.round((ev.moving_time || 0) / 60),
         tss: Math.round(ev.icu_training_load || 0), plannedTss: Math.round(ev.icu_training_load || 0),
         statusColor: complianceColor, isCompleted: false,
-        workout_doc: ev.workout_doc
+        workout_doc: ev.workout_doc,
+        difficulty_score: diffScore,
+        category: actCategory
       });
     });
 
