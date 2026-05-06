@@ -141,24 +141,31 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
     const loadHistory = () => {
       try {
         const localHistory = JSON.parse(localStorage.getItem('ai_trener_completed_workouts') || '[]');
-        const allCompleted = [...localHistory];
+
+        const historyMap = new Map();
+
+        localHistory.forEach(loc => {
+          historyMap.set(loc.id, loc);
+        });
 
         workouts.forEach(w => {
           if (w.isCompleted && w.difficulty_score && w.category) {
-            const alreadyExists = allCompleted.some(loc => loc.id === w.id);
-            if (!alreadyExists) {
-              allCompleted.push({
-                id: w.id,
-                date: w.date,
-                title: w.title,
-                category: w.category,
-                difficulty_score: w.difficulty_score
-              });
-            }
+            historyMap.set(w.id, {
+              id: w.id,
+              date: w.date,
+              title: w.title,
+              category: w.category,
+              difficulty_score: w.difficulty_score,
+              np: w.np || w.average_power || 0,
+              tss: w.tss || 0,
+              duration: w.duration || 0,
+              targetNP: w.targetNP || 0
+            });
           }
         });
 
-        setHistory(allCompleted);
+        const mergedHistory = Array.from(historyMap.values());
+        setHistory(mergedHistory);
 
         const currentLevels = {
           'Endurance': 1.0, 'Tempo': 1.0, 'Sweet Spot': 1.0,
@@ -166,15 +173,36 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
         };
 
         const now = new Date();
+        const currentFTP = Number(profile?.ftp) || 200;
 
-        allCompleted.forEach(w => {
+        mergedHistory.forEach(w => {
           const wDate = new Date(w.date);
           const ageDays = (now - wDate) / (1000 * 60 * 60 * 24);
 
           if (currentLevels[w.category] !== undefined) {
-            // Apply gradual decay instead of a hard 30-day cliff:
-            // Score drops by 0.2 points for every week after 14 days
             let decayedScore = w.difficulty_score;
+
+            // 1. FTP Penalty logic
+            const durationSecs = (w.duration || 0) * 60;
+            const np = w.np || 0;
+            const tss = w.tss || 0;
+
+            let estimatedFTP = 0;
+            if (durationSecs > 0 && np > 0 && tss > 0) {
+              estimatedFTP = Math.sqrt((durationSecs * Math.pow(np, 2) * 100) / (tss * 3600));
+            }
+
+            if (estimatedFTP > 0 && currentFTP > estimatedFTP) {
+              const ftpIncreaseRatio = (currentFTP - estimatedFTP) / estimatedFTP;
+              if (ftpIncreaseRatio >= 0.01) { // Apply penalty if increase >= 1%
+                const ftpIncreasePercent = ftpIncreaseRatio * 100;
+                const penalty = ftpIncreasePercent * 0.15;
+                decayedScore -= penalty;
+              }
+            }
+
+            // 2. Apply gradual decay instead of a hard 30-day cliff:
+            // Score drops by 0.2 points for every week after 14 days
             if (ageDays > 14) {
               const weeksOld = (ageDays - 14) / 7;
               decayedScore -= (weeksOld * 0.2);
@@ -193,7 +221,7 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
     };
 
     loadHistory();
-  }, [workouts]);
+  }, [workouts, profile?.ftp]);
 
   const formatLevel = (val) => parseFloat(val).toFixed(1);
   const getPercentage = (level) => Math.min(100, Math.max(10, (level / 10) * 100));
@@ -385,10 +413,33 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
             .filter(w => w.category === zone.id)
             .sort((a, b) => {
               const now = new Date();
+              const currentFTP = Number(profile?.ftp) || 200;
+
               const getDecayed = (wk) => {
                 const ageDays = (now - new Date(wk.date)) / (1000 * 60 * 60 * 24);
                 let score = wk.difficulty_score;
-                if (ageDays > 14) score -= ((ageDays - 14) / 7) * 0.2;
+
+                const durationSecs = (wk.duration || 0) * 60;
+                const np = wk.np || 0;
+                const tss = wk.tss || 0;
+                let estimatedFTP = 0;
+                if (durationSecs > 0 && np > 0 && tss > 0) {
+                  estimatedFTP = Math.sqrt((durationSecs * Math.pow(np, 2) * 100) / (tss * 3600));
+                }
+
+                if (estimatedFTP > 0 && currentFTP > estimatedFTP) {
+                  const ftpIncreaseRatio = (currentFTP - estimatedFTP) / estimatedFTP;
+                  if (ftpIncreaseRatio >= 0.01) {
+                    const ftpIncreasePercent = ftpIncreaseRatio * 100;
+                    const penalty = ftpIncreasePercent * 0.15;
+                    score -= penalty;
+                  }
+                }
+
+                if (ageDays > 14) {
+                  const weeksOld = (ageDays - 14) / 7;
+                  score -= ((weeksOld) * 0.2);
+                }
                 return score;
               };
               return getDecayed(b) - getDecayed(a);
