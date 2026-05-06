@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { getZoneColorForTrainer } from '../../utils/performanceMetrics';
 
 export default function TrainerGraph({
@@ -10,6 +10,47 @@ export default function TrainerGraph({
   ergIntensity = 100
 }) {
   const [hoveredStep, setHoveredStep] = useState(null);
+  const [hoverPosition, setHoverPosition] = useState(null);
+  const graphRef = useRef(null);
+
+  const handleMouseMove = (e) => {
+    if (!graphRef.current) return;
+    const rect = graphRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const width = rect.width;
+    const percentX = (x / width) * 100;
+
+    // Find which step we are hovering based on percentX
+    let accumPercent = 0;
+    let foundStep = null;
+    let stepIndex = -1;
+
+    for (let i = 0; i < workoutRecipe.length; i++) {
+      const step = workoutRecipe[i];
+      const stepWidth = (step.duration / totalDuration) * 100;
+      if (percentX >= accumPercent && percentX <= accumPercent + stepWidth) {
+        foundStep = step;
+        stepIndex = i;
+        break;
+      }
+      accumPercent += stepWidth;
+    }
+
+    if (foundStep) {
+      const scaledPower = foundStep.power * (ergIntensity / 100);
+      const targetW = Math.round((scaledPower / 100) * profile?.ftp);
+      setHoveredStep({ ...foundStep, targetW, scaledPower, index: stepIndex });
+      setHoverPosition(percentX);
+    } else {
+      setHoveredStep(null);
+      setHoverPosition(null);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setHoveredStep(null);
+    setHoverPosition(null);
+  };
 
   // Zbrajanje vremena provedenog u zonama (1 element u povijesti = 1 sekunda)
   const zoneStats = useMemo(() => {
@@ -33,8 +74,18 @@ export default function TrainerGraph({
 
   return (
     <div className="flex flex-col flex-1 w-full gap-2">
+      {/* Prikaz metrika lebdećeg intervala iznad grafa */}
+      <div className="flex items-center justify-between px-2 h-6 min-h-[24px]">
+        {/* Placeholder for top bar, currently empty to shift focus to the vertical line */}
+      </div>
+
       {/* Glavni Graf */}
-      <div className="relative flex-1 min-h-[150px] w-full bg-zinc-950/50 rounded-t-xl border border-zinc-800/80 overflow-visible">
+      <div
+        ref={graphRef}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        className="relative flex-1 min-h-[150px] w-full bg-zinc-950/50 rounded-t-xl border border-zinc-800/80 overflow-visible group cursor-crosshair"
+      >
         {/* Sloj za overlay i SVG — clipan */}
         <div className="absolute inset-0 overflow-hidden rounded-t-xl pointer-events-none">
           <div className="absolute top-0 bottom-0 left-0 bg-black/40 z-10 transition-all duration-1000 ease-linear" style={{ width: `${progressPercent}%` }} />
@@ -87,7 +138,7 @@ export default function TrainerGraph({
         </div>
 
         {/* Sloj za stupce (barove) — NIJE clipan, tako da tooltip može izviriti */}
-        <div className="absolute inset-0 flex items-end w-full z-[5]">
+        <div className="absolute inset-0 flex items-end w-full z-[5] pointer-events-none">
           {workoutRecipe.map((step, i) => {
             const widthPercent = (step.duration / totalDuration) * 100;
             const scaledPower = step.power * (ergIntensity / 100);
@@ -98,30 +149,38 @@ export default function TrainerGraph({
             return (
               <div
                 key={i}
-                onMouseEnter={() => setHoveredStep({ ...step, targetW, scaledPower, index: i })}
-                onMouseLeave={() => setHoveredStep(null)}
                 style={{ width: `${widthPercent}%`, height: `${heightPercent}%` }}
-                className={`${getZoneColorForTrainer(scaledPower)} border-r border-zinc-950/40 transition-all duration-300 opacity-80 relative cursor-pointer hover:opacity-100`}
+                className={`${getZoneColorForTrainer(scaledPower)} border-r border-zinc-950/40 transition-all duration-300 opacity-80 relative`}
               >
-                {/* Tooltip */}
-                {hoveredStep && hoveredStep.index === i && (
-                  <div
-                    className="absolute bottom-full mb-2 bg-zinc-900/95 backdrop-blur-sm text-zinc-100 text-[11px] font-bold px-3 py-2 rounded-lg shadow-xl shadow-black/50 border border-zinc-700 pointer-events-none whitespace-nowrap z-[100]"
-                    style={{
-                      left: i <= 1 ? '0' : (i >= workoutRecipe.length - 2 ? 'auto' : '50%'),
-                      right: i >= workoutRecipe.length - 2 ? '0' : 'auto',
-                      transform: (i <= 1 || i >= workoutRecipe.length - 2) ? 'none' : 'translateX(-50%)'
-                    }}
-                  >
-                    <span className="block text-zinc-400 mb-0.5">{step.name}</span>
-                    <span className="text-sm text-orange-500 drop-shadow-[0_0_3px_rgba(249,115,22,0.4)]">{targetW} W</span> <span className="font-normal text-zinc-500">({Math.round(hoveredStep.scaledPower)}% FTP)</span>
-                    <span className="block mt-1 font-normal text-zinc-400">{Math.floor(step.duration / 60)} min {step.duration % 60} sec</span>
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
+
+        {/* Intervals.icu style vertical line and tooltip */}
+        {hoverPosition !== null && hoveredStep && (
+          <div
+            className="absolute top-0 bottom-0 z-[100] pointer-events-none"
+            style={{ left: `${hoverPosition}%` }}
+          >
+            {/* Okomita crta */}
+            <div className="absolute top-0 bottom-0 w-[1px] bg-zinc-400/50 shadow-[0_0_5px_rgba(0,0,0,0.5)]"></div>
+
+            {/* Oznaka s metrikom */}
+            <div
+              className="absolute top-2 bg-zinc-900/95 backdrop-blur-sm text-zinc-100 font-bold px-3 py-2 rounded-md shadow-xl border border-zinc-700 whitespace-nowrap"
+              style={{
+                transform: hoverPosition > 80 ? 'translateX(calc(-100% - 8px))' : 'translateX(8px)'
+              }}
+            >
+              <div className="flex flex-col gap-1">
+                <span className="text-zinc-200 text-[10px] uppercase tracking-wider font-black">{hoveredStep.name}</span>
+                <span className="text-orange-400 text-sm drop-shadow-[0_0_2px_rgba(251,146,60,0.4)]">{hoveredStep.targetW} W <span className="text-zinc-300 text-[11px] font-semibold">({Math.round(hoveredStep.scaledPower)}%)</span></span>
+                <span className="text-zinc-300 text-[11px] font-medium">{Math.floor(hoveredStep.duration / 60)}m {hoveredStep.duration % 60}s</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Traka za stvarni postotak vremena proveden u zonama (Z1-Z6) */}

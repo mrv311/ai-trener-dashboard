@@ -925,11 +925,19 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
                   ⚠️ <span className="hidden sm:inline">Upozorenje: Nije unesen FTP! Koristi se zadanih 200W.</span><span className="sm:hidden">Unesi FTP!</span>
                 </span>
               ) : (
-                <>Cilj: <span className="text-zinc-100">{activeTargetPower} W</span>
-                  {powerMatchEnabled && isPmConnected && (
-                    <span className="text-violet-400 ml-2 md:ml-3 text-sm md:text-base font-black drop-shadow-[0_0_5px_rgba(167,139,250,0.5)]">⟳ PM Locked</span>
+                <div className="flex flex-col items-center justify-center">
+                  <div>
+                    Cilj: <span className="text-zinc-100">{activeTargetPower} W</span>
+                    {powerMatchEnabled && isPmConnected && (
+                      <span className="text-violet-400 ml-2 md:ml-3 text-sm md:text-base font-black drop-shadow-[0_0_5px_rgba(167,139,250,0.5)]">⟳ PM Locked</span>
+                    )}
+                  </div>
+                  {currentStepIndex < workoutRecipe.length - 1 && (
+                    <div className="text-xs md:text-sm text-zinc-500 font-medium mt-0.5">
+                      (sljedeći: <span className="text-zinc-400">{Math.round((workoutRecipe[currentStepIndex + 1].power / 100) * ftpValue * (ergIntensity / 100))} W</span>)
+                    </div>
                   )}
-                </>
+                </div>
               )
             ) : (
               <>Slobodno <span className="text-indigo-400 ml-1 md:ml-2">(Otpor {resistanceLevel}%)</span></>
