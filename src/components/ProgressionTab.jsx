@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Target, TrendingUp, Trophy, ArrowUpRight, Flame, Clock, Award, Info,
-  Zap, Heart, ChevronUp, ChevronDown, Minus, Loader2, Activity,
-  Lock, ShieldCheck
+  Zap, Heart, ChevronUp, ChevronDown, Minus, Lock, ShieldCheck
 } from 'lucide-react';
 
 import { calculateLongitudinalFTP, canDetectFTP } from '../utils/ftpProgression';
@@ -54,7 +53,7 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
   // If sensor data is loaded separately (e.g. from Supabase stream_data),
   // it would be passed here. For now we use null — the hook safely returns
   // null and does not run the O(n) computation.
-  const { currentEFTP, batchResults, batchProgress, isBatchProcessing, processBatch } = useEFTPWorker(null);
+  const { currentEFTP } = useEFTPWorker(null);
 
   // ── 30-day FTP detection cooldown (memoized) ────────────────────────────
   //    Only recomputes when the profile's lastFtpUpdate value actually
@@ -121,20 +120,6 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
       lastFtpUpdate: new Date().toISOString(),
     }));
   }, [cooldown.allowed, longitudinalResult, setProfile]);
-
-  // ── Batch eFTP results summary (memoized) ───────────────────────────────
-  const batchSummary = useMemo(() => {
-    if (!batchResults || batchResults.length === 0) return null;
-    const valid = batchResults.filter(r => r.eFTP !== null);
-    if (valid.length === 0) return null;
-
-    const values = valid.map(r => r.eFTP);
-    const best = Math.max(...values);
-    const latest = values[values.length - 1];
-    const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
-
-    return { best, latest, avg, count: valid.length };
-  }, [batchResults]);
 
   // ── Existing zone-level logic (unchanged from original) ─────────────────
   useEffect(() => {
@@ -254,7 +239,7 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
       </div>
 
       {/* eFTP INTELLIGENCE CARD */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
 
         {/* Current eFTP / Profile FTP */}
         <div className={`relative overflow-hidden rounded-3xl border p-6 backdrop-blur-xl transition-all ${decisionCfg.borderColor} ${decisionCfg.bgColor} ${decisionCfg.glow}`}>
@@ -360,46 +345,7 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
           )}
         </div>
 
-        {/* Batch Worker Status / Summary */}
-        <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/80 rounded-3xl p-6 flex flex-col relative overflow-hidden">
-          <div className="flex items-center gap-2 mb-5">
-            <div className="bg-zinc-950/50 p-2 rounded-xl border border-zinc-800">
-              <Activity className="w-5 h-5 text-sky-400" />
-            </div>
-            <span className="text-xs font-black uppercase tracking-widest text-zinc-500">Batch Analiza</span>
-          </div>
 
-          {isBatchProcessing ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3">
-              <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
-              <span className="text-sm font-bold text-zinc-400">
-                Obrađujem {batchProgress?.processed || 0} / {batchProgress?.total || 0}
-              </span>
-              {batchProgress && (
-                <div className="w-full h-2 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
-                  <div
-                    className="h-full bg-gradient-to-r from-orange-500 to-orange-400 rounded-full transition-all duration-300"
-                    style={{ width: `${(batchProgress.processed / batchProgress.total) * 100}%` }}
-                  />
-                </div>
-              )}
-            </div>
-          ) : batchSummary ? (
-            <div className="flex-1 flex flex-col justify-between gap-4">
-              <div className="grid grid-cols-2 gap-3">
-                <MetricPill label="Najbolji eFTP" value={`${batchSummary.best} W`} highlight />
-                <MetricPill label="Zadnji eFTP" value={`${batchSummary.latest} W`} />
-                <MetricPill label="Prosjek" value={`${batchSummary.avg} W`} />
-                <MetricPill label="Analiziranih" value={batchSummary.count} />
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm font-medium italic text-center px-4">
-              <Info className="w-4 h-4 mr-2 shrink-0" />
-              Batch analiza pokreće se automatski kad su dostupni stream podaci
-            </div>
-          )}
-        </div>
       </div>
 
       {/* ZONE PROGRESSION CARDS (preserved from original) */}
