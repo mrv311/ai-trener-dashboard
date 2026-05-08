@@ -199,7 +199,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                     <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
                   </button>
                 )}
-                {w.isSupabase && w.isCompleted && handleDeleteCompletedActivity && (
+                {w.isCompleted && handleDeleteCompletedActivity && (
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={async (e) => {

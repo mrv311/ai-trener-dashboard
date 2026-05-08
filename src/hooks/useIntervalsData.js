@@ -27,7 +27,8 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       if (intervalsId && intervalsKey) {
         const data = await fetchIntervalsData(intervalsId, intervalsKey);
 
-        setRawActivities(data.activities);
+        const hiddenList = JSON.parse(localStorage.getItem('ai_trener_hidden_intervals_activities') || '[]');
+        setRawActivities(data.activities.filter(act => !hiddenList.includes(String(act.id))));
         setRawEvents(data.events);
 
         const mappedWellness = {};
@@ -520,7 +521,6 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
   const handleDeleteCompletedActivity = useCallback(async (activityId) => {
     if (!activityId) return;
 
-    // Samo Supabase aktivnosti se mogu brisati
     if (activityId.startsWith('supabase-')) {
       const rawId = activityId.replace('supabase-', '');
       try {
@@ -552,8 +552,25 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         console.error('Kritična greška pri brisanju:', err);
         return { success: false, error: err.message };
       }
+    } else if (activityId.startsWith('act-')) {
+      // Skrivanje Intervals.icu aktivnosti lokalno
+      const rawId = activityId.replace('act-', '');
+      try {
+        const hiddenList = JSON.parse(localStorage.getItem('ai_trener_hidden_intervals_activities') || '[]');
+        if (!hiddenList.includes(rawId)) {
+          hiddenList.push(rawId);
+          localStorage.setItem('ai_trener_hidden_intervals_activities', JSON.stringify(hiddenList));
+        }
+        
+        // Ažuriraj stanje i triggeraj osvježavanje kako bi nestalo iz UI-ja
+        setRawActivities(prev => prev.filter(act => String(act.id) !== rawId));
+        setLocalRefreshTrigger(prev => prev + 1);
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
     } else {
-      return { success: false, error: 'Samo lokalne aktivnosti se mogu brisati iz kalendara.' };
+      return { success: false, error: 'Ovu aktivnost nije moguće obrisati.' };
     }
   }, []);
 
