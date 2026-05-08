@@ -3,7 +3,9 @@
  * Podržava i stari format (workoutHistory) i novi JSONB format (stream_data).
  */
 import { FitWriter } from '@markw65/fit-file-writer';
-const buildTrackpoint = (pointTime, power, hr, cadence, distanceM) => {
+import { calculateDistanceStream } from './virtualDistance';
+
+const buildTrackpoint = (pointTime, power, hr, cadence, distanceM, speedKmh) => {
   let tp = `
         <Trackpoint>
           <Time>${pointTime.toISOString()}</Time>`;
@@ -25,11 +27,22 @@ const buildTrackpoint = (pointTime, power, hr, cadence, distanceM) => {
           <Cadence>${Math.round(cadence)}</Cadence>`;
   }
 
-  if (power > 0) {
+  if (power > 0 || (speedKmh != null && speedKmh > 0)) {
     tp += `
           <Extensions>
-            <TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2">
-              <Watts>${Math.round(power)}</Watts>
+            <TPX xmlns="http://www.garmin.com/xmlschemas/ActivityExtension/v2">`;
+
+    if (speedKmh != null && speedKmh > 0) {
+      tp += `
+              <Speed>${(speedKmh / 3.6).toFixed(3)}</Speed>`;
+    }
+
+    if (power > 0) {
+      tp += `
+              <Watts>${Math.round(power)}</Watts>`;
+    }
+
+    tp += `
             </TPX>
           </Extensions>`;
   }
@@ -96,10 +109,14 @@ export const exportToTCX = (workoutHistory, workoutName = "Trening") => {
   const durationSecs = workoutHistory[workoutHistory.length - 1].time;
   startTime.setSeconds(startTime.getSeconds() - durationSecs);
 
+  // Generiraj stream s brzinom i udaljenosti
+  const distResult = calculateDistanceStream(workoutHistory, 75); // 75kg default ako nemamo iz profila
+  const enrichedStream = distResult.stream;
+
   let trackpoints = '';
-  workoutHistory.forEach((point) => {
-    const pointTime = new Date(startTime.getTime() + point.time * 1000);
-    trackpoints += buildTrackpoint(pointTime, point.power, point.hr, point.cadence, null);
+  enrichedStream.forEach((point) => {
+    const pointTime = new Date(startTime.getTime() + point.t * 1000);
+    trackpoints += buildTrackpoint(pointTime, point.p, point.hr, point.cad, point.dist, point.spd);
   });
 
   const tcxString = wrapTCX(trackpoints, startTime, durationSecs, workoutName);
@@ -123,7 +140,7 @@ export const exportTCXFromStream = (streamData, title = "Trening", startedAtISO)
   let trackpoints = '';
   streamData.forEach((point) => {
     const pointTime = new Date(startTime.getTime() + point.t * 1000);
-    trackpoints += buildTrackpoint(pointTime, point.p, point.hr, point.cad, point.dist);
+    trackpoints += buildTrackpoint(pointTime, point.p, point.hr, point.cad, point.dist, point.spd);
   });
 
   const tcxString = wrapTCX(trackpoints, startTime, durationSecs, title);
@@ -136,7 +153,7 @@ export const exportTCXFromStream = (streamData, title = "Trening", startedAtISO)
 const generateFitData = (samples, startTime) => {
   const fw = new FitWriter();
   const fitStart = fw.time(startTime);
-  
+
   fw.writeMessage("file_id", {
     type: "activity",
     manufacturer: "development",
@@ -144,13 +161,13 @@ const generateFitData = (samples, startTime) => {
   }, null, true);
 
   const durationSecs = samples.length > 0 ? (samples[samples.length - 1].t !== undefined ? samples[samples.length - 1].t : samples[samples.length - 1].time) : 0;
-  
+
   fw.writeMessage("session", {
     start_time: fitStart,
     total_elapsed_time: durationSecs,
     total_timer_time: durationSecs,
   }, null, true);
-  
+
   samples.forEach((sample) => {
     const t = sample.t !== undefined ? sample.t : sample.time;
     const p = sample.p !== undefined ? sample.p : sample.power;
@@ -158,19 +175,19 @@ const generateFitData = (samples, startTime) => {
     const cad = sample.cad !== undefined ? sample.cad : sample.cadence;
     const dist = sample.dist !== undefined ? sample.dist : null;
     const spdKmh = sample.spd !== undefined ? sample.spd : null;
-    
+
     const pTime = new Date(startTime.getTime() + t * 1000);
     const record = { timestamp: fw.time(pTime) };
-    
+
     if (dist != null && dist > 0) record.distance = dist;
     if (spdKmh != null && spdKmh > 0) record.speed = spdKmh / 3.6; // Pretvaranje km/h u m/s za FIT
     if (hr > 0) record.heart_rate = Math.round(hr);
     if (cad > 0) record.cadence = Math.round(cad);
     if (p > 0) record.power = Math.round(p);
-    
+
     fw.writeMessage("record", record);
   });
-  
+
   const myFitData = fw.finish();
   return new Uint8Array(myFitData.buffer, myFitData.byteOffset, myFitData.byteLength);
 };
@@ -197,8 +214,11 @@ export const exportToFIT = (workoutHistory, workoutName = "Trening") => {
   const startTime = new Date();
   const durationSecs = workoutHistory[workoutHistory.length - 1].time;
   startTime.setSeconds(startTime.getSeconds() - durationSecs);
-  
-  const fitArray = generateFitData(workoutHistory, startTime);
+
+  const distResult = calculateDistanceStream(workoutHistory, 75);
+  const enrichedStream = distResult.stream;
+
+  const fitArray = generateFitData(enrichedStream, startTime);
   downloadFIT(fitArray, workoutName, startTime);
 };
 
