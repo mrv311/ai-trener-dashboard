@@ -77,13 +77,15 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
           localFallback.forEach(localAct => {
             // Provjeri postoji li već aktivnost s istim vremenom početka (±1 minutu tolerancije)
             const localTime = new Date(localAct.started_at).getTime();
-            const existsInSupabase = combinedLocalActivities.some(sbAct => {
+            const existingSbAct = combinedLocalActivities.find(sbAct => {
               const sbTime = new Date(sbAct.started_at).getTime();
               return Math.abs(sbTime - localTime) < 60000;
             });
 
-            if (!existsInSupabase) {
+            if (!existingSbAct) {
               combinedLocalActivities.push(localAct);
+            } else if (localAct.workout_doc && !existingSbAct.workout_doc) {
+              existingSbAct.workout_doc = localAct.workout_doc;
             }
           });
         } catch (e) {
@@ -279,7 +281,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         workout_source: sbAct.workout_source || 'local', // Izvor aktivnosti (calendar, library, free_ride, garmin, strava, etc.)
         difficulty_score: diffScore,
         category: actCategory,
-        workout_doc: workoutDoc,
+        workout_doc: workoutDoc || sbAct.workout_doc,
         targetNP: targetNpVal ? Math.round(targetNpVal) : null,
         np: Math.round(sbAct.np || 0),
         average_power: Math.round(sbAct.avg_power || 0),

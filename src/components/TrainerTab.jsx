@@ -729,7 +729,11 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     try {
       const localActivities = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities') || '[]');
       const localId = 'local_act_' + Date.now();
-      const localActivity = { id: localId, ...activityPayload };
+      const localActivity = { 
+        id: localId, 
+        ...activityPayload,
+        workout_doc: workoutFromCalendar?.steps || workoutFromCalendar?.workout_doc || null
+      };
 
       // Ograniči na zadnjih 50 aktivnosti da ne napunimo localStorage
       const updatedLocal = [localActivity, ...localActivities].slice(0, 50);

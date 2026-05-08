@@ -61,11 +61,7 @@ const getZoneFromFtpPercent = (percent) => {
   return 5;
 };
 
-const DEFAULT_INTENSITY = [
-  { ftpPercent: 50 }, { ftpPercent: 50 }, { ftpPercent: 65 }, { ftpPercent: 65 }, { ftpPercent: 80 },
-  { ftpPercent: 50 }, { ftpPercent: 95 }, { ftpPercent: 95 }, { ftpPercent: 50 }, { ftpPercent: 110 },
-  { ftpPercent: 50 }, { ftpPercent: 65 }, { ftpPercent: 65 }, { ftpPercent: 50 }
-];
+
 
 // ============================================================
 // WorkoutGraph (Performance Guardrail)
@@ -87,7 +83,9 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted 
     return extractIntensityData(workoutDoc);
   }, [workoutDoc]);
 
-  const displayData = intensityArray.length > 0 ? intensityArray : DEFAULT_INTENSITY.map(d => d.ftpPercent);
+  if (intensityArray.length === 0) return null;
+
+  const displayData = intensityArray;
 
   return (
     <div className="relative flex items-end h-10 w-full mt-2.5 bg-zinc-950/60 rounded-sm overflow-hidden">
