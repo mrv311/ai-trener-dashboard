@@ -965,7 +965,9 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       >
         <div className="hidden md:flex flex-1 flex-col bg-zinc-800 border-l border-zinc-800 gap-[1px]">
           {threeWeeks.map(({ days, isActive }, wi) => {
-            let aT = 0; let pT = 0; let aD = 0; let pD = 0;
+            let aT_cycle = 0; let pT_cycle = 0; let aD = 0; let pD = 0;
+            let aT_other = 0; let pT_other = 0;
+            
             // Week label: date range
             const wStart = days[0];
             const wEnd = days[6];
@@ -974,19 +976,62 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               ? `${wStart.day}–${wEnd.day} ${mn[wStart.month]}`
               : `${wStart.day} ${mn[wStart.month]} – ${wEnd.day} ${mn[wEnd.month]}`;
 
-            // CTL/ATL/TSB — uzimamo nedjelju (zadnji dan tjedna) ili najbliži dostupni datum unatrag
-            let weekCtl = null, weekAtl = null;
+            // CTL/ATL/TSB — Planirano (nedjelja)
+            let endCtl = null, endAtl = null, endTsb = null;
             for (let di = 6; di >= 0; di--) {
               const wd = wellnessData[days[di].dateStr];
-              if (wd && (wd.ctl != null || wd.atl != null)) {
-                weekCtl = wd.ctl != null ? Math.round(wd.ctl) : null;
-                weekAtl = wd.atl != null ? Math.round(wd.atl) : null;
+              if (wd && wd.ctl != null) {
+                endCtl = Math.round(wd.ctl);
+                endAtl = Math.round(wd.atl);
+                endTsb = endCtl - endAtl;
                 break;
               }
             }
-            const weekTsb = (weekCtl != null && weekAtl != null) ? weekCtl - weekAtl : null;
 
-            // Ramp Rate — CTL prošlog tjedna (7 dana ranije od Monday ovog tjedna)
+            // CTL/ATL/TSB — Trenutno (do današnjeg dana)
+            let currentCtl = null, currentAtl = null, currentTsb = null;
+            for (let di = 6; di >= 0; di--) {
+              const dDate = new Date(days[di].year, days[di].month, days[di].day);
+              const todayDate = new Date();
+              todayDate.setHours(0,0,0,0);
+              
+              if (dDate <= todayDate) {
+                 const wd = wellnessData[days[di].dateStr];
+                 if (wd && wd.ctl != null) {
+                   currentCtl = Math.round(wd.ctl);
+                   currentAtl = Math.round(wd.atl);
+                   currentTsb = currentCtl - currentAtl;
+                   break;
+                 }
+              }
+            }
+
+            // Ako nemamo current (budući tjedan), ili su isti (prošli tjedan), pripremamo prikaz
+            const renderMetric = (curr, plan) => {
+               if (curr != null && plan != null && curr !== plan) return `${curr} (${plan})`;
+               if (curr != null) return `${curr}`;
+               if (plan != null) return `(${plan})`;
+               return null;
+            };
+
+            const displayCtl = renderMetric(currentCtl, endCtl);
+            const displayAtl = renderMetric(currentAtl, endAtl);
+            
+            const displayTsb = () => {
+               if (currentTsb != null && endTsb != null && currentTsb !== endTsb) {
+                 const currStr = currentTsb > 0 ? `+${currentTsb}` : currentTsb;
+                 const planStr = endTsb > 0 ? `+${endTsb}` : endTsb;
+                 return `${currStr} (${planStr})`;
+               }
+               if (currentTsb != null) return currentTsb > 0 ? `+${currentTsb}` : currentTsb;
+               if (endTsb != null) return `(${endTsb > 0 ? `+${endTsb}` : endTsb})`;
+               return null;
+            };
+            const renderedTsb = displayTsb();
+            // Boja TSB-a se određuje po currentTsb ako postoji, inace endTsb
+            const colorTsbVal = currentTsb != null ? currentTsb : endTsb;
+
+            // Ramp Rate — CTL prošlog tjedna (7 dana ranije od Monday ovog tjedna) vs current/end
             let prevWeekCtl = null;
             const mondayDate = new Date(days[0].year, days[0].month, days[0].day);
             for (let di = 6; di >= 0; di--) {
@@ -999,7 +1044,23 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                 break;
               }
             }
-            const rampRate = (weekCtl != null && prevWeekCtl != null) ? weekCtl - prevWeekCtl : null;
+            
+            let rampRate = null;
+            let currentRamp = currentCtl != null && prevWeekCtl != null ? currentCtl - prevWeekCtl : null;
+            let endRamp = endCtl != null && prevWeekCtl != null ? endCtl - prevWeekCtl : null;
+            
+            const displayRamp = () => {
+               if (currentRamp != null && endRamp != null && currentRamp !== endRamp) {
+                 const currStr = currentRamp > 0 ? `+${currentRamp}` : currentRamp;
+                 const planStr = endRamp > 0 ? `+${endRamp}` : endRamp;
+                 return `${currStr} (${planStr})`;
+               }
+               if (currentRamp != null) return currentRamp > 0 ? `+${currentRamp}` : currentRamp;
+               if (endRamp != null) return `(${endRamp > 0 ? `+${endRamp}` : endRamp})`;
+               return null;
+            };
+            const renderedRamp = displayRamp();
+            const colorRampVal = currentRamp != null ? currentRamp : endRamp;
 
             const getTsbColor = (tsb) => {
               if (tsb == null) return 'text-zinc-600';
@@ -1030,13 +1091,20 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                   const dWorks = workoutsByDate[dObj.dateStr] || [];
                   dWorks.forEach(w => {
                     if (w.isCompleted) {
-                      aT += w.tss; 
-                      if (w.category !== 'OTHER') aD += w.duration;
-                      if (w.plannedTss) pT += w.plannedTss;
-                      if (w.plannedDuration && w.category !== 'OTHER') pD += w.plannedDuration;
+                      if (w.category !== 'OTHER') {
+                        aT_cycle += w.tss; aD += w.duration;
+                        if (w.plannedTss) pT_cycle += w.plannedTss;
+                        if (w.plannedDuration) pD += w.plannedDuration;
+                      } else {
+                        aT_other += w.tss;
+                        if (w.plannedTss) pT_other += w.plannedTss;
+                      }
                     } else {
-                      pT += w.tss; 
-                      if (w.category !== 'OTHER') pD += w.duration;
+                      if (w.category !== 'OTHER') {
+                        pT_cycle += w.tss; pD += w.duration;
+                      } else {
+                        pT_other += w.tss;
+                      }
                     }
                   });
                   return (
@@ -1081,44 +1149,52 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     </div>
                     <div className={`pt-1.5 border-t ${isActive ? 'border-zinc-700' : 'border-zinc-800'}`}>
                       <p className={`text-[10px] font-black uppercase tracking-tighter mb-0.5 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`}>TSS</p>
-                      <div className="flex items-center justify-end gap-1 text-xs">
-                        <Activity className={`w-4 h-4 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`} />
-                        <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{aT}</span>
+                      <div className="flex items-center justify-end gap-1 text-xs mb-0.5" title="Biciklizam TSS">
+                        <Bike className={`w-3.5 h-3.5 mr-auto ${isActive ? 'text-zinc-400' : 'text-zinc-600'}`} />
+                        <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{aT_cycle}</span>
                         <span className="text-zinc-700">/</span>
-                        <span className="text-zinc-500 font-medium">{pT}</span>
+                        <span className="text-zinc-500 font-medium">{pT_cycle}</span>
                       </div>
+                      {(aT_other > 0 || pT_other > 0) && (
+                        <div className="flex items-center justify-end gap-1 text-[11px]" title="Ostali sportovi TSS">
+                          <Activity className={`w-3 h-3 mr-auto ${isActive ? 'text-zinc-500' : 'text-zinc-600'}`} />
+                          <span className={`font-bold ${isActive ? 'text-zinc-300' : 'text-zinc-500'}`}>{aT_other}</span>
+                          <span className="text-zinc-700">/</span>
+                          <span className="text-zinc-500 font-medium">{pT_other}</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* CTL / ATL / TSB blok */}
-                    {(weekCtl != null || weekAtl != null) && (
+                    {(displayCtl != null || displayAtl != null) && (
                       <div className={`pt-1.5 border-t ${isActive ? 'border-zinc-700' : 'border-zinc-800'}`}>
                         <p className={`text-[10px] font-black uppercase tracking-tighter mb-1 ${isActive ? 'text-sky-500' : 'text-zinc-600'}`}>Forma</p>
                         <div className="flex flex-col gap-0.5 items-end">
-                          {weekCtl != null && (
+                          {displayCtl != null && (
                             <div className="flex items-center gap-1 text-[11px]">
                               <span className="text-zinc-600 font-bold">CTL</span>
-                              <span className={`font-mono font-bold ${isActive ? 'text-sky-400' : 'text-zinc-500'}`}>{weekCtl}</span>
+                              <span className={`font-mono font-bold ${isActive ? 'text-sky-400' : 'text-zinc-500'}`}>{displayCtl}</span>
                             </div>
                           )}
-                          {weekAtl != null && (
+                          {displayAtl != null && (
                             <div className="flex items-center gap-1 text-[11px]">
                               <span className="text-zinc-600 font-bold">ATL</span>
-                              <span className={`font-mono font-bold ${isActive ? 'text-purple-400' : 'text-zinc-500'}`}>{weekAtl}</span>
+                              <span className={`font-mono font-bold ${isActive ? 'text-purple-400' : 'text-zinc-500'}`}>{displayAtl}</span>
                             </div>
                           )}
-                          {weekTsb != null && (
+                          {renderedTsb != null && (
                             <div className={`flex items-center gap-1 text-[11px] mt-0.5 px-1 rounded ${isActive ? 'bg-zinc-800/60' : 'bg-zinc-900/60'}`}>
                               <span className="text-zinc-600 font-bold">TSB</span>
-                              <span className={`font-mono font-bold ${getTsbColor(weekTsb)}`}>
-                                {weekTsb > 0 ? `+${weekTsb}` : weekTsb}
+                              <span className={`font-mono font-bold ${getTsbColor(colorTsbVal)}`}>
+                                {renderedTsb}
                               </span>
                             </div>
                           )}
-                          {rampRate != null && (
+                          {renderedRamp != null && (
                             <div className={`flex items-center gap-1 text-[11px] mt-0.5 px-1 rounded ${isActive ? 'bg-zinc-800/60' : 'bg-zinc-900/60'}`} title="Ramp Rate: tjedna promjena CTL-a. Optimalno: +3 do +8">
                               <span className="text-zinc-600 font-bold">RR</span>
-                              <span className={`font-mono font-bold ${getRampColor(rampRate)}`}>
-                                {rampRate > 0 ? `+${rampRate}` : rampRate}
+                              <span className={`font-mono font-bold ${getRampColor(colorRampVal)}`}>
+                                {renderedRamp}
                               </span>
                             </div>
                           )}
