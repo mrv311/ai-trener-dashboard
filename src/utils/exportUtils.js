@@ -1,7 +1,7 @@
 /**
- * Generira trackpoint XML iz jednog podatkovnog punkta.
- * Podržava i stari format (workoutHistory) i novi JSONB format (stream_data).
- */
+* Generira trackpoint XML iz jednog podatkovnog punkta.
+* Podržava i stari format (workoutHistory) i novi JSONB format (stream_data).
+*/
 import { FitWriter } from '@markw65/fit-file-writer';
 import { calculateDistanceStream } from './virtualDistance';
 
@@ -102,12 +102,18 @@ const downloadTCX = (tcxString, workoutName, startTime) => {
  * Exportira trening iz živog workoutHistory arraya (koristi se u TrainerTab).
  * Originalna funkcionalnost — sada koristi zajedničke helper-e.
  */
-export const exportToTCX = (workoutHistory, workoutName = "Trening") => {
+export const exportToTCX = (workoutHistory, workoutName = "Trening", sessionStartTime = null) => {
   if (!workoutHistory || workoutHistory.length === 0) return null;
 
-  const startTime = new Date();
   const durationSecs = workoutHistory[workoutHistory.length - 1].time;
-  startTime.setSeconds(startTime.getSeconds() - durationSecs);
+
+  let startTime;
+  if (sessionStartTime) {
+    startTime = new Date(sessionStartTime);
+  } else {
+    startTime = new Date();
+    startTime.setSeconds(startTime.getSeconds() - durationSecs);
+  }
 
   // Generiraj stream s brzinom i udaljenosti
   const distResult = calculateDistanceStream(workoutHistory, 75); // 75kg default ako nemamo iz profila
@@ -209,11 +215,17 @@ const downloadFIT = (uint8, workoutName, startTime) => {
   setTimeout(() => URL.revokeObjectURL(url), 100);
 };
 
-export const exportToFIT = (workoutHistory, workoutName = "Trening") => {
+export const exportToFIT = (workoutHistory, workoutName = "Trening", sessionStartTime = null) => {
   if (!workoutHistory || workoutHistory.length === 0) return null;
-  const startTime = new Date();
   const durationSecs = workoutHistory[workoutHistory.length - 1].time;
-  startTime.setSeconds(startTime.getSeconds() - durationSecs);
+
+  let startTime;
+  if (sessionStartTime) {
+    startTime = new Date(sessionStartTime);
+  } else {
+    startTime = new Date();
+    startTime.setSeconds(startTime.getSeconds() - durationSecs);
+  }
 
   const distResult = calculateDistanceStream(workoutHistory, 75);
   const enrichedStream = distResult.stream;

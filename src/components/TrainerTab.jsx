@@ -73,6 +73,7 @@ const pidController = new PowerMatchPID();
 export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [sessionStartTime, setSessionStartTime] = useState(null);
 
   const [currentHR, setCurrentHR] = useState(0);
   const [currentPower, setCurrentPower] = useState(0);       // Snaga s trenažera
@@ -103,6 +104,12 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
   const historyRef = useRef([]);
   useEffect(() => { historyRef.current = workoutHistory; }, [workoutHistory]);
+
+  useEffect(() => {
+    if (isPlaying && !sessionStartTime) {
+      setSessionStartTime(new Date().toISOString());
+    }
+  }, [isPlaying, sessionStartTime]);
 
   // --- Centralizirana funkcija za odspajanje svih BLE senzora ---
   const disconnectAllSensors = useCallback(() => {
@@ -210,6 +217,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     if (parsedRecipe.length > 0) {
       setWorkoutRecipe(parsedRecipe);
       setElapsedTime(0);
+      setSessionStartTime(null);
       setWorkoutHistory([]);
       setIsFinished(false);
       setShowStopPrompt(false);
@@ -245,6 +253,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     // Reset svih lokalnih stanja trenažera
     setIsPlaying(false);
     setElapsedTime(0);
+    setSessionStartTime(null);
     setWorkoutHistory([]);
     setIsFinished(false);
     setShowStopPrompt(false);
@@ -677,8 +686,13 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     });
 
     // --- AUTO SAVE u Supabase ---
-    const startedAt = new Date();
-    startedAt.setSeconds(startedAt.getSeconds() - elapsedTime);
+    let startedAt;
+    if (sessionStartTime) {
+      startedAt = new Date(sessionStartTime);
+    } else {
+      startedAt = new Date();
+      startedAt.setSeconds(startedAt.getSeconds() - elapsedTime);
+    }
 
     const workoutTitle = workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja';
     let workoutSource = 'free_ride';
@@ -811,8 +825,8 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         setUploadStatus={setUploadStatus}
         saveStatus={saveStatus}
         handleReset={handleCloseWorkout}
-        handleExportTcx={() => exportToTCX(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja')}
-        handleExportFit={() => exportToFIT(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja')}
+        handleExportTcx={() => exportToTCX(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime)}
+        handleExportFit={() => exportToFIT(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime)}
       />
 
       {/* GORNJA TRAKA: Bluetooth gumbi */}
