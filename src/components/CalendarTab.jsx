@@ -434,6 +434,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const [pickerYear, setPickerYear] = useState(cy);
   const monthPickerRef = useRef(null);
   const fileInputRef = useRef(null);
+  const activityFileInputRef = useRef(null);
 
   // Sync picker with currentDate when it changes externally
   useEffect(() => {
@@ -674,6 +675,57 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     }
   };
 
+  const handleActivityFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUpdating(true);
+      let parsedActivity;
+      const extension = file.name.split('.').pop().toLowerCase();
+      
+      if (extension === 'fit') {
+        const buffer = await file.arrayBuffer();
+        const { parseFIT } = await import('../utils/activityParser');
+        parsedActivity = await parseFIT(buffer);
+      } else if (extension === 'tcx') {
+        const text = await file.text();
+        const { parseTCX } = await import('../utils/activityParser');
+        parsedActivity = parseTCX(text);
+      } else {
+        throw new Error("Nepodržan format datoteke.");
+      }
+
+      // If user selected a specific date in the calendar, overwrite it
+      if (selectedDateForNew) {
+        // preserve time of day if possible, or just set to 12:00
+        parsedActivity.startedAt = new Date(`${selectedDateForNew}T12:00:00`);
+      }
+
+      const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
+      const mass = Number(localStorage.getItem('ai_trener_user_weight')) || 75;
+
+      const { processActivityStream } = await import('../utils/activityParser');
+      const activityPayload = processActivityStream(parsedActivity, ftp, mass);
+
+      const { supabase } = await import('../services/supabaseClient');
+      const { error } = await supabase.from('completed_activities').insert(activityPayload);
+      if (error) throw error;
+      
+      setSelectedDateForNew(null);
+      
+      // Okinuti event za osvježavanje liste (useIntervalsData sluša 'activity-title-updated' kao trigger)
+      window.dispatchEvent(new CustomEvent('activity-title-updated', { detail: { activityId: 'refresh', newTitle: '' }}));
+      
+      alert("Aktivnost uspješno učitana!");
+    } catch (err) {
+      alert("Greška pri učitavanju aktivnosti: " + err.message);
+    } finally {
+      setIsUpdating(false);
+      if (activityFileInputRef.current) activityFileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 flex flex-col min-h-[700px] animate-in fade-in overflow-hidden">
       {/* Modali */}
@@ -731,6 +783,26 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               ref={fileInputRef}
               style={{ display: 'none' }}
               onChange={handleFileUpload}
+            />
+
+            <button
+              onClick={() => activityFileInputRef.current?.click()}
+              className="flex items-center gap-4 w-full p-4 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700 hover:border-emerald-500/50 transition-all group mt-2"
+            >
+              <div className="bg-emerald-500/10 p-3 rounded-lg text-emerald-400 group-hover:bg-emerald-500 group-hover:text-zinc-950 transition-colors">
+                <Activity className="w-6 h-6" />
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="font-bold text-zinc-200">Odrađena aktivnost</span>
+                <span className="text-xs text-zinc-500">Učitaj povijesni trening (FIT, TCX)</span>
+              </div>
+            </button>
+            <input
+              type="file"
+              accept=".fit,.tcx"
+              ref={activityFileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleActivityFileUpload}
             />
           </div>
         </div>
@@ -958,11 +1030,13 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                   const dWorks = workoutsByDate[dObj.dateStr] || [];
                   dWorks.forEach(w => {
                     if (w.isCompleted) {
-                      aT += w.tss; aD += w.duration;
+                      aT += w.tss; 
+                      if (w.category !== 'OTHER') aD += w.duration;
                       if (w.plannedTss) pT += w.plannedTss;
-                      if (w.plannedDuration) pD += w.plannedDuration;
+                      if (w.plannedDuration && w.category !== 'OTHER') pD += w.plannedDuration;
                     } else {
-                      pT += w.tss; pD += w.duration;
+                      pT += w.tss; 
+                      if (w.category !== 'OTHER') pD += w.duration;
                     }
                   });
                   return (

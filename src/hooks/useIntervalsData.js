@@ -263,6 +263,18 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         }
       }
 
+      // Pokušaj izvući sport iz workout_source
+      let parsedSport = 'cycling'; // default za sve normalne vožnje
+      if (sbAct.workout_source && sbAct.workout_source.startsWith('external_upload_')) {
+          parsedSport = sbAct.workout_source.replace('external_upload_', '').toLowerCase();
+      } else if (sbAct.workout_source === 'external_upload') {
+          // Ako je external_upload ali bez sporta, pretpostavljamo po wati
+          parsedSport = sbAct.avg_power > 0 ? 'cycling' : 'other';
+      }
+
+      let isCycling = parsedSport === 'cycling' || parsedSport === 'virtual_ride' || parsedSport === 'biking';
+      let defaultCategory = isCycling ? 'WORKOUT' : 'OTHER';
+
       finalWorkouts.push({
         id: `supabase-${sbAct.id}`,
         actId: `supabase-${sbAct.id}`,
@@ -280,7 +292,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         isSupabase: true, // Oznaka da je iz Supabase-a (prioritet!)
         workout_source: sbAct.workout_source || 'local', // Izvor aktivnosti (calendar, library, free_ride, garmin, strava, etc.)
         difficulty_score: diffScore,
-        category: actCategory,
+        category: actCategory || defaultCategory,
         workout_doc: workoutDoc || sbAct.workout_doc,
         targetNP: targetNpVal ? Math.round(targetNpVal) : null,
         np: Math.round(sbAct.np || 0),
