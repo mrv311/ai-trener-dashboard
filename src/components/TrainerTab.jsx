@@ -313,6 +313,9 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
             if (prev < totalDuration) {
               setWorkoutHistory(hist => {
                 const newHist = [...hist];
+                if (hist.length === 0 && prev === 0) {
+                  newHist.push({ time: 0, power: recordedPower, hr, cadence: cad });
+                }
                 for (let i = 0; i < deltaSecs; i++) {
                   if (prev + i + 1 <= totalDuration) {
                     newHist.push({ time: prev + i + 1, power: recordedPower, hr, cadence: cad });
