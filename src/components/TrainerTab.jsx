@@ -818,7 +818,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   }, [showStopPrompt, isFinished, controlMode, handleSkip]);
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto flex flex-col flex-1 gap-2 md:gap-4 animate-in fade-in relative px-1 md:px-2 min-h-0">
+    <div className="w-full max-w-[1800px] mx-auto flex flex-col flex-1 gap-1 md:gap-4 animate-in fade-in relative px-1 md:px-2 min-h-0">
 
       <TrainerModals
         showStopPrompt={showStopPrompt}
@@ -888,7 +888,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       </div>
 
       {/* GLAVNI GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3 shrink-1 min-h-0">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3 shrink-[2] min-h-0" style={{minHeight: 0}}>
         <div className="md:col-span-2 lg:col-span-2 bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-2 md:p-4 flex flex-col justify-center items-center relative overflow-hidden min-h-0">
           <div className={`absolute top-0 w-full h-2 ${getZoneColorForTrainer(currentStep.power)} transition-colors duration-500 shadow-[0_0_10px_rgba(255,255,255,0.2)]`}></div>
           <div className="absolute top-3 left-3 flex items-center gap-2">
@@ -1028,7 +1028,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
           ergIntensity={ergIntensity}
         />
 
-        <div className="flex justify-between items-center px-2 md:px-4 py-2 md:py-3 bg-zinc-950/50 rounded-b-xl md:rounded-b-2xl border-x border-b border-zinc-800/80">
+        <div className="flex justify-between items-center px-2 md:px-4 py-1.5 md:py-2.5 bg-zinc-950/50 rounded-b-xl md:rounded-b-2xl border-x border-b border-zinc-800/80 shrink-0">
           <div className="text-[10px] md:text-sm lg:text-base font-black uppercase tracking-widest text-zinc-500 flex flex-col md:flex-row items-start md:items-baseline">
             <span>UKUPNO PROTEKLO VRIJEME:</span> <span className="text-zinc-300 text-sm md:text-xl lg:text-2xl mt-0.5 md:mt-0 md:ml-2 font-mono tracking-tight">{formatTime(elapsedTime)}</span>
           </div>

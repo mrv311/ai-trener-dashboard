@@ -73,18 +73,13 @@ export default function TrainerGraph({
   const totalRecordedSecs = workoutHistory.filter(h => h.power > 0).length || 1; // da izbjegnemo dijeljenje s nula
 
   return (
-    <div className="flex flex-col flex-1 w-full gap-2">
-      {/* Prikaz metrika lebdećeg intervala iznad grafa */}
-      <div className="flex items-center justify-between px-2 h-6 min-h-[24px]">
-        {/* Placeholder for top bar, currently empty to shift focus to the vertical line */}
-      </div>
-
+    <div className="flex flex-col flex-1 w-full gap-1">
       {/* Glavni Graf */}
       <div
         ref={graphRef}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
-        className="relative flex-1 min-h-[150px] w-full bg-zinc-950/50 rounded-t-xl border border-zinc-800/80 overflow-visible group cursor-crosshair"
+        className="relative flex-1 min-h-[60px] w-full bg-zinc-950/50 rounded-t-xl border border-zinc-800/80 overflow-visible group cursor-crosshair"
       >
         {/* Sloj za overlay i SVG — clipan */}
         <div className="absolute inset-0 overflow-hidden rounded-t-xl pointer-events-none">
