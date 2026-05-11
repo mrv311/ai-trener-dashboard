@@ -837,49 +837,49 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       />
 
       {/* GORNJA TRAKA: Bluetooth gumbi */}
-      <div className="flex gap-2.5 md:gap-4 flex-wrap overflow-x-auto pb-1 md:pb-0 shrink-0">
+      <div className="flex gap-1.5 md:gap-4 flex-wrap overflow-x-auto pb-0 md:pb-0 shrink-0">
         <button
           onClick={connectTrainer}
-          className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-5 py-2.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base shrink-0 ${isPowerConnected ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-sky-400 border-zinc-800/80'}`}
+          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-5 py-1.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base shrink-0 ${isPowerConnected ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-sky-400 border-zinc-800/80'}`}
         >
-          {isPowerConnected ? <BluetoothConnected className="w-4 h-4 md:w-5 md:h-5" /> : <Bluetooth className="w-4 h-4 md:w-5 md:h-5" />}
+          {isPowerConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-5 md:h-5" /> : <Bluetooth className="w-3.5 h-3.5 md:w-5 md:h-5" />}
           {isPowerConnected ? 'Trenažer Spojen' : 'Spoji Trenažer'}
         </button>
 
         <button
           onClick={connectPowerMeter}
-          className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-5 py-2.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base shrink-0 ${isPmConnected ? 'bg-violet-500/10 text-violet-400 border-violet-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-violet-400 border-zinc-800/80'}`}
+          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-5 py-1.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base shrink-0 ${isPmConnected ? 'bg-violet-500/10 text-violet-400 border-violet-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-violet-400 border-zinc-800/80'}`}
         >
-          {isPmConnected ? <BluetoothConnected className="w-4 h-4 md:w-5 md:h-5" /> : <Activity className="w-4 h-4 md:w-5 md:h-5" />}
+          {isPmConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-5 md:h-5" /> : <Activity className="w-3.5 h-3.5 md:w-5 md:h-5" />}
           {isPmConnected ? 'PowerMeter Spojen' : 'Spoji PowerMeter'}
         </button>
 
         <button
           onClick={connectHR}
-          className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-5 py-2.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base shrink-0 ${isHrConnected ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-rose-500 border-zinc-800/80'}`}
+          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-5 py-1.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base shrink-0 ${isHrConnected ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-rose-500 border-zinc-800/80'}`}
         >
-          {isHrConnected ? <BluetoothConnected className="w-4 h-4 md:w-5 md:h-5" /> : <Heart className="w-4 h-4 md:w-5 md:h-5" />}
+          {isHrConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-5 md:h-5" /> : <Heart className="w-3.5 h-3.5 md:w-5 md:h-5" />}
           {isHrConnected ? 'Pulsmetar Spojen' : 'Spoji Pulsmetar'}
         </button>
 
         {isPmConnected && (
           <button
             onClick={() => { setPowerMatchEnabled(prev => !prev); pidController.reset(); }}
-            className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-5 py-2.5 md:py-3 rounded-xl font-bold transition-all border shadow-sm text-xs md:text-base shrink-0 ${powerMatchEnabled ? 'bg-violet-600 text-white border-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.3)]' : 'bg-zinc-900/50 text-violet-500 border-zinc-800 hover:bg-zinc-800'}`}
+            className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-5 py-1.5 md:py-3 rounded-xl font-bold transition-all border shadow-sm text-xs md:text-base shrink-0 ${powerMatchEnabled ? 'bg-violet-600 text-white border-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.3)]' : 'bg-zinc-900/50 text-violet-500 border-zinc-800 hover:bg-zinc-800'}`}
           >
-            <Activity className="w-4 h-4 md:w-5 md:h-5" />
+            <Activity className="w-3.5 h-3.5 md:w-5 md:h-5" />
             P.Match {powerMatchEnabled ? 'ON' : 'OFF'}
           </button>
         )}
 
-        <div className="ml-auto flex items-center justify-between md:justify-end w-full md:w-auto bg-zinc-900/40 backdrop-blur-md rounded-xl border border-zinc-800/80 shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 md:py-3 text-zinc-500 font-medium text-xs md:text-sm truncate">
-            Trening: <span className="text-zinc-100 font-bold ml-2 uppercase">{workoutFromCalendar ? workoutFromCalendar.title : "Slobodna Vožnja"}</span>
+        <div className="ml-auto flex items-center justify-end bg-zinc-900/40 backdrop-blur-md rounded-xl border border-zinc-800/80 shadow-sm overflow-hidden shrink-0">
+          <div className="px-3 py-1.5 md:px-4 md:py-3 text-zinc-500 font-medium text-xs md:text-sm truncate max-w-[140px] sm:max-w-none">
+            <span className="hidden sm:inline">Trening: </span><span className="text-zinc-100 font-bold uppercase">{workoutFromCalendar ? workoutFromCalendar.title : "Slobodna Vožnja"}</span>
           </div>
           {onClose && (
             <button
               onClick={onClose}
-              className="px-4 py-2.5 md:py-3 bg-zinc-800 hover:bg-zinc-700 hover:text-white transition-colors text-zinc-400 font-bold border-l border-zinc-700/50 flex items-center gap-2"
+              className="px-3 py-1.5 md:px-4 md:py-3 bg-zinc-800 hover:bg-zinc-700 hover:text-white transition-colors text-zinc-400 font-bold border-l border-zinc-700/50 flex items-center gap-2"
             >
               <X className="w-4 h-4 md:w-5 md:h-5" /> <span className="hidden md:inline">Zatvori</span>
             </button>
