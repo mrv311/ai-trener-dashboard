@@ -89,7 +89,7 @@ export default function App() {
                 <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-[0_0_15px_rgba(249,115,22,0.4)] flex items-center justify-center p-1.5 mr-3">
                   <Activity className="w-5 h-5 text-white" />
                 </div>
-                <span className="font-bold text-lg tracking-tight text-zinc-100 drop-shadow-sm whitespace-nowrap">Make it Green!</span>
+                <span className="font-bold text-lg tracking-tight text-zinc-100 drop-shadow-sm whitespace-nowrap">ErgVibe</span>
               </div>
               <button
                 onClick={() => setIsSidebarCollapsed(true)}
