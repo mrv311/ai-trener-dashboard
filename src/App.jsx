@@ -81,7 +81,7 @@ export default function App() {
     <div className="flex h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-orange-500/30">
 
       {/* SIDEBAR (Desktop) */}
-      <div className={`hidden md:flex bg-zinc-900/60 backdrop-blur-xl border-r border-zinc-800/80 flex-col shadow-2xl z-10 shrink-0 transition-all duration-300 ease-in-out relative ${isSidebarCollapsed ? 'w-[72px]' : 'w-64'}`}>
+      <div className={`hidden md:flex bg-zinc-900/60 backdrop-blur-xl border-r border-zinc-800/80 flex-col shadow-2xl z-10 shrink-0 transition-all duration-300 ease-in-out relative ${isSidebarCollapsed ? 'w-[72px]' : 'w-56'}`}>
         <div className={`h-16 flex items-center border-b border-zinc-800/80 ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
           {!isSidebarCollapsed ? (
             <>
