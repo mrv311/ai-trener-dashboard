@@ -241,6 +241,54 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
   const lastUpdateRef = useRef(Date.now());
   const workerRef = useRef(null);
+  const wakeLockRef = useRef(null);
+
+  const requestWakeLock = useCallback(async () => {
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
+        wakeLockRef.current.addEventListener('release', () => {
+          console.log('Wake Lock was released');
+        });
+        console.log('Wake Lock is active');
+      }
+    } catch (err) {
+      console.warn(`Wake Lock error: ${err.name}, ${err.message}`);
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(async () => {
+    if (wakeLockRef.current !== null) {
+      try {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+        console.log('Wake Lock released manually');
+      } catch (err) {
+        console.warn(`Error releasing Wake Lock: ${err.message}`);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isPlaying && !isFinished) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+  }, [isPlaying, isFinished, requestWakeLock, releaseWakeLock]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isPlaying && !isFinished) {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      releaseWakeLock();
+    };
+  }, [isPlaying, isFinished, requestWakeLock, releaseWakeLock]);
 
   // --- Zatvaranje treninga: reset svih lokalnih stateova + poziv onClose propa ---
   const handleCloseWorkout = useCallback(() => {
