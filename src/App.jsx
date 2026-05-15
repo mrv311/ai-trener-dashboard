@@ -82,14 +82,12 @@ export default function App() {
 
       {/* SIDEBAR (Desktop) */}
       <div className={`hidden md:flex bg-zinc-900/60 backdrop-blur-xl border-r border-zinc-800/80 flex-col shadow-2xl z-10 shrink-0 transition-all duration-300 ease-in-out relative ${isSidebarCollapsed ? 'w-[72px]' : 'w-56'}`}>
-        <div className={`h-16 flex items-center border-b border-zinc-800/80 ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
+        <div className={`h-16 md:h-20 flex items-center border-b border-zinc-800/80 ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
           {!isSidebarCollapsed ? (
             <>
               <div className="flex items-center">
-                <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-[0_0_15px_rgba(249,115,22,0.4)] flex items-center justify-center p-1.5 mr-3">
-                  <Activity className="w-5 h-5 text-white" />
-                </div>
-                <span className="font-bold text-lg tracking-tight text-zinc-100 drop-shadow-sm whitespace-nowrap">ErgVibe</span>
+                <img src="/logo.png" alt="ErgVibe Logo" className="w-14 h-14 rounded-2xl mr-3 shadow-[0_0_15px_rgba(249,115,22,0.4)] object-cover" />
+                <span className="font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-orange-400 to-orange-600 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)] whitespace-nowrap">ErgVibe</span>
               </div>
               <button
                 onClick={() => setIsSidebarCollapsed(true)}
@@ -166,7 +164,7 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-        <header className="h-14 md:h-16 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 flex items-center justify-between px-4 md:px-8 shrink-0 z-20">
+        <header className="h-14 md:h-20 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 flex items-center justify-between px-4 md:px-8 shrink-0 z-20">
           <div className="flex items-center gap-3 md:gap-4">
             <h1 className="text-lg md:text-xl font-bold text-zinc-100 truncate tracking-tight">
               {TABS[activeTab]?.label || 'Dashboard'}
