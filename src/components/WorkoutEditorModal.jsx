@@ -170,22 +170,57 @@ function ZoneBar({ zones, totalSecs }) {
 // Mini Graf Komponenta
 // ============================================================
 function MiniWorkoutGraph({ allSteps, ftp, totalSecs }) {
+  const [hoverInfo, setHoverInfo] = useState(null);
+
   if (!allSteps || allSteps.length === 0 || totalSecs <= 0) return null;
 
   const maxPower = Math.max(...allSteps.map(s => s.power), 130);
   const ftpLine = (100 / maxPower) * 100;
 
+  const handleMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const percentage = x / rect.width;
+    const hoveredSec = percentage * totalSecs;
+
+    let accumulated = 0;
+    let currentStep = allSteps[allSteps.length - 1]; 
+    for (const step of allSteps) {
+      if (hoveredSec >= accumulated && hoveredSec <= accumulated + step.duration) {
+        currentStep = step;
+        break;
+      }
+      accumulated += step.duration;
+    }
+
+    if (currentStep) {
+      setHoverInfo({
+        x,
+        rectWidth: rect.width,
+        powerPct: currentStep.power,
+        powerW: Math.round((currentStep.power / 100) * ftp),
+        timeStr: formatDurSec(Math.round(hoveredSec))
+      });
+    }
+  };
+
+  const handleMouseLeave = () => setHoverInfo(null);
+
   return (
-    <div className="relative w-full h-24 bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden">
+    <div 
+      className="relative w-full h-24 bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden cursor-crosshair"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
       {/* FTP Line */}
       <div
-        className="absolute left-0 right-0 border-t border-dashed border-zinc-600 z-10"
+        className="absolute left-0 right-0 border-t border-dashed border-zinc-600 z-10 pointer-events-none"
         style={{ bottom: `${Math.min(ftpLine, 95)}%` }}
       >
         <span className="absolute right-1 -top-3 text-[9px] font-bold text-zinc-500">FTP</span>
       </div>
 
-      <div className="absolute inset-0 flex items-end">
+      <div className="absolute inset-0 flex items-end pointer-events-none">
         {allSteps.map((step, i) => {
           const widthPct = (step.duration / totalSecs) * 100;
           const heightPct = Math.min((step.power / maxPower) * 100, 100);
@@ -199,20 +234,46 @@ function MiniWorkoutGraph({ allSteps, ftp, totalSecs }) {
                 height: `${heightPct}%`,
                 backgroundColor: color,
               }}
-              className="border-r border-zinc-950/40 opacity-80 transition-all"
+              className="border-r border-zinc-950/40 opacity-80"
             />
           );
         })}
       </div>
 
       {/* Skala vremena */}
-      <div className="absolute bottom-0 left-0 right-0 flex justify-between px-2 py-0.5 text-[8px] text-zinc-600 font-mono">
+      <div className="absolute bottom-0 left-0 right-0 flex justify-between px-2 py-0.5 text-[8px] text-zinc-600 font-mono pointer-events-none">
         <span>0:00</span>
         <span>{formatDurSec(Math.round(totalSecs / 4))}</span>
         <span>{formatDurSec(Math.round(totalSecs / 2))}</span>
         <span>{formatDurSec(Math.round((totalSecs * 3) / 4))}</span>
         <span>{formatDurSec(totalSecs)}</span>
       </div>
+
+      {/* Hover Line & Tooltip */}
+      {hoverInfo && (
+        <>
+          <div 
+            className="absolute top-0 bottom-0 w-px bg-white/80 pointer-events-none z-20 shadow-[0_0_8px_rgba(255,255,255,0.5)]"
+            style={{ left: hoverInfo.x }}
+          />
+          <div 
+            className="absolute top-1 pointer-events-none z-30 transition-none"
+            style={{ 
+              left: hoverInfo.x,
+              transform: hoverInfo.x < 40 ? 'translateX(4px)' : hoverInfo.x > hoverInfo.rectWidth - 40 ? 'translateX(calc(-100% - 4px))' : 'translateX(-50%)'
+            }}
+          >
+            <div className="bg-zinc-800 border border-zinc-600 rounded-md px-2 py-1 shadow-xl flex flex-col items-center whitespace-nowrap backdrop-blur-md">
+              <span className="text-white font-black text-[11px] leading-none">
+                {hoverInfo.powerW}W
+              </span>
+              <span className="text-zinc-400 font-bold text-[9px] leading-none mt-1">
+                {hoverInfo.powerPct}% • {hoverInfo.timeStr}
+              </span>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
