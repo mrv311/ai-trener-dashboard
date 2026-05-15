@@ -314,7 +314,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       } else {
         // Fallback ako nije spareno s planiranim treningom (free ride ili garmin sync)
         if (sbAct.tss > 0 || sbAct.duration_seconds > 0) {
-          complianceColor = 'green'; // Zelen je ako je odrađen (barem ima tss ili trajanje)
+          complianceColor = 'blue'; // Plavi ako je odrađen ali neplaniran
         }
       }
 
@@ -469,7 +469,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       } else {
         // Fallback ako nije spareno s planiranim treningom (free ride ili garmin sync)
         if (act.icu_training_load > 0 || act.moving_time > 0) {
-          complianceColor = 'green';
+          complianceColor = 'blue';
         }
       }
 
