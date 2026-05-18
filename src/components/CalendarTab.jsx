@@ -698,8 +698,14 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
       // If user selected a specific date in the calendar, overwrite it
       if (selectedDateForNew) {
-        // preserve time of day if possible, or just set to 12:00
-        parsedActivity.startedAt = new Date(`${selectedDateForNew}T12:00:00`);
+        if (parsedActivity.startedAt instanceof Date && !isNaN(parsedActivity.startedAt)) {
+          const hh = String(parsedActivity.startedAt.getHours()).padStart(2, '0');
+          const mm = String(parsedActivity.startedAt.getMinutes()).padStart(2, '0');
+          const ss = String(parsedActivity.startedAt.getSeconds()).padStart(2, '0');
+          parsedActivity.startedAt = new Date(`${selectedDateForNew}T${hh}:${mm}:${ss}`);
+        } else {
+          parsedActivity.startedAt = new Date(`${selectedDateForNew}T12:00:00`);
+        }
       }
 
       const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;

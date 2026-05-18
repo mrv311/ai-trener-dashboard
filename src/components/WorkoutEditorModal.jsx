@@ -199,7 +199,7 @@ function MiniWorkoutGraph({ allSteps, ftp, totalSecs }) {
         rectWidth: rect.width,
         powerPct: currentStep.power,
         powerW: Math.round((currentStep.power / 100) * ftp),
-        timeStr: formatDurSec(Math.round(hoveredSec))
+        timeStr: formatDurSec(currentStep.duration)
       });
     }
   };
