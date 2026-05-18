@@ -85,13 +85,11 @@ export default function App() {
         <div className={`h-16 md:h-20 flex items-center border-b border-zinc-800/80 ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
           {!isSidebarCollapsed ? (
             <>
-              <div className="flex items-center">
-                <img src="/logo.png" alt="ErgVibe Logo" className="w-14 h-14 rounded-2xl mr-3 shadow-[0_0_15px_rgba(249,115,22,0.4)] object-cover" />
-                <span className="font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-orange-400 to-orange-600 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)] whitespace-nowrap">ErgVibe</span>
-              </div>
+              <img src="/logo.png" alt="ErgVibe Logo" className="w-14 h-14 rounded-2xl shadow-[0_0_15px_rgba(249,115,22,0.4)] object-cover shrink-0" />
+              <span className="flex-1 text-center font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-orange-400 to-orange-600 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)] whitespace-nowrap">ErgVibe</span>
               <button
                 onClick={() => setIsSidebarCollapsed(true)}
-                className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                className="text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
                 title="Sažmi izbornik"
               >
                 <PanelLeftClose className="w-5 h-5" />
