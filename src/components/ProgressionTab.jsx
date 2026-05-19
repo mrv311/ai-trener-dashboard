@@ -121,6 +121,16 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
     }));
   }, [cooldown.allowed, longitudinalResult, setProfile]);
 
+  // ── Reject detected FTP and reset cooldown ─────────────────────────────
+  const handleRejectFTP = useCallback(() => {
+    if (!cooldown.allowed || !setProfile) return;
+
+    setProfile(prev => ({
+      ...prev,
+      lastFtpUpdate: new Date().toISOString(),
+    }));
+  }, [cooldown.allowed, setProfile]);
+
   // ── Existing zone-level logic (unchanged from original) ─────────────────
   useEffect(() => {
     const loadHistory = () => {
@@ -271,24 +281,40 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
 
             {/* ── Detect FTP Button + Cooldown Gate ──────────────── */}
             <div className="mt-4 pt-4 border-t border-zinc-800/40">
-              <button
-                id="detect-ftp-btn"
-                disabled={!cooldown.allowed || !longitudinalResult}
-                onClick={handleApplyFTP}
-                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all border ${cooldown.allowed && longitudinalResult
-                  ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white border-orange-500/30 hover:shadow-[0_0_20px_rgba(249,115,22,0.35)] hover:scale-[1.02] active:scale-[0.98]'
-                  : 'bg-zinc-900/60 text-zinc-600 border-zinc-800/60 opacity-50 cursor-not-allowed'
-                  }`}
-              >
-                {cooldown.allowed ? (
-                  <><ShieldCheck className="w-4 h-4" /> Primijeni eFTP</>
-                ) : (
-                  <>
-                    <Lock className="w-4 h-4 shrink-0" />
-                    <span>Sljedeća procjena moguća za <span className="text-amber-500/90 tabular-nums">{cooldown.daysRemaining}</span> {cooldown.daysRemaining === 1 ? 'dan' : 'dana'}</span>
-                  </>
-                )}
-              </button>
+              {!cooldown.allowed ? (
+                <button
+                  disabled
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all border bg-zinc-900/60 text-zinc-600 border-zinc-800/60 opacity-50 cursor-not-allowed"
+                >
+                  <Lock className="w-4 h-4 shrink-0" />
+                  <span>Sljedeća procjena moguća za <span className="text-amber-500/90 tabular-nums">{cooldown.daysRemaining}</span> {cooldown.daysRemaining === 1 ? 'dan' : 'dana'}</span>
+                </button>
+              ) : longitudinalResult ? (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleRejectFTP}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold transition-all border bg-zinc-800/50 text-zinc-300 border-zinc-700/50 hover:bg-zinc-700 hover:text-white"
+                    title="Odbaci prijedlog i zadrži trenutni FTP"
+                  >
+                    <Minus className="w-4 h-4" /> Zadrži
+                  </button>
+                  <button
+                    id="detect-ftp-btn"
+                    onClick={handleApplyFTP}
+                    className="flex-[2] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-bold transition-all border bg-gradient-to-r from-orange-500 to-orange-600 text-white border-orange-500/30 hover:shadow-[0_0_20px_rgba(249,115,22,0.35)] hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <ShieldCheck className="w-4 h-4" /> Primijeni eFTP
+                  </button>
+                </div>
+              ) : (
+                <button
+                  disabled
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all border bg-zinc-900/60 text-zinc-600 border-zinc-800/60 opacity-50 cursor-not-allowed"
+                >
+                  <Info className="w-4 h-4 shrink-0" />
+                  <span>Nedovoljno podataka za procjenu</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

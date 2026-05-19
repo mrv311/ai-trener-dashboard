@@ -38,10 +38,18 @@ export function useProfileSync(initialValue) {
         }
 
         if (data) {
-          // Merge local defaults with what is returned from Supabase
-          const merged = { ...initialValue, ...data };
-          setProfileState(merged);
-          window.localStorage.setItem('ai_trener_profile', JSON.stringify(merged));
+          // Merge current local profile (which may have local-only fields like lastFtpUpdate)
+          // with what is returned from Supabase
+          setProfileState((prev) => {
+            const merged = { ...prev };
+            for (const key in data) {
+              if (data[key] !== null) {
+                merged[key] = data[key];
+              }
+            }
+            window.localStorage.setItem('ai_trener_profile', JSON.stringify(merged));
+            return merged;
+          });
         }
       } catch (err) {
         console.error('Network or unexpected error while fetching profile:', err);
