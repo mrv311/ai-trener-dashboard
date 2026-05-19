@@ -350,6 +350,12 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
                 />
               </div>
 
+              {/* Explanation Text */}
+              <div className="bg-zinc-950/30 rounded-xl p-3.5 border border-zinc-800/40 text-xs text-zinc-400 leading-relaxed font-medium flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
+                <span>{getExplanationText(longitudinalResult)}</span>
+              </div>
+
               {/* Visual bar */}
               <div className="mt-auto">
                 <div className="flex justify-between text-[10px] font-bold text-zinc-600 mb-1.5">
@@ -488,4 +494,17 @@ function MetricPill({ label, value, highlight = false }) {
       <p className={`text-sm font-black tabular-nums ${highlight ? 'text-emerald-400' : 'text-zinc-200'}`}>{value}</p>
     </div>
   );
+}
+
+/** Helper for generating the explanation text based on the longitudinal result */
+function getExplanationText(result) {
+  if (!result) return '';
+  if (result.decision === 'increase') {
+    const efPct = ((parseFloat(result.efTrend) - 1) * 100).toFixed(1);
+    return `Završili ste ${result.intervalCount} intervalnih treninga uz visoku adherenciju (${result.adherence}). Uza sve to, vaša aerobna efikasnost (puls pri zadanoj snazi) u ovom se ciklusu dodatno poboljšala za ${efPct > 0 ? efPct : 0}%, što je jasan znak tijela da ste spremni za veće opterećenje!`;
+  }
+  if (result.decision === 'decrease') {
+    return `Vaša adherencija iznosi ${result.adherence}, što sugerira da trenutačno možda previše odstupate od zadanih brojki u intervalima zbog zamora. Blago smanjenje FTP-a omogućit će vam povratak kvaliteti izvođenja i bolji oporavak.`;
+  }
+  return `Na temelju ${result.intervalCount} analiziranih treninga, nema značajnih odstupanja u efikasnosti, a adherencija je stabilna. Trenutačni FTP optimalno odgovara vašoj trenutnoj formi. Zadržite ga!`;
 }
