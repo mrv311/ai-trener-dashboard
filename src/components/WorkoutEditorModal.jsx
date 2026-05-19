@@ -92,6 +92,7 @@ const formatDurSec = (secs) => {
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
   if (h > 0) return `${h}h${m > 0 ? String(m).padStart(2, '0') + 'm' : ''}`;
+  if (m === 0) return `${Math.round(secs)}s`;
   return `${m}m`;
 };
 
@@ -199,7 +200,7 @@ function MiniWorkoutGraph({ allSteps, ftp, totalSecs }) {
         rectWidth: rect.width,
         powerPct: currentStep.power,
         powerW: Math.round((currentStep.power / 100) * ftp),
-        timeStr: formatDurSec(currentStep.duration)
+        timeStr: formatDurMinSec(currentStep.duration)
       });
     }
   };
