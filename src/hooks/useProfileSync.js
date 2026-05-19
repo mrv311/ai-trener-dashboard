@@ -71,9 +71,17 @@ export function useProfileSync(initialValue) {
       window.localStorage.setItem('ai_trener_profile', JSON.stringify(updatedProfile));
 
       // 3. Upsert to Supabase
+      // Only send keys defined in initialValue to prevent schema errors if we have local-only keys (e.g. lastFtpUpdate)
+      const payload = { id: 1 };
+      for (const key in initialValue) {
+        if (updatedProfile[key] !== undefined) {
+          payload[key] = updatedProfile[key];
+        }
+      }
+
       const { error } = await supabase
         .from('profiles')
-        .upsert({ id: 1, ...updatedProfile });
+        .upsert(payload);
 
       if (error) {
         console.error('Error saving profile to Supabase:', error);

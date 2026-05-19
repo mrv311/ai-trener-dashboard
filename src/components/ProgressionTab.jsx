@@ -271,7 +271,7 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
               <span className="text-lg font-bold text-zinc-500 mb-1">W</span>
             </div>
 
-            {longitudinalResult && (
+            {longitudinalResult && cooldown.allowed && (
               <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold mt-2 ${decisionCfg.bgColor} ${decisionCfg.textColor} border ${decisionCfg.borderColor}`}>
                 <DecisionIcon className="w-3.5 h-3.5" />
                 {longitudinalResult.deltaPct}
@@ -328,7 +328,15 @@ export default function ProgressionTab({ workouts = [], profile, setProfile }) {
             <span className="text-xs font-black uppercase tracking-widest text-zinc-500">Progresija (30 dana)</span>
           </div>
 
-          {longitudinalResult ? (
+          {!cooldown.allowed ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-3 pb-2">
+              <Lock className="w-8 h-8 text-zinc-700" />
+              <div className="text-center">
+                <p className="text-sm font-bold text-zinc-300">Nova procjena za {cooldown.daysRemaining} {cooldown.daysRemaining === 1 ? 'dan' : 'dana'}</p>
+                <p className="text-xs text-zinc-500 mt-1 max-w-[200px]">Potreban je period od 30 dana za prikupljanje novih podataka.</p>
+              </div>
+            </div>
+          ) : longitudinalResult ? (
             <div className="flex-1 flex flex-col justify-between gap-4">
               {/* Metrics grid */}
               <div className="grid grid-cols-2 gap-3">
