@@ -221,7 +221,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
       // 1. PROVJERA: Ima li eksplicitno sparen event (korisnik je ručno spojio)?
       const explicitEventId = explicitPairings[actKey];
-      if (explicitEventId && !explicitEventId.startsWith('local-')) {
+      if (explicitEventId && !String(explicitEventId).startsWith('local-')) {
         const explicitEvent = eventsForDate.find(e => String(e.id) === String(explicitEventId));
         if (explicitEvent && !consumedEvents.has(explicitEvent.id)) {
           pairedEvent = explicitEvent;
@@ -251,7 +251,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       let pairedLocal = null;
       if (!pairedEvent) {
         // Provjeri eksplicitni lokalni par
-        if (explicitEventId && explicitEventId.startsWith('local-')) {
+        if (explicitEventId && String(explicitEventId).startsWith('local-')) {
           const localId = explicitEventId.replace('local-', '');
           const localForDate = localByDate.get(actDate) || [];
           const explicitLocal = localForDate.find(lw => lw.id === localId);
@@ -386,7 +386,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
       // 1. Provjeri eksplicitni par
       const explicitEventId = explicitPairings[actKey];
-      if (explicitEventId && !explicitEventId.startsWith('local-')) {
+      if (explicitEventId && !String(explicitEventId).startsWith('local-')) {
         const explicitEvent = eventsForDate.find(e => String(e.id) === String(explicitEventId));
         if (explicitEvent && !consumedEvents.has(explicitEvent.id)) {
           pairedEvent = explicitEvent;
@@ -409,7 +409,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       let pairedLocal = null;
       if (!pairedEvent) {
         // Provjeri eksplicitni lokalni par
-        if (explicitEventId && explicitEventId.startsWith('local-')) {
+        if (explicitEventId && String(explicitEventId).startsWith('local-')) {
           const localId = explicitEventId.replace('local-', '');
           const localForDate = localByDate.get(actDate) || [];
           const explicitLocal = localForDate.find(lw => lw.id === localId);
