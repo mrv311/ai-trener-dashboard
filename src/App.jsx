@@ -20,8 +20,9 @@ import HistoryTab from './components/HistoryTab';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useProfileSync } from './hooks/useProfileSync';
 import { useIntervalsData } from './hooks/useIntervalsData';
+import { version as pkgVersion } from '../package.json';
 
-const APP_VERSION = 'v1.0.1';
+const APP_VERSION = `v${pkgVersion}`;
 
 // 1. Centralizirana konfiguracija tabova za lakše održavanje
 const TABS = {
