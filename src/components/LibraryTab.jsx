@@ -264,7 +264,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
                   </div>
                   <div>
                     <h3 className="text-xl font-black tracking-tight text-white">{activeFolder}</h3>
-                    <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">{groupedWorkouts[activeFolder].length} treninga u mapi</p>
+                    <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">{(groupedWorkouts[activeFolder] || []).length} treninga u mapi</p>
                   </div>
                 </div>
                 <div className="flex items-center flex-wrap gap-3 w-full sm:w-auto">
