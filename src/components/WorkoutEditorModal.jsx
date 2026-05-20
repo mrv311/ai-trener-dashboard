@@ -383,21 +383,9 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
       const category = categorizeWorkout(stats.allSteps) || 'Ostalo';
       const difficulty = calculateCategoryDifficulty(stats.allSteps, category);
 
-      let desc = '';
-      switch(category) {
-        case 'Oporavak': desc = 'Lagana vožnja za aktivni oporavak. Pomaže u otklanjanju umora i boljoj cirkulaciji bez stresa za tijelo.'; break;
-        case 'Endurance': desc = 'Aerobni trening u Zoni 2. Gradi kapilarnu mrežu, povećava izdržljivost i uči tijelo da učinkovitije troši masti.'; break;
-        case 'Tempo': desc = 'Trening srednjeg intenziteta. Poboljšava mišićnu izdržljivost i navikava tijelo na dulji rad pod umjerenim naporom.'; break;
-        case 'Sweet Spot': desc = 'Visoko efikasan trening tik ispod laktatnog praga (88-95% FTP). Odličan omjer uloženog napora i benefita za podizanje FTP-a.'; break;
-        case 'Threshold': desc = 'Trening na laktatnom pragu (95-105% FTP). Poboljšava sposobnost tijela da podnese i očisti laktate, direktno podižući FTP.'; break;
-        case 'VO2 Max': desc = 'Kratki, iznimno intenzivni intervali. Ciljaju povećanje maksimalnog primitka kisika (VO2 Max) i kardiovaskularnog kapaciteta.'; break;
-        case 'Anaerobni': desc = 'Maksimalni neuro-mišićni napori. Povećavaju anaerobni kapacitet, sprintersku snagu i regrutaciju mišićnih vlakana.'; break;
-        default: desc = 'Trening opće namjene i raznovrsnih intervala.'; break;
-      }
-
       const workoutPayload = {
         title: title || 'Novi Trening',
-        description: desc,
+        description: '',
         duration_seconds: stats.duration,
         difficulty_score: difficulty,
         category: category,
