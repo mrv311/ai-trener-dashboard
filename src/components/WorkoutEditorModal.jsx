@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Pencil, Eye } from 'lucide-react';
-import { parseIntervalsCode } from '../utils/workoutParser';
+import { X, Save, Pencil, Eye, Database, Check } from 'lucide-react';
+import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
+import { supabase } from '../services/supabaseClient';
 
 
 // ============================================================
@@ -340,6 +341,8 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
   const [title, setTitle] = useState('');
   const [code, setCode] = useState('');
   const [mode, setMode] = useState('view'); // 'view' | 'edit'
+  const [isSavingToLibrary, setIsSavingToLibrary] = useState(false);
+  const [librarySaveSuccess, setLibrarySaveSuccess] = useState(false);
 
   const ftp = userFtp && userFtp > 0 ? userFtp : 200;
 
@@ -372,6 +375,34 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
       plannedTss: stats.tss,
       category: workout.category || 'WORKOUT'
     });
+  };
+
+  const handleSaveToLibrary = async () => {
+    try {
+      setIsSavingToLibrary(true);
+      const category = categorizeWorkout(stats.allSteps) || 'Ostalo';
+      const difficulty = calculateCategoryDifficulty(stats.allSteps, category);
+
+      const workoutPayload = {
+        title: title || 'Novi Trening',
+        description: code,
+        duration_seconds: stats.duration,
+        difficulty_score: difficulty,
+        category: category,
+        steps: stats.allSteps
+      };
+
+      const { error } = await supabase.from('workouts').insert([workoutPayload]);
+      if (error) throw error;
+      
+      setLibrarySaveSuccess(true);
+      setTimeout(() => setLibrarySaveSuccess(false), 2000);
+    } catch (err) {
+      console.error(err);
+      alert("Greška pri spremanju u knjižnicu: " + err.message);
+    } finally {
+      setIsSavingToLibrary(false);
+    }
   };
   // ==============================
 
@@ -538,6 +569,25 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
 
           {/* Desna strana: Akcije */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleSaveToLibrary}
+              disabled={isSavingToLibrary || isLoading}
+              title="Spremi ovaj trening u zajedničku knjižnicu"
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors ${
+                librarySaveSuccess
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+              }`}
+            >
+              {isSavingToLibrary ? (
+                <span className="animate-spin w-3.5 h-3.5 border-2 border-zinc-500 border-t-zinc-300 rounded-full" />
+              ) : librarySaveSuccess ? (
+                <Check className="w-3.5 h-3.5" />
+              ) : (
+                <Database className="w-3.5 h-3.5" />
+              )}
+              {librarySaveSuccess ? 'Spremljeno' : 'U Knjižnicu'}
+            </button>
             <button
               onClick={onClose}
               className="px-4 py-1.5 rounded-lg text-[11px] font-bold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors uppercase tracking-wider"
