@@ -21,6 +21,8 @@ import { useLocalStorage } from './hooks/useLocalStorage';
 import { useProfileSync } from './hooks/useProfileSync';
 import { useIntervalsData } from './hooks/useIntervalsData';
 
+const APP_VERSION = 'v1.0.1';
+
 // 1. Centralizirana konfiguracija tabova za lakše održavanje
 const TABS = {
   calendar: { label: 'Kalendar', icon: <CalendarIcon />, component: CalendarTab },
@@ -86,7 +88,10 @@ export default function App() {
           {!isSidebarCollapsed ? (
             <>
               <img src="/logo.png" alt="ErgVibe Logo" className="w-14 h-14 rounded-2xl shadow-[0_0_15px_rgba(249,115,22,0.4)] object-cover shrink-0" />
-              <span className="flex-1 text-center font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-orange-400 to-orange-600 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)] whitespace-nowrap">ErgVibe</span>
+              <div className="flex-1 flex flex-col items-center justify-center overflow-hidden">
+                <span className="font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-orange-400 to-orange-600 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)] whitespace-nowrap">ErgVibe</span>
+                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest leading-none mt-[-1px]">{APP_VERSION}</span>
+              </div>
               <button
                 onClick={() => setIsSidebarCollapsed(true)}
                 className="text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
