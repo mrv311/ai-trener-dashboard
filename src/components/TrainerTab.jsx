@@ -950,28 +950,28 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
             )}
           </div>
 
-          <div className="absolute top-2 md:top-3 right-2 md:right-3 flex items-center gap-1.5 md:gap-2 bg-zinc-950/50 p-1.5 md:p-2 rounded-2xl border border-zinc-800 shadow-lg">
-            <button onClick={toggleMode} className="flex items-center gap-1.5 px-2.5 py-1.5 md:px-4 md:py-2 bg-zinc-800 shadow-sm border border-zinc-700 rounded-xl text-[10px] md:text-xs font-bold text-zinc-300 uppercase tracking-wider hover:bg-zinc-700 hover:text-white transition-colors active:scale-95">
-              <Settings2 className="w-3.5 h-3.5 md:w-4 md:h-4" /> <span className="hidden sm:inline">{controlMode} Mode</span><span className="sm:hidden">{controlMode}</span>
+          <div className="absolute top-2 md:top-3 right-2 md:right-3 flex items-center gap-1 md:gap-2 bg-zinc-950/50 p-1 md:p-2 rounded-2xl border border-zinc-800 shadow-lg z-10">
+            <button onClick={toggleMode} className="flex items-center gap-1 md:gap-1.5 px-2 py-1 md:px-4 md:py-2 bg-zinc-800 shadow-sm border border-zinc-700 rounded-xl text-[9px] md:text-xs font-bold text-zinc-300 uppercase tracking-wider hover:bg-zinc-700 hover:text-white transition-colors active:scale-95">
+              <Settings2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">{controlMode} Mode</span><span className="sm:hidden">{controlMode}</span>
             </button>
-            <div className="w-px h-6 md:h-8 bg-zinc-800 mx-0.5 md:mx-1"></div>
+            <div className="w-px h-5 md:h-8 bg-zinc-800 mx-0.5 md:mx-1"></div>
             {controlMode === 'ERG' ? (
-              <div className="flex items-center gap-1 md:gap-2">
-                <button onClick={decreaseErg} className="p-2 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
-                <span className="w-12 md:w-16 text-center font-black text-zinc-100 text-sm md:text-lg">{ergIntensity}%</span>
-                <button onClick={increaseErg} className="p-2 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
+              <div className="flex items-center gap-0.5 md:gap-2">
+                <button onClick={decreaseErg} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                <span className="w-10 md:w-16 text-center font-black text-zinc-100 text-sm md:text-lg">{ergIntensity}%</span>
+                <button onClick={increaseErg} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
               </div>
             ) : (
-              <div className="flex items-center gap-1 md:gap-2">
-                <button onClick={decreaseRes} className="p-2 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
-                <span className="w-12 md:w-16 text-center font-black text-zinc-100 text-sm md:text-lg">Lvl {resistanceLevel}</span>
-                <button onClick={increaseRes} className="p-2 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
+              <div className="flex items-center gap-0.5 md:gap-2">
+                <button onClick={decreaseRes} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                <span className="w-10 md:w-16 text-center font-black text-zinc-100 text-sm md:text-lg">Lvl {resistanceLevel}</span>
+                <button onClick={increaseRes} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
               </div>
             )}
           </div>
 
-          <div className="flex items-baseline gap-1 md:gap-2 mt-4 md:mt-6 shrink-1 min-h-0">
-            <div className={`text-[clamp(40px,10vh,120px)] md:text-[clamp(60px,12vh,150px)] font-black leading-none tracking-tighter transition-colors ${controlMode === 'RES' && isPlaying ? 'text-indigo-400 drop-shadow-[0_0_10px_rgba(129,140,248,0.5)]' : getPowerColor()}`}>
+          <div className="flex items-baseline gap-1 md:gap-2 mt-8 md:mt-6 shrink-1 min-h-0">
+            <div className={`text-[clamp(40px,8vh,120px)] md:text-[clamp(60px,12vh,150px)] font-black leading-none tracking-tighter transition-colors ${controlMode === 'RES' && isPlaying ? 'text-indigo-400 drop-shadow-[0_0_10px_rgba(129,140,248,0.5)]' : getPowerColor()}`}>
               {displayPower}
             </div>
             <span className="text-lg md:text-2xl lg:text-3xl font-bold text-zinc-600 pb-1 md:pb-2">W</span>
@@ -1033,7 +1033,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       </div>
 
       {/* SESSION PROGRESS BAR */}
-      <div className="bg-zinc-900/40 backdrop-blur-xl rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] border border-zinc-800/80 px-2 md:px-4 py-2 md:py-2.5 flex items-center justify-between overflow-x-auto shrink-0 hide-scrollbar gap-2 md:col-span-3">
+      <div className="bg-zinc-900/40 backdrop-blur-xl rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] border border-zinc-800/80 px-2 md:px-4 py-1.5 md:py-2.5 flex items-center justify-between overflow-x-auto shrink-0 hide-scrollbar gap-2 md:col-span-3">
         <div className={`flex items-center gap-4 md:gap-8 mx-auto ${getZoneTextColor(currentStep.power)} font-mono tabular-nums text-[11px] sm:text-xs md:text-sm lg:text-base font-black uppercase tracking-widest`}>
           <div className="flex items-center gap-1"><span className="text-zinc-500 font-bold opacity-70 drop-shadow-none">NP</span> <span>{liveMetrics.np}W</span></div>
           <div className="flex items-center gap-1"><span className="text-zinc-500 font-bold opacity-70 drop-shadow-none">IF</span> <span>{liveMetrics.ifFactor}</span></div>
@@ -1076,7 +1076,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
           ergIntensity={ergIntensity}
         />
 
-        <div className="flex justify-between items-center px-2 md:px-4 py-1.5 md:py-2.5 bg-zinc-950/50 rounded-b-xl md:rounded-b-2xl border-x border-b border-zinc-800/80 shrink-0">
+        <div className="flex justify-between items-center px-2 md:px-4 py-1.5 md:py-2 bg-zinc-950/50 rounded-b-xl md:rounded-b-2xl border-x border-b border-zinc-800/80 shrink-0">
           <div className="text-[10px] md:text-sm lg:text-base font-black uppercase tracking-widest text-zinc-500 flex flex-col md:flex-row items-start md:items-baseline">
             <span>UKUPNO PROTEKLO VRIJEME:</span> <span className="text-zinc-300 text-sm md:text-xl lg:text-2xl mt-0.5 md:mt-0 md:ml-2 font-mono tracking-tight">{formatTime(elapsedTime)}</span>
           </div>
