@@ -20,6 +20,7 @@ import HistoryTab from './components/HistoryTab';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useProfileSync } from './hooks/useProfileSync';
 import { useIntervalsData } from './hooks/useIntervalsData';
+// Force Vite HMR to pick up the new logo
 import { version as pkgVersion } from '../package.json';
 import appLogo from './assets/logo.png';
 
