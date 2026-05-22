@@ -92,7 +92,7 @@ export default function App() {
             <>
               <img src={appLogo} alt="ErgVibe Logo" className="w-14 h-14 rounded-2xl shadow-[0_0_15px_rgba(249,115,22,0.4)] object-cover shrink-0" />
               <div className="flex-1 flex flex-col items-center justify-center overflow-hidden">
-                <span className="font-black text-2xl tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-orange-400 to-orange-600 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)] whitespace-nowrap">ErgVibe</span>
+                <span className="font-black text-2xl tracking-tight text-white drop-shadow-[0_0_8px_rgba(249,115,22,0.5)] whitespace-nowrap">ErgVibe</span>
                 <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest leading-none mt-[-1px]">{APP_VERSION}</span>
               </div>
               <button
