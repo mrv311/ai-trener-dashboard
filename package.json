@@ -1,7 +1,7 @@
 {
   "name": "ergvibe",
   "private": true,
-  "version": "6.3.6",
+  "version": "6.3.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
