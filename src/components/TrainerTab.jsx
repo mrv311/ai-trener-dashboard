@@ -973,6 +973,47 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         handleExportFit={() => exportToFIT(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime)}
       />
 
+      {/* DEVICE MANAGER MODAL */}
+      {showDeviceManager && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setShowDeviceManager(false)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl w-full max-w-sm p-5 md:p-6 flex flex-col gap-4 animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b border-zinc-800/80 pb-4">
+              <div className="flex items-center gap-2 text-zinc-100">
+                <Settings2 className="w-5 h-5 text-orange-500" />
+                <h3 className="text-base md:text-lg font-black uppercase tracking-widest">Zapamćeni Uređaji</h3>
+              </div>
+              <button onClick={() => setShowDeviceManager(false)} className="text-zinc-500 hover:text-zinc-300 p-1.5 bg-zinc-800/50 hover:bg-zinc-700 rounded-full transition-colors border border-zinc-700/50">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1 hide-scrollbar">
+              {knownDevices.length === 0 ? (
+                <div className="text-sm text-zinc-500 font-medium italic text-center py-8 bg-zinc-950/50 rounded-2xl border border-zinc-800/50 shadow-inner">Nema zapamćenih uređaja.</div>
+              ) : (
+                knownDevices.map(dev => (
+                  <div key={dev.id} className="flex items-center justify-between bg-zinc-800/40 p-3 rounded-2xl border border-zinc-700/50 shadow-sm">
+                    <div className="flex flex-col overflow-hidden mr-2">
+                      <span className="text-sm text-zinc-100 font-bold truncate" title={dev.name || 'Nepoznat uređaj'}>
+                        {dev.name || 'Nepoznat uređaj'}
+                      </span>
+                      <span className="text-[9px] text-zinc-500 uppercase tracking-widest mt-0.5">{dev.id}</span>
+                    </div>
+                    <button 
+                      onClick={() => handleForgetDevice(dev)}
+                      className="text-[10px] md:text-xs bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white px-3 py-1.5 rounded-xl font-bold uppercase tracking-wider transition-colors border border-rose-500/20 shadow-sm shrink-0"
+                      title="Zaboravi uređaj"
+                    >
+                      Zaboravi
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* GORNJA TRAKA: Bluetooth gumbi */}
       <div className="flex gap-1.5 md:gap-4 flex-wrap overflow-x-auto pb-0 md:pb-0 shrink-0">
         <button
@@ -1010,40 +1051,14 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         )}
 
         {/* Postavke uređaja */}
-        <div className="relative shrink-0">
+        <div className="shrink-0">
           <button
-            onClick={() => setShowDeviceManager(!showDeviceManager)}
+            onClick={() => setShowDeviceManager(true)}
             className="flex items-center gap-1 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base bg-zinc-900/50 hover:bg-zinc-800 text-zinc-400 border-zinc-800/80"
           >
             <Settings2 className="w-3.5 h-3.5 md:w-5 md:h-5" />
             <span className="hidden sm:inline">Uređaji</span>
           </button>
-          
-          {showDeviceManager && (
-            <div className="absolute top-full mt-2 left-0 sm:right-0 sm:left-auto w-64 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 p-3 flex flex-col gap-2 animate-in fade-in zoom-in-95">
-              <div className="text-xs font-black text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-2 mb-1">
-                Zapamćeni Uređaji
-              </div>
-              {knownDevices.length === 0 ? (
-                <div className="text-sm text-zinc-400 italic">Nema zapamćenih uređaja.</div>
-              ) : (
-                knownDevices.map(dev => (
-                  <div key={dev.id} className="flex items-center justify-between bg-zinc-800/50 p-2 rounded-lg border border-zinc-700/50">
-                    <span className="text-sm text-zinc-200 font-medium truncate mr-2" title={dev.name || 'Nepoznat uređaj'}>
-                      {dev.name || 'Nepoznat uređaj'}
-                    </span>
-                    <button 
-                      onClick={() => handleForgetDevice(dev)}
-                      className="text-xs bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white px-2 py-1 rounded-md transition-colors border border-rose-500/20"
-                      title="Zaboravi uređaj"
-                    >
-                      Zaboravi
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
         </div>
 
         <div className="ml-auto flex items-center justify-end bg-zinc-900/40 backdrop-blur-md rounded-xl border border-zinc-800/80 shadow-sm overflow-hidden shrink-0">
