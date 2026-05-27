@@ -955,7 +955,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   }, [showStopPrompt, isFinished, controlMode, handleSkip]);
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto flex flex-col flex-1 gap-1 md:gap-4 animate-in fade-in relative px-1 md:px-2 min-h-0">
+    <div className="w-full max-w-[1800px] mx-auto flex flex-col flex-1 gap-1 md:gap-2 xl:gap-4 animate-in fade-in relative px-1 md:px-2 min-h-0">
 
       <TrainerModals
         showStopPrompt={showStopPrompt}
