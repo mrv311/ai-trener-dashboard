@@ -95,6 +95,8 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   const [summaryStats, setSummaryStats] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+  const [knownDevices, setKnownDevices] = useState([]);
+  const [showDeviceManager, setShowDeviceManager] = useState(false);
 
   const crankDataRef = useRef({ revs: -1, time: -1 });
   const pmCrankDataRef = useRef({ revs: -1, time: -1 });
@@ -504,6 +506,123 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     }
   };
 
+  const loadKnownDevices = useCallback(async () => {
+    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
+    try {
+      const devices = await navigator.bluetooth.getDevices();
+      setKnownDevices(devices);
+    } catch (e) { console.warn("getDevices() nije podržan", e); }
+  }, []);
+
+  const handleForgetDevice = async (device) => {
+    try {
+      await device.forget();
+      
+      const savedRoles = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
+      let updated = false;
+      Object.keys(savedRoles).forEach(key => {
+        if (savedRoles[key] === device.id) {
+          delete savedRoles[key];
+          updated = true;
+        }
+      });
+      if (updated) {
+        localStorage.setItem('ergvibe_ble_devices', JSON.stringify(savedRoles));
+      }
+      
+      loadKnownDevices();
+    } catch (err) {
+      console.warn("Nije uspjelo zaboravljanje uređaja:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadKnownDevices();
+  }, [loadKnownDevices]);
+
+  // setup helperi za auto-connect
+  const setupHRDevice = async (device) => {
+    hrDeviceRef.current = device;
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService('heart_rate');
+    const char = await service.getCharacteristic('heart_rate_measurement');
+    await char.startNotifications();
+    setIsHrConnected(true);
+    char.addEventListener('characteristicvaluechanged', (e) => {
+      const val = e.target.value;
+      const flags = val.getUint8(0);
+      setCurrentHR(flags & 0x1 ? val.getUint16(1, true) : val.getUint8(1));
+    });
+  };
+
+  const setupTrainerDevice = async (device) => {
+    trainerDeviceRef.current = device;
+    const server = await device.gatt.connect();
+    const powerService = await server.getPrimaryService('cycling_power');
+    const powerChar = await powerService.getCharacteristic('cycling_power_measurement');
+    await powerChar.startNotifications();
+    setIsPowerConnected(true);
+
+    powerChar.addEventListener('characteristicvaluechanged', (e) => {
+      parseCyclingPowerData(e.target.value, crankDataRef, setCurrentPower, setCurrentCadence);
+    });
+
+    try {
+      const ftmsService = await server.getPrimaryService('00001826-0000-1000-8000-00805f9b34fb');
+      const controlPoint = await ftmsService.getCharacteristic('00002ad9-0000-1000-8000-00805f9b34fb');
+      setFtmsControlChar(controlPoint);
+      await controlPoint.startNotifications();
+      await controlPoint.writeValue(new Uint8Array([0x00]));
+      console.log("FTMS kontrola preuzeta.");
+    } catch (ftmsErr) {
+      console.warn("FTMS greška:", ftmsErr);
+    }
+  };
+
+  const setupPmDevice = async (device) => {
+    pmDeviceRef.current = device;
+    const server = await device.gatt.connect();
+    const powerService = await server.getPrimaryService('cycling_power');
+    const powerChar = await powerService.getCharacteristic('cycling_power_measurement');
+    await powerChar.startNotifications();
+    setIsPmConnected(true);
+    setPowerMatchEnabled(true);
+    pidController.reset();
+    console.log("Powermetar spojen, Power Match aktiviran.");
+
+    powerChar.addEventListener('characteristicvaluechanged', (e) => {
+      parseCyclingPowerData(e.target.value, pmCrankDataRef, setPmPower, setCurrentCadence);
+    });
+  };
+
+  useEffect(() => {
+    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
+    const autoConnect = async () => {
+      try {
+        const devices = await navigator.bluetooth.getDevices();
+        const savedRoles = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
+        
+        for (const device of devices) {
+          try {
+            if (device.id === savedRoles.hr && !hrDeviceRef.current) {
+              await setupHRDevice(device);
+            } else if (device.id === savedRoles.trainer && !trainerDeviceRef.current) {
+              await setupTrainerDevice(device);
+            } else if (device.id === savedRoles.pm && !pmDeviceRef.current) {
+              await setupPmDevice(device);
+            }
+          } catch (e) {
+            console.warn(`Automatsko spajanje na ${device.name} nije uspjelo:`, e);
+          }
+        }
+      } catch (e) {
+        console.warn("Auto-connect failed:", e);
+      }
+    };
+    autoConnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const connectHR = async () => {
     if (isHrConnected) {
       if (hrDeviceRef.current && hrDeviceRef.current.gatt.connected) {
@@ -517,17 +636,11 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     try {
       if (!navigator.bluetooth) { alert("Tvoj preglednik ne podržava Web Bluetooth."); return; }
       const device = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
-      hrDeviceRef.current = device;
-      const server = await device.gatt.connect();
-      const service = await server.getPrimaryService('heart_rate');
-      const char = await service.getCharacteristic('heart_rate_measurement');
-      await char.startNotifications();
-      setIsHrConnected(true);
-      char.addEventListener('characteristicvaluechanged', (e) => {
-        const val = e.target.value;
-        const flags = val.getUint8(0);
-        setCurrentHR(flags & 0x1 ? val.getUint16(1, true) : val.getUint8(1));
-      });
+      await setupHRDevice(device);
+      const saved = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
+      saved['hr'] = device.id;
+      localStorage.setItem('ergvibe_ble_devices', JSON.stringify(saved));
+      loadKnownDevices();
     } catch (err) { if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na pulsmetar: " + err.message); }
   };
 
@@ -549,27 +662,11 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         filters: [{ services: ['cycling_power'] }],
         optionalServices: ['00001826-0000-1000-8000-00805f9b34fb']
       });
-      trainerDeviceRef.current = device;
-      const server = await device.gatt.connect();
-      const powerService = await server.getPrimaryService('cycling_power');
-      const powerChar = await powerService.getCharacteristic('cycling_power_measurement');
-      await powerChar.startNotifications();
-      setIsPowerConnected(true);
-
-      powerChar.addEventListener('characteristicvaluechanged', (e) => {
-        parseCyclingPowerData(e.target.value, crankDataRef, setCurrentPower, setCurrentCadence);
-      });
-
-      try {
-        const ftmsService = await server.getPrimaryService('00001826-0000-1000-8000-00805f9b34fb');
-        const controlPoint = await ftmsService.getCharacteristic('00002ad9-0000-1000-8000-00805f9b34fb');
-        setFtmsControlChar(controlPoint);
-        await controlPoint.startNotifications();
-        await controlPoint.writeValue(new Uint8Array([0x00]));
-        console.log("FTMS kontrola preuzeta.");
-      } catch (ftmsErr) {
-        console.warn("FTMS greška:", ftmsErr);
-      }
+      await setupTrainerDevice(device);
+      const saved = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
+      saved['trainer'] = device.id;
+      localStorage.setItem('ergvibe_ble_devices', JSON.stringify(saved));
+      loadKnownDevices();
     } catch (err) {
       if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na trenažer: " + err.message);
     }
@@ -592,19 +689,11 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ services: ['cycling_power'] }]
       });
-      pmDeviceRef.current = device;
-      const server = await device.gatt.connect();
-      const powerService = await server.getPrimaryService('cycling_power');
-      const powerChar = await powerService.getCharacteristic('cycling_power_measurement');
-      await powerChar.startNotifications();
-      setIsPmConnected(true);
-      setPowerMatchEnabled(true);
-      pidController.reset();
-      console.log("Powermetar spojen, Power Match aktiviran.");
-
-      powerChar.addEventListener('characteristicvaluechanged', (e) => {
-        parseCyclingPowerData(e.target.value, pmCrankDataRef, setPmPower, setCurrentCadence);
-      });
+      await setupPmDevice(device);
+      const saved = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
+      saved['pm'] = device.id;
+      localStorage.setItem('ergvibe_ble_devices', JSON.stringify(saved));
+      loadKnownDevices();
     } catch (err) {
       if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na powermetar: " + err.message);
     }
@@ -919,6 +1008,43 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
             P.Match {powerMatchEnabled ? 'ON' : 'OFF'}
           </button>
         )}
+
+        {/* Postavke uređaja */}
+        <div className="relative shrink-0">
+          <button
+            onClick={() => setShowDeviceManager(!showDeviceManager)}
+            className="flex items-center gap-1 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base bg-zinc-900/50 hover:bg-zinc-800 text-zinc-400 border-zinc-800/80"
+          >
+            <Settings2 className="w-3.5 h-3.5 md:w-5 md:h-5" />
+            <span className="hidden sm:inline">Uređaji</span>
+          </button>
+          
+          {showDeviceManager && (
+            <div className="absolute top-full mt-2 left-0 sm:right-0 sm:left-auto w-64 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-50 p-3 flex flex-col gap-2 animate-in fade-in zoom-in-95">
+              <div className="text-xs font-black text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-2 mb-1">
+                Zapamćeni Uređaji
+              </div>
+              {knownDevices.length === 0 ? (
+                <div className="text-sm text-zinc-400 italic">Nema zapamćenih uređaja.</div>
+              ) : (
+                knownDevices.map(dev => (
+                  <div key={dev.id} className="flex items-center justify-between bg-zinc-800/50 p-2 rounded-lg border border-zinc-700/50">
+                    <span className="text-sm text-zinc-200 font-medium truncate mr-2" title={dev.name || 'Nepoznat uređaj'}>
+                      {dev.name || 'Nepoznat uređaj'}
+                    </span>
+                    <button 
+                      onClick={() => handleForgetDevice(dev)}
+                      className="text-xs bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white px-2 py-1 rounded-md transition-colors border border-rose-500/20"
+                      title="Zaboravi uređaj"
+                    >
+                      Zaboravi
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="ml-auto flex items-center justify-end bg-zinc-900/40 backdrop-blur-md rounded-xl border border-zinc-800/80 shadow-sm overflow-hidden shrink-0">
           <div className="px-3 py-1.5 md:px-4 md:py-3 text-zinc-500 font-medium text-xs md:text-sm truncate max-w-[140px] sm:max-w-none">
