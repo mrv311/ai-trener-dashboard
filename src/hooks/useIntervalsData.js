@@ -370,9 +370,16 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     rawActivities.forEach(act => {
       const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
 
-      // PROVJERA: Preskoči ako već postoji Supabase aktivnost za ovaj datum
-      if (supabaseDateMap.has(actDate)) {
-        console.log('[useIntervalsData] ✓ Preskačem Intervals.icu aktivnost', act.id, 'jer postoji Supabase aktivnost', supabaseDateMap.get(actDate), 'za datum:', actDate);
+      // PROVJERA: Preskoči ako već postoji Supabase aktivnost s istim ili sličnim vremenom početka (±15 min)
+      // Ovo sprječava dupliciranje istog treninga koji je poslan na Intervals pa se sad vraća
+      const actTime = new Date(act.start_date).getTime();
+      const isDuplicate = supabaseActivities.some(sbAct => {
+        const sbTime = new Date(sbAct.started_at).getTime();
+        return Math.abs(sbTime - actTime) < 15 * 60 * 1000;
+      });
+
+      if (isDuplicate) {
+        console.log('[useIntervalsData] ✓ Preskačem Intervals.icu aktivnost', act.id, 'jer je duplikat Supabase aktivnosti (slično vrijeme početka)');
         return;
       }
 
@@ -400,6 +407,12 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
           if (unpairedList.includes(`${act.id}-${e.id}`)) {
             separatedEventIds.push(e.id);
           } else if (!consumedEvents.has(e.id) && !pairedEvent) {
+            // SMART MATCHING: Cycling eventi se sparuju samo s cycling aktivnostima
+            const isActCycling = ['Ride', 'VirtualRide', 'EBikeRide', 'Handcycle'].includes(act.type);
+            if (!isActCycling) {
+              separatedEventIds.push(e.id);
+              continue;
+            }
             pairedEvent = e;
             consumedEvents.add(e.id);
           }
