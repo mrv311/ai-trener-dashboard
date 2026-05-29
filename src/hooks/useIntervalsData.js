@@ -345,6 +345,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         eventId: eventIdObj,
         separatedEventIds,
         date: actDate,
+        started_at: sbAct.started_at,
         title: sbAct.title || 'Lokalni Trening',
         duration: Math.round((sbAct.duration_seconds || 0) / 60),
         plannedDuration: plannedDurDisplay,
@@ -504,7 +505,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
       finalWorkouts.push({
         id: `act-${act.id}`, actId: act.id, eventId: eventIdObj, separatedEventIds,
-        date: actDate, title: act.name || 'Trening',
+        date: actDate, started_at: act.start_date_local || act.start_date, title: act.name || 'Trening',
         duration: Math.round((act.moving_time || 0) / 60), plannedDuration: plannedDurDisplay,
         tss: Math.round(act.icu_training_load || 0), plannedTss: plannedTssDisplay,
         statusColor: complianceColor, isCompleted: true,
