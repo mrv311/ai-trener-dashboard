@@ -388,6 +388,8 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       let separatedEventIds = [];
 
       const actKey = `act-${act.id}`;
+      const isActCycling = ['Ride', 'VirtualRide', 'EBikeRide', 'Handcycle'].includes(act.type);
+      let defaultCategory = isActCycling ? 'WORKOUT' : 'OTHER';
 
       // O(k) lookup umjesto O(n)
       const eventsForDate = eventsByDate.get(actDate) || [];
@@ -409,7 +411,6 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
             separatedEventIds.push(e.id);
           } else if (!consumedEvents.has(e.id) && !pairedEvent) {
             // SMART MATCHING: Cycling eventi se sparuju samo s cycling aktivnostima
-            const isActCycling = ['Ride', 'VirtualRide', 'EBikeRide', 'Handcycle'].includes(act.type);
             if (!isActCycling) {
               separatedEventIds.push(e.id);
               continue;
@@ -510,7 +511,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         tss: Math.round(act.icu_training_load || 0), plannedTss: plannedTssDisplay,
         statusColor: complianceColor, isCompleted: true,
         difficulty_score: diffScore,
-        category: actCategory,
+        category: actCategory || defaultCategory,
         workout_doc: workoutDoc,
         targetNP: targetNpVal ? Math.round(targetNpVal) : null,
         np: Math.round(act.icu_normalized_power || act.normalized_power || 0),
