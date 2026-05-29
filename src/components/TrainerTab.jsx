@@ -507,33 +507,51 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   };
 
   const loadKnownDevices = useCallback(async () => {
-    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
-    try {
-      const devices = await navigator.bluetooth.getDevices();
-      setKnownDevices(devices);
-    } catch (e) { console.warn("getDevices() nije podržan", e); }
-  }, []);
+    let actualDevices = [];
+    if (navigator.bluetooth && navigator.bluetooth.getDevices) {
+      try {
+        actualDevices = await navigator.bluetooth.getDevices();
+      } catch (e) { console.warn("getDevices() nije podržan", e); }
+    }
 
-  const handleForgetDevice = async (device) => {
-    try {
-      await device.forget();
-      
-      const savedRoles = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
-      let updated = false;
-      Object.keys(savedRoles).forEach(key => {
-        if (savedRoles[key] === device.id) {
-          delete savedRoles[key];
-          updated = true;
-        }
-      });
-      if (updated) {
-        localStorage.setItem('ergvibe_ble_devices', JSON.stringify(savedRoles));
+    const savedRoles = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
+    const combinedDevices = [];
+
+    Object.keys(savedRoles).forEach(role => {
+      let savedData = savedRoles[role];
+      if (typeof savedData === 'string') {
+        savedData = { id: savedData, name: 'Nepoznat uređaj' };
       }
       
-      loadKnownDevices();
+      const actualDevice = actualDevices.find(d => d.id === savedData.id);
+      
+      combinedDevices.push({
+        id: savedData.id,
+        name: actualDevice ? actualDevice.name : savedData.name,
+        role: role,
+        originalDevice: actualDevice || null
+      });
+    });
+
+    setKnownDevices(combinedDevices);
+  }, []);
+
+  const handleForgetDevice = async (deviceItem) => {
+    try {
+      if (deviceItem.originalDevice && typeof deviceItem.originalDevice.forget === 'function') {
+        await deviceItem.originalDevice.forget();
+      }
     } catch (err) {
-      console.warn("Nije uspjelo zaboravljanje uređaja:", err);
+      console.warn("Nije uspjelo zaboravljanje uređaja na razini sustava:", err);
     }
+    
+    const savedRoles = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
+    if (savedRoles[deviceItem.role]) {
+      delete savedRoles[deviceItem.role];
+      localStorage.setItem('ergvibe_ble_devices', JSON.stringify(savedRoles));
+    }
+    
+    loadKnownDevices();
   };
 
   useEffect(() => {
@@ -604,11 +622,15 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         
         for (const device of devices) {
           try {
-            if (device.id === savedRoles.hr && !hrDeviceRef.current) {
+            const hrId = typeof savedRoles.hr === 'object' ? savedRoles.hr?.id : savedRoles.hr;
+            const trainerId = typeof savedRoles.trainer === 'object' ? savedRoles.trainer?.id : savedRoles.trainer;
+            const pmId = typeof savedRoles.pm === 'object' ? savedRoles.pm?.id : savedRoles.pm;
+
+            if (device.id === hrId && !hrDeviceRef.current) {
               await setupHRDevice(device);
-            } else if (device.id === savedRoles.trainer && !trainerDeviceRef.current) {
+            } else if (device.id === trainerId && !trainerDeviceRef.current) {
               await setupTrainerDevice(device);
-            } else if (device.id === savedRoles.pm && !pmDeviceRef.current) {
+            } else if (device.id === pmId && !pmDeviceRef.current) {
               await setupPmDevice(device);
             }
           } catch (e) {
@@ -638,7 +660,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       const device = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
       await setupHRDevice(device);
       const saved = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
-      saved['hr'] = device.id;
+      saved['hr'] = { id: device.id, name: device.name || 'Pulsmetar' };
       localStorage.setItem('ergvibe_ble_devices', JSON.stringify(saved));
       loadKnownDevices();
     } catch (err) { if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na pulsmetar: " + err.message); }
@@ -664,7 +686,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       });
       await setupTrainerDevice(device);
       const saved = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
-      saved['trainer'] = device.id;
+      saved['trainer'] = { id: device.id, name: device.name || 'Trenažer' };
       localStorage.setItem('ergvibe_ble_devices', JSON.stringify(saved));
       loadKnownDevices();
     } catch (err) {
@@ -691,7 +713,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       });
       await setupPmDevice(device);
       const saved = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
-      saved['pm'] = device.id;
+      saved['pm'] = { id: device.id, name: device.name || 'PowerMeter' };
       localStorage.setItem('ergvibe_ble_devices', JSON.stringify(saved));
       loadKnownDevices();
     } catch (err) {
@@ -997,7 +1019,9 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
                       <span className="text-sm text-zinc-100 font-bold truncate" title={dev.name || 'Nepoznat uređaj'}>
                         {dev.name || 'Nepoznat uređaj'}
                       </span>
-                      <span className="text-[9px] text-zinc-500 uppercase tracking-widest mt-0.5">{dev.id}</span>
+                      <span className="text-[9px] text-zinc-500 uppercase tracking-widest mt-0.5">
+                        {dev.role === 'hr' ? 'Pulsmetar' : dev.role === 'trainer' ? 'Trenažer' : dev.role === 'pm' ? 'PowerMeter' : dev.role} • {dev.id.substring(0, 8)}...
+                      </span>
                     </div>
                     <button 
                       onClick={() => handleForgetDevice(dev)}
