@@ -1,4 +1,4 @@
-const FETCH_PAST_MONTHS = 12;
+const FETCH_PAST_MONTHS = 36;
 const FETCH_FUTURE_MONTHS = 3;
 
 const getAuthHeaders = (apiKey) => {

@@ -92,11 +92,18 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
 
           combinedLocalActivities.forEach(sbAct => {
             if (sbAct.tss > 0 || sbAct.duration_seconds > 0) {
-              const sbTime = new Date(sbAct.started_at).getTime();
+              const sbTimeStr = sbAct.started_at ? sbAct.started_at.substring(0, 19) : null;
               const isDuplicate = validActivities.some(act => {
-                // Koristimo striktno UTC datume ako su dostupni za precizniju usporedbu
+                const actTimeStr = act.start_date_local ? act.start_date_local.substring(0, 19) : null;
+                if (sbTimeStr && actTimeStr) {
+                   const sbT = new Date(sbTimeStr + 'Z').getTime();
+                   const acT = new Date(actTimeStr + 'Z').getTime();
+                   return Math.abs(sbT - acT) < 45 * 60 * 1000; // Povećana tolerancija na 45 min
+                }
+                // Fallback ako iz nekog razloga fali string
                 const actTime = act.start_date ? new Date(act.start_date).getTime() : new Date(act.start_date_local).getTime();
-                return Math.abs(sbTime - actTime) < 45 * 60 * 1000; // Povećana tolerancija na 45 min
+                const sbTimeFallback = new Date(sbAct.started_at).getTime();
+                return Math.abs(sbTimeFallback - actTime) < 45 * 60 * 1000;
               });
               
               if (!isDuplicate) {
