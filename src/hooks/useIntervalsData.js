@@ -91,7 +91,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         const { data: supabaseData, error: supabaseError } = await supabase
           .from('completed_activities')
           .select('id, started_at, title, workout_source, duration_seconds, avg_power, avg_hr, np, tss, if_factor')
-          .eq('workout_source', 'local') // VRLO VAŽNO: Samo treninzi odrađeni u ovoj aplikaciji!
+          .in('workout_source', ['local', 'free_ride', 'calendar', 'library']) // Svi treninzi odrađeni u ovoj aplikaciji
           .gte('started_at', ninetyDaysAgo.toISOString())
           .order('started_at', { ascending: false });
 
