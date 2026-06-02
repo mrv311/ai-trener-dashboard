@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Loader2, BarChart2, PieChart as PieChartIcon, Activity, CalendarDays, Zap, Heart, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area } from 'recharts';
+import { supabase } from '../services/supabaseClient';
 
 export default function AnalyticsTab({ intervalsId, intervalsKey }) {
-  const [activities, setActivities] = useState([]);
+  const [allActivities, setAllActivities] = useState([]);
+  const [activityFilter, setActivityFilter] = useState('cycling');
   const [wellnessData, setWellnessData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -51,11 +53,69 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
         const data = await activitiesResponse.json();
         const wData = await wellnessResponse.json();
 
+        const hiddenList = JSON.parse(localStorage.getItem('ai_trener_hidden_intervals_activities') || '[]');
+        
         const validActivities = data.filter(
-          act => (act.type === 'Ride' || act.type === 'VirtualRide') && act.icu_training_load > 0
+          act => !hiddenList.includes(String(act.id)) && (act.icu_training_load > 0 || act.moving_time > 0)
         );
 
-        setActivities(validActivities);
+        const isCyclingActivity = (sbAct) => {
+          if (!sbAct.workout_source) return true;
+          const src = sbAct.workout_source.toLowerCase();
+          if (src === 'free_ride' || src === 'calendar' || src === 'library' || src === 'local') return true;
+          if (src.startsWith('external_upload_')) {
+            const sport = src.replace('external_upload_', '');
+            return ['cycling', 'virtual_ride', 'biking', 'ride'].includes(sport);
+          }
+          if (src === 'external_upload') {
+            return (sbAct.avg_power || 0) > 0;
+          }
+          return true;
+        };
+
+        // Dohvati lokalne treninge iz Supabase/localStorage (koji možda još nisu uploadani na Intervals)
+        try {
+          const { data: supabaseData } = await supabase
+            .from('completed_activities')
+            .select('id, started_at, title, duration_seconds, tss, workout_source, avg_power')
+            .gte('started_at', oldest)
+            .lte('started_at', newest + 'T23:59:59');
+
+          const localFallback = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities') || '[]');
+          const combinedLocalActivities = [...(supabaseData || [])];
+          
+          localFallback.forEach(localAct => {
+            const localTime = new Date(localAct.started_at).getTime();
+            const existingSbAct = combinedLocalActivities.find(sbAct => Math.abs(new Date(sbAct.started_at).getTime() - localTime) < 60000);
+            if (!existingSbAct) combinedLocalActivities.push(localAct);
+          });
+
+          combinedLocalActivities.forEach(sbAct => {
+            if (sbAct.tss > 0 || sbAct.duration_seconds > 0) {
+              const sbTime = new Date(sbAct.started_at).getTime();
+              const isDuplicate = validActivities.some(act => {
+                // Koristimo striktno UTC datume ako su dostupni za precizniju usporedbu
+                const actTime = act.start_date ? new Date(act.start_date).getTime() : new Date(act.start_date_local).getTime();
+                return Math.abs(sbTime - actTime) < 45 * 60 * 1000; // Povećana tolerancija na 45 min
+              });
+              
+              if (!isDuplicate) {
+                validActivities.push({
+                  id: `supabase-${sbAct.id}`,
+                  type: isCyclingActivity(sbAct) ? 'VirtualRide' : 'Workout', // Dodjeljujemo točan sport
+                  name: sbAct.title || 'Lokalni Trening',
+                  start_date_local: sbAct.started_at,
+                  icu_training_load: sbAct.tss || 0,
+                  moving_time: sbAct.duration_seconds || 0,
+                });
+              }
+            }
+          });
+        } catch (err) {
+          console.warn("[AnalyticsTab] Neuspješno dohvaćanje lokalnih aktivnosti:", err);
+        }
+
+        setAllActivities(validActivities);
         setWellnessData(wData);
 
       } catch (err) {
@@ -67,6 +127,13 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
 
     fetchAnalytics();
   }, [intervalsId, intervalsKey, dateRange]);
+
+  const activities = useMemo(() => {
+    if (activityFilter === 'cycling') {
+      return allActivities.filter(act => act.type === 'Ride' || act.type === 'VirtualRide' || act.type === 'IndoorCycling' || act.type === 'EBikeRide');
+    }
+    return allActivities;
+  }, [allActivities, activityFilter]);
 
   // === POPRAVLJENA LOGIKA ZA ZONE SNAGE ===
   const zoneData = useMemo(() => {
@@ -242,14 +309,28 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-2 bg-zinc-950/50 p-2 rounded-xl border border-zinc-800 shrink-0">
-          <div className="flex items-center gap-1">
+        <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0">
+          <div className="flex items-center bg-zinc-950/50 p-1.5 rounded-xl border border-zinc-800">
+            <button 
+              onClick={() => setActivityFilter('cycling')} 
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activityFilter === 'cycling' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'text-zinc-500 hover:text-zinc-300'}`}
+            >
+              Samo Biciklizam
+            </button>
+            <button 
+              onClick={() => setActivityFilter('all')} 
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activityFilter === 'all' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-zinc-500 hover:text-zinc-300'}`}
+            >
+              Svi Sportovi
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1 bg-zinc-950/50 p-2 rounded-xl border border-zinc-800">
             <button onClick={() => handleQuickFilter(1)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">1M</button>
             <button onClick={() => handleQuickFilter(3)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">3M</button>
             <button onClick={() => handleQuickFilter(6)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">6M</button>
             <button onClick={() => handleQuickFilter(12)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">1Y</button>
           </div>
-          <div className="hidden sm:block w-px h-6 bg-zinc-800"></div>
           <div className="flex items-center gap-2">
             <CalendarDays className="w-4 h-4 text-zinc-500 shrink-0 hidden sm:block" />
             <input
