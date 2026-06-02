@@ -185,10 +185,10 @@ export default function App() {
           )}
         </header>
 
-        <main className={`flex-1 ${activeTab === 'trainer' ? 'overflow-y-auto p-1 md:p-2 pb-20 md:pb-2' : 'overflow-auto p-3 md:p-8 pb-20 md:pb-8'} bg-zinc-950 relative flex flex-col`}>
+        <main className={`flex-1 ${['trainer', 'calendar'].includes(activeTab) ? 'overflow-hidden p-1 md:p-2 pb-20 md:pb-2' : 'overflow-auto p-3 md:p-8 pb-20 md:pb-8'} bg-zinc-950 relative flex flex-col`}>
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-orange-900/10 via-zinc-950 to-zinc-950 pointer-events-none"></div>
 
-          <div className={`relative z-10 w-full ${activeTab === 'trainer' ? 'flex-1 flex flex-col min-h-0' : ''}`}>
+          <div className={`relative z-10 w-full ${['trainer', 'calendar'].includes(activeTab) ? 'flex-1 flex flex-col min-h-0 h-full' : ''}`}>
             {activeTab === 'calendar' && (
               <CalendarTab
                 currentDate={currentDate} setCurrentDate={setCurrentDate}

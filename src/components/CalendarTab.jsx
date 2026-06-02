@@ -733,7 +733,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   };
 
   return (
-    <div className="max-w-[1600px] mx-auto bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 flex flex-col min-h-[700px] animate-in fade-in overflow-hidden">
+    <div className="w-full bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 flex flex-col h-full min-h-0 animate-in fade-in overflow-hidden">
       {/* Modali */}
       <WorkoutEditorModal
         workout={editingWorkout}
@@ -814,7 +814,9 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         </div>
       )}
 
-      <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-950/50">
+      {/* FIKSNO ZAGLAVLJE KALENDARA */}
+      <div className="flex flex-col shadow-xl z-20 shrink-0 relative">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-xl relative z-50">
         {/* Month/Year button that opens mini calendar picker */}
         <div className="relative" ref={monthPickerRef}>
           <button
@@ -934,9 +936,10 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         </div>
       </div>
 
-      <div className="hidden md:grid grid-cols-8 border-b border-zinc-800/80 bg-zinc-900/80 font-bold text-xs text-zinc-400 uppercase tracking-widest">
-        {dayNames.map((d, i) => <div key={i} className="py-3 px-3 border-r border-zinc-800/80">{d}</div>)}
-        <div className="py-3 text-center bg-orange-500/10 text-orange-400 border-l border-zinc-800 shadow-[inset_0_0_10px_rgba(249,115,22,0.05)]">Sažetak</div>
+        <div className="hidden md:grid grid-cols-8 border-b border-zinc-800/80 bg-zinc-900/95 backdrop-blur-xl font-bold text-xs text-zinc-400 uppercase tracking-widest">
+          {dayNames.map((d, i) => <div key={i} className="py-3 px-3 border-r border-zinc-800/80">{d}</div>)}
+          <div className="py-3 text-center bg-orange-500/10 text-orange-400 border-l border-zinc-800 shadow-[inset_0_0_10px_rgba(249,115,22,0.05)]">Sažetak</div>
+        </div>
       </div>
 
       <div className="flex md:hidden flex-col bg-zinc-950 gap-[1px] flex-1 overflow-y-auto">
@@ -969,7 +972,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="hidden md:flex flex-1 flex-col bg-zinc-800 border-l border-zinc-800 gap-[1px]">
+        <div className="hidden md:flex flex-1 flex-col bg-zinc-800 border-l border-zinc-800 gap-[1px] overflow-y-auto">
           {threeWeeks.map(({ days, isActive }, wi) => {
             let aT_cycle = 0; let pT_cycle = 0; let aD = 0; let pD = 0;
             let aT_other = 0; let pT_other = 0;
@@ -1087,7 +1090,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             return (
               <div
                 key={wi}
-                className={`grid grid-cols-8 gap-[1px] flex-1 transition-all
+                className={`grid grid-cols-8 gap-[1px] shrink-0 transition-all
                   ${isActive
                     ? 'min-h-[160px] ring-1 ring-inset ring-orange-500/50'
                     : 'min-h-[110px] opacity-60 hover:opacity-80'
