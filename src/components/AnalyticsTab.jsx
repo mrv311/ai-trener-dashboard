@@ -56,7 +56,7 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
         const hiddenList = JSON.parse(localStorage.getItem('ai_trener_hidden_intervals_activities') || '[]');
         
         const validActivities = data.filter(
-          act => !hiddenList.includes(String(act.id)) && (act.icu_training_load > 0 || act.moving_time > 0)
+          act => !hiddenList.includes(String(act.id)) && (act.icu_training_load > 0 || act.moving_time > 0 || act.elapsed_time > 0)
         );
 
         const isCyclingActivity = (sbAct) => {
@@ -128,12 +128,35 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
     fetchAnalytics();
   }, [intervalsId, intervalsKey, dateRange]);
 
-  const activities = useMemo(() => {
+  const { activities, missingStats } = useMemo(() => {
     if (activityFilter === 'cycling') {
-      return allActivities.filter(act => act.type === 'Ride' || act.type === 'VirtualRide' || act.type === 'IndoorCycling' || act.type === 'EBikeRide');
+      const cyclingTypes = ['Ride', 'VirtualRide', 'IndoorCycling', 'EBikeRide', 'GravelRide', 'MountainBikeRide', 'Handcycle', 'Velomobile', 'EMountainBikeRide'];
+      
+      const filtered = allActivities.filter(act => cyclingTypes.includes(act.type));
+      
+      const missing = allActivities.filter(act => !cyclingTypes.includes(act.type));
+      const missingStats = {};
+      missing.forEach(act => {
+        missingStats[act.type] = (missingStats[act.type] || 0) + ((act.moving_time || act.elapsed_time || 0) / 3600);
+      });
+      
+      return { activities: filtered, missingStats };
     }
-    return allActivities;
+    return { activities: allActivities, missingStats: {} };
   }, [allActivities, activityFilter]);
+
+  const totalDurationSeconds = useMemo(() => {
+    return activities.reduce((sum, act) => sum + (act.moving_time || act.elapsed_time || 0), 0);
+  }, [activities]);
+
+  const formatDuration = (totalSeconds) => {
+    if (!totalSeconds) return '0m';
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.round((totalSeconds % 3600) / 60);
+    if (h === 0) return `${m}m`;
+    if (m === 0) return `${h}h`;
+    return `${h}h ${m}m`;
+  };
 
   // === POPRAVLJENA LOGIKA ZA ZONE SNAGE ===
   const zoneData = useMemo(() => {
@@ -173,7 +196,7 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
     return zones
       .map((secs, i) => ({
         name: zoneNames[i],
-        value: Math.round(secs / 3600 * 10) / 10,
+        value: secs, // Čuvamo vrijednost u sekundama radi točnog prikaza
         color: zoneColors[i]
       }))
       .filter(z => z.value > 0);
@@ -198,7 +221,7 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
       }
 
       weeksMap[weekStart].tss += act.icu_training_load || 0;
-      weeksMap[weekStart].hours += (act.moving_time || 0) / 3600;
+      weeksMap[weekStart].hours += (act.moving_time || act.elapsed_time || 0) / 3600;
     });
 
     return Object.values(weeksMap)
@@ -259,10 +282,17 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
     });
   };
 
-  const renderCustomizedLabel = ({ cx, cy, midAngle, outerRadius, percent }) => {
-    if (percent < 0.02) return null;
+  const handleYearFilter = (year) => {
+    setDateRange({
+      startDate: `${year}-01-01`,
+      endDate: `${year}-12-31`
+    });
+  };
+
+  const renderCustomizedLabel = ({ cx, cy, midAngle, outerRadius, percent, value }) => {
+    if (percent < 0.04) return null; // Povećan prag za skrivanje najmanjih zona kako bi smanjili gužvu
     const RADIAN = Math.PI / 180;
-    const radius = outerRadius * 1.15;
+    const radius = outerRadius * 1.2; // Malo odmaknuto prema van
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
     const y = cy + radius * Math.sin(-midAngle * RADIAN);
 
@@ -273,10 +303,11 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
         fill="#a1a1aa"
         textAnchor={x > cx ? 'start' : 'end'}
         dominantBaseline="central"
-        fontSize="11px"
+        fontSize="10px"
         fontWeight="bold"
       >
-        {`${(percent * 100).toFixed(0)}%`}
+        <tspan x={x} dy="-0.4em">{`${(percent * 100).toFixed(0)}%`}</tspan>
+        <tspan x={x} dy="1.2em" fill="#71717a" fontSize="9px">{formatDuration(value)}</tspan>
       </text>
     );
   };
@@ -325,11 +356,16 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
             </button>
           </div>
 
-          <div className="flex items-center gap-1 bg-zinc-950/50 p-2 rounded-xl border border-zinc-800">
-            <button onClick={() => handleQuickFilter(1)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">1M</button>
-            <button onClick={() => handleQuickFilter(3)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">3M</button>
-            <button onClick={() => handleQuickFilter(6)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">6M</button>
-            <button onClick={() => handleQuickFilter(12)} className="px-3 py-1 rounded-md text-xs font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">1Y</button>
+          <div className="flex flex-wrap items-center gap-1 bg-zinc-950/50 p-2 rounded-xl border border-zinc-800">
+            <button onClick={() => handleQuickFilter(1)} className="px-2 py-1 rounded-md text-[10px] font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">1M</button>
+            <button onClick={() => handleQuickFilter(3)} className="px-2 py-1 rounded-md text-[10px] font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">3M</button>
+            <button onClick={() => handleQuickFilter(6)} className="px-2 py-1 rounded-md text-[10px] font-bold transition-all uppercase bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">6M</button>
+            
+            <div className="w-px h-4 bg-zinc-700/50 mx-1"></div>
+            
+            {[2026, 2025, 2024, 2023].map(year => (
+              <button key={year} onClick={() => handleYearFilter(year)} className="px-2 py-1 rounded-md text-[10px] font-bold transition-all bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700">{year}</button>
+            ))}
           </div>
           <div className="flex items-center gap-2">
             <CalendarDays className="w-4 h-4 text-zinc-500 shrink-0 hidden sm:block" />
@@ -365,9 +401,9 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
       )}
 
       {!isLoading && !error && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
-          {/* Distribucija zona */}
-          <div className="bg-zinc-900/40 backdrop-blur-md rounded-2xl shadow-xl border border-zinc-800/80 p-4 md:p-6 flex flex-col relative min-h-[350px] md:min-h-[400px]">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+          {/* Distribucija po zonama */}
+          <div className="bg-zinc-900/40 backdrop-blur-md rounded-2xl shadow-xl border border-zinc-800/80 p-4 md:p-6 flex flex-col relative min-h-[450px] lg:min-h-[500px]">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-zinc-100 font-bold flex items-center gap-2">
                 <PieChartIcon className="w-4 h-4 text-orange-500" /> Distribucija
@@ -391,9 +427,16 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
               </div>
             </div>
 
-            <p className="text-[11px] text-zinc-500 font-medium mb-2 uppercase tracking-widest">
-              Vrijeme provedeno u zonama {zoneType === 'power' ? 'snage' : 'pulsa'}
-            </p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] text-zinc-500 font-medium uppercase tracking-widest">
+                Vrijeme provedeno u zonama {zoneType === 'power' ? 'snage' : 'pulsa'}
+              </p>
+              
+              <div className="flex items-center gap-2 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                <span className="text-[9px] font-bold text-emerald-500/70 uppercase tracking-wider">Ukupno vrijeme:</span>
+                <span className="text-sm font-black text-emerald-400">{formatDuration(totalDurationSeconds)}</span>
+              </div>
+            </div>
 
             {zoneData.length > 0 ? (
               <div className="flex-1 w-full relative">
@@ -402,7 +445,7 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
                     <Pie
                       data={zoneData}
                       cx="50%"
-                      cy="50%"
+                      cy="48%"
                       innerRadius={50}
                       outerRadius={80}
                       paddingAngle={5}
@@ -416,14 +459,15 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
                       ))}
                     </Pie>
                     <RechartsTooltip
+                      formatter={(value) => [formatDuration(value), 'Trajanje']}
                       contentStyle={{ borderRadius: '12px', backgroundColor: 'rgba(24,24,27,0.85)', backdropFilter: 'blur(8px)', border: '1px solid #3f3f46', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}
                       itemStyle={{ color: '#f4f4f5', fontWeight: 'bold' }}
                     />
                     <Legend
                       verticalAlign="bottom"
-                      height={80}
+                      height={90}
                       iconType="circle"
-                      wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', color: '#a1a1aa' }}
+                      wrapperStyle={{ paddingTop: '20px', fontSize: '11px', fontWeight: 'bold', color: '#a1a1aa' }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -606,6 +650,16 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
           </div>
         </div>
       )}
+
+      {/* Debug panel - pomoći će nam otkriti gdje su skriveni sati */}
+      <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 text-xs text-zinc-500 font-mono">
+        <p className="text-orange-500 font-bold mb-2">DEBUG: Sati po ostalim sportovima (koji nisu ušli u Biciklizam):</p>
+        <pre>{JSON.stringify(
+          Object.fromEntries(
+            Object.entries(missingStats).map(([k, v]) => [k, `${Math.round(v)}h`])
+          ), null, 2
+        )}</pre>
+      </div>
     </div>
   );
 }
