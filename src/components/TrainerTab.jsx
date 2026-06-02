@@ -95,8 +95,6 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
   const [summaryStats, setSummaryStats] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
-  const [knownDevices, setKnownDevices] = useState([]);
-  const [showDeviceManager, setShowDeviceManager] = useState(false);
 
   const crankDataRef = useRef({ revs: -1, time: -1 });
   const pmCrankDataRef = useRef({ revs: -1, time: -1 });
@@ -506,57 +504,6 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     }
   };
 
-  const loadKnownDevices = useCallback(async () => {
-    let actualDevices = [];
-    if (navigator.bluetooth && navigator.bluetooth.getDevices) {
-      try {
-        actualDevices = await navigator.bluetooth.getDevices();
-      } catch (e) { console.warn("getDevices() nije podržan", e); }
-    }
-
-    const savedRoles = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
-    const combinedDevices = [];
-
-    Object.keys(savedRoles).forEach(role => {
-      let savedData = savedRoles[role];
-      if (typeof savedData === 'string') {
-        savedData = { id: savedData, name: 'Nepoznat uređaj' };
-      }
-      
-      const actualDevice = actualDevices.find(d => d.id === savedData.id);
-      
-      combinedDevices.push({
-        id: savedData.id,
-        name: actualDevice ? actualDevice.name : savedData.name,
-        role: role,
-        originalDevice: actualDevice || null
-      });
-    });
-
-    setKnownDevices(combinedDevices);
-  }, []);
-
-  const handleForgetDevice = async (deviceItem) => {
-    try {
-      if (deviceItem.originalDevice && typeof deviceItem.originalDevice.forget === 'function') {
-        await deviceItem.originalDevice.forget();
-      }
-    } catch (err) {
-      console.warn("Nije uspjelo zaboravljanje uređaja na razini sustava:", err);
-    }
-    
-    const savedRoles = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
-    if (savedRoles[deviceItem.role]) {
-      delete savedRoles[deviceItem.role];
-      localStorage.setItem('ergvibe_ble_devices', JSON.stringify(savedRoles));
-    }
-    
-    loadKnownDevices();
-  };
-
-  useEffect(() => {
-    loadKnownDevices();
-  }, [loadKnownDevices]);
 
   // setup helperi za auto-connect
   const setupHRDevice = async (device) => {
@@ -613,37 +560,6 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     });
   };
 
-  useEffect(() => {
-    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
-    const autoConnect = async () => {
-      try {
-        const devices = await navigator.bluetooth.getDevices();
-        const savedRoles = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
-        
-        for (const device of devices) {
-          try {
-            const hrId = typeof savedRoles.hr === 'object' ? savedRoles.hr?.id : savedRoles.hr;
-            const trainerId = typeof savedRoles.trainer === 'object' ? savedRoles.trainer?.id : savedRoles.trainer;
-            const pmId = typeof savedRoles.pm === 'object' ? savedRoles.pm?.id : savedRoles.pm;
-
-            if (device.id === hrId && !hrDeviceRef.current) {
-              await setupHRDevice(device);
-            } else if (device.id === trainerId && !trainerDeviceRef.current) {
-              await setupTrainerDevice(device);
-            } else if (device.id === pmId && !pmDeviceRef.current) {
-              await setupPmDevice(device);
-            }
-          } catch (e) {
-            console.warn(`Automatsko spajanje na ${device.name} nije uspjelo:`, e);
-          }
-        }
-      } catch (e) {
-        console.warn("Auto-connect failed:", e);
-      }
-    };
-    autoConnect();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const connectHR = async () => {
     if (isHrConnected) {
@@ -659,10 +575,6 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
       if (!navigator.bluetooth) { alert("Tvoj preglednik ne podržava Web Bluetooth."); return; }
       const device = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
       await setupHRDevice(device);
-      const saved = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
-      saved['hr'] = { id: device.id, name: device.name || 'Pulsmetar' };
-      localStorage.setItem('ergvibe_ble_devices', JSON.stringify(saved));
-      loadKnownDevices();
     } catch (err) { if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na pulsmetar: " + err.message); }
   };
 
@@ -685,10 +597,6 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         optionalServices: ['00001826-0000-1000-8000-00805f9b34fb']
       });
       await setupTrainerDevice(device);
-      const saved = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
-      saved['trainer'] = { id: device.id, name: device.name || 'Trenažer' };
-      localStorage.setItem('ergvibe_ble_devices', JSON.stringify(saved));
-      loadKnownDevices();
     } catch (err) {
       if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na trenažer: " + err.message);
     }
@@ -712,10 +620,6 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         filters: [{ services: ['cycling_power'] }]
       });
       await setupPmDevice(device);
-      const saved = JSON.parse(localStorage.getItem('ergvibe_ble_devices') || '{}');
-      saved['pm'] = { id: device.id, name: device.name || 'PowerMeter' };
-      localStorage.setItem('ergvibe_ble_devices', JSON.stringify(saved));
-      loadKnownDevices();
     } catch (err) {
       if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na powermetar: " + err.message);
     }
@@ -995,49 +899,6 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
         handleExportFit={() => exportToFIT(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime)}
       />
 
-      {/* DEVICE MANAGER MODAL */}
-      {showDeviceManager && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setShowDeviceManager(false)}>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl w-full max-w-sm p-5 md:p-6 flex flex-col gap-4 animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center border-b border-zinc-800/80 pb-4">
-              <div className="flex items-center gap-2 text-zinc-100">
-                <Settings2 className="w-5 h-5 text-orange-500" />
-                <h3 className="text-base md:text-lg font-black uppercase tracking-widest">Zapamćeni Uređaji</h3>
-              </div>
-              <button onClick={() => setShowDeviceManager(false)} className="text-zinc-500 hover:text-zinc-300 p-1.5 bg-zinc-800/50 hover:bg-zinc-700 rounded-full transition-colors border border-zinc-700/50">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            
-            <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1 hide-scrollbar">
-              {knownDevices.length === 0 ? (
-                <div className="text-sm text-zinc-500 font-medium italic text-center py-8 bg-zinc-950/50 rounded-2xl border border-zinc-800/50 shadow-inner">Nema zapamćenih uređaja.</div>
-              ) : (
-                knownDevices.map(dev => (
-                  <div key={dev.id} className="flex items-center justify-between bg-zinc-800/40 p-3 rounded-2xl border border-zinc-700/50 shadow-sm">
-                    <div className="flex flex-col overflow-hidden mr-2">
-                      <span className="text-sm text-zinc-100 font-bold truncate" title={dev.name || 'Nepoznat uređaj'}>
-                        {dev.name || 'Nepoznat uređaj'}
-                      </span>
-                      <span className="text-[9px] text-zinc-500 uppercase tracking-widest mt-0.5">
-                        {dev.role === 'hr' ? 'Pulsmetar' : dev.role === 'trainer' ? 'Trenažer' : dev.role === 'pm' ? 'PowerMeter' : dev.role} • {dev.id.substring(0, 8)}...
-                      </span>
-                    </div>
-                    <button 
-                      onClick={() => handleForgetDevice(dev)}
-                      className="text-[10px] md:text-xs bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white px-3 py-1.5 rounded-xl font-bold uppercase tracking-wider transition-colors border border-rose-500/20 shadow-sm shrink-0"
-                      title="Zaboravi uređaj"
-                    >
-                      Zaboravi
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* GORNJA TRAKA: Bluetooth gumbi */}
       <div className="flex gap-1.5 md:gap-4 flex-wrap overflow-x-auto pb-0 md:pb-0 shrink-0">
         <button
@@ -1074,16 +935,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
           </button>
         )}
 
-        {/* Postavke uređaja */}
-        <div className="shrink-0">
-          <button
-            onClick={() => setShowDeviceManager(true)}
-            className="flex items-center gap-1 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base bg-zinc-900/50 hover:bg-zinc-800 text-zinc-400 border-zinc-800/80"
-          >
-            <Settings2 className="w-3.5 h-3.5 md:w-5 md:h-5" />
-            <span className="hidden sm:inline">Uređaji</span>
-          </button>
-        </div>
+
 
         <div className="ml-auto flex items-center justify-end bg-zinc-900/40 backdrop-blur-md rounded-xl border border-zinc-800/80 shadow-sm overflow-hidden shrink-0">
           <div className="px-3 py-1.5 md:px-4 md:py-3 text-zinc-500 font-medium text-xs md:text-sm truncate max-w-[140px] sm:max-w-none">
