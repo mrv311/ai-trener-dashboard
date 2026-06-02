@@ -78,6 +78,7 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
           const { data: supabaseData } = await supabase
             .from('completed_activities')
             .select('id, started_at, title, duration_seconds, tss, workout_source, avg_power')
+            .in('workout_source', ['local', 'free_ride', 'calendar', 'library'])
             .gte('started_at', oldest)
             .lte('started_at', newest + 'T23:59:59');
 
@@ -92,18 +93,16 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
 
           combinedLocalActivities.forEach(sbAct => {
             if (sbAct.tss > 0 || sbAct.duration_seconds > 0) {
-              const sbTimeStr = sbAct.started_at ? sbAct.started_at.substring(0, 19) : null;
+              const sbTime = new Date(sbAct.started_at).getTime(); // Supabase pohranjuje UTC
               const isDuplicate = validActivities.some(act => {
-                const actTimeStr = act.start_date_local ? act.start_date_local.substring(0, 19) : null;
-                if (sbTimeStr && actTimeStr) {
-                   const sbT = new Date(sbTimeStr + 'Z').getTime();
-                   const acT = new Date(actTimeStr + 'Z').getTime();
-                   return Math.abs(sbT - acT) < 45 * 60 * 1000; // Povećana tolerancija na 45 min
-                }
-                // Fallback ako iz nekog razloga fali string
-                const actTime = act.start_date ? new Date(act.start_date).getTime() : new Date(act.start_date_local).getTime();
-                const sbTimeFallback = new Date(sbAct.started_at).getTime();
-                return Math.abs(sbTimeFallback - actTime) < 45 * 60 * 1000;
+                // Koristimo start_date (UTC) ako postoji, inače start_date_local (lokalno vrijeme)
+                // VAŽNO: start_date_local se NE smije parsirati kao UTC (bez 'Z' sufiksa)
+                const actTime = act.start_date
+                  ? new Date(act.start_date).getTime()
+                  : act.start_date_local
+                    ? new Date(act.start_date_local).getTime()
+                    : 0;
+                return actTime > 0 && Math.abs(sbTime - actTime) < 45 * 60 * 1000;
               });
               
               if (!isDuplicate) {
@@ -657,16 +656,6 @@ export default function AnalyticsTab({ intervalsId, intervalsKey }) {
           </div>
         </div>
       )}
-
-      {/* Debug panel - pomoći će nam otkriti gdje su skriveni sati */}
-      <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 text-xs text-zinc-500 font-mono">
-        <p className="text-orange-500 font-bold mb-2">DEBUG: Sati po ostalim sportovima (koji nisu ušli u Biciklizam):</p>
-        <pre>{JSON.stringify(
-          Object.fromEntries(
-            Object.entries(missingStats).map(([k, v]) => [k, `${Math.round(v)}h`])
-          ), null, 2
-        )}</pre>
-      </div>
     </div>
   );
 }
