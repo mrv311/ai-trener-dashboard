@@ -14,7 +14,7 @@ import ProfileTab from './components/ProfileTab';
 import AnalyticsTab from './components/AnalyticsTab';
 import ConnectionsTab from './components/ConnectionsTab';
 import LibraryTab from './components/LibraryTab';
-import ProgressionTab from './components/ProgressionTab';
+
 import HistoryTab from './components/HistoryTab';
 
 import { useLocalStorage } from './hooks/useLocalStorage';
@@ -33,7 +33,7 @@ const TABS = {
   trainer: { label: 'Trenažer', icon: <Monitor />, component: TrainerTab },
   history: { label: 'Povijest', icon: <ClipboardList />, component: HistoryTab },
   fitness: { label: 'Kondicija', icon: <Activity />, component: FitnessTab },
-  progression: { label: 'Napredak', icon: <TrendingUp />, component: ProgressionTab },
+
   power: { label: 'Snaga', icon: <LineChart />, component: PowerCurveTab },
   analytics: { label: 'Analitika', icon: <BarChart2 />, component: AnalyticsTab },
   settings: { label: 'Postavke', icon: <Settings />, component: SettingsTab },
@@ -115,7 +115,7 @@ export default function App() {
         </div>
 
         <nav className="mt-6 flex-1 px-3 space-y-2 overflow-y-auto hide-scrollbar">
-          {['calendar', 'library', 'trainer', 'history', 'fitness', 'progression', 'power', 'analytics', 'settings', 'profile'].map(tabId => (
+          {['calendar', 'library', 'trainer', 'history', 'fitness', 'power', 'analytics', 'settings', 'profile'].map(tabId => (
             <NavItem
               key={tabId}
               icon={TABS[tabId].icon}
@@ -225,7 +225,7 @@ export default function App() {
               />
             )}
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
-            {activeTab === 'progression' && <ProgressionTab workouts={workouts} profile={athleteProfile} setProfile={setAthleteProfile} />}
+
             {activeTab === 'library' && (
               <LibraryTab
                 ftp={athleteProfile.ftp}
@@ -265,7 +265,7 @@ export default function App() {
                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-zinc-800 rounded-full text-zinc-400"><X className="w-5 h-5" /></button>
               </div>
               <div className="grid grid-cols-2 gap-3 mb-6">
-                {['analytics', 'power', 'settings', 'profile', 'connections', 'library', 'progression'].map(tabId => (
+                {['analytics', 'power', 'settings', 'profile', 'connections', 'library'].map(tabId => (
                   <MobileMenuGridBtn key={tabId} icon={TABS[tabId].icon} label={TABS[tabId].label} active={activeTab === tabId} onClick={() => handleTabChange(tabId)} />
                 ))}
               </div>
