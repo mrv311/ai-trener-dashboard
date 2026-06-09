@@ -954,80 +954,85 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
       {/* GLAVNI GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3 shrink-[2] min-h-0" style={{minHeight: 0}}>
-        <div className="md:col-span-2 lg:col-span-2 bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-2 md:p-4 flex flex-col justify-center items-center relative overflow-hidden min-h-0">
-          <div className={`absolute top-0 w-full h-2 ${getZoneColorForTrainer(currentStep.power)} transition-colors duration-500 shadow-[0_0_10px_rgba(255,255,255,0.2)]`}></div>
-          <div className="absolute top-3 left-3 flex items-center gap-2">
-            <span className="text-zinc-500 font-black uppercase tracking-widest text-[9px] md:text-xs">
-              {(powerMatchEnabled && isPmConnected) ? 'PM Snaga' : 'Trenutna Snaga'}
-            </span>
-            {powerMatchEnabled && isPmConnected && (
-              <span className="bg-violet-500/10 text-violet-400 text-[8px] md:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-violet-500/20">
-                Power Match Active
+        <div className="md:col-span-2 lg:col-span-2 bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-2 md:p-4 flex flex-col relative overflow-hidden min-h-0">
+          <div className={`absolute top-0 left-0 w-full h-2 ${getZoneColorForTrainer(currentStep.power)} transition-colors duration-500 shadow-[0_0_10px_rgba(255,255,255,0.2)]`}></div>
+          
+          <div className="flex justify-between items-start w-full z-10 shrink-0">
+            <div className="flex items-center gap-2 mt-1 md:mt-0">
+              <span className="text-zinc-500 font-black uppercase tracking-widest text-[9px] md:text-xs">
+                {(powerMatchEnabled && isPmConnected) ? 'PM Snaga' : 'Trenutna Snaga'}
               </span>
-            )}
-          </div>
-
-          <div className="absolute top-2 md:top-3 right-2 md:right-3 flex items-center gap-1 md:gap-2 bg-zinc-950/50 p-1 md:p-2 rounded-2xl border border-zinc-800 shadow-lg z-10">
-            <button onClick={toggleMode} className="flex items-center gap-1 md:gap-1.5 px-2 py-1 md:px-4 md:py-2 bg-zinc-800 shadow-sm border border-zinc-700 rounded-xl text-[9px] md:text-xs font-bold text-zinc-300 uppercase tracking-wider hover:bg-zinc-700 hover:text-white transition-colors active:scale-95">
-              <Settings2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">{controlMode} Mode</span><span className="sm:hidden">{controlMode}</span>
-            </button>
-            <div className="w-px h-5 md:h-8 bg-zinc-800 mx-0.5 md:mx-1"></div>
-            {controlMode === 'ERG' ? (
-              <div className="flex items-center gap-0.5 md:gap-2">
-                <button onClick={decreaseErg} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
-                <span className="w-10 md:w-16 text-center font-black text-zinc-100 text-sm md:text-lg">{ergIntensity}%</span>
-                <button onClick={increaseErg} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-0.5 md:gap-2">
-                <button onClick={decreaseRes} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
-                <span className="w-10 md:w-16 text-center font-black text-zinc-100 text-sm md:text-lg">Lvl {resistanceLevel}</span>
-                <button onClick={increaseRes} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-baseline gap-1 md:gap-2 mt-8 md:mt-6 shrink-1 min-h-0">
-            <div className={`text-[clamp(40px,8vh,120px)] md:text-[clamp(60px,12vh,150px)] font-black leading-none tracking-tighter transition-colors ${controlMode === 'RES' && isPlaying ? 'text-indigo-400 drop-shadow-[0_0_10px_rgba(129,140,248,0.5)]' : getPowerColor()}`}>
-              {displayPower}
-            </div>
-            <span className="text-lg md:text-2xl lg:text-3xl font-bold text-zinc-600 pb-1 md:pb-2">W</span>
-          </div>
-
-          {powerMatchEnabled && isPmConnected && isPowerConnected && (
-            <div className="text-xs font-bold text-zinc-500 mb-0.5">
-              Trenažer: <span className="text-zinc-300">{currentPower} W</span>
-              <span className="mx-1 md:mx-2 text-zinc-700">·</span>
-              Razlika: <span className={Math.abs(pmPower - currentPower) > 15 ? 'text-amber-400' : 'text-emerald-400'}>
-                {pmPower - currentPower > 0 ? '+' : ''}{pmPower - currentPower} W
-              </span>
-            </div>
-          )}
-
-          <div className="text-sm md:text-lg lg:text-xl font-bold text-zinc-400 mt-1 md:mt-2 bg-zinc-950/40 px-3 md:px-5 py-1 md:py-1.5 rounded-xl border border-zinc-800/60 text-center shadow-[inset_0_2px_10px_rgba(0,0,0,0.2)]">
-            {controlMode === 'ERG' ? (
-              !hasValidFtp ? (
-                <span className="text-rose-500 font-bold text-sm md:text-base flex items-center justify-center gap-2">
-                  ⚠️ <span className="hidden sm:inline">Upozorenje: Nije unesen FTP! Koristi se zadanih 200W.</span><span className="sm:hidden">Unesi FTP!</span>
+              {powerMatchEnabled && isPmConnected && (
+                <span className="bg-violet-500/10 text-violet-400 text-[8px] md:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-violet-500/20">
+                  Power Match Active
                 </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1 md:gap-2 bg-zinc-950/50 p-1 md:p-2 rounded-2xl border border-zinc-800 shadow-lg">
+              <button onClick={toggleMode} className="flex items-center gap-1 md:gap-1.5 px-2 py-1 md:px-4 md:py-2 bg-zinc-800 shadow-sm border border-zinc-700 rounded-xl text-[9px] md:text-xs font-bold text-zinc-300 uppercase tracking-wider hover:bg-zinc-700 hover:text-white transition-colors active:scale-95">
+                <Settings2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">{controlMode} Mode</span><span className="sm:hidden">{controlMode}</span>
+              </button>
+              <div className="w-px h-5 md:h-8 bg-zinc-800 mx-0.5 md:mx-1"></div>
+              {controlMode === 'ERG' ? (
+                <div className="flex items-center gap-0.5 md:gap-2">
+                  <button onClick={decreaseErg} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                  <span className="w-10 md:w-16 text-center font-black text-zinc-100 text-sm md:text-lg">{ergIntensity}%</span>
+                  <button onClick={increaseErg} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                </div>
               ) : (
-                <div className="flex flex-col items-center justify-center leading-tight">
-                  <div>
-                    Cilj: <span className="text-zinc-100">{activeTargetPower} W</span>
-                    {powerMatchEnabled && isPmConnected && (
-                      <span className="text-violet-400 ml-1 md:ml-2 text-xs md:text-sm font-black drop-shadow-[0_0_5px_rgba(167,139,250,0.5)]">⟳ PM</span>
+                <div className="flex items-center gap-0.5 md:gap-2">
+                  <button onClick={decreaseRes} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                  <span className="w-10 md:w-16 text-center font-black text-zinc-100 text-sm md:text-lg">Lvl {resistanceLevel}</span>
+                  <button onClick={increaseRes} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col flex-1 items-center justify-center min-h-0 w-full z-10 py-2">
+            <div className="flex items-baseline gap-1 md:gap-2 shrink-1 min-h-0">
+              <div className={`text-[clamp(40px,8vh,120px)] md:text-[clamp(60px,12vh,150px)] font-black leading-none tracking-tighter transition-colors ${controlMode === 'RES' && isPlaying ? 'text-indigo-400 drop-shadow-[0_0_10px_rgba(129,140,248,0.5)]' : getPowerColor()}`}>
+                {displayPower}
+              </div>
+              <span className="text-lg md:text-2xl lg:text-3xl font-bold text-zinc-600 pb-1 md:pb-2">W</span>
+            </div>
+
+            {powerMatchEnabled && isPmConnected && isPowerConnected && (
+              <div className="text-xs font-bold text-zinc-500 mb-0.5">
+                Trenažer: <span className="text-zinc-300">{currentPower} W</span>
+                <span className="mx-1 md:mx-2 text-zinc-700">·</span>
+                Razlika: <span className={Math.abs(pmPower - currentPower) > 15 ? 'text-amber-400' : 'text-emerald-400'}>
+                  {pmPower - currentPower > 0 ? '+' : ''}{pmPower - currentPower} W
+                </span>
+              </div>
+            )}
+
+            <div className="text-sm md:text-lg lg:text-xl font-bold text-zinc-400 mt-1 md:mt-2 bg-zinc-950/40 px-3 md:px-5 py-1 md:py-1.5 rounded-xl border border-zinc-800/60 text-center shadow-[inset_0_2px_10px_rgba(0,0,0,0.2)]">
+              {controlMode === 'ERG' ? (
+                !hasValidFtp ? (
+                  <span className="text-rose-500 font-bold text-sm md:text-base flex items-center justify-center gap-2">
+                    ⚠️ <span className="hidden sm:inline">Upozorenje: Nije unesen FTP! Koristi se zadanih 200W.</span><span className="sm:hidden">Unesi FTP!</span>
+                  </span>
+                ) : (
+                  <div className="flex flex-col items-center justify-center leading-tight">
+                    <div>
+                      Cilj: <span className="text-zinc-100">{activeTargetPower} W</span>
+                      {powerMatchEnabled && isPmConnected && (
+                        <span className="text-violet-400 ml-1 md:ml-2 text-xs md:text-sm font-black drop-shadow-[0_0_5px_rgba(167,139,250,0.5)]">⟳ PM</span>
+                      )}
+                    </div>
+                    {currentStepIndex < workoutRecipe.length - 1 && (
+                      <div className="text-xs md:text-sm lg:text-base text-zinc-500 font-medium">
+                        (sljedeći: <span className="text-zinc-400">{Math.round((workoutRecipe[currentStepIndex + 1].power / 100) * ftpValue * (ergIntensity / 100))} W</span>)
+                      </div>
                     )}
                   </div>
-                  {currentStepIndex < workoutRecipe.length - 1 && (
-                    <div className="text-xs md:text-sm lg:text-base text-zinc-500 font-medium">
-                      (sljedeći: <span className="text-zinc-400">{Math.round((workoutRecipe[currentStepIndex + 1].power / 100) * ftpValue * (ergIntensity / 100))} W</span>)
-                    </div>
-                  )}
-                </div>
-              )
-            ) : (
-              <>Slobodno <span className="text-indigo-400 ml-1 md:ml-2">(Otpor {resistanceLevel}%)</span></>
-            )}
+                )
+              ) : (
+                <>Slobodno <span className="text-indigo-400 ml-1 md:ml-2">(Otpor {resistanceLevel}%)</span></>
+              )}
+            </div>
           </div>
         </div>
 
