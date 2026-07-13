@@ -386,7 +386,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
       const workoutPayload = {
         title: title || 'Novi Trening',
         description: '',
-        duration_seconds: stats.duration,
+        duration_seconds: Math.round(stats.duration || 0),
         difficulty_score: difficulty,
         category: category,
         steps: stats.allSteps

@@ -1,31 +1,44 @@
 import { useState, useEffect } from 'react';
 
 export function useLocalStorage(key, initialValue) {
-  const [value, setValue] = useState(() => {
+  const [state, setState] = useState({
+    key,
+    value: (() => {
+      try {
+        const item = window.localStorage.getItem(key);
+        if (item !== null) {
+          try { return JSON.parse(item); } catch { return item; }
+        }
+        return initialValue;
+      } catch { return initialValue; }
+    })()
+  });
+
+  let currentValue = state.value;
+
+  // Sinkrono ažuriranje ako se promijeni ključ (sprječava race conditione)
+  if (key !== state.key) {
+    let newValue = initialValue;
     try {
       const item = window.localStorage.getItem(key);
       if (item !== null) {
-        try {
-          return JSON.parse(item);
-        } catch {
-          return item; // Fallback for simple strings
-        }
+        try { newValue = JSON.parse(item); } catch { newValue = item; }
       }
-      return initialValue;
-    } catch (error) {
-      console.warn(`Error reading localStorage key "${key}":`, error);
-      return initialValue;
-    }
-  });
+    } catch {}
+    setState({ key, value: newValue });
+    currentValue = newValue;
+  }
+
+  const setValue = (val) => setState((prev) => ({ key: prev.key, value: typeof val === 'function' ? val(prev.value) : val }));
 
   useEffect(() => {
     try {
-      const valueToStore = typeof value === 'string' ? value : JSON.stringify(value);
+      const valueToStore = typeof currentValue === 'string' ? currentValue : JSON.stringify(currentValue);
       window.localStorage.setItem(key, valueToStore);
     } catch (error) {
       console.warn(`Error setting localStorage key "${key}":`, error);
     }
-  }, [key, value]);
+  }, [key, currentValue]);
 
-  return [value, setValue];
+  return [currentValue, setValue];
 }

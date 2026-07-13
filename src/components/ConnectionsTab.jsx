@@ -2,7 +2,7 @@ import React from 'react';
 import { CheckCircle, XCircle, Clock, Link as LinkIcon, Activity } from 'lucide-react';
 import SupabaseSyncModule from './SupabaseSyncModule';
 
-export default function ConnectionsTab({ connectionStatus, intervalsId, setId, intervalsKey, setKey, onSave }) {
+export default function ConnectionsTab({ connectionStatus, intervalsId, setId, intervalsKey, setKey, onSave, userId }) {
   const saveSettings = () => { 
     if (intervalsKey) setKey(String(intervalsKey).trim());
     if (intervalsId) setId(String(intervalsId).trim());
@@ -88,7 +88,7 @@ export default function ConnectionsTab({ connectionStatus, intervalsId, setId, i
           <DummyIntegration name="TrainerDay" description="Preuzimanje workout blockova." colorClass="text-indigo-400 drop-shadow-[0_0_5px_rgba(129,140,248,0.5)]" bgClass="bg-indigo-500/10 border-indigo-500/20" letter="TD" />
 
           {/* NOVI MODUL - Sinhronizacija s bazom */}
-          <SupabaseSyncModule intervalsId={intervalsId} intervalsKey={intervalsKey} />
+          <SupabaseSyncModule intervalsId={intervalsId} intervalsKey={intervalsKey} userId={userId} />
         </div>
 
       </div>

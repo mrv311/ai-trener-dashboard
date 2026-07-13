@@ -3,7 +3,7 @@ import { supabase } from '../services/supabaseClient';
 import { fetchIntervalsData, getActivityStreams } from '../services/intervalsApi';
 import { RefreshCw, Database, CheckCircle2, AlertCircle } from 'lucide-react';
 
-export default function SupabaseSyncModule({ intervalsId, intervalsKey }) {
+export default function SupabaseSyncModule({ intervalsId, intervalsKey, userId }) {
   const [startDate, setStartDate] = useState('2026-01-01');
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -83,7 +83,8 @@ export default function SupabaseSyncModule({ intervalsId, intervalsKey }) {
             avg_speed_kmh: act.average_speed ? Number((act.average_speed * 3.6).toFixed(1)) : null,
             ftp_used: act.icu_ftp ? Math.round(act.icu_ftp) : null,
             weight_kg: act.icu_weight ? Number(act.icu_weight) : null,
-            stream_data: streams 
+            stream_data: streams,
+            user_id: userId
           };
 
           const { error } = await supabase.from('completed_activities').insert([record]);

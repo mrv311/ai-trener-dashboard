@@ -22,7 +22,7 @@ const isCyclingActivity = (sbAct) => {
 const STORAGE_KEY_UNPAIRED = 'ergvibe_unpaired_list';
 const STORAGE_KEY_EXPLICIT_PAIRS = 'ergvibe_explicit_pairs';
 
-export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError } = {}) {
+export function useIntervalsData(intervalsId, intervalsKey, userId, { onRescheduleError } = {}) {
   const [rawActivities, setRawActivities] = useState([]);
   const [rawEvents, setRawEvents] = useState([]);
   const [wellnessData, setWellnessData] = useState({});
@@ -52,7 +52,6 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       setRawActivities([]);
       setRawEvents([]);
       setWellnessData({});
-      // Ali i dalje dohvaćamo Supabase aktivnosti
     }
     setIsLoading(true);
     setError(null);
@@ -61,7 +60,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       if (intervalsId && intervalsKey) {
         const data = await fetchIntervalsData(intervalsId, intervalsKey);
 
-        const hiddenList = JSON.parse(localStorage.getItem('ai_trener_hidden_intervals_activities') || '[]');
+        const hiddenList = JSON.parse(localStorage.getItem(`ai_trener_hidden_intervals_activities_${userId || 'guest'}`) || '[]');
         setRawActivities(data.activities.filter(act => !hiddenList.includes(String(act.id))));
         setRawEvents(data.events);
 
@@ -88,9 +87,15 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
         const ninetyDaysAgo = new Date();
         ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
+        if (!userId) {
+          setSupabaseActivities([]);
+          return;
+        }
+
         const { data: supabaseData, error: supabaseError } = await supabase
           .from('completed_activities')
           .select('id, started_at, title, workout_source, duration_seconds, avg_power, avg_hr, np, tss, if_factor')
+          .eq('user_id', userId)
           .in('workout_source', ['local', 'free_ride', 'calendar', 'library']) // Svi treninzi odrađeni u ovoj aplikaciji
           .gte('started_at', ninetyDaysAgo.toISOString())
           .order('started_at', { ascending: false });
@@ -106,7 +111,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
         // Pročitaj i localStorage fallback aktivnosti
         try {
-          const localFallback = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities') || '[]');
+          const localFallback = JSON.parse(localStorage.getItem(`ai_trener_local_completed_activities_${userId || 'guest'}`) || '[]');
 
           // Dodaj one iz localStorage-a koje već nemamo u Supabase podacima
           // Uspoređujemo po started_at (isti trening bi trebao imati vrlo sličan timestamp)
@@ -140,7 +145,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     } finally {
       setIsLoading(false);
     }
-  }, [intervalsId, intervalsKey]);
+  }, [intervalsId, intervalsKey, userId]);
 
   useEffect(() => {
     fetchWorkouts();
@@ -177,7 +182,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     const supabaseDateMap = new Map(); // Mapa za brzu provjeru Supabase aktivnosti po datumu
     const todayStr = new Date().toISOString().split('T')[0];
 
-    const localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+    const localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
 
     // Kreiraj Map objekte za O(1) lookup - OPTIMIZACIJA
     const eventsByDate = new Map();
@@ -609,9 +614,9 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
     if (workoutId.startsWith('local-')) {
       const rawId = workoutId.replace('local-', '');
-      let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+      let localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
       localScheduled = localScheduled.filter(w => w.id !== rawId);
-      localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
+      localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify(localScheduled));
       setLocalRefreshTrigger(prev => prev + 1);
     } else if (workoutId.startsWith('ev-')) {
       const rawId = workoutId.replace('ev-', '');
@@ -649,9 +654,9 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
         // Obriši i iz localStorage fallbacka
         try {
-          const localFallback = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities') || '[]');
+          const localFallback = JSON.parse(localStorage.getItem(`ai_trener_local_completed_activities_${userId || 'guest'}`) || '[]');
           const updatedFallback = localFallback.filter(act => act.id !== rawId && act.id !== `local_act_${rawId}`);
-          localStorage.setItem('ai_trener_local_completed_activities', JSON.stringify(updatedFallback));
+          localStorage.setItem(`ai_trener_local_completed_activities_${userId || 'guest'}`, JSON.stringify(updatedFallback));
         } catch (e) {
           console.warn('Greška pri brisanju iz localStorage:', e);
         }
@@ -670,10 +675,10 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
       // Skrivanje Intervals.icu aktivnosti lokalno
       const rawId = activityId.replace('act-', '');
       try {
-        const hiddenList = JSON.parse(localStorage.getItem('ai_trener_hidden_intervals_activities') || '[]');
+        const hiddenList = JSON.parse(localStorage.getItem(`ai_trener_hidden_intervals_activities_${userId || 'guest'}`) || '[]');
         if (!hiddenList.includes(rawId)) {
           hiddenList.push(rawId);
-          localStorage.setItem('ai_trener_hidden_intervals_activities', JSON.stringify(hiddenList));
+          localStorage.setItem(`ai_trener_hidden_intervals_activities_${userId || 'guest'}`, JSON.stringify(hiddenList));
         }
         
         // Ažuriraj stanje i triggeraj osvježavanje kako bi nestalo iz UI-ja
@@ -697,11 +702,11 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     // --- Lokalni treninzi ---
     if (workoutId.startsWith('local-')) {
       const rawId = workoutId.replace('local-', '');
-      let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+      let localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
       const idx = localScheduled.findIndex(w => w.id === rawId);
       if (idx === -1) return;
       localScheduled[idx].date = newDate;
-      localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
+      localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify(localScheduled));
       setLocalRefreshTrigger(prev => prev + 1);
       return;
     }
@@ -737,14 +742,14 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
   const handleUpdateWorkout = useCallback(async (workoutId, title, workout_doc, calculatedTss, calculatedDuration) => {
     if (workoutId.startsWith('local-')) {
       const rawId = workoutId.replace('local-', '');
-      let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+      let localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
       const idx = localScheduled.findIndex(w => w.id === rawId);
       if (idx > -1) {
         localScheduled[idx].title = title;
         localScheduled[idx].steps = workout_doc;
         localScheduled[idx].tss = calculatedTss;
         localScheduled[idx].duration = calculatedDuration;
-        localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
+        localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify(localScheduled));
         setLocalRefreshTrigger(prev => prev + 1);
       }
       return;
@@ -782,7 +787,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
   const handleCreateWorkout = useCallback(async (workoutObj) => {
     // 1. Priprema optimističnog stanja (kreiramo lokalni zapis)
-    let localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+    let localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
     const newLocalWorkout = {
       id: workoutObj.id.replace('local-', ''),
       date: workoutObj.date,
@@ -796,7 +801,7 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
     };
 
     localScheduled.push(newLocalWorkout);
-    localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
+    localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify(localScheduled));
     setLocalRefreshTrigger(prev => prev + 1);
 
     // Ako nemamo API ključeve, stajemo ovdje, ostaje samo lokalno
@@ -819,9 +824,9 @@ export function useIntervalsData(intervalsId, intervalsKey, { onRescheduleError 
 
       // Uspješno dodano na Intervals!
       // Brišemo lokalni i dodajemo pravi event
-      localScheduled = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+      localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
       localScheduled = localScheduled.filter(w => w.id !== newLocalWorkout.id);
-      localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify(localScheduled));
+      localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify(localScheduled));
 
       setRawEvents(prev => [...prev, newEvent]);
       setLocalRefreshTrigger(prev => prev + 1);

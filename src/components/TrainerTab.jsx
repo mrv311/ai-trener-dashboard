@@ -70,7 +70,7 @@ class PowerMatchPID {
 
 const pidController = new PowerMatchPID();
 
-export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
+export default function TrainerTab({ profile, userId, workoutFromCalendar, onClose }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [sessionStartTime, setSessionStartTime] = useState(null);
@@ -705,7 +705,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
     // Provjera prava na upis razine (preko 85% dovršenosti)
     if (elapsedTime / totalDuration >= 0.85 && workoutFromCalendar && workoutFromCalendar.difficulty_score) {
       try {
-        const existingHistory = JSON.parse(localStorage.getItem('ai_trener_completed_workouts') || '[]');
+        const existingHistory = JSON.parse(localStorage.getItem(`ai_trener_completed_workouts_${userId || 'guest'}`) || '[]');
         const newRecord = {
           id: Date.now().toString(),
           date: new Date().toISOString(),
@@ -714,7 +714,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
           difficulty_score: workoutFromCalendar.difficulty_score || 1.0,
           duration_seconds: elapsedTime
         };
-        localStorage.setItem('ai_trener_completed_workouts', JSON.stringify([...existingHistory, newRecord]));
+        localStorage.setItem(`ai_trener_completed_workouts_${userId || 'guest'}`, JSON.stringify([...existingHistory, newRecord]));
         console.log("Napredak zabilježen!", newRecord);
       } catch (e) {
         console.error("Greška pri spremanju napretka", e);
@@ -793,7 +793,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
     // 1. Spremi u localStorage (OFFLINE BACKUP)
     try {
-      const localActivities = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities') || '[]');
+      const localActivities = JSON.parse(localStorage.getItem(`ai_trener_local_completed_activities_${userId || 'guest'}`) || '[]');
       const localId = 'local_act_' + Date.now();
       const localActivity = { 
         id: localId, 
@@ -803,7 +803,7 @@ export default function TrainerTab({ profile, workoutFromCalendar, onClose }) {
 
       // Ograniči na zadnjih 50 aktivnosti da ne napunimo localStorage
       const updatedLocal = [localActivity, ...localActivities].slice(0, 50);
-      localStorage.setItem('ai_trener_local_completed_activities', JSON.stringify(updatedLocal));
+      localStorage.setItem(`ai_trener_local_completed_activities_${userId || 'guest'}`, JSON.stringify(updatedLocal));
       console.log('[TrainerTab] Spremljeno u localStorage backup');
     } catch (e) {
       console.warn('Nije uspjelo spremanje u localStorage backup', e);

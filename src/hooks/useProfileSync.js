@@ -1,32 +1,30 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
 
-export function useProfileSync(initialValue) {
-  const [profile, setProfileState] = useState(() => {
-    try {
-      const item = window.localStorage.getItem('ai_trener_profile');
-      if (item !== null) {
-        try {
-          return JSON.parse(item);
-        } catch {
-          return initialValue;
-        }
-      }
-      return initialValue;
-    } catch (error) {
-      console.warn('Error reading localStorage key "ai_trener_profile":', error);
-      return initialValue;
-    }
-  });
+export function useProfileSync(initialValue, userId) {
+  const [profile, setProfileState] = useState(initialValue);
 
   // Fetch initial profile from Supabase
   useEffect(() => {
     async function fetchSupabaseProfile() {
+      if (!userId) {
+        setProfileState(initialValue);
+        return;
+      }
+
+      try {
+        const item = window.localStorage.getItem(`ai_trener_profile_${userId}`);
+        if (item) {
+          const parsed = JSON.parse(item);
+          if (parsed && typeof parsed === 'object') setProfileState(parsed);
+        }
+      } catch (e) {}
+
       try {
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', 1)
+          .eq('user_id', userId)
           .single();
 
         if (error) {
@@ -41,13 +39,13 @@ export function useProfileSync(initialValue) {
           // Merge current local profile (which may have local-only fields like lastFtpUpdate)
           // with what is returned from Supabase
           setProfileState((prev) => {
-            const merged = { ...prev };
+            const merged = { ...(prev || initialValue) };
             for (const key in data) {
               if (data[key] !== null) {
                 merged[key] = data[key];
               }
             }
-            window.localStorage.setItem('ai_trener_profile', JSON.stringify(merged));
+            window.localStorage.setItem(`ai_trener_profile_${userId}`, JSON.stringify(merged));
             return merged;
           });
         }
@@ -57,7 +55,7 @@ export function useProfileSync(initialValue) {
     }
     
     fetchSupabaseProfile();
-  }, []);
+  }, [userId]);
 
   // Update profile locally and remote
   const setProfile = async (newProfileData) => {
@@ -67,12 +65,15 @@ export function useProfileSync(initialValue) {
       // 1. Update component state
       setProfileState(updatedProfile);
 
-      // 2. Update local storage
-      window.localStorage.setItem('ai_trener_profile', JSON.stringify(updatedProfile));
+      // 2. Update local storage (only if we have a userId to avoid guest pollution)
+      if (userId) {
+        window.localStorage.setItem(`ai_trener_profile_${userId}`, JSON.stringify(updatedProfile));
+      }
 
       // 3. Upsert to Supabase
-      // Only send keys defined in initialValue to prevent schema errors if we have local-only keys (e.g. lastFtpUpdate)
-      const payload = { id: 1 };
+      if (!userId || userId === 'guest') return;
+
+      const payload = { user_id: userId };
       for (const key in initialValue) {
         if (updatedProfile[key] !== undefined) {
           payload[key] = updatedProfile[key];

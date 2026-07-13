@@ -7,15 +7,12 @@ import {
 
 import CalendarTab from './components/CalendarTab';
 import TrainerTab from './components/TrainerTab';
-import SettingsTab from './components/SettingsTab';
 import FitnessTab from './components/FitnessTab';
-import PowerCurveTab from './components/PowerCurveTab';
 import ProfileTab from './components/ProfileTab';
-import AnalyticsTab from './components/AnalyticsTab';
 import ConnectionsTab from './components/ConnectionsTab';
 import LibraryTab from './components/LibraryTab';
-
-import HistoryTab from './components/HistoryTab';
+import AuthPage from './components/AuthPage';
+import { supabase } from './services/supabaseClient';
 
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useProfileSync } from './hooks/useProfileSync';
@@ -31,12 +28,7 @@ const TABS = {
   calendar: { label: 'Kalendar', icon: <CalendarIcon />, component: CalendarTab },
   library: { label: 'Knjižnica', icon: <Database />, component: LibraryTab },
   trainer: { label: 'Trenažer', icon: <Monitor />, component: TrainerTab },
-  history: { label: 'Povijest', icon: <ClipboardList />, component: HistoryTab },
   fitness: { label: 'Kondicija', icon: <Activity />, component: FitnessTab },
-
-  power: { label: 'Snaga', icon: <LineChart />, component: PowerCurveTab },
-  analytics: { label: 'Analitika', icon: <BarChart2 />, component: AnalyticsTab },
-  settings: { label: 'Postavke', icon: <Settings />, component: SettingsTab },
   profile: { label: 'Profil', icon: <User />, component: ProfileTab },
   connections: { label: 'Veze', icon: <LinkIcon />, component: ConnectionsTab }
 };
@@ -45,17 +37,38 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('calendar');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useLocalStorage('sidebarCollapsed', false);
-  const [intervalsId, setIntervalsId] = useLocalStorage('intervalsId', '');
-  const [intervalsKey, setIntervalsKey] = useLocalStorage('intervalsKey', '');
+  const [session, setSession] = useState(null);
+  const [isSessionLoading, setIsSessionLoading] = useState(true);
+  const [isGuest, setIsGuest] = useState(false);
+  const currentUserId = isGuest ? 'guest' : session?.user?.id;
 
-  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey);
+  const [intervalsId, setIntervalsId] = useLocalStorage(currentUserId ? `intervalsId_${currentUserId}` : 'intervalsId', '');
+  const [intervalsKey, setIntervalsKey] = useLocalStorage(currentUserId ? `intervalsKey_${currentUserId}` : 'intervalsKey', '');
+
+  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey, currentUserId);
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsSessionLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const [athleteProfile, setAthleteProfile] = useProfileSync({
-    username: 'Odvažni Vozač', weight: 75.9, ftp: 270, thresholdHr: 160, maxHr: 180,
+    username: 'Gost Vozač', weight: 75.9, ftp: 270, thresholdHr: 160, maxHr: 180,
     birthYear: 1985, height: 180, experience: '3-5', riderType: 'all-rounder',
     hoursPerWeek: 8, primaryGoal: 'Istra 300', goalDate: '2026-09-26', weakness: 'kratki usponi (VO2Max)'
-  });
+  }, currentUserId);
 
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -81,6 +94,19 @@ export default function App() {
     setActiveTab(tab);
     setIsMobileMenuOpen(false);
   };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setIsGuest(false);
+  };
+
+  if (isSessionLoading) {
+    return <div className="h-screen bg-zinc-950 flex items-center justify-center"><Loader2 className="w-8 h-8 text-orange-500 animate-spin" /></div>;
+  }
+
+  if (!session && !isGuest) {
+    return <AuthPage onGuestLogin={() => setIsGuest(true)} />;
+  }
 
   return (
     <div className="flex h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-orange-500/30">
@@ -115,7 +141,7 @@ export default function App() {
         </div>
 
         <nav className="mt-6 flex-1 px-3 space-y-2 overflow-y-auto hide-scrollbar">
-          {['calendar', 'library', 'trainer', 'history', 'fitness', 'power', 'analytics', 'settings', 'profile'].map(tabId => (
+          {['calendar', 'library', 'trainer', 'fitness', 'profile'].map(tabId => (
             <NavItem
               key={tabId}
               icon={TABS[tabId].icon}
@@ -158,7 +184,7 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => { setIntervalsId(''); setIntervalsKey(''); }}
+            onClick={handleLogout}
             title="Odjava"
             className="w-full flex items-center justify-center md:justify-start px-0 md:px-4 py-3 rounded-xl transition-all text-zinc-500 hover:bg-red-500/10 hover:text-red-400"
           >
@@ -210,33 +236,23 @@ export default function App() {
             <div className={activeTab === 'trainer' ? 'flex-1 flex flex-col min-h-0 w-full overflow-y-auto pb-1 md:pb-2 hide-scrollbar' : 'hidden'}>
               <TrainerTab
                 profile={athleteProfile}
+                userId={currentUserId}
                 workoutFromCalendar={selectedWorkout}
                 onClose={() => { setSelectedWorkout(null); handleTabChange('calendar'); }}
               />
             </div>
 
-            {activeTab === 'history' && (
-              <HistoryTab
-                workouts={workouts}
-                intervalsId={intervalsId}
-                intervalsKey={intervalsKey}
-                handleDeleteCompletedActivity={handleDeleteCompletedActivity}
-                onRefresh={fetchWorkouts}
-              />
-            )}
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
 
             {activeTab === 'library' && (
               <LibraryTab
                 ftp={athleteProfile.ftp}
                 onSelectWorkout={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
+                userId={currentUserId}
               />
             )}
-            {activeTab === 'settings' && <SettingsTab profile={athleteProfile} setProfile={setAthleteProfile} />}
-            {activeTab === 'power' && <PowerCurveTab intervalsId={intervalsId} intervalsKey={intervalsKey} profile={athleteProfile} />}
-            {activeTab === 'profile' && <ProfileTab profile={athleteProfile} setProfile={setAthleteProfile} />}
-            {activeTab === 'analytics' && <AnalyticsTab intervalsId={intervalsId} intervalsKey={intervalsKey} />}
-            {activeTab === 'connections' && <ConnectionsTab connectionStatus={connectionStatus} intervalsId={intervalsId} setId={setIntervalsId} intervalsKey={intervalsKey} setKey={setIntervalsKey} onSave={fetchWorkouts} />}
+            {activeTab === 'profile' && <ProfileTab profile={athleteProfile} setProfile={setAthleteProfile} workouts={workouts} />}
+            {activeTab === 'connections' && <ConnectionsTab connectionStatus={connectionStatus} intervalsId={intervalsId} setId={setIntervalsId} intervalsKey={intervalsKey} setKey={setIntervalsKey} onSave={fetchWorkouts} userId={currentUserId} />}
           </div>
         </main>
 
@@ -245,9 +261,8 @@ export default function App() {
           <div className="flex justify-around items-center h-14">
             <MobileTab icon={<CalendarIcon />} label="Kalendar" active={activeTab === 'calendar'} onClick={() => handleTabChange('calendar')} />
             <MobileTab icon={<Monitor />} label="Trenažer" active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
-            <MobileTab icon={<ClipboardList />} label="Povijest" active={activeTab === 'history'} onClick={() => handleTabChange('history')} />
-            <MobileTab icon={<Activity />} label="Fitness" active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
-            <MobileTab icon={<MoreHorizontal />} label="Više" active={['settings', 'profile', 'connections', 'power', 'analytics'].includes(activeTab) || isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+            <MobileTab icon={<ClipboardList />} label="Kondicija" active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
+            <MobileTab icon={<MoreHorizontal />} label="Više" active={['library', 'profile', 'connections'].includes(activeTab) || isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
           </div>
         </div>
 
@@ -265,7 +280,7 @@ export default function App() {
                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-zinc-800 rounded-full text-zinc-400"><X className="w-5 h-5" /></button>
               </div>
               <div className="grid grid-cols-2 gap-3 mb-6">
-                {['analytics', 'power', 'settings', 'profile', 'connections', 'library'].map(tabId => (
+                {['library', 'profile', 'connections'].map(tabId => (
                   <MobileMenuGridBtn key={tabId} icon={TABS[tabId].icon} label={TABS[tabId].label} active={activeTab === tabId} onClick={() => handleTabChange(tabId)} />
                 ))}
               </div>

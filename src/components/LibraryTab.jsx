@@ -5,7 +5,7 @@ import { getZoneColorForTrainer } from '../utils/performanceMetrics';
 import { parseWorkoutFile } from '../utils/workoutParser';
 import { calculateCogganMetrics, expandStepsToSeconds } from '../utils/performanceMetrics';
 
-export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
+export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
   const [workouts, setWorkouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -23,13 +23,13 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250 }) {
 
   const handleScheduleWorkout = () => {
     if (!selectedDetailWorkout || !scheduleDate) return;
-    const records = JSON.parse(localStorage.getItem('ai_trener_scheduled_workouts') || '[]');
+    const records = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
     const newRecord = {
       ...selectedDetailWorkout,
       id: Date.now().toString(),
       date: scheduleDate
     };
-    localStorage.setItem('ai_trener_scheduled_workouts', JSON.stringify([...records, newRecord]));
+    localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify([...records, newRecord]));
     setScheduleSuccess(true);
     setTimeout(() => {
       setScheduleSuccess(false);

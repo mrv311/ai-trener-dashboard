@@ -10,48 +10,50 @@ export default {
         sans: ['Montserrat', 'sans-serif'],
       },
       colors: {
-        // BOJA 1: Prigušeni akcent (Muted Accent) - Zamjenjuje neon zelenu
-        // Koristi se za ključne podatke, grafove i primarne gumbe, bez "vrištanja"
         brand: {
-          DEFAULT: '#738794', // Muted Slate/Steel (Prilagodi točnom HEX-u s tvoje slike)
-          dark: '#586a75',
-          glow: 'rgba(115, 135, 148, 0.2)', // Drastično smanjen intenzitet sjene
+          DEFAULT: '#3b82f6', // Fresh Blue
+          dark: '#2563eb',
+          glow: 'rgba(59, 130, 246, 0.2)',
         },
         orange: {
-          400: '#8ba2b3',
-          500: '#738794', // Pregaženo: Mapirano na Boju 1
-          600: '#586a75',
-          900: '#1a1d21', // Pregaženo: Mapirano na pozadinu
+          // Vraćamo pravu, svježu narančastu boju za dinamičan sportski izgled
+          400: '#fb923c',
+          500: '#f97316', 
+          600: '#ea580c',
+          900: '#fff7ed', // Vrlo svijetla narančasta za pozadine (bivša tamna pozadina)
         },
         red: {
-          400: '#e57373', // Muted Red 400
-          500: '#ef5350', // Muted Red 500
+          400: '#ef4444', 
+          500: '#dc2626', 
         },
         zinc: {
-          // BOJA 2: Svijetli tekst (Off-White/Light Gray) - Nije apsolutno bijela radi smanjenja kontrasta
-          50: '#f8f9fa',
-          100: '#e9ecef',
-          200: '#dee2e6',
-          300: '#ced4da',
-
-          // BOJA 3: Srednja površina (Surface/Borders) - Za kartice, tablice i neaktivne elemente
-          400: '#adb5bd',
-          500: '#6c757d',
-          600: '#495057',
-          700: '#343a40', // Hover stanja
-          800: '#212529', // Obrubi kartica
-
-          // BOJA 4: Tamna baza (Deep Base) - Glavna pozadina
-          900: '#1a1d21', // Surface pozadine (Modali)
-          950: '#121417', // Glavna podloga (Prilagodi točnom tamnom HEX-u s tvoje slike)
+          // INVERZIJA: 950 je sada svijetla pozadina, a 50-100 su tamni tekst
+          // Svijetla pozadina (bivša tamna baza)
+          950: '#f8fafc', // Glavna podloga (vrlo svijetlo plavkasto-siva)
+          900: '#ffffff', // Modali i kartice (čista bijela)
+          
+          // Obrubi i hover stanja (bivši tamni obrubi)
+          800: '#e2e8f0', // Obrubi kartica
+          700: '#f1f5f9', // Hover stanja (lagano sivo)
+          
+          600: '#cbd5e1',
+          500: '#94a3b8',
+          400: '#64748b',
+          
+          // Tamni tekst (bivši svijetli tekst)
+          300: '#475569',
+          200: '#334155',
+          100: '#1e293b', // Glavni tekst
+          50:  '#0f172a', // Najtamniji tekst (naslovi)
         }
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
       boxShadow: {
-        // Umjesto neonskog sjaja, koristimo suptilnu dubinu
-        'orange-glow': '0 4px 12px rgba(0, 0, 0, 0.3)',
+        // Modernija i laganija sjena za light mode
+        'orange-glow': '0 10px 25px -5px rgba(249, 115, 22, 0.2), 0 8px 10px -6px rgba(249, 115, 22, 0.1)',
+        'soft-card': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
       }
     },
   },
