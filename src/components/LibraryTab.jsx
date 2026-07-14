@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare } from 'lucide-react';
+import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare, Sparkles } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/performanceMetrics';
 import { parseWorkoutFile } from '../utils/workoutParser';
 import { calculateCogganMetrics, expandStepsToSeconds } from '../utils/performanceMetrics';
-
+import { generateLocalWorkout } from '../utils/workoutGenerator';
 export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
   const [workouts, setWorkouts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -20,6 +20,18 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
   const [selectedDetailWorkout, setSelectedDetailWorkout] = useState(null);
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split('T')[0]);
   const [scheduleSuccess, setScheduleSuccess] = useState(false);
+  const [isSavingAi, setIsSavingAi] = useState(false);
+
+  const [showGeneratorModal, setShowGeneratorModal] = useState(false);
+  const [genType, setGenType] = useState('Endurance');
+  const [genDuration, setGenDuration] = useState(60);
+  const [genDifficulty, setGenDifficulty] = useState(3);
+
+  const handleGenerate = () => {
+    const newWorkout = generateLocalWorkout(genType, genDuration, genDifficulty);
+    setSelectedDetailWorkout(newWorkout);
+    setShowGeneratorModal(false);
+  };
 
   const handleScheduleWorkout = () => {
     if (!selectedDetailWorkout || !scheduleDate) return;
@@ -35,6 +47,32 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
       setScheduleSuccess(false);
       setSelectedDetailWorkout(null);
     }, 1500);
+  };
+
+  const handleSaveAiToLibrary = async () => {
+    if (!selectedDetailWorkout) return;
+    try {
+      setIsSavingAi(true);
+      const workoutPayload = {
+        title: selectedDetailWorkout.title,
+        description: selectedDetailWorkout.description || '',
+        duration_seconds: selectedDetailWorkout.duration_seconds,
+        difficulty_score: selectedDetailWorkout.difficulty_score || 50,
+        category: selectedDetailWorkout.category,
+        steps: selectedDetailWorkout.steps
+      };
+
+      const { error } = await supabase.from('workouts').insert([workoutPayload]);
+      if (error) throw error;
+      
+      await fetchWorkouts();
+      setSelectedDetailWorkout(null);
+    } catch (err) {
+      console.error(err);
+      alert("Greška pri spremanju u knjižnicu: " + err.message);
+    } finally {
+      setIsSavingAi(false);
+    }
   };
 
   useEffect(() => {
@@ -202,8 +240,15 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
           </h2>
           <p className="text-zinc-500 text-sm mt-1">Strukturirani treninzi iz baze spremni za vožnju.</p>
         </div>
-        <div className="flex gap-2">
-          <label className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-zinc-950 font-bold rounded-xl cursor-pointer transition-all shadow-[0_0_15px_rgba(34,211,238,0.3)]">
+        <div className="flex flex-wrap gap-2">
+          <button 
+            onClick={() => setShowGeneratorModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white font-bold rounded-xl transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)]"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span className="hidden sm:inline">AI Trener</span>
+          </button>
+          <label className="flex items-center gap-2 px-4 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-bold rounded-xl cursor-pointer transition-all shadow-[0_0_15px_rgba(34,211,238,0.3)]">
             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
             <span className="hidden sm:inline">{isUploading ? 'Učitavanje...' : 'Dodaj ZWO/ERG'}</span>
             <span className="sm:hidden">Dodaj</span>
@@ -532,17 +577,84 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
                        onClick={(e) => { try { e.target.showPicker(); } catch(err){} }}
                        className="sm:w-1/2 bg-zinc-950 border border-zinc-700 text-white rounded-xl px-5 py-3.5 font-bold outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 shadow-inner cursor-pointer"
                     />
-                    <button 
-                       onClick={handleScheduleWorkout}
-                       className={`sm:w-1/2 flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl text-sm font-black transition-all ${
-                         scheduleSuccess ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 shadow-[0_4px_15px_rgba(34,211,238,0.3)] border border-cyan-500/30'
-                       }`}
-                    >
-                       {scheduleSuccess ? <CheckSquare className="w-5 h-5"/> : <CalendarDays className="w-5 h-5" />}
-                       {scheduleSuccess ? 'TRENING DODAN!' : 'SPREMI U KALENDAR'}
-                    </button>
+                    <div className="sm:w-1/2 flex flex-col gap-2">
+                      <button 
+                         onClick={handleScheduleWorkout}
+                         className={`w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl text-sm font-black transition-all ${
+                           scheduleSuccess ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 shadow-[0_4px_15px_rgba(34,211,238,0.3)] border border-cyan-500/30'
+                         }`}
+                      >
+                         {scheduleSuccess ? <CheckSquare className="w-5 h-5"/> : <CalendarDays className="w-5 h-5" />}
+                         {scheduleSuccess ? 'TRENING DODAN!' : 'SPREMI U KALENDAR'}
+                      </button>
+                      
+                      {selectedDetailWorkout.isLocalGenerated && (
+                        <button 
+                           onClick={handleSaveAiToLibrary}
+                           disabled={isSavingAi}
+                           className="w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl text-sm font-black transition-all bg-zinc-950 border border-zinc-700 text-purple-400 hover:text-white hover:bg-purple-500 hover:border-purple-500 shadow-inner disabled:opacity-50"
+                        >
+                           {isSavingAi ? <Loader2 className="w-5 h-5 animate-spin"/> : <Database className="w-5 h-5" />}
+                           {isSavingAi ? 'SPREMANJE...' : 'SPREMI TRAJNO U BAZU'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showGeneratorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setShowGeneratorModal(false)}>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl relative" onClick={e => e.stopPropagation()}>
+            <h3 className="text-2xl font-black text-zinc-100 mb-6 flex items-center gap-3">
+              <Sparkles className="text-purple-400 w-6 h-6" /> Pametni Trener
+            </h3>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Tip Treninga</label>
+                <select value={genType} onChange={e => setGenType(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-zinc-200 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 font-bold">
+                  {['Oporavak', 'Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Anaerobni'].map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Trajanje (min)</label>
+                <div className="grid grid-cols-5 gap-2">
+                  {[30, 45, 60, 90, 120].map(d => (
+                    <button key={d} onClick={() => setGenDuration(d)} className={`py-2 rounded-lg text-xs font-black transition-all ${genDuration === d ? 'bg-purple-500 text-white shadow-[0_0_10px_rgba(168,85,247,0.4)]' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2 flex justify-between">
+                  <span>Faktor Težine</span>
+                  <span className={genDifficulty > 3 ? 'text-red-400' : genDifficulty < 3 ? 'text-blue-400' : 'text-emerald-400'}>
+                    {genDifficulty === 1 ? 'Vrlo lagano' : genDifficulty === 2 ? 'Lagano' : genDifficulty === 3 ? 'Srednje' : genDifficulty === 4 ? 'Teško' : 'Ekstremno'}
+                  </span>
+                </label>
+                <input 
+                  type="range" 
+                  min="1" max="5" 
+                  value={genDifficulty} 
+                  onChange={e => setGenDifficulty(parseInt(e.target.value))}
+                  className="w-full accent-purple-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer" 
+                />
+                <div className="flex justify-between text-[10px] text-zinc-600 font-bold px-1 mt-1">
+                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 flex gap-3">
+              <button onClick={() => setShowGeneratorModal(false)} className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl transition-colors">Odustani</button>
+              <button onClick={handleGenerate} className="flex-1 py-3 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white font-bold rounded-xl transition-all shadow-[0_4px_15px_rgba(168,85,247,0.3)]">Generiraj</button>
             </div>
           </div>
         </div>

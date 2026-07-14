@@ -589,7 +589,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     console.log('[useIntervalsData] Završeno računanje. Ukupno workouts:', finalWorkouts.length, 'Supabase datumi u mapi:', Array.from(supabaseDateMap.keys()).sort());
 
     return finalWorkouts;
-  }, [rawActivities, rawEvents, supabaseActivities, unpairedList, explicitPairings, localRefreshTrigger]);
+  }, [rawActivities, rawEvents, supabaseActivities, unpairedList, explicitPairings, localRefreshTrigger, userId]);
 
   const handleUnpair = useCallback((actId, eventId) => {
     if (!actId || !eventId) return;
@@ -631,7 +631,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         // Fallback u slučaju greške bi bio ponovno učitavanje, ali za sad samo logiramo
       }
     }
-  }, [intervalsId, intervalsKey]);
+  }, [intervalsId, intervalsKey, userId]);
 
   /**
    * Briše odrađenu aktivnost iz Supabase baze.
@@ -737,7 +737,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         onRescheduleError?.(err.message || 'Greška pri premještanju treninga');
       }
     }
-  }, [rawEvents, intervalsId, intervalsKey, onRescheduleError]);
+  }, [rawEvents, intervalsId, intervalsKey, onRescheduleError, userId]);
 
   const handleUpdateWorkout = useCallback(async (workoutId, title, workout_doc, calculatedTss, calculatedDuration) => {
     if (workoutId.startsWith('local-')) {
@@ -783,7 +783,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         throw err;
       }
     }
-  }, [rawEvents, intervalsId, intervalsKey]);
+  }, [rawEvents, intervalsId, intervalsKey, userId]);
 
   const handleCreateWorkout = useCallback(async (workoutObj) => {
     // 1. Priprema optimističnog stanja (kreiramo lokalni zapis)
@@ -834,7 +834,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       console.error('Create Workout API error:', err);
       // Ako api pukne, workout ostaje u lokalnom storageu što je ok fallback.
     }
-  }, [intervalsId, intervalsKey]);
+  }, [intervalsId, intervalsKey, userId]);
 
   return {
     workouts,
