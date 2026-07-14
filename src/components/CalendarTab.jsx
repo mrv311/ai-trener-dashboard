@@ -151,7 +151,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           // Compact: just title + duration + status icon
           <div className="flex items-center gap-1.5 w-full">
             <span className="text-[9px] font-bold text-zinc-300 truncate flex-1">{w.title}</span>
-            <span className="text-[9px] text-zinc-500 shrink-0">{formatDur(w.duration)}</span>
+            <span className="text-[9px] text-zinc-400 shrink-0">{formatDur(w.duration)}</span>
             {w.statusColor === 'green' && <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />}
             {w.statusColor === 'red-missed' && <XCircle className="w-3 h-3 text-rose-500 shrink-0" />}
           </div>
@@ -178,12 +178,12 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                   </button>
                 )}
                 {w.actId && w.eventId && (
-                  <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleUnpair(w.actId, w.eventId); }} className="text-zinc-500 hover:text-orange-400 transition-colors" title="Razdvoji planirano i odrađeno">
+                  <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleUnpair(w.actId, w.eventId); }} className="text-zinc-400 hover:text-orange-500 transition-colors" title="Razdvoji planirano i odrađeno">
                     <Unlink className="w-3.5 h-3.5" />
                   </button>
                 )}
                 {w.actId && w.separatedEventIds && w.separatedEventIds.map(sepId => (
-                  <button key={sepId} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }} className="text-zinc-500 hover:text-emerald-400 transition-colors" title="Spoji s planiranim treningom">
+                  <button key={sepId} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }} className="text-zinc-400 hover:text-emerald-500 transition-colors" title="Spoji s planiranim treningom">
                     <Link2 className="w-3.5 h-3.5" />
                   </button>
                 ))}
@@ -193,7 +193,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
-                    className={`text-zinc-${isDesktop ? '600' : '500'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
+                    className={`text-zinc-${isDesktop ? '400' : '400'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
                     title="Obriši planirani trening"
                   >
                     <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
@@ -209,7 +209,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                         if (!result.success) alert('Greška pri brisanju: ' + (result.error || 'Nepoznata greška'));
                       }
                     }}
-                    className={`text-zinc-${isDesktop ? '600' : '500'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
+                    className={`text-zinc-${isDesktop ? '400' : '400'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
                     title="Obriši odrađeni trening"
                   >
                     <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
@@ -219,7 +219,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
             </div>
             {/* Title */}
             <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} text-zinc-100 leading-tight line-clamp-3`}>
-              {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-500 align-middle pointer-events-none" />}
+              {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-400 align-middle pointer-events-none" />}
               {w.title}
               {w.isSupabase && w.workout_source && (
                 <span className="ml-1.5 inline-flex items-center bg-violet-500/10 text-violet-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-violet-500/20">
@@ -323,7 +323,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
           {dWorks.length > 0 ? dWorks.map(w => (
             <WorkoutCard key={w.id} w={w} isDesktop={false} isDragging={false} onSelectWorkout={onSelectWorkout} handleUnpair={handleUnpair} handlePair={handlePair} handleDeleteLocalActivity={handleDeleteLocalActivity} handleDeleteCompletedActivity={handleDeleteCompletedActivity} onEditWorkout={onEditWorkout} onViewActivity={onViewActivity} />
           )) : (
-            <div className="text-xs text-zinc-600 italic px-2 py-2 bg-zinc-900/40 rounded-lg border border-zinc-800 border-dashed mr-auto">Odmor</div>
+            <div className="text-xs text-zinc-400 italic px-2 py-2 bg-zinc-900/40 rounded-lg border border-zinc-800 border-dashed mr-auto">Odmor</div>
           )}
         </div>
       </div>
@@ -347,7 +347,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
       }}
     >
       <div className={`flex justify-between items-start ${compact ? 'mb-1' : 'mb-3'}`}>
-        <span className={`font-bold text-xs ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.6)]' : (dObj.isCurrentMonth ? 'text-zinc-400' : 'text-zinc-600')}`}>{dObj.day}</span>
+        <span className={`font-bold text-xs ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.6)]' : (dObj.isCurrentMonth ? 'text-zinc-200' : 'text-zinc-400')}`}>{dObj.day}</span>
         {!compact && dWell && (
           <div className="flex gap-2 text-[10px] font-bold text-zinc-500">
             {dWell.restingHR && <span className="flex items-center text-rose-500/80"><Heart className="w-3 h-3 mr-0.5" fill="currentColor" />{dWell.restingHR}</span>}
