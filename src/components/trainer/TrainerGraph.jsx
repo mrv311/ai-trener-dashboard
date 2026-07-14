@@ -127,8 +127,8 @@ export default function TrainerGraph({
           )}
 
           {/* Linija koja pokazuje točan trenutni progres */}
-          <div className="absolute top-0 bottom-0 w-[2px] bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)] z-30 transition-all duration-1000 ease-linear" style={{ left: `${progressPercent}%` }}>
-            <div className="absolute -top-1.5 -left-[5px] w-3 h-3 bg-zinc-900 rounded-full border-2 border-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]"></div>
+          <div className="absolute top-0 bottom-0 w-[2px] bg-orange-500 shadow-[0_0_10px_rgba(34,211,238,0.8)] z-30 transition-all duration-1000 ease-linear" style={{ left: `${progressPercent}%` }}>
+            <div className="absolute -top-1.5 -left-[5px] w-3 h-3 bg-zinc-900 rounded-full border-2 border-orange-500 shadow-[0_0_10px_rgba(34,211,238,0.8)]"></div>
           </div>
         </div>
 

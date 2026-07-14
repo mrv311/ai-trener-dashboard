@@ -464,7 +464,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     if (pwr < 76) return 'text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]';
     if (pwr < 88) return 'text-green-400 drop-shadow-[0_0_8px_rgba(74,222,128,0.5)]';
     if (pwr < 95) return 'text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]';
-    if (pwr < 106) return 'text-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.5)]';
+    if (pwr < 106) return 'text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]';
     if (pwr < 121) return 'text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]';
     return 'text-purple-400 drop-shadow-[0_0_8px_rgba(192,132,252,0.5)]';
   };
@@ -1047,7 +1047,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           <div className="bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-2 flex-1 flex flex-col justify-center items-center relative group hover:border-orange-500/30 transition-colors min-h-0">
             <span className="absolute top-2 left-2 md:top-3 md:left-3 text-orange-500/80 font-black uppercase tracking-widest text-[8px] md:text-[10px] flex items-center gap-1"><Zap className="w-3 h-3 group-hover:text-orange-500 transition-colors" /> <span className="hidden xl:inline">Kadenca</span></span>
             <div className="flex items-baseline gap-1 mt-1 md:mt-0 shrink-1 min-h-0">
-              <div className={`text-[clamp(30px,6vh,70px)] md:text-[clamp(40px,8vh,90px)] font-black leading-none ${(isPmConnected || isPowerConnected) ? 'text-zinc-100 drop-shadow-[0_0_8px_rgba(249,115,22,0.3)]' : 'text-zinc-700'}`}>{displayCadence}</div>
+              <div className={`text-[clamp(30px,6vh,70px)] md:text-[clamp(40px,8vh,90px)] font-black leading-none ${(isPmConnected || isPowerConnected) ? 'text-zinc-100 drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]' : 'text-zinc-700'}`}>{displayCadence}</div>
               <span className="text-[10px] md:text-sm font-bold text-zinc-600 pb-0.5">rpm</span>
             </div>
           </div>
@@ -1070,7 +1070,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           <div className="flex flex-col sm:flex-row items-center sm:items-start md:items-center gap-1.5 md:gap-2">
             <div className="flex items-center bg-zinc-950/50 rounded-full p-0.5 border border-zinc-800 mx-auto sm:mx-0">
               <button onClick={handleStopClick} className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-colors hover:bg-zinc-800 text-zinc-400 hover:text-white" title="Prekini trening"><Square className="w-3 h-3 md:w-4 md:h-4" fill="currentColor" /></button>
-              <button onClick={() => setIsPlaying(!isPlaying)} className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all shadow-lg shrink-0 ${isPlaying ? 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-white' : 'bg-orange-500 hover:bg-orange-400 text-white shadow-orange-500/30'}`}>
+              <button onClick={() => setIsPlaying(!isPlaying)} className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all shadow-lg shrink-0 ${isPlaying ? 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-white' : 'bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-cyan-500/30'}`}>
                 {isPlaying ? <Pause className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" /> : <Play className="w-4 h-4 md:w-5 md:h-5 ml-0.5" fill="currentColor" />}
               </button>
               <button onClick={handleSkip} className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-colors hover:bg-zinc-800 text-zinc-400 hover:text-white" title="Preskoči na idući interval"><FastForward className="w-3 h-3 md:w-4 md:h-4" fill="currentColor" /></button>
@@ -1085,7 +1085,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           </div>
           <div className="text-center md:text-right border-t border-zinc-800/50 md:border-t-0 pt-0.5 md:pt-0 shrink-0">
             <div className="text-[8px] md:text-[9px] lg:text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-0.5">Preostalo u intervalu</div>
-            <div className={`text-xl md:text-3xl lg:text-4xl xl:text-5xl font-black font-mono tracking-tight leading-none ${isPlaying ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]' : 'text-zinc-600'}`}>{formatTime(stepRemaining)}</div>
+            <div className={`text-xl md:text-3xl lg:text-4xl xl:text-5xl font-black font-mono tracking-tight leading-none ${isPlaying ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]' : 'text-zinc-600'}`}>{formatTime(stepRemaining)}</div>
           </div>
         </div>
 

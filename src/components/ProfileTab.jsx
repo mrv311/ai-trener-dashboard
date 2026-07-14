@@ -70,7 +70,7 @@ export default function ProfileTab({ profile, setProfile, workouts = [] }) {
       <div className="bg-zinc-950/50 rounded-3xl shadow-2xl border border-zinc-800/80 p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between shrink-0 gap-6 relative overflow-hidden backdrop-blur-md">
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-2">
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-2 rounded-xl shadow-[0_0_10px_rgba(249,115,22,0.4)]"><User className="w-6 h-6 text-white" /></div>
+            <div className="bg-gradient-to-br from-cyan-500 to-emerald-500 p-2 rounded-xl shadow-[0_0_10px_rgba(34,211,238,0.4)]"><User className="w-6 h-6 text-zinc-950" /></div>
             <h2 className="text-2xl font-black text-zinc-100 tracking-tight">Profil i Postavke</h2>
           </div>
           <p className="text-zinc-400 font-medium max-w-xl text-sm leading-relaxed">
@@ -80,7 +80,7 @@ export default function ProfileTab({ profile, setProfile, workouts = [] }) {
 
         <button
           onClick={handleSave}
-          className={`relative z-10 flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all shadow-lg ${isSaved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white shadow-[0_4px_15px_rgba(249,115,22,0.3)] border border-orange-500/50'
+          className={`relative z-10 flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all shadow-lg ${isSaved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 shadow-[0_4px_15px_rgba(34,211,238,0.3)] border border-cyan-500/30'
             }`}
         >
           {isSaved ? <CheckCircle2 className="w-5 h-5" /> : <Save className="w-5 h-5" />}
@@ -91,7 +91,7 @@ export default function ProfileTab({ profile, setProfile, workouts = [] }) {
       {/* 1. OSNOVNI PARAMETRI */}
       <div className="bg-zinc-900/40 backdrop-blur-md rounded-3xl shadow-xl border border-zinc-800/80 p-6 flex flex-col gap-5 relative overflow-hidden">
         <div className="flex items-center gap-2 text-zinc-100 font-bold border-b border-zinc-800/80 pb-3">
-          <Zap className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]" /> Fiziološki Podaci
+          <Zap className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]" /> Fiziološki Podaci
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
@@ -155,7 +155,7 @@ export default function ProfileTab({ profile, setProfile, workouts = [] }) {
       {recentWorkouts.length > 0 && (
         <div className="bg-zinc-900/40 backdrop-blur-md rounded-3xl shadow-xl border border-zinc-800/80 p-6 flex flex-col gap-5 relative overflow-hidden">
           <div className="flex items-center gap-2 text-zinc-100 font-bold border-b border-zinc-800/80 pb-3">
-            <Activity className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]" /> Zadnjih 5 Treninga
+            <Activity className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]" /> Zadnjih 5 Treninga
           </div>
           
           <div className="flex flex-col gap-3">

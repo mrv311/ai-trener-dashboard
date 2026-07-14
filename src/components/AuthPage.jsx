@@ -46,13 +46,13 @@ export default function AuthPage({ onGuestLogin }) {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 selection:bg-orange-500/30">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-900/20 via-zinc-950 to-zinc-950 pointer-events-none"></div>
+    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 selection:bg-cyan-500/30">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-900/15 via-zinc-950 to-zinc-950 pointer-events-none"></div>
       
-      <div className="w-full max-w-md bg-zinc-900/60 backdrop-blur-xl border border-zinc-800/80 rounded-3xl shadow-2xl p-8 relative z-10 animate-in fade-in slide-in-from-bottom-8">
+      <div className="w-full max-w-md bg-zinc-900/70 backdrop-blur-xl border border-zinc-800/80 rounded-3xl shadow-2xl p-8 relative z-10 animate-in fade-in slide-in-from-bottom-8">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-orange-600 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(249,115,22,0.4)] mb-4">
-            <Activity className="w-8 h-8 text-white" />
+          <div className="w-16 h-16 bg-gradient-to-br from-cyan-400 to-emerald-500 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(34,211,238,0.3)] mb-4">
+            <Activity className="w-8 h-8 text-zinc-950" />
           </div>
           <h1 className="text-3xl font-black text-zinc-100 tracking-tight">ErgVibe</h1>
           <p className="text-zinc-400 font-medium text-sm mt-1">
@@ -71,7 +71,7 @@ export default function AuthPage({ onGuestLogin }) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="tvoj@email.com"
-                className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-zinc-100 font-bold focus:ring-1 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all placeholder:text-zinc-600 placeholder:font-normal"
+                className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all placeholder:text-zinc-600 placeholder:font-normal"
               />
             </div>
           </div>
@@ -86,7 +86,7 @@ export default function AuthPage({ onGuestLogin }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-zinc-100 font-bold focus:ring-1 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all placeholder:text-zinc-600"
+                className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all placeholder:text-zinc-600"
               />
             </div>
           </div>
@@ -108,7 +108,7 @@ export default function AuthPage({ onGuestLogin }) {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-bold py-3.5 rounded-xl shadow-[0_4px_15px_rgba(249,115,22,0.3)] transition-all flex justify-center items-center gap-2 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 font-bold py-3.5 rounded-xl shadow-[0_4px_15px_rgba(34,211,238,0.25)] transition-all flex justify-center items-center gap-2 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isLogin ? 'Prijavi se' : 'Registriraj se')}
           </button>
@@ -117,7 +117,7 @@ export default function AuthPage({ onGuestLogin }) {
         <div className="mt-6 text-center space-y-3">
           <button 
             onClick={() => setIsLogin(!isLogin)}
-            className="text-sm font-medium text-zinc-400 hover:text-orange-400 transition-colors block w-full"
+            className="text-sm font-medium text-zinc-400 hover:text-cyan-400 transition-colors block w-full"
           >
             {isLogin ? 'Nemaš račun? Registriraj se ovdje.' : 'Već imaš račun? Prijavi se ovdje.'}
           </button>

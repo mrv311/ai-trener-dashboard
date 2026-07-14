@@ -30,10 +30,10 @@
     background: transparent;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-zinc-800 rounded-full;
+    @apply bg-zinc-700 rounded-full;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    @apply bg-zinc-700;
+    @apply bg-zinc-600;
   }
 
   /* Sakrij scrollbar ali zadrži scroll funkcionalnost */
@@ -45,8 +45,7 @@
     display: none; /* Chrome/Safari/Opera */
   }
 }
- body {
-  @apply bg-zinc-950 text-zinc-100;
- }
 
-
+body {
+  @apply bg-zinc-950 text-zinc-200;
+}

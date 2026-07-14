@@ -27,8 +27,8 @@ export default function ConnectionsTab({ connectionStatus, intervalsId, setId, i
         {/* Intervals.icu - Glavna integracija */}
         <div className="bg-orange-500/5 border border-orange-500/20 rounded-2xl p-6 shadow-lg backdrop-blur-md">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-orange-500/20 to-orange-600/10 rounded-xl shadow-[0_0_15px_rgba(249,115,22,0.15)] border border-orange-500/30 flex items-center justify-center">
-              <span className="font-black text-xl text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]">i</span>
+            <div className="w-12 h-12 bg-gradient-to-br from-cyan-500/20 to-emerald-500/10 rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.15)] border border-orange-500/30 flex items-center justify-center">
+              <span className="font-black text-xl text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]">i</span>
             </div>
             <div>
               <h3 className="text-lg font-bold text-zinc-100">Intervals.icu</h3>
@@ -50,7 +50,7 @@ export default function ConnectionsTab({ connectionStatus, intervalsId, setId, i
               </div>
             )}
             {connectionStatus === 'connecting' && (
-              <div className="flex items-center text-orange-400 bg-orange-500/10 px-3 py-1 rounded-full text-xs font-bold border border-orange-500/20 shadow-[0_0_10px_rgba(249,115,22,0.1)]">
+              <div className="flex items-center text-orange-400 bg-orange-500/10 px-3 py-1 rounded-full text-xs font-bold border border-orange-500/20 shadow-[0_0_10px_rgba(34,211,238,0.1)]">
                 <Clock className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Obrada...
               </div>
             )}
@@ -64,16 +64,16 @@ export default function ConnectionsTab({ connectionStatus, intervalsId, setId, i
           <div className="space-y-4">
             <div>
               <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Intervals ID</label>
-              <input type="text" value={intervalsId} onChange={e => setId(e.target.value)} className="w-full bg-zinc-900/80 border border-zinc-700 rounded-lg p-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 focus:shadow-[0_0_10px_rgba(249,115,22,0.2)] font-mono text-sm text-zinc-200 transition-all placeholder:text-zinc-600" placeholder="npr. 15670332" />
+              <input type="text" value={intervalsId} onChange={e => setId(e.target.value)} className="w-full bg-zinc-900/80 border border-zinc-700 rounded-lg p-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 focus:shadow-[0_0_10px_rgba(34,211,238,0.2)] font-mono text-sm text-zinc-200 transition-all placeholder:text-zinc-600" placeholder="npr. 15670332" />
             </div>
             
             <div>
               <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">API Key</label>
-              <input type="password" value={intervalsKey} onChange={e => setKey(e.target.value)} className="w-full bg-zinc-900/80 border border-zinc-700 rounded-lg p-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 focus:shadow-[0_0_10px_rgba(249,115,22,0.2)] font-mono text-sm text-zinc-200 transition-all placeholder:text-zinc-600" placeholder="Zalijepi API ključ" />
+              <input type="password" value={intervalsKey} onChange={e => setKey(e.target.value)} className="w-full bg-zinc-900/80 border border-zinc-700 rounded-lg p-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 focus:shadow-[0_0_10px_rgba(34,211,238,0.2)] font-mono text-sm text-zinc-200 transition-all placeholder:text-zinc-600" placeholder="Zalijepi API ključ" />
             </div>
             
             <div className="pt-2">
-              <button onClick={saveSettings} className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white py-3 rounded-lg font-bold shadow-[0_4px_15px_rgba(249,115,22,0.3)] hover:shadow-[0_4px_20px_rgba(249,115,22,0.5)] transition-all text-sm uppercase tracking-wider flex items-center justify-center gap-2 border border-orange-400/30">
+              <button onClick={saveSettings} className="w-full bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 py-3 rounded-lg font-bold shadow-[0_4px_15px_rgba(34,211,238,0.3)] hover:shadow-[0_4px_20px_rgba(34,211,238,0.5)] transition-all text-sm uppercase tracking-wider flex items-center justify-center gap-2 border border-cyan-400/30">
                 <LinkIcon className="w-4 h-4" /> Spremi i Poveži
               </button>
             </div>
@@ -82,7 +82,7 @@ export default function ConnectionsTab({ connectionStatus, intervalsId, setId, i
 
         {/* Ostale, Dummy Integracije */}
         <div className="space-y-4">
-          <DummyIntegration name="Strava" description="Preuzimanje GPS rute i segmenta." colorClass="text-orange-400 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]" bgClass="bg-orange-500/10 border-orange-500/20" letter="S" />
+          <DummyIntegration name="Strava" description="Preuzimanje GPS rute i segmenta." colorClass="text-orange-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]" bgClass="bg-orange-500/10 border-orange-500/20" letter="S" />
           <DummyIntegration name="Garmin Connect" description="Sinkronizacija wellness metrike i spavanja." colorClass="text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]" bgClass="bg-cyan-500/10 border-cyan-500/20" letter="G" />
           <DummyIntegration name="TrainingPeaks" description="Uvoz kupljenih trenažnih planova." colorClass="text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]" bgClass="bg-emerald-500/10 border-emerald-500/20" letter="T" />
           <DummyIntegration name="TrainerDay" description="Preuzimanje workout blockova." colorClass="text-indigo-400 drop-shadow-[0_0_5px_rgba(129,140,248,0.5)]" bgClass="bg-indigo-500/10 border-indigo-500/20" letter="TD" />

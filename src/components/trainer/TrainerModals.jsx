@@ -39,8 +39,8 @@ export default function TrainerModals({
       {isFinished && summaryStats && (
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm rounded-[32px] flex items-center justify-center p-4 md:p-6 animate-in zoom-in-95 duration-300">
           <div className="bg-zinc-900 rounded-3xl p-6 md:p-10 max-w-lg w-full shadow-2xl flex flex-col items-center text-center border border-zinc-800 max-h-full overflow-y-auto">
-            <div className="bg-orange-500/10 border border-orange-500/20 shadow-[inset_0_0_15px_rgba(249,115,22,0.1)] p-3 md:p-4 rounded-full mb-4 md:mb-6 shrink-0">
-              <Award className="w-10 h-10 md:w-16 md:h-16 text-orange-500 drop-shadow-[0_0_10px_rgba(249,115,22,0.6)]" />
+            <div className="bg-orange-500/10 border border-orange-500/20 shadow-[inset_0_0_15px_rgba(34,211,238,0.1)] p-3 md:p-4 rounded-full mb-4 md:mb-6 shrink-0">
+              <Award className="w-10 h-10 md:w-16 md:h-16 text-orange-500 drop-shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
             </div>
             <h2 className="text-2xl md:text-3xl font-black text-zinc-100 uppercase tracking-tight shrink-0">Trening Završen!</h2>
             <p className="text-zinc-500 font-bold mt-1 md:mt-2 mb-6 md:mb-8 text-sm md:text-base shrink-0">{workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja'}</p>

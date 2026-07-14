@@ -109,7 +109,7 @@ const getZoneInfo = (pct) => {
   if (pct < 55) return { name: 'Z1', color: 'bg-zinc-500', textColor: 'text-zinc-400', barColor: '#71717a' };
   if (pct < 76) return { name: 'Z2', color: 'bg-emerald-500', textColor: 'text-emerald-400', barColor: '#10b981' };
   if (pct < 88) return { name: 'Z3', color: 'bg-amber-400', textColor: 'text-amber-400', barColor: '#fbbf24' };
-  if (pct < 95) return { name: 'SS', color: 'bg-orange-500', textColor: 'text-orange-400', barColor: '#f97316' };
+  if (pct < 95) return { name: 'SS', color: 'bg-amber-500', textColor: 'text-amber-400', barColor: '#f59e0b' };
   if (pct < 106) return { name: 'Z4', color: 'bg-rose-500', textColor: 'text-rose-400', barColor: '#f43f5e' };
   if (pct < 121) return { name: 'Z5', color: 'bg-red-600', textColor: 'text-red-400', barColor: '#dc2626' };
   return { name: 'Z6', color: 'bg-purple-600', textColor: 'text-purple-400', barColor: '#9333ea' };
@@ -558,7 +558,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
             <button
               onClick={() => setMode(mode === 'edit' ? 'view' : 'edit')}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all border ${mode === 'edit'
-                  ? 'bg-orange-500/10 text-orange-400 border-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.1)]'
+                  ? 'bg-orange-500/10 text-orange-400 border-orange-500/30 shadow-[0_0_10px_rgba(34,211,238,0.1)]'
                   : 'bg-zinc-800/50 text-zinc-400 border-zinc-700 hover:bg-zinc-800 hover:text-zinc-200'
                 }`}
             >
@@ -597,7 +597,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
             <button
               onClick={handleSave}
               disabled={isLoading}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-orange-500 hover:bg-orange-400 text-zinc-950 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(249,115,22,0.3)]"
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-orange-500 hover:bg-orange-400 text-zinc-950 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(34,211,238,0.3)]"
             >
               {isLoading ? (
                 <span className="animate-spin w-3.5 h-3.5 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full" />

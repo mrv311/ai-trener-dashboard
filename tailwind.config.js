@@ -11,49 +11,46 @@ export default {
       },
       colors: {
         brand: {
-          DEFAULT: '#3b82f6', // Fresh Blue
-          dark: '#2563eb',
-          glow: 'rgba(59, 130, 246, 0.2)',
+          DEFAULT: '#22d3ee', // Electric Cyan
+          dark: '#06b6d4',
+          glow: 'rgba(34, 211, 238, 0.15)',
         },
         orange: {
-          // Vraćamo pravu, svježu narančastu boju za dinamičan sportski izgled
-          400: '#fb923c',
-          500: '#f97316', 
-          600: '#ea580c',
-          900: '#fff7ed', // Vrlo svijetla narančasta za pozadine (bivša tamna pozadina)
+          // Accent — sada cyan/teal tonovi umjesto narančaste
+          400: '#22d3ee',
+          500: '#06b6d4',
+          600: '#0891b2',
+          900: '#0c1929', // Duboka pozadina za akcent kartice
         },
         red: {
-          400: '#ef4444', 
-          500: '#dc2626', 
+          400: '#fb7185',
+          500: '#f43f5e',
         },
         zinc: {
-          // INVERZIJA: 950 je sada svijetla pozadina, a 50-100 su tamni tekst
-          // Svijetla pozadina (bivša tamna baza)
-          950: '#f8fafc', // Glavna podloga (vrlo svijetlo plavkasto-siva)
-          900: '#ffffff', // Modali i kartice (čista bijela)
+          // MIDNIGHT OCEAN paleta — tamnoplavi tonovi umjesto čiste sive
+          950: '#0a0e1a', // Najdublja baza (body)
+          900: '#111827', // Kartice, sidebar, modali
           
-          // Obrubi i hover stanja (bivši tamni obrubi)
-          800: '#e2e8f0', // Obrubi kartica
-          700: '#f1f5f9', // Hover stanja (lagano sivo)
+          // Obrubi i hover stanja
+          800: '#1e293b', // Obrubi kartica — vidljivi na tamnoj bazi
+          700: '#243b53', // Hover stanja, istaknuti obrubi
           
-          600: '#cbd5e1',
-          500: '#94a3b8',
-          400: '#64748b',
-          
-          // Tamni tekst (bivši svijetli tekst)
-          300: '#475569',
-          200: '#334155',
-          100: '#1e293b', // Glavni tekst
-          50:  '#0f172a', // Najtamniji tekst (naslovi)
+          600: '#334155', // Prigušeni elementi
+          500: '#64748b', // Sekundarni tekst (i dalje čitljiv!)
+          400: '#94a3b8', // Glavni sekundarni tekst — odličan kontrast
+          300: '#cbd5e1', // Istaknuti tekst
+          200: '#e2e8f0', // Glavni tekst — ice white
+          100: '#f1f5f9', // Naglašeni naslovi
+          50:  '#f8fafc', // Najsvjetliji (rijetko korišten)
         }
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
       boxShadow: {
-        // Modernija i laganija sjena za light mode
-        'orange-glow': '0 10px 25px -5px rgba(249, 115, 22, 0.2), 0 8px 10px -6px rgba(249, 115, 22, 0.1)',
-        'soft-card': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+        // Cyan glow umjesto narančastog
+        'orange-glow': '0 10px 25px -5px rgba(34, 211, 238, 0.25), 0 8px 10px -6px rgba(34, 211, 238, 0.15)',
+        'soft-card': '0 4px 12px -2px rgba(0, 0, 0, 0.4), 0 2px 6px -2px rgba(0, 0, 0, 0.3)',
       }
     },
   },

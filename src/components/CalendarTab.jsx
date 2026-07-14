@@ -39,7 +39,7 @@ const ZONE_COLORS = {
   1: 'bg-slate-500',
   2: 'bg-emerald-500',
   3: 'bg-amber-400',
-  4: 'bg-orange-500',
+  4: 'bg-amber-500',
   5: 'bg-rose-500'
 };
 
@@ -47,7 +47,7 @@ const BORDER_COLORS = {
   1: 'border-slate-500',
   2: 'border-emerald-500',
   3: 'border-amber-400',
-  4: 'border-orange-500',
+  4: 'border-amber-500',
   5: 'border-rose-500'
 };
 
@@ -143,7 +143,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           }
         }
       }}
-      className={`workout-card-element rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : 'min-h-[100px]'} backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : 'cursor-pointer'} ${canDrag && !isDragging ? 'hover:shadow-[0_0_15px_rgba(249,115,22,0.15)]' : ''}`}
+      className={`workout-card-element rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : 'min-h-[100px]'} backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : 'cursor-pointer'} ${canDrag && !isDragging ? 'hover:shadow-[0_0_15px_rgba(34,211,238,0.15)]' : ''}`}
     >
       <div className={`h-1.5 w-full shrink-0 ${getTopCol(w.statusColor)}`} />
       <div className={`${isDesktop ? (compact ? 'p-1.5' : 'p-3') : 'p-3.5'} flex flex-col justify-between flex-1`}>
@@ -171,7 +171,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
-                    className={`text-orange-400 hover:text-white bg-orange-500/10 hover:bg-orange-500 ${isDesktop ? 'rounded-md p-1' : 'rounded-lg p-1.5 shadow-[0_0_8px_rgba(249,115,22,0.2)] hover:shadow-[0_0_12px_rgba(249,115,22,0.6)]'} transition-all border border-orange-500/20`}
+                    className={`text-orange-400 hover:text-zinc-950 bg-orange-500/10 hover:bg-orange-500 ${isDesktop ? 'rounded-md p-1' : 'rounded-lg p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.2)] hover:shadow-[0_0_12px_rgba(34,211,238,0.6)]'} transition-all border border-orange-500/20`}
                     title="Pošalji na trenažer"
                   >
                     <Play className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} fill-current`} />
@@ -298,7 +298,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
     const dayOfWeek = dayNames[(new Date(dObj.dateStr).getDay() + 6) % 7];
     return (
       <div
-        className={`p-4 flex flex-col cursor-pointer bg-zinc-900/60 ${isTdy ? 'border-l-4 border-l-orange-500 shadow-[inset_4px_0_10px_rgba(249,115,22,0.1)]' : ''}`}
+        className={`p-4 flex flex-col cursor-pointer bg-zinc-900/60 ${isTdy ? 'border-l-4 border-l-orange-500 shadow-[inset_4px_0_10px_rgba(34,211,238,0.1)]' : ''}`}
         onClick={(e) => {
           if (e.target.closest('.workout-card-element')) return;
           if (onAddWorkoutClick) {
@@ -308,7 +308,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
       >
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-2">
-            <span className={`text-sm font-black ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.6)]' : 'text-zinc-200'}`}>{dObj.day}.</span>
+            <span className={`text-sm font-black ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.6)]' : 'text-zinc-200'}`}>{dObj.day}.</span>
             <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{dayOfWeek}</span>
           </div>
           {dWell && (
@@ -337,7 +337,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
         ${compact ? 'p-1.5' : 'p-3'}
         ${dObj.isCurrentMonth ? 'bg-zinc-900/60' : 'bg-zinc-950/80'}
         ${isTdy ? 'ring-inset ring-2 ring-orange-500' : ''}
-        ${isOver ? 'bg-orange-500/10 ring-2 ring-orange-500/50 ring-inset shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}
+        ${isOver ? 'bg-orange-500/10 ring-2 ring-orange-500/50 ring-inset shadow-[inset_0_0_20px_rgba(34,211,238,0.1)]' : ''}
       `}
       onClick={(e) => {
         if (e.target.closest('.workout-card-element')) return;
@@ -347,7 +347,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
       }}
     >
       <div className={`flex justify-between items-start ${compact ? 'mb-1' : 'mb-3'}`}>
-        <span className={`font-bold text-xs ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.6)]' : (dObj.isCurrentMonth ? 'text-zinc-200' : 'text-zinc-400')}`}>{dObj.day}</span>
+        <span className={`font-bold text-xs ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.6)]' : (dObj.isCurrentMonth ? 'text-zinc-200' : 'text-zinc-400')}`}>{dObj.day}</span>
         {!compact && dWell && (
           <div className="flex gap-2 text-[10px] font-bold text-zinc-500">
             {dWell.restingHR && <span className="flex items-center text-rose-500/80"><Heart className="w-3 h-3 mr-0.5" fill="currentColor" />{dWell.restingHR}</span>}
@@ -911,7 +911,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                           }}
                           className={`
                             text-center text-xs py-1.5 rounded-full mx-0.5 my-0.5 transition-colors font-medium
-                            ${isSelected ? 'bg-orange-500 text-white font-bold' : ''}
+                            ${isSelected ? 'bg-orange-500 text-zinc-950 font-bold' : ''}
                             ${isToday && !isSelected ? 'ring-1 ring-orange-500 text-orange-400' : ''}
                             ${!isSelected && !isToday && cell.current ? 'text-zinc-200 hover:bg-zinc-700' : ''}
                             ${!isSelected && !isToday && !cell.current ? 'text-zinc-600 hover:bg-zinc-800' : ''}
@@ -938,7 +938,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
         <div className="hidden md:grid grid-cols-8 border-b border-zinc-800/80 bg-zinc-900/95 backdrop-blur-xl font-bold text-xs text-zinc-400 uppercase tracking-widest">
           {dayNames.map((d, i) => <div key={i} className="py-3 px-3 border-r border-zinc-800/80">{d}</div>)}
-          <div className="py-3 text-center bg-orange-500/10 text-orange-400 border-l border-zinc-800 shadow-[inset_0_0_10px_rgba(249,115,22,0.05)]">Sažetak</div>
+          <div className="py-3 text-center bg-orange-500/10 text-orange-400 border-l border-zinc-800 shadow-[inset_0_0_10px_rgba(34,211,238,0.05)]">Sažetak</div>
         </div>
       </div>
 

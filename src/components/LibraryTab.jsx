@@ -168,7 +168,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
       case 'Endurance': return 'border-blue-500/50 text-blue-400 hover:bg-blue-500/10 shadow-[0_0_15px_rgba(59,130,246,0.1)]';
       case 'Tempo': return 'border-green-500/50 text-green-400 hover:bg-green-500/10 shadow-[0_0_15px_rgba(34,197,94,0.1)]';
       case 'Sweet Spot': return 'border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 shadow-[0_0_15px_rgba(234,179,8,0.1)]';
-      case 'Threshold': return 'border-orange-500/50 text-orange-400 hover:bg-orange-500/10 shadow-[0_0_15px_rgba(249,115,22,0.1)]';
+      case 'Threshold': return 'border-amber-500/50 text-amber-400 hover:bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.1)]';
       case 'VO2 Max': return 'border-red-500/50 text-red-400 hover:bg-red-500/10 shadow-[0_0_15px_rgba(239,68,68,0.1)]';
       case 'Anaerobni': return 'border-purple-500/50 text-purple-400 hover:bg-purple-500/10 shadow-[0_0_15px_rgba(168,85,247,0.1)]';
       case 'Testiranje': return 'border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 shadow-[0_0_15px_rgba(6,182,212,0.1)]';
@@ -203,7 +203,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
           <p className="text-zinc-500 text-sm mt-1">Strukturirani treninzi iz baze spremni za vožnju.</p>
         </div>
         <div className="flex gap-2">
-          <label className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-white font-bold rounded-xl cursor-pointer transition-all shadow-[0_0_15px_rgba(249,115,22,0.3)]">
+          <label className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-zinc-950 font-bold rounded-xl cursor-pointer transition-all shadow-[0_0_15px_rgba(34,211,238,0.3)]">
             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
             <span className="hidden sm:inline">{isUploading ? 'Učitavanje...' : 'Dodaj ZWO/ERG'}</span>
             <span className="sm:hidden">Dodaj</span>
@@ -320,10 +320,10 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
                   });
 
                   return items.map((workout) => (
-                  <div key={workout.id} onClick={() => setSelectedDetailWorkout(workout)} className="bg-zinc-900/60 backdrop-blur-md border border-zinc-800 rounded-2xl p-5 hover:border-orange-500/50 hover:shadow-[0_0_20px_rgba(249,115,22,0.1)] transition-all group/card flex flex-col h-full relative overflow-hidden cursor-pointer">
+                  <div key={workout.id} onClick={() => setSelectedDetailWorkout(workout)} className="bg-zinc-900/60 backdrop-blur-md border border-zinc-800 rounded-2xl p-5 hover:border-orange-500/50 hover:shadow-[0_0_20px_rgba(34,211,238,0.1)] transition-all group/card flex flex-col h-full relative overflow-hidden cursor-pointer">
                     <div className="flex justify-between items-start mb-3 relative z-10 w-full">
                       {editingWorkoutId === workout.id ? (
-                        <div className="flex flex-col gap-2 w-full pr-20 p-2 rounded-xl bg-zinc-950 border border-orange-500/50 shadow-inner">
+                        <div className="flex flex-col gap-2 w-full pr-20 p-2 rounded-xl bg-zinc-950 border border-cyan-500/30 shadow-inner">
                           <input 
                             type="text" 
                             value={editTitle} 
@@ -438,7 +438,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
                       
                       <button 
                         onClick={(e) => { e.stopPropagation(); onSelectWorkout(workout); }}
-                        className="flex outline-none shrink-0 items-center justify-center gap-1 bg-orange-500 hover:bg-orange-400 text-white font-extrabold px-2.5 py-1.5 rounded-md text-[10px] uppercase tracking-wider transition-all shadow-[0_0_8px_rgba(249,115,22,0.3)] group-hover/card:shadow-[0_0_12px_rgba(249,115,22,0.5)]"
+                        className="flex outline-none shrink-0 items-center justify-center gap-1 bg-orange-500 hover:bg-orange-400 text-zinc-950 font-extrabold px-2.5 py-1.5 rounded-md text-[10px] uppercase tracking-wider transition-all shadow-[0_0_8px_rgba(34,211,238,0.3)] group-hover/card:shadow-[0_0_12px_rgba(34,211,238,0.5)]"
                       >
                         <Play className="w-3 h-3" fill="currentColor" /> KRENI
                       </button>
@@ -535,7 +535,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
                     <button 
                        onClick={handleScheduleWorkout}
                        className={`sm:w-1/2 flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl text-sm font-black transition-all ${
-                         scheduleSuccess ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white shadow-[0_4px_15px_rgba(249,115,22,0.3)] border border-orange-500/50'
+                         scheduleSuccess ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 shadow-[0_4px_15px_rgba(34,211,238,0.3)] border border-cyan-500/30'
                        }`}
                     >
                        {scheduleSuccess ? <CheckSquare className="w-5 h-5"/> : <CalendarDays className="w-5 h-5" />}
