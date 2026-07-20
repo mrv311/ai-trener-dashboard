@@ -36,10 +36,17 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
   const handleScheduleWorkout = () => {
     if (!selectedDetailWorkout || !scheduleDate) return;
     const records = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
+    
+    const metrics = getWorkoutMetrics(selectedDetailWorkout);
+
     const newRecord = {
       ...selectedDetailWorkout,
       id: Date.now().toString(),
-      date: scheduleDate
+      date: scheduleDate,
+      tss: metrics.tss,
+      np: metrics.np,
+      if_factor: metrics.if_factor,
+      workout_source: 'library'
     };
     localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify([...records, newRecord]));
     setScheduleSuccess(true);
