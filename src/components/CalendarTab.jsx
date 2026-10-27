@@ -229,8 +229,9 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                         w.workout_source === 'garmin' ? '🟢 Garmin' :
                           w.workout_source === 'strava' ? '🟠 Strava' :
                             w.workout_source === 'wahoo' ? '🔵 Wahoo' :
-                              w.workout_source === 'external' ? '🌐 Vanjski' :
-                                w.workout_source}
+                              w.workout_source.startsWith('external_upload') ? '📥 Uvezeno' :
+                                w.workout_source === 'external' ? '🌐 Vanjski' :
+                                  w.workout_source}
                 </span>
               )}
             </div>
@@ -419,7 +420,7 @@ function DragOverlayCard({ workout, activeWidth }) {
 // ============================================================
 // CalendarTab
 // ============================================================
-export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile, intervalsId, intervalsKey }) {
+export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile, intervalsId, intervalsKey, userId }) {
   const cy = currentDate.getFullYear();
   const cm = currentDate.getMonth();
   const [activeId, setActiveId] = useState(null);
@@ -601,7 +602,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const handleSaveWorkout = async (updatedWorkout) => {
     setIsUpdating(true);
     try {
-      if (updatedWorkout.id.startsWith('local-')) {
+      const existsInCalendar = workouts.some(w => w.id === updatedWorkout.id);
+      if (!existsInCalendar && updatedWorkout.id.startsWith('local-')) {
         await handleCreateWorkout(updatedWorkout);
       } else {
         await handleUpdateWorkout(
@@ -609,7 +611,12 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
           updatedWorkout.title,
           updatedWorkout.description,
           updatedWorkout.tss,
-          updatedWorkout.duration
+          updatedWorkout.duration,
+          {
+            allSteps: updatedWorkout.allSteps,
+            category: updatedWorkout.category,
+            difficulty_score: updatedWorkout.difficulty_score
+          }
         );
       }
       setEditingWorkout(null);
@@ -708,19 +715,35 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         }
       }
 
-      const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
-      const mass = Number(localStorage.getItem('ai_trener_user_weight')) || 75;
+      const ftp = Number(profile?.ftp) || Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
+      const mass = Number(profile?.weight) || Number(localStorage.getItem('ai_trener_user_weight')) || 75;
 
       const { processActivityStream } = await import('../utils/activityParser');
       const activityPayload = processActivityStream(parsedActivity, ftp, mass);
 
-      const { supabase } = await import('../services/supabaseClient');
-      const { error } = await supabase.from('completed_activities').insert(activityPayload);
-      if (error) throw error;
+      // 1. Spremi u localStorage (primarno za Gosta + lokalni backup)
+      const localKey = `ai_trener_local_completed_activities_${userId || 'guest'}`;
+      const localActivities = JSON.parse(localStorage.getItem(localKey) || '[]');
+      const localRecord = {
+        id: 'local_act_' + Date.now(),
+        ...activityPayload
+      };
+      localStorage.setItem(localKey, JSON.stringify([localRecord, ...localActivities].slice(0, 50)));
+
+      // 2. Ako je prijavljeni korisnik, spremi i u Supabase
+      if (userId && userId !== 'guest') {
+        const { supabase } = await import('../services/supabaseClient');
+        const { error } = await supabase
+          .from('completed_activities')
+          .insert({ ...activityPayload, user_id: userId });
+        if (error) {
+          console.warn('Upozorenje: aktivnost je spremljena lokalno, ali Supabase upis nije uspio:', error);
+        }
+      }
       
       setSelectedDateForNew(null);
       
-      // Okinuti event za osvježavanje liste (useIntervalsData sluša 'activity-title-updated' kao trigger)
+      // Osvježi listu aktivnosti u kalendaru
       window.dispatchEvent(new CustomEvent('activity-title-updated', { detail: { activityId: 'refresh', newTitle: '' }}));
       
       alert("Aktivnost uspješno učitana!");
@@ -749,6 +772,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         onClose={() => setViewingActivity(null)}
         intervalsId={intervalsId}
         intervalsKey={intervalsKey}
+        userId={userId}
+        userProfile={profile}
       />
       {selectedDateForNew && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setSelectedDateForNew(null)}>
@@ -767,7 +792,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               </div>
               <div className="flex flex-col text-left">
                 <span className="font-bold text-zinc-200">Ručni unos</span>
-                <span className="text-xs text-zinc-500">Upiši Intervals.icu kod ručno</span>
+                <span className="text-xs text-zinc-500">Kreiraj strukturirani trening (npr. - 10m 65%)</span>
               </div>
             </button>
 

@@ -361,19 +361,24 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
   if (!isOpen || !workout) return null;
 
   // ===== KLJUČNA PROMJENA =====
-    const handleSave = () => {
+  const handleSave = () => {
+    const computedCategory = stats.allSteps?.length > 0 ? (categorizeWorkout(stats.allSteps) || workout.category || 'WORKOUT') : (workout.category || 'WORKOUT');
+    const computedDifficulty = stats.allSteps?.length > 0 ? calculateCategoryDifficulty(stats.allSteps, computedCategory) : (workout.difficulty_score ?? null);
+
     // Pakiramo SVE u jedan objekt
     onSave({
       ...workout,            // Zadržava originalni ID i ostale postavke
       title: title,          // Novi (ili stari) naslov
       description: code,     // Ažurirani tekst/kod iz textarea
+      allSteps: stats.allSteps,
       tss: stats.tss,        // Preračunati TSS
       duration: Math.round(stats.duration / 60), // Trajanje u minutama
       type: workout.type || 'ride',
       intensityFactor: stats.ifFactor,
       plannedDuration: Math.round(stats.duration / 60),
       plannedTss: stats.tss,
-      category: workout.category || 'WORKOUT'
+      category: computedCategory,
+      difficulty_score: computedDifficulty
     });
   };
 
@@ -474,7 +479,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
               {mode === 'edit' ? (
                 <div className="flex flex-col gap-3">
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                    Workout Code (Intervals.icu syntax)
+                    Struktura treninga (npr. - 10m 65%)
                   </label>
                   <textarea
                     value={code}

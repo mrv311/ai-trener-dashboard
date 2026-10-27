@@ -37,6 +37,16 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
   });
   const [localRefreshTrigger, setLocalRefreshTrigger] = useState(0);
   const [supabaseActivities, setSupabaseActivities] = useState([]);
+  const [intervalsConnected, setIntervalsConnected] = useState(false);
+  const [athleteInfo, setAthleteInfo] = useState(null);
+
+  // Ako se uklone kljuÄŤevi, odmah ugasi vezu i oÄŤisti athleteInfo
+  useEffect(() => {
+    if (!intervalsId || !intervalsKey) {
+      setIntervalsConnected(false);
+      setAthleteInfo(null);
+    }
+  }, [intervalsId, intervalsKey]);
 
   // Persist unpairedList i explicitPairings u localStorage kad se promijene
   useEffect(() => {
@@ -48,75 +58,83 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
   }, [explicitPairings]);
 
   const fetchWorkouts = useCallback(async () => {
-    if (!intervalsId || !intervalsKey) {
-      setRawActivities([]);
-      setRawEvents([]);
-      setWellnessData({});
-    }
     setIsLoading(true);
     setError(null);
+
     try {
-      // 1. Dohvati Intervals.icu podatke (ako postoje)
-      if (intervalsId && intervalsKey) {
-        const data = await fetchIntervalsData(intervalsId, intervalsKey);
+      // 1. Opcionalno dohvati Intervals.icu podatke (greška NE smije blokirati lokalne/ErgVibe podatke)
+      if (!intervalsId || !intervalsKey) {
+        setRawActivities([]);
+        setRawEvents([]);
+        setWellnessData({});
+        setIntervalsConnected(false);
+        setAthleteInfo(null);
+      } else {
+        try {
+          const data = await fetchIntervalsData(intervalsId, intervalsKey);
 
-        const hiddenList = JSON.parse(localStorage.getItem(`ai_trener_hidden_intervals_activities_${userId || 'guest'}`) || '[]');
-        setRawActivities(data.activities.filter(act => !hiddenList.includes(String(act.id))));
-        setRawEvents(data.events);
+          const hiddenList = JSON.parse(localStorage.getItem(`ai_trener_hidden_intervals_activities_${userId || 'guest'}`) || '[]');
+          setRawActivities(data.activities.filter(act => !hiddenList.includes(String(act.id))));
+          setRawEvents(data.events);
 
-        const mappedWellness = {};
-        data.wellness.forEach(w => {
-          const formatDur = (mins) => {
-            const h = Math.floor(mins / 60);
-            return `${h > 0 ? h + 'h ' : ''}${String(mins % 60).padStart(2, '0')}m`;
-          };
-          mappedWellness[w.id] = {
-            restingHR: w.restingHR,
-            hrv: w.hrv,
-            sleep: w.sleepSecs ? formatDur(Math.round(w.sleepSecs / 60)) : null,
-            ctl: w.ctl,
-            atl: w.atl,
-            tsb: w.tsb
-          };
-        });
-        setWellnessData(mappedWellness);
+          const mappedWellness = {};
+          data.wellness.forEach(w => {
+            const formatDur = (mins) => {
+              const h = Math.floor(mins / 60);
+              return `${h > 0 ? h + 'h ' : ''}${String(mins % 60).padStart(2, '0')}m`;
+            };
+            mappedWellness[w.id] = {
+              restingHR: w.restingHR,
+              hrv: w.hrv,
+              sleep: w.sleepSecs ? formatDur(Math.round(w.sleepSecs / 60)) : null,
+              ctl: w.ctl,
+              atl: w.atl,
+              tsb: w.tsb
+            };
+          });
+          setWellnessData(mappedWellness);
+          setIntervalsConnected(true);
+          if (data.athlete) setAthleteInfo(data.athlete);
+        } catch (intervalsErr) {
+          console.warn('[useIntervalsData] Intervals.icu dohvat nije uspio (nastavljam u samostalnom načinu):', intervalsErr);
+          setError(intervalsErr.message);
+          setIntervalsConnected(false);
+          setAthleteInfo(null);
+        }
       }
 
-      // 2. Dohvati lokalne aktivnosti iz Supabase (zadnjih 90 dana)
+      // 2. Dohvati ErgVibe aktivnosti (Supabase za prijavljene korisnike + localStorage za Gosta / offline)
       try {
-        const ninetyDaysAgo = new Date();
-        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-
         if (!userId) {
           setSupabaseActivities([]);
           return;
         }
 
-        const { data: supabaseData, error: supabaseError } = await supabase
-          .from('completed_activities')
-          .select('id, started_at, title, workout_source, duration_seconds, avg_power, avg_hr, np, tss, if_factor')
-          .eq('user_id', userId)
-          .in('workout_source', ['local', 'free_ride', 'calendar', 'library']) // Svi treninzi odrađeni u ovoj aplikaciji
-          .gte('started_at', ninetyDaysAgo.toISOString())
-          .order('started_at', { ascending: false });
-
         let combinedLocalActivities = [];
 
-        if (!supabaseError && supabaseData) {
-          console.log('[useIntervalsData] Dohvaćeno', supabaseData.length, 'lokalnih aktivnosti iz Supabase');
-          combinedLocalActivities = [...supabaseData];
-        } else if (supabaseError) {
-          console.warn('[useIntervalsData] Greška pri dohvaćanju Supabase aktivnosti:', supabaseError);
+        if (userId !== 'guest') {
+          const oneYearAgo = new Date();
+          oneYearAgo.setDate(oneYearAgo.getDate() - 365);
+
+          const { data: supabaseData, error: supabaseError } = await supabase
+            .from('completed_activities')
+            .select('id, started_at, title, workout_source, duration_seconds, avg_power, avg_hr, avg_cadence, np, tss, if_factor, work_kj, distance_m, avg_speed_kmh')
+            .eq('user_id', userId)
+            .gte('started_at', oneYearAgo.toISOString())
+            .order('started_at', { ascending: false });
+
+          if (!supabaseError && supabaseData) {
+            combinedLocalActivities = [...supabaseData];
+          } else if (supabaseError) {
+            console.warn('[useIntervalsData] Greška pri dohvaćanju Supabase aktivnosti:', supabaseError);
+          }
         }
 
-        // Pročitaj i localStorage fallback aktivnosti
+        // Pročitaj i localStorage aktivnosti (primarno spremište za Gosta + offline backup)
         try {
           const localFallback = JSON.parse(localStorage.getItem(`ai_trener_local_completed_activities_${userId || 'guest'}`) || '[]');
 
-          // Dodaj one iz localStorage-a koje već nemamo u Supabase podacima
-          // Uspoređujemo po started_at (isti trening bi trebao imati vrlo sličan timestamp)
           localFallback.forEach(localAct => {
-            // Provjeri postoji li već aktivnost s istim vremenom početka (±1 minutu tolerancije)
             const localTime = new Date(localAct.started_at).getTime();
             const existingSbAct = combinedLocalActivities.find(sbAct => {
               const sbTime = new Date(sbAct.started_at).getTime();
@@ -140,8 +158,6 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       } catch (supabaseErr) {
         console.warn('[useIntervalsData] Lokalno dohvaćanje nije uspjelo:', supabaseErr);
       }
-    } catch (err) {
-      setError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -151,26 +167,43 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     fetchWorkouts();
   }, [fetchWorkouts]);
 
-  // Listener za ažuriranje naziva aktivnosti
+  // Listeneri za lokalna ažuriranja (Knjižnica, upload .FIT/.TCX, preimenovanje aktivnosti)
   useEffect(() => {
     const handleTitleUpdate = (event) => {
-      const { activityId, newTitle } = event.detail;
-      console.log('[useIntervalsData] Ažuriram naziv aktivnosti:', activityId, 'na:', newTitle);
+      const { activityId, newTitle } = event.detail || {};
 
-      // Ažuriraj u rawActivities ako postoji
-      setRawActivities(prev => prev.map(act =>
-        `act-${act.id}` === activityId || act.id.toString() === activityId.replace('act-', '')
-          ? { ...act, name: newTitle }
-          : act
-      ));
+      if (activityId === 'refresh') {
+        fetchWorkouts();
+        return;
+      }
 
-      // Trigger refresh da se workouts useMemo ponovno izračuna
+      if (activityId && newTitle) {
+        setRawActivities(prev => prev.map(act =>
+          `act-${act.id}` === activityId || act.id.toString() === activityId.replace('act-', '')
+            ? { ...act, name: newTitle }
+            : act
+        ));
+        setSupabaseActivities(prev => prev.map(act =>
+          `supabase-${act.id}` === activityId || String(act.id) === String(activityId).replace('supabase-', '')
+            ? { ...act, title: newTitle }
+            : act
+        ));
+      }
+
+      setLocalRefreshTrigger(prev => prev + 1);
+    };
+
+    const handleLocalWorkoutsUpdated = () => {
       setLocalRefreshTrigger(prev => prev + 1);
     };
 
     window.addEventListener('activity-title-updated', handleTitleUpdate);
-    return () => window.removeEventListener('activity-title-updated', handleTitleUpdate);
-  }, []);
+    window.addEventListener('local-workouts-updated', handleLocalWorkoutsUpdated);
+    return () => {
+      window.removeEventListener('activity-title-updated', handleTitleUpdate);
+      window.removeEventListener('local-workouts-updated', handleLocalWorkoutsUpdated);
+    };
+  }, [fetchWorkouts]);
 
   const workouts = useMemo(() => {
     console.log('[useIntervalsData] Računam workouts. Supabase aktivnosti:', supabaseActivities.length, 'Intervals aktivnosti:', rawActivities.length);
@@ -379,10 +412,13 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
 
       // PROVJERA: Preskoči ako već postoji Supabase aktivnost s istim ili sličnim vremenom početka (±15 min)
       // Ovo sprječava dupliciranje istog treninga koji je poslan na Intervals pa se sad vraća
-      const actTime = new Date(act.start_date).getTime();
+      const actTimeUtc = act.start_date ? new Date(act.start_date).getTime() : NaN;
+      const actTimeLocal = act.start_date_local ? new Date(act.start_date_local).getTime() : NaN;
       const isDuplicate = supabaseActivities.some(sbAct => {
         const sbTime = new Date(sbAct.started_at).getTime();
-        return Math.abs(sbTime - actTime) < 15 * 60 * 1000;
+        if (isNaN(sbTime)) return false;
+        return (!isNaN(actTimeUtc) && Math.abs(sbTime - actTimeUtc) < 15 * 60 * 1000) ||
+               (!isNaN(actTimeLocal) && Math.abs(sbTime - actTimeLocal) < 15 * 60 * 1000);
       });
 
       if (isDuplicate) {
@@ -581,6 +617,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         isCompleted: false,
         isLocal: true,
         steps: sched.steps,
+        workout_doc: sched.workout_doc || sched.steps,
         category: sched.category,
         difficulty_score: sched.difficulty_score
       });
@@ -590,6 +627,69 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
 
     return finalWorkouts;
   }, [rawActivities, rawEvents, supabaseActivities, unpairedList, explicitPairings, localRefreshTrigger, userId]);
+
+  // Samostalni izračun kondicije (PMC: CTL / ATL / TSB) kada Intervals.icu nije spojen
+  const effectiveWellnessData = useMemo(() => {
+    if (wellnessData && Object.keys(wellnessData).length > 0) {
+      return wellnessData;
+    }
+    if (!workouts || workouts.length === 0) {
+      return {};
+    }
+
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    const tssByDate = new Map();
+    let minDateStr = todayStr;
+    let maxDateStr = todayStr;
+
+    workouts.forEach(w => {
+      if (!w.date) return;
+      let dayLoad = 0;
+      if (w.isCompleted) {
+        dayLoad = Number(w.tss) || 0;
+      } else if (w.date >= todayStr) {
+        dayLoad = Number(w.plannedTss ?? w.tss) || 0;
+      }
+      if (dayLoad > 0) {
+        tssByDate.set(w.date, (tssByDate.get(w.date) || 0) + dayLoad);
+      }
+      if (w.date < minDateStr) minDateStr = w.date;
+      if (w.date > maxDateStr) maxDateStr = w.date;
+    });
+
+    if (tssByDate.size === 0) return {};
+
+    // Osiguraj barem 45 dana povijesti za zagrijavanje krivulje
+    const fortyFiveDaysAgo = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() - 45));
+    const minBaselineStr = fortyFiveDaysAgo.toISOString().split('T')[0];
+    if (minBaselineStr < minDateStr) minDateStr = minBaselineStr;
+
+    const [sy, sm, sd] = minDateStr.split('-').map(Number);
+    const [ey, em, ed] = maxDateStr.split('-').map(Number);
+    const cur = new Date(Date.UTC(sy, sm - 1, sd));
+    const end = new Date(Date.UTC(ey, em - 1, ed));
+
+    let ctl = 0;
+    let atl = 0;
+    const computed = {};
+
+    while (cur <= end) {
+      const dStr = cur.toISOString().split('T')[0];
+      const load = tssByDate.get(dStr) || 0;
+      ctl = ctl + (load - ctl) / 42;
+      atl = atl + (load - atl) / 7;
+      computed[dStr] = {
+        ctl,
+        atl,
+        tsb: ctl - atl
+      };
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+
+    return computed;
+  }, [wellnessData, workouts]);
 
   const handleUnpair = useCallback((actId, eventId) => {
     if (!actId || !eventId) return;
@@ -643,26 +743,28 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     if (activityId.startsWith('supabase-')) {
       const rawId = activityId.replace('supabase-', '');
       try {
-        const { error } = await supabase
-          .from('completed_activities')
-          .delete()
-          .eq('id', rawId);
+        if (userId && userId !== 'guest' && !String(rawId).startsWith('local_act_')) {
+          const { error } = await supabase
+            .from('completed_activities')
+            .delete()
+            .eq('id', rawId);
 
-        if (error) {
-          console.warn('Greška pri brisanju Supabase aktivnosti, pokušavam obrisati samo lokalno:', error);
+          if (error) {
+            console.warn('Greška pri brisanju Supabase aktivnosti, pokušavam obrisati samo lokalno:', error);
+          }
         }
 
         // Obriši i iz localStorage fallbacka
         try {
           const localFallback = JSON.parse(localStorage.getItem(`ai_trener_local_completed_activities_${userId || 'guest'}`) || '[]');
-          const updatedFallback = localFallback.filter(act => act.id !== rawId && act.id !== `local_act_${rawId}`);
+          const updatedFallback = localFallback.filter(act => String(act.id) !== String(rawId) && String(act.id) !== `local_act_${rawId}`);
           localStorage.setItem(`ai_trener_local_completed_activities_${userId || 'guest'}`, JSON.stringify(updatedFallback));
         } catch (e) {
           console.warn('Greška pri brisanju iz localStorage:', e);
         }
 
         // Odmah ukloni iz lokalnog stanja
-        setSupabaseActivities(prev => prev.filter(act => act.id !== rawId && act.id !== `local_act_${rawId}`));
+        setSupabaseActivities(prev => prev.filter(act => String(act.id) !== String(rawId) && String(act.id) !== `local_act_${rawId}`));
 
         // Osvježi podatke
         setLocalRefreshTrigger(prev => prev + 1);
@@ -691,7 +793,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     } else {
       return { success: false, error: 'Ovu aktivnost nije moguće obrisati.' };
     }
-  }, []);
+  }, [userId]);
 
   /**
    * Premješta trening na novi datum (D&D reschedule).
@@ -739,16 +841,20 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     }
   }, [rawEvents, intervalsId, intervalsKey, onRescheduleError, userId]);
 
-  const handleUpdateWorkout = useCallback(async (workoutId, title, workout_doc, calculatedTss, calculatedDuration) => {
+  const handleUpdateWorkout = useCallback(async (workoutId, title, workout_doc, calculatedTss, calculatedDuration, extraFields = {}) => {
     if (workoutId.startsWith('local-')) {
       const rawId = workoutId.replace('local-', '');
       let localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
-      const idx = localScheduled.findIndex(w => w.id === rawId);
+      const idx = localScheduled.findIndex(w => String(w.id) === String(rawId));
       if (idx > -1) {
         localScheduled[idx].title = title;
-        localScheduled[idx].steps = workout_doc;
+        localScheduled[idx].workout_doc = workout_doc;
+        localScheduled[idx].steps = Array.isArray(extraFields.allSteps) && extraFields.allSteps.length > 0 ? extraFields.allSteps : workout_doc;
         localScheduled[idx].tss = calculatedTss;
         localScheduled[idx].duration = calculatedDuration;
+        localScheduled[idx].duration_seconds = (calculatedDuration || 0) * 60;
+        if (extraFields.category) localScheduled[idx].category = extraFields.category;
+        if (extraFields.difficulty_score != null) localScheduled[idx].difficulty_score = extraFields.difficulty_score;
         localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify(localScheduled));
         setLocalRefreshTrigger(prev => prev + 1);
       }
@@ -768,8 +874,6 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       ));
 
       try {
-        // Event details update requires passing existing info so we don't clear other options.
-        // Actually, we can just pass name and workout_doc (the Intervals.icu backend usually updates patch-like).
         await updateEventDetails(intervalsId, intervalsKey, eventId, {
           name: title,
           workout_doc: workout_doc
@@ -793,10 +897,12 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       date: workoutObj.date,
       title: workoutObj.title,
       duration: workoutObj.duration,
-      duration_seconds: workoutObj.duration * 60,
+      duration_seconds: (workoutObj.duration || 0) * 60,
       tss: workoutObj.tss,
-      steps: workoutObj.description,
+      workout_doc: workoutObj.description,
+      steps: Array.isArray(workoutObj.allSteps) && workoutObj.allSteps.length > 0 ? workoutObj.allSteps : workoutObj.description,
       category: workoutObj.category || 'WORKOUT',
+      difficulty_score: workoutObj.difficulty_score ?? null,
       type: workoutObj.type || 'ride'
     };
 
@@ -838,7 +944,9 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
 
   return {
     workouts,
-    wellnessData,
+    wellnessData: effectiveWellnessData,
+    intervalsConnected,
+    athleteInfo,
     isLoading,
     error,
     fetchWorkouts,

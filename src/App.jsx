@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart,
   User, Loader2, Monitor, LogOut, Link as LinkIcon,
-  MoreHorizontal, X, Database, TrendingUp, ClipboardList, PanelLeftClose, PanelLeftOpen
+  MoreHorizontal, X, Database, TrendingUp, ClipboardList, PanelLeftClose, PanelLeftOpen,
+  LogIn, HelpCircle
 } from 'lucide-react';
 
 import CalendarTab from './components/CalendarTab';
@@ -12,6 +13,8 @@ import ProfileTab from './components/ProfileTab';
 import ConnectionsTab from './components/ConnectionsTab';
 import LibraryTab from './components/LibraryTab';
 import AuthPage from './components/AuthPage';
+import AuthModal from './components/AuthModal';
+import OnboardingModal from './components/OnboardingModal';
 import { supabase } from './services/supabaseClient';
 
 import { useLocalStorage } from './hooks/useLocalStorage';
@@ -22,6 +25,12 @@ import { version as pkgVersion } from '../package.json';
 import appLogo from './assets/logo.png';
 
 const APP_VERSION = `v${pkgVersion}`;
+
+const DEFAULT_GUEST_PROFILE = {
+  username: 'Gost Vozač', weight: 75.9, ftp: 200, thresholdHr: 160, maxHr: 180,
+  birthYear: 1985, height: 180, experience: '3-5', riderType: 'all-rounder',
+  hoursPerWeek: 8, primaryGoal: '', goalDate: '', weakness: ''
+};
 
 // 1. Centralizirana konfiguracija tabova za lakše održavanje
 const TABS = {
@@ -39,15 +48,22 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useLocalStorage('sidebarCollapsed', false);
   const [session, setSession] = useState(null);
   const [isSessionLoading, setIsSessionLoading] = useState(true);
-  const [isGuest, setIsGuest] = useState(false);
-  const currentUserId = isGuest ? 'guest' : session?.user?.id;
+  const [isGuest, setIsGuest] = useLocalStorage('ergvibe_is_guest', false);
+  const currentUserId = session?.user?.id || (isGuest ? 'guest' : null);
 
   const [intervalsId, setIntervalsId] = useLocalStorage(currentUserId ? `intervalsId_${currentUserId}` : 'intervalsId', '');
   const [intervalsKey, setIntervalsKey] = useLocalStorage(currentUserId ? `intervalsKey_${currentUserId}` : 'intervalsKey', '');
 
-  const { workouts, wellnessData, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey, currentUserId);
+  const { workouts, wellnessData, intervalsConnected, athleteInfo, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey, currentUserId);
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
+
+  // Modali za autentifikaciju i onboarding vodič
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+
+  const onboardingKey = currentUserId ? `ergvibe_onboarding_done_${currentUserId}` : 'ergvibe_onboarding_done_guest';
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useLocalStorage(onboardingKey, false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -64,13 +80,53 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const [athleteProfile, setAthleteProfile] = useProfileSync({
-    username: 'Gost Vozač', weight: 75.9, ftp: 270, thresholdHr: 160, maxHr: 180,
-    birthYear: 1985, height: 180, experience: '3-5', riderType: 'all-rounder',
-    hoursPerWeek: 8, primaryGoal: 'Istra 300', goalDate: '2026-09-26', weakness: 'kratki usponi (VO2Max)'
-  }, currentUserId);
+  const [athleteProfile, setAthleteProfile] = useProfileSync(DEFAULT_GUEST_PROFILE, currentUserId);
 
   const [currentDate, setCurrentDate] = useState(new Date());
+
+  // Sinkronizacija imena i parametara s Intervals.icu profila kad je povezan
+  useEffect(() => {
+    if (athleteInfo && intervalsConnected) {
+      // Prioritet dajemo samo imenu (firstname) kako ne bi sjeklo prezime u uskom bočnom izborniku
+      const athleteFirstName = athleteInfo.firstname || (athleteInfo.name ? athleteInfo.name.trim().split(' ')[0] : '');
+      setAthleteProfile(prev => {
+        const isGenericName = !prev?.username || ['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(prev.username);
+        // Ako je ime generičko ili ako je ranije bilo pohranjeno puno ime s prezimenom iz Intervals.icu
+        const hasFullLastName = prev?.username && athleteInfo.name && prev.username.trim() === athleteInfo.name.trim();
+        const nextUsername = (isGenericName || hasFullLastName) && athleteFirstName ? athleteFirstName : (prev?.username || athleteFirstName || 'Vozač');
+        const nextFtp = Number(athleteInfo.icu_ftp || athleteInfo.ftp) || prev?.ftp || 200;
+        const nextWeight = Number(athleteInfo.weight || athleteInfo.icu_weight) || prev?.weight || 75;
+        const nextMaxHr = Number(athleteInfo.icu_max_hr || athleteInfo.max_hr) || prev?.maxHr || 180;
+        const nextThresholdHr = Number(athleteInfo.icu_threshold_hr || athleteInfo.lthr) || prev?.thresholdHr || 160;
+
+        if (
+          prev?.username === nextUsername &&
+          prev?.ftp === nextFtp &&
+          prev?.weight === nextWeight &&
+          prev?.maxHr === nextMaxHr &&
+          prev?.thresholdHr === nextThresholdHr
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          username: nextUsername,
+          ftp: nextFtp,
+          weight: nextWeight,
+          maxHr: nextMaxHr,
+          thresholdHr: nextThresholdHr
+        };
+      });
+    }
+  }, [athleteInfo, intervalsConnected, setAthleteProfile]);
+
+  // Automatsko pokretanje onboarding vodiča za nove korisnike ili goste
+  useEffect(() => {
+    if (!isSessionLoading && (session || isGuest) && !hasCompletedOnboarding) {
+      setShowOnboardingModal(true);
+    }
+  }, [isSessionLoading, session, isGuest, hasCompletedOnboarding]);
 
   // Listener za osvježavanje workouts nakon spremanja Supabase aktivnosti
   useEffect(() => {
@@ -83,12 +139,13 @@ export default function App() {
     return () => window.removeEventListener('supabase-activity-saved', handleSupabaseActivitySaved);
   }, [fetchWorkouts]);
 
-  // 2. Optimizacija statusa veze
+  // 2. Optimizacija statusa veze s opcionalnim Intervals.icu API-jem
   const connectionStatus = useMemo(() => {
+    if (!intervalsId || !intervalsKey) return 'idle';
     if (isLoading) return 'connecting';
     if (error) return 'error';
-    return (intervalsId && intervalsKey && workouts.length > 0) ? 'connected' : 'idle';
-  }, [isLoading, error, intervalsId, intervalsKey, workouts.length]);
+    return intervalsConnected ? 'connected' : 'idle';
+  }, [isLoading, error, intervalsId, intervalsKey, intervalsConnected]);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -96,9 +153,58 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    try {
+      if (session) {
+        await supabase.auth.signOut().catch(() => {});
+      }
+    } catch (e) {
+      console.warn('Signout warning:', e);
+    }
+
+    setSession(null);
     setIsGuest(false);
+
+    // Potpuno čišćenje lokalnih podataka gosta i Intervals veze pri odjavi
+    setIntervalsId('');
+    setIntervalsKey('');
+    try {
+      localStorage.removeItem('ai_trener_profile_guest');
+      localStorage.removeItem('ai_trener_profile');
+      localStorage.removeItem('intervalsId_guest');
+      localStorage.removeItem('intervalsKey_guest');
+      localStorage.removeItem('intervalsId');
+      localStorage.removeItem('intervalsKey');
+      localStorage.removeItem('ergvibe_onboarding_done_guest');
+      localStorage.removeItem('ergvibe_is_guest');
+    } catch (e) {}
+
+    setAthleteProfile(DEFAULT_GUEST_PROFILE);
   };
+
+  const handleIntervalsDisconnect = () => {
+    setIntervalsId('');
+    setIntervalsKey('');
+    try {
+      localStorage.removeItem('intervalsId_guest');
+      localStorage.removeItem('intervalsKey_guest');
+      localStorage.removeItem('intervalsId');
+      localStorage.removeItem('intervalsKey');
+      localStorage.removeItem('ai_trener_profile_guest');
+    } catch (e) {}
+
+    if (currentUserId === 'guest') {
+      setAthleteProfile(DEFAULT_GUEST_PROFILE);
+    }
+  };
+
+  const handleOnboardingComplete = () => {
+    setHasCompletedOnboarding(true);
+    setShowOnboardingModal(false);
+  };
+
+  // Provjera je li vozač sa zadanim imenom (Gost) ili stvarnim imenom
+  const isDefaultGuestName = !athleteProfile?.username || ['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(athleteProfile.username);
+  const displayName = isDefaultGuestName ? 'Gost Vozač' : athleteProfile.username.trim().split(' ')[0];
 
   if (isSessionLoading) {
     return <div className="h-screen bg-zinc-950 flex items-center justify-center"><Loader2 className="w-8 h-8 text-cyan-400 animate-spin" /></div>;
@@ -159,19 +265,46 @@ export default function App() {
           {!isSidebarCollapsed ? (
             <div className="flex items-center gap-3 px-4 py-2 mb-1 bg-zinc-800/40 rounded-xl border border-zinc-700/40">
               <div className="bg-gradient-to-br from-cyan-400 to-emerald-500 text-zinc-950 rounded-full w-9 h-9 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(34,211,238,0.3)] shrink-0">
-                {(athleteProfile.username || 'K').charAt(0).toUpperCase()}
+                {(isDefaultGuestName ? 'G' : displayName.charAt(0)).toUpperCase()}
               </div>
               <div className="flex flex-col truncate">
-                <span className="text-sm font-bold text-zinc-100 truncate" title={athleteProfile.username || 'Korisnik'}>{athleteProfile.username || 'Korisnik'}</span>
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="text-sm font-bold text-zinc-100 truncate" title={athleteProfile.username || 'Korisnik'}>{displayName}</span>
+                  {currentUserId === 'guest' ? (
+                    intervalsConnected ? (
+                      <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800 shrink-0">ICU</span>
+                    ) : (
+                      !isDefaultGuestName ? (
+                        <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-700/80 text-zinc-300 shrink-0">Gost</span>
+                      ) : null
+                    )
+                  ) : (
+                    intervalsConnected ? (
+                      <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800 shrink-0">+ ICU</span>
+                    ) : null
+                  )}
+                </div>
                 <span className="text-[10px] text-zinc-500 truncate">FTP: <span className="font-bold text-cyan-400">{athleteProfile.ftp}W</span> | {athleteProfile.weight}kg</span>
               </div>
             </div>
           ) : (
             <div className="flex justify-center mb-1">
               <div className="bg-gradient-to-br from-cyan-400 to-emerald-500 text-zinc-950 rounded-full w-9 h-9 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(34,211,238,0.3)] shrink-0 cursor-pointer" title={athleteProfile.username} onClick={() => handleTabChange('profile')}>
-                {(athleteProfile.username || 'K').charAt(0).toUpperCase()}
+                {(isDefaultGuestName ? 'G' : displayName.charAt(0)).toUpperCase()}
               </div>
             </div>
+          )}
+
+          {/* Gost gumb za prijavu / sinkronizaciju */}
+          {currentUserId === 'guest' && (
+            <button
+              onClick={() => setShowAuthModal(true)}
+              title="Prijava ili Registracija mailom"
+              className={`w-full flex items-center justify-center md:justify-start px-0 md:px-4 py-3 rounded-xl transition-all text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 shadow-[0_0_12px_rgba(34,211,238,0.15)]`}
+            >
+              <LogIn className="w-5 h-5 shrink-0" />
+              {!isSidebarCollapsed && <span className="ml-3 text-sm font-bold">Prijava / Račun</span>}
+            </button>
           )}
 
           <button
@@ -185,11 +318,11 @@ export default function App() {
 
           <button
             onClick={handleLogout}
-            title="Odjava"
+            title={currentUserId === 'guest' ? 'Izađi' : 'Odjava'}
             className="w-full flex items-center justify-center md:justify-start px-0 md:px-4 py-3 rounded-xl transition-all text-zinc-500 hover:bg-red-500/10 hover:text-red-400"
           >
             <LogOut className="w-5 h-5" />
-            {!isSidebarCollapsed && <span className="ml-3 text-sm font-medium">Odjava</span>}
+            {!isSidebarCollapsed && <span className="ml-3 text-sm font-medium">{currentUserId === 'guest' ? 'Izađi' : 'Odjava'}</span>}
           </button>
         </div>
       </div>
@@ -202,7 +335,7 @@ export default function App() {
               {TABS[activeTab]?.label || 'Dashboard'}
             </h1>
             {isLoading && <Loader2 className="w-4 h-4 md:w-5 md:h-5 text-cyan-400 animate-spin shrink-0 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]" />}
-            {error && <span className="text-[10px] md:text-xs font-bold bg-red-500/10 text-red-400 px-2 md:px-3 py-1 rounded-full border border-red-500/20 truncate max-w-[120px] md:max-w-xs">{error}</span>}
+            {intervalsId && intervalsKey && error && <span className="text-[10px] md:text-xs font-bold bg-red-500/10 text-red-400 px-2 md:px-3 py-1 rounded-full border border-red-500/20 truncate max-w-[140px] md:max-w-xs" title={error}>Intervals: {error}</span>}
           </div>
           {(activeTab === 'calendar' || activeTab === 'fitness') && (
             <button onClick={fetchWorkouts} className="flex items-center gap-1.5 md:gap-2 bg-zinc-800/50 hover:bg-zinc-700 text-zinc-300 px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[10px] md:text-xs font-bold transition-all border border-zinc-700 hover:shadow-lg">
@@ -229,6 +362,7 @@ export default function App() {
                 profile={athleteProfile}
                 intervalsId={intervalsId}
                 intervalsKey={intervalsKey}
+                userId={currentUserId}
               />
             )}
 
@@ -238,6 +372,8 @@ export default function App() {
                 profile={athleteProfile}
                 userId={currentUserId}
                 workoutFromCalendar={selectedWorkout}
+                intervalsId={intervalsId}
+                intervalsKey={intervalsKey}
                 onClose={() => { setSelectedWorkout(null); handleTabChange('calendar'); }}
               />
             </div>
@@ -251,8 +387,34 @@ export default function App() {
                 userId={currentUserId}
               />
             )}
-            {activeTab === 'profile' && <ProfileTab profile={athleteProfile} setProfile={setAthleteProfile} workouts={workouts} />}
-            {activeTab === 'connections' && <ConnectionsTab connectionStatus={connectionStatus} intervalsId={intervalsId} setId={setIntervalsId} intervalsKey={intervalsKey} setKey={setIntervalsKey} onSave={fetchWorkouts} userId={currentUserId} />}
+            {activeTab === 'profile' && (
+              <ProfileTab 
+                profile={athleteProfile} 
+                setProfile={setAthleteProfile} 
+                workouts={workouts}
+                userId={currentUserId}
+                userEmail={session?.user?.email}
+                intervalsId={intervalsId}
+                intervalsKey={intervalsKey}
+                intervalsConnected={intervalsConnected}
+                athleteInfo={athleteInfo}
+                onOpenAuthModal={() => setShowAuthModal(true)}
+                onOpenOnboarding={() => setShowOnboardingModal(true)}
+              />
+            )}
+            {activeTab === 'connections' && (
+              <ConnectionsTab 
+                connectionStatus={connectionStatus} 
+                connectionError={error} 
+                intervalsId={intervalsId} 
+                setId={setIntervalsId} 
+                intervalsKey={intervalsKey} 
+                setKey={setIntervalsKey} 
+                onSave={fetchWorkouts} 
+                onDisconnect={handleIntervalsDisconnect} 
+                userId={currentUserId} 
+              />
+            )}
           </div>
         </main>
 
@@ -273,12 +435,31 @@ export default function App() {
               <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-3">
                   <div className="bg-gradient-to-br from-cyan-400 to-emerald-500 text-zinc-950 rounded-full w-10 h-10 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(34,211,238,0.3)]">
-                    {(athleteProfile.username || 'K').charAt(0).toUpperCase()}
+                    {(isDefaultGuestName ? 'G' : displayName.charAt(0)).toUpperCase()}
                   </div>
-                  <h3 className="text-lg font-black text-zinc-100 tracking-tight">Bok, {athleteProfile.username || 'Korisnik'}</h3>
+                  <div>
+                    <h3 className="text-lg font-black text-zinc-100 tracking-tight">Bok, {displayName}</h3>
+                    {intervalsConnected ? (
+                      <span className="text-[10px] font-bold text-cyan-400">Intervals.icu povezan</span>
+                    ) : (
+                      currentUserId === 'guest' && <span className="text-[10px] font-bold text-zinc-400">Način rada: Gost</span>
+                    )}
+                  </div>
                 </div>
                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-zinc-800 rounded-full text-zinc-400"><X className="w-5 h-5" /></button>
               </div>
+
+              {currentUserId === 'guest' && (
+                <div className="mb-5">
+                  <button
+                    onClick={() => { setIsMobileMenuOpen(false); setShowAuthModal(true); }}
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 font-bold text-sm shadow-[0_0_12px_rgba(34,211,238,0.15)]"
+                  >
+                    <LogIn className="w-4 h-4" /> Prijavi se / Registriraj mailom
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 mb-6">
                 {['library', 'profile', 'connections'].map(tabId => (
                   <MobileMenuGridBtn key={tabId} icon={TABS[tabId].icon} label={TABS[tabId].label} active={activeTab === tabId} onClick={() => handleTabChange(tabId)} />
@@ -288,6 +469,29 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* AUTH MODAL ZA PRIJAVU/REGISTRACIJU MAILOM */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        currentUserId={currentUserId}
+        onAuthSuccess={(newSession) => {
+          if (newSession) setSession(newSession);
+          setIsGuest(false);
+          setShowAuthModal(false);
+        }}
+      />
+
+      {/* ONBOARDING MODAL VODIČ ZA POČETNIKE */}
+      <OnboardingModal
+        isOpen={showOnboardingModal}
+        onClose={() => setShowOnboardingModal(false)}
+        initialProfile={athleteProfile}
+        onSaveProfile={(updatedProfile) => {
+          setAthleteProfile(updatedProfile);
+        }}
+        onComplete={handleOnboardingComplete}
+      />
     </div>
   );
 }

@@ -3,9 +3,11 @@ import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastFor
 import TrainerModals from './trainer/TrainerModals';
 import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer } from '../utils/performanceMetrics';
-import { exportToTCX, exportToFIT } from '../utils/exportUtils';
+import { exportToTCX, exportToFIT, buildFitUint8Array } from '../utils/exportUtils';
 import { calculateCogganMetrics } from '../utils/performanceMetrics';
 import { calculateDistanceStream } from '../utils/virtualDistance';
+import { parseIntervalsCode } from '../utils/workoutParser';
+import { uploadActivityToIntervals } from '../services/intervalsApi';
 import { supabase } from '../services/supabaseClient';
 
 const playBeep = (freq = 800, duration = 0.2) => {
@@ -70,7 +72,7 @@ class PowerMatchPID {
 
 const pidController = new PowerMatchPID();
 
-export default function TrainerTab({ profile, userId, workoutFromCalendar, onClose }) {
+export default function TrainerTab({ profile, userId, workoutFromCalendar, onClose, intervalsId, intervalsKey }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [sessionStartTime, setSessionStartTime] = useState(null);
@@ -93,8 +95,9 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   const [isFinished, setIsFinished] = useState(false);
   const [showStopPrompt, setShowStopPrompt] = useState(false);
   const [summaryStats, setSummaryStats] = useState(null);
-  const [uploadStatus, setUploadStatus] = useState(null);
-  const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+  const [intervalsUploadStatus, setIntervalsUploadStatus] = useState(null); // null | 'uploading' | 'uploaded' | 'error'
+  const [intervalsUploadError, setIntervalsUploadError] = useState(null);
+  const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'saved_local' | 'error'
 
   const crankDataRef = useRef({ revs: -1, time: -1 });
   const pmCrankDataRef = useRef({ revs: -1, time: -1 });
@@ -212,6 +215,12 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     } else if (workoutFromCalendar.steps && Array.isArray(workoutFromCalendar.steps)) {
       // Supabase / Library format
       parsedRecipe = workoutFromCalendar.steps;
+    } else if (typeof workoutFromCalendar.workout_doc === 'string' && workoutFromCalendar.workout_doc.trim()) {
+      const parsed = parseIntervalsCode(workoutFromCalendar.workout_doc, profile?.ftp || 200);
+      if (parsed?.allSteps?.length > 0) parsedRecipe = parsed.allSteps;
+    } else if (typeof workoutFromCalendar.steps === 'string' && workoutFromCalendar.steps.trim()) {
+      const parsed = parseIntervalsCode(workoutFromCalendar.steps, profile?.ftp || 200);
+      if (parsed?.allSteps?.length > 0) parsedRecipe = parsed.allSteps;
     }
 
     if (parsedRecipe.length > 0) {
@@ -221,9 +230,12 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       setWorkoutHistory([]);
       setIsFinished(false);
       setShowStopPrompt(false);
+      setIntervalsUploadStatus(null);
+      setIntervalsUploadError(null);
+      setSaveStatus(null);
       setIsPlaying(false);
     }
-  }, [workoutFromCalendar]);
+  }, [workoutFromCalendar, profile?.ftp]);
 
   const totalDuration = useMemo(() => workoutRecipe.reduce((acc, step) => acc + step.duration, 0), [workoutRecipe]);
 
@@ -306,7 +318,8 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     setIsFinished(false);
     setShowStopPrompt(false);
     setSummaryStats(null);
-    setUploadStatus(null);
+    setIntervalsUploadStatus(null);
+    setIntervalsUploadError(null);
     setSaveStatus(null);
     setErgIntensity(100);
     setResistanceLevel(30);
@@ -751,7 +764,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       avgSpeedKmh
     });
 
-    // --- AUTO SAVE u Supabase ---
+    // --- AUTO SAVE u ErgVibe (localStorage + Supabase za prijavljene korisnike) ---
     let startedAt;
     if (sessionStartTime) {
       startedAt = new Date(sessionStartTime);
@@ -767,7 +780,6 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     }
 
     setSaveStatus('saving');
-    console.log('[TrainerTab] Spremam u Supabase, stream_data duljina:', distResult.stream.length);
 
     // Eksplicitno pretvori stream u JSON format
     const streamDataToSave = distResult.stream.length > 0 ? distResult.stream : null;
@@ -791,12 +803,13 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       stream_data: streamDataToSave
     };
 
-    // 1. Spremi u localStorage (OFFLINE BACKUP)
+    // 1. Spremi u localStorage (primarno za Gosta + offline backup za prijavljene)
+    let localSavedOk = false;
     try {
       const localActivities = JSON.parse(localStorage.getItem(`ai_trener_local_completed_activities_${userId || 'guest'}`) || '[]');
       const localId = 'local_act_' + Date.now();
-      const localActivity = { 
-        id: localId, 
+      const localActivity = {
+        id: localId,
         ...activityPayload,
         workout_doc: workoutFromCalendar?.steps || workoutFromCalendar?.workout_doc || null
       };
@@ -804,37 +817,75 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       // Ograniči na zadnjih 50 aktivnosti da ne napunimo localStorage
       const updatedLocal = [localActivity, ...localActivities].slice(0, 50);
       localStorage.setItem(`ai_trener_local_completed_activities_${userId || 'guest'}`, JSON.stringify(updatedLocal));
-      console.log('[TrainerTab] Spremljeno u localStorage backup');
+      localSavedOk = true;
     } catch (e) {
       console.warn('Nije uspjelo spremanje u localStorage backup', e);
     }
 
-    // 2. Pokušaj spremiti u Supabase
-    supabase.from('completed_activities').insert(activityPayload).then(({ error: saveErr, data: savedData }) => {
-      if (saveErr) {
-        console.error('Greška pri spremanju u Supabase:', saveErr);
-        setSaveStatus('error');
-        // Pošalji event svejedno kako bi se ažuriralo iz localStorage-a
-        if (onClose) {
-          setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('supabase-activity-saved'));
-          }, 1000);
+    // 2. Ako je Gost, odmah označi kao spremljeno i osvježi Kalendar
+    if (!userId || userId === 'guest') {
+      setSaveStatus(localSavedOk ? 'saved' : 'error');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('supabase-activity-saved'));
+      }, 300);
+    } else {
+      // Prijavljeni korisnik: spremi i u Supabase (uz user_id)
+      supabase.from('completed_activities').insert({ ...activityPayload, user_id: userId }).then(({ error: saveErr }) => {
+        if (saveErr) {
+          console.error('Greška pri spremanju u Supabase:', saveErr);
+          setSaveStatus(localSavedOk ? 'saved_local' : 'error');
+        } else {
+          setSaveStatus('saved');
         }
-      } else {
-        console.log('Trening automatski spremljen u Supabase!');
-        console.log('Spremljeni podaci:', savedData);
-        setSaveStatus('saved');
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('supabase-activity-saved'));
+        }, 300);
+      });
+    }
 
-        // Osvježi kalendar ako postoji onClose callback (znači da je otvoren iz kalendara)
-        if (onClose) {
-          // Trigger refresh nakon 1 sekunde da se vidi "saved" status
-          setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('supabase-activity-saved'));
-          }, 1000);
+    // 3. Opcionalni automatski .FIT upload na Intervals.icu (samo ako je korisnik povezao Intervals.icu)
+    if (intervalsId && intervalsKey && workoutHistory.length > 0) {
+      setIntervalsUploadStatus('uploading');
+      setIntervalsUploadError(null);
+      try {
+        const built = buildFitUint8Array(workoutHistory, startedAt.toISOString(), mass);
+        if (built && built.uint8) {
+          uploadActivityToIntervals(intervalsId, intervalsKey, built.uint8, workoutTitle)
+            .then(() => {
+              setIntervalsUploadStatus('uploaded');
+            })
+            .catch((upErr) => {
+              console.error('[TrainerTab] Intervals.icu upload error:', upErr);
+              setIntervalsUploadStatus('error');
+              setIntervalsUploadError(upErr.message || 'Greška pri slanju na Intervals.icu');
+            });
+        } else {
+          setIntervalsUploadStatus('error');
+          setIntervalsUploadError('Nema podataka za .FIT datoteku.');
         }
+      } catch (upErr) {
+        setIntervalsUploadStatus('error');
+        setIntervalsUploadError(upErr.message);
       }
-    });
+    }
   };
+
+  const handleRetryIntervalsUpload = useCallback(async () => {
+    if (!intervalsId || !intervalsKey || workoutHistory.length === 0) return;
+    setIntervalsUploadStatus('uploading');
+    setIntervalsUploadError(null);
+    try {
+      const mass = profile?.weight || 75;
+      const workoutTitle = workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja';
+      const built = buildFitUint8Array(workoutHistory, sessionStartTime, mass);
+      if (!built || !built.uint8) throw new Error('Nema podataka za .FIT datoteku.');
+      await uploadActivityToIntervals(intervalsId, intervalsKey, built.uint8, workoutTitle);
+      setIntervalsUploadStatus('uploaded');
+    } catch (err) {
+      setIntervalsUploadStatus('error');
+      setIntervalsUploadError(err.message || 'Greška pri slanju na Intervals.icu');
+    }
+  }, [intervalsId, intervalsKey, workoutHistory, profile?.weight, workoutFromCalendar, sessionStartTime]);
 
   const handleSkip = () => {
     let accumulatedToNext = 0;
@@ -891,12 +942,14 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         summaryStats={summaryStats}
         workoutFromCalendar={workoutFromCalendar}
         isPmConnected={isPmConnected}
-        uploadStatus={uploadStatus}
-        setUploadStatus={setUploadStatus}
         saveStatus={saveStatus}
+        isIntervalsConfigured={Boolean(intervalsId && intervalsKey)}
+        intervalsUploadStatus={intervalsUploadStatus}
+        intervalsUploadError={intervalsUploadError}
+        onRetryIntervalsUpload={handleRetryIntervalsUpload}
         handleReset={handleCloseWorkout}
-        handleExportTcx={() => exportToTCX(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime)}
-        handleExportFit={() => exportToFIT(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime)}
+        handleExportTcx={() => exportToTCX(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime, profile?.weight || 75)}
+        handleExportFit={() => exportToFIT(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime, profile?.weight || 75)}
       />
 
       {/* GORNJA TRAKA: Bluetooth gumbi */}

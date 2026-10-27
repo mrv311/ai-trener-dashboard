@@ -1,25 +1,76 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Activity, TrendingUp, AlertTriangle, Zap, CalendarDays } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+
+const CHART_MARGIN = { top: 10, right: 10, left: -20, bottom: 0 };
+const AXIS_TICK = { fontSize: 11, fill: '#a1a1aa' };
+const LEFT_DOMAIN = [0, 'auto'];
+const TOOLTIP_CONTENT_STYLE = {
+  borderRadius: '12px',
+  backgroundColor: 'rgba(24,24,27,0.92)',
+  backdropFilter: 'blur(8px)',
+  border: '1px solid #3f3f46',
+  boxShadow: '0 8px 30px rgba(0,0,0,0.5)'
+};
+const TOOLTIP_LABEL_STYLE = { fontWeight: 'bold', color: '#f4f4f5', marginBottom: '4px' };
+const ACTIVE_DOT_FITNESS = { r: 6, fill: '#0ea5e9', stroke: '#fff', strokeWidth: 2 };
+const ACTIVE_DOT_FATIGUE = { r: 4, fill: '#a855f7' };
+
+function getFormColor(tsb) {
+  if (tsb > 25) return "text-amber-500 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]"; 
+  if (tsb >= 5 && tsb <= 25) return "text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]"; 
+  if (tsb >= -10 && tsb < 5) return "text-zinc-400"; 
+  return "text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]"; 
+}
+
+function getFormStatus(tsb) {
+  if (tsb > 25) return "Tranzicija / Gubitak forme";
+  if (tsb >= 5 && tsb <= 25) return "Optimalno (Spreman za utrku)";
+  if (tsb >= -10 && tsb < 5) return "Siva Zona (Normalan trening)";
+  return "Visoki rizik (Potreban odmor!)";
+}
+
+function FilterButton({ label, value, active, onClick }) {
+  return (
+    <button 
+      type="button"
+      onClick={() => onClick(value)}
+      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all uppercase tracking-wider border ${
+        active 
+          ? 'bg-zinc-800 text-zinc-100 border-zinc-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]' 
+          : 'bg-zinc-950/50 text-zinc-500 hover:bg-zinc-800 border-zinc-800/80 hover:text-zinc-300'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
 
 export default function FitnessTab({ wellnessData }) {
-  const [timeFilter, setTimeFilter] = useState('3M'); // Opcije: '1M', '3M', '6M', '1Y'
+  const [timeFilter, setTimeFilter] = useState('3M'); // '1M', '3M', '6M', '1Y'
+  const [visibleLines, setVisibleLines] = useState({
+    Fitness: true,
+    Fatigue: true,
+    Form: true
+  });
 
   // 1. Pretvaramo objekt u niz i sortiramo
   const allChartData = useMemo(() => {
-    if (!wellnessData) return [];
+    if (!wellnessData || typeof wellnessData !== 'object') return [];
     return Object.entries(wellnessData)
       .map(([date, vals]) => {
-        const ctl = vals.ctl || 0;
-        const atl = vals.atl || 0;
+        if (!vals) return null;
+        const ctl = typeof vals.ctl === 'number' ? vals.ctl : Number(vals.ctl) || 0;
+        const atl = typeof vals.atl === 'number' ? vals.atl : Number(vals.atl) || 0;
         const tsb = ctl - atl;
         return {
-          date,
+          date: String(date),
           Fitness: Math.round(ctl),
           Fatigue: Math.round(atl),
           Form: Math.round(tsb)
         };
       })
+      .filter(Boolean)
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [wellnessData]);
 
@@ -43,42 +94,38 @@ export default function FitnessTab({ wellnessData }) {
   }, [allChartData, timeFilter]);
 
   // 3. Podaci za DANAŠNJI dan (za velike kartice na vrhu)
-  const todayStr = new Date().toISOString().split('T')[0];
-  const pastAndPresentData = allChartData.filter(d => d.date <= todayStr);
-  const latest = pastAndPresentData.length > 0 
-    ? pastAndPresentData[pastAndPresentData.length - 1] 
-    : { Fitness: 0, Fatigue: 0, Form: 0 };
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  
+  const latest = useMemo(() => {
+    if (!allChartData.length) return { Fitness: 0, Fatigue: 0, Form: 0 };
+    const pastAndPresentData = allChartData.filter(d => d.date <= todayStr);
+    return pastAndPresentData.length > 0 
+      ? pastAndPresentData[pastAndPresentData.length - 1] 
+      : allChartData[allChartData.length - 1] || { Fitness: 0, Fatigue: 0, Form: 0 };
+  }, [allChartData, todayStr]);
 
-  const getFormColor = (tsb) => {
-    if (tsb > 25) return "text-amber-500 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]"; 
-    if (tsb >= 5 && tsb <= 25) return "text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]"; 
-    if (tsb >= -10 && tsb < 5) return "text-zinc-400"; 
-    return "text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]"; 
-  };
+  const hasTodayInChart = useMemo(() => {
+    return filteredChartData.some(d => d.date === todayStr);
+  }, [filteredChartData, todayStr]);
 
-  const getFormStatus = (tsb) => {
-    if (tsb > 25) return "Tranzicija / Gubitak forme";
-    if (tsb >= 5 && tsb <= 25) return "Optimalno (Spreman za utrku)";
-    if (tsb >= -10 && tsb < 5) return "Siva Zona (Normalan trening)";
-    return "Visoki rizik (Potreban odmor!)";
-  };
+  const formatDateTick = useCallback((val) => {
+    if (!val) return '';
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return String(val);
+    if (timeFilter === '1Y') {
+      return `${d.getMonth() + 1}/${d.getFullYear().toString().slice(-2)}`;
+    }
+    return `${d.getDate()}.${d.getMonth() + 1}.`;
+  }, [timeFilter]);
 
-  const FilterButton = ({ label, value }) => (
-    <button 
-      onClick={() => setTimeFilter(value)}
-      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all uppercase tracking-wider border ${
-        timeFilter === value 
-          ? 'bg-zinc-800 text-zinc-100 border-zinc-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)]' 
-          : 'bg-zinc-950/50 text-zinc-500 hover:bg-zinc-800 border-zinc-800/80 hover:text-zinc-300'
-      }`}
-    >
-      {label}
-    </button>
-  );
+  const toggleLine = useCallback((key) => {
+    setVisibleLines(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   return (
-    <div className="max-w-[1600px] mx-auto flex flex-col gap-6 animate-in fade-in h-full pb-8">
+    <div className="max-w-[1600px] mx-auto flex flex-col gap-6 animate-in fade-in pb-8">
       
+      {/* KARTICE STATUSNA FORMA */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0">
         <div className="bg-zinc-900/40 backdrop-blur-md rounded-2xl shadow-xl border border-zinc-800/80 p-4 md:p-6 flex flex-col relative overflow-hidden group hover:border-sky-500/30 transition-colors">
           <div className="absolute top-0 right-0 p-4 md:p-6 opacity-10 group-hover:opacity-20 transition-opacity"><TrendingUp className="w-12 h-12 md:w-16 md:h-16 text-sky-500"/></div>
@@ -102,62 +149,139 @@ export default function FitnessTab({ wellnessData }) {
         </div>
       </div>
 
-      <div className="bg-zinc-900/40 backdrop-blur-md rounded-2xl shadow-2xl border border-zinc-800/80 p-4 md:p-6 flex-1 min-h-[300px] md:min-h-[400px] flex flex-col">
+      {/* GRAFIKON KARTICA */}
+      <div className="bg-zinc-900/40 backdrop-blur-md rounded-2xl shadow-2xl border border-zinc-800/80 p-4 md:p-6 flex flex-col">
         
         {/* ZAGLAVLJE GRAFA S FILTERIMA */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 md:mb-6 gap-3 md:gap-4">
-          <h3 className="text-zinc-100 font-bold text-lg tracking-tight">Performance Management Chart</h3>
+          <div>
+            <h3 className="text-zinc-100 font-bold text-lg tracking-tight">Performance Management Chart</h3>
+            <p className="text-xs text-zinc-500 font-medium mt-0.5">Praćenje opterećenja, zamora i svježine kroz vrijeme</p>
+          </div>
           
           <div className="flex items-center gap-1 md:gap-2 bg-zinc-950/50 p-1 md:p-1.5 rounded-xl border border-zinc-800 w-full sm:w-auto overflow-x-auto shrink-0">
             <CalendarDays className="w-4 h-4 text-zinc-500 ml-1 md:ml-2 mr-1 shrink-0" />
-            <FilterButton label="1M" value="1M" />
-            <FilterButton label="3M" value="3M" />
-            <FilterButton label="6M" value="6M" />
-            <FilterButton label="1Y" value="1Y" />
+            <FilterButton label="1M" value="1M" active={timeFilter === '1M'} onClick={setTimeFilter} />
+            <FilterButton label="3M" value="3M" active={timeFilter === '3M'} onClick={setTimeFilter} />
+            <FilterButton label="6M" value="6M" active={timeFilter === '6M'} onClick={setTimeFilter} />
+            <FilterButton label="1Y" value="1Y" active={timeFilter === '1Y'} onClick={setTimeFilter} />
           </div>
+        </div>
+
+        {/* INTERAKTIVNA KORISNIČKA LEGENDA (Sprječava Recharts v3 Legend dispatcher crash) */}
+        <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 mb-4 select-none">
+          <button
+            type="button"
+            onClick={() => toggleLine('Fitness')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+              visibleLines.Fitness 
+                ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 shadow-[0_0_12px_rgba(14,165,233,0.15)]' 
+                : 'bg-zinc-950/40 border-zinc-800 text-zinc-600 line-through opacity-60 hover:opacity-80'
+            }`}
+          >
+            <span className={`w-2.5 h-2.5 rounded-full ${visibleLines.Fitness ? 'bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.7)]' : 'bg-zinc-600'}`}></span>
+            <span>Fitness (CTL)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => toggleLine('Fatigue')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+              visibleLines.Fatigue 
+                ? 'bg-purple-500/10 border-purple-500/30 text-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.15)]' 
+                : 'bg-zinc-950/40 border-zinc-800 text-zinc-600 line-through opacity-60 hover:opacity-80'
+            }`}
+          >
+            <span className={`w-2.5 h-2.5 rounded-full ${visibleLines.Fatigue ? 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.7)]' : 'bg-zinc-600'}`}></span>
+            <span>Fatigue (ATL)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => toggleLine('Form')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+              visibleLines.Form 
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.15)]' 
+                : 'bg-zinc-950/40 border-zinc-800 text-zinc-600 line-through opacity-60 hover:opacity-80'
+            }`}
+          >
+            <span className={`w-2.5 h-2.5 rounded-full ${visibleLines.Form ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.7)]' : 'bg-zinc-600'}`}></span>
+            <span>Form (TSB)</span>
+          </button>
         </div>
         
         {filteredChartData.length > 0 ? (
-          <div className="flex-1 w-full h-full">
+          <div className="w-full h-[360px] md:h-[440px] min-h-[300px] relative">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={filteredChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <LineChart data={filteredChartData} margin={CHART_MARGIN}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3f3f46" />
                 <XAxis 
                   dataKey="date" 
-                  tick={{ fontSize: 11, fill: '#a1a1aa' }} 
+                  tick={AXIS_TICK} 
                   tickMargin={10}
-                  tickFormatter={(val) => {
-                    const d = new Date(val);
-                    // Ako gledamo cijelu godinu, prikazujemo samo mjesece da ne bude gužva
-                    if (timeFilter === '1Y') {
-                      return `${d.getMonth() + 1}/${d.getFullYear().toString().slice(-2)}`;
-                    }
-                    return `${d.getDate()}.${d.getMonth() + 1}.`;
-                  }}
+                  tickFormatter={formatDateTick}
                 />
-                <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#a1a1aa' }} domain={[0, 'auto']} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#a1a1aa' }} />
+                <YAxis yAxisId="left" tick={AXIS_TICK} domain={LEFT_DOMAIN} />
+                <YAxis yAxisId="right" orientation="right" tick={AXIS_TICK} />
                 
                 <ReferenceLine yAxisId="right" y={25} stroke="#f59e0b" strokeDasharray="3 3" opacity={0.3} />
                 <ReferenceLine yAxisId="right" y={5} stroke="#10b981" strokeDasharray="3 3" opacity={0.3} />
                 <ReferenceLine yAxisId="right" y={-10} stroke="#f43f5e" strokeDasharray="3 3" opacity={0.3} />
-                <ReferenceLine x={todayStr} yAxisId="left" stroke="#52525b" strokeWidth={2} strokeDasharray="4 4" />
+                {hasTodayInChart && (
+                  <ReferenceLine x={todayStr} yAxisId="left" stroke="#52525b" strokeWidth={2} strokeDasharray="4 4" />
+                )}
 
                 <Tooltip 
-                  contentStyle={{ borderRadius: '12px', backgroundColor: 'rgba(24,24,27,0.85)', backdropFilter: 'blur(8px)', border: '1px solid #3f3f46', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}
-                  labelStyle={{ fontWeight: 'bold', color: '#f4f4f5', marginBottom: '4px' }}
+                  contentStyle={TOOLTIP_CONTENT_STYLE}
+                  labelStyle={TOOLTIP_LABEL_STYLE}
                 />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px', color: '#a1a1aa' }} />
                 
-                <Line yAxisId="left" type="monotone" dataKey="Fitness" stroke="#0ea5e9" strokeWidth={3} dot={false} activeDot={{ r: 6, fill: '#0ea5e9', stroke: '#fff', strokeWidth: 2 }} name="Fitness (CTL)" />
-                <Line yAxisId="left" type="monotone" dataKey="Fatigue" stroke="#a855f7" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#a855f7' }} opacity={0.6} name="Fatigue (ATL)" />
-                <Line yAxisId="right" type="step" dataKey="Form" stroke="#f59e0b" strokeWidth={2} dot={false} name="Form (TSB)" />
+                {visibleLines.Fitness && (
+                  <Line 
+                    yAxisId="left" 
+                    type="monotone" 
+                    dataKey="Fitness" 
+                    stroke="#0ea5e9" 
+                    strokeWidth={3} 
+                    dot={false} 
+                    activeDot={ACTIVE_DOT_FITNESS} 
+                    name="Fitness (CTL)" 
+                    isAnimationActive={false}
+                  />
+                )}
+                {visibleLines.Fatigue && (
+                  <Line 
+                    yAxisId="left" 
+                    type="monotone" 
+                    dataKey="Fatigue" 
+                    stroke="#a855f7" 
+                    strokeWidth={2} 
+                    dot={false} 
+                    activeDot={ACTIVE_DOT_FATIGUE} 
+                    opacity={0.7} 
+                    name="Fatigue (ATL)" 
+                    isAnimationActive={false}
+                  />
+                )}
+                {visibleLines.Form && (
+                  <Line 
+                    yAxisId="right" 
+                    type="step" 
+                    dataKey="Form" 
+                    stroke="#f59e0b" 
+                    strokeWidth={2} 
+                    dot={false} 
+                    name="Form (TSB)" 
+                    isAnimationActive={false}
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-zinc-500 font-medium">
-            Nema dostupnih podataka o formi. Osvježi API.
+          <div className="h-64 flex flex-col items-center justify-center text-center px-4 text-zinc-500 font-medium gap-1">
+            <p className="text-zinc-400 font-bold">Još nema zabilježenih treninga za izračun kondicije i forme.</p>
+            <p className="text-xs text-zinc-500">Odvozi prvi trening na trenažeru, dodaj plan u Kalendar ili uvezi .FIT/.TCX datoteku.</p>
           </div>
         )}
       </div>

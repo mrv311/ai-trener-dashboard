@@ -23,6 +23,24 @@ const getDateRange = () => {
   return { oldest, newest };
 };
 
+/**
+ * Dohvaća profil sportaša s Intervals.icu (ime, FTP, težina, zone pulsa).
+ * GET /api/v1/athlete/{id}
+ */
+export const fetchAthleteProfile = async (intervalsId, intervalsKey) => {
+  const cleanId = String(intervalsId || '').trim();
+  if (!cleanId || !intervalsKey) return null;
+  const headers = getAuthHeaders(intervalsKey);
+  try {
+    const res = await fetch(`https://intervals.icu/api/v1/athlete/${cleanId}`, { headers });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.warn('[intervalsApi] fetchAthleteProfile greška:', err);
+    return null;
+  }
+};
+
 export const fetchIntervalsData = async (intervalsId, intervalsKey, options = {}) => {
   const cleanId = String(intervalsId || '').trim();
   const headers = getAuthHeaders(intervalsKey);
@@ -39,6 +57,7 @@ export const fetchIntervalsData = async (intervalsId, intervalsKey, options = {}
   const actUrl = `https://intervals.icu/api/v1/athlete/${cleanId}/activities?oldest=${oldest}&newest=${newest}`;
   const evUrl = `https://intervals.icu/api/v1/athlete/${cleanId}/events?oldest=${oldest}&newest=${newest}`;
   const wellUrl = `https://intervals.icu/api/v1/athlete/${cleanId}/wellness?oldest=${oldest}&newest=${newest}`;
+  const athUrl = `https://intervals.icu/api/v1/athlete/${cleanId}`;
 
   const actRes = await fetch(actUrl, { headers });
   
@@ -46,16 +65,21 @@ export const fetchIntervalsData = async (intervalsId, intervalsKey, options = {}
   if (actRes.status === 429) throw new Error("Previše zahtjeva prema serveru. Pričekaj malo.");
   if (!actRes.ok) throw new Error("Greška pri spajanju na server.");
 
-  const [evRes, wellRes] = await Promise.all([
+  const [evRes, wellRes, athRes] = await Promise.all([
     fetch(evUrl, { headers }),
-    fetch(wellUrl, { headers })
+    fetch(wellUrl, { headers }),
+    fetch(athUrl, { headers }).catch(e => {
+      console.warn('[intervalsApi] Neuspjelo dohvaćanje sportaša:', e);
+      return { ok: false };
+    })
   ]);
 
   const activities = await actRes.json();
   const events = evRes.ok ? await evRes.json() : [];
   const wellness = wellRes.ok ? await wellRes.json() : [];
+  const athlete = (athRes && athRes.ok) ? await athRes.json() : null;
 
-  return { activities, events, wellness };
+  return { activities, events, wellness, athlete };
 };
 
 /**
@@ -263,4 +287,49 @@ export const updateActivityName = async (intervalsId, intervalsKey, activityId, 
   }
 
   return res.json();
+};
+
+/**
+ * Šalje odrađenu aktivnost (.FIT binarni niz) direktno na Intervals.icu.
+ * POST /api/v1/athlete/{id}/activities (multipart/form-data)
+ */
+export const uploadActivityToIntervals = async (intervalsId, intervalsKey, fitUint8Array, workoutName = 'ErgVibe Trening', description = '') => {
+  const cleanId = String(intervalsId || '').trim();
+  const cleanKey = String(intervalsKey || '').trim();
+  if (!cleanId || !cleanKey) {
+    throw new Error('Intervals.icu ID ili API ključ nisu postavljeni.');
+  }
+  if (!fitUint8Array || fitUint8Array.byteLength === 0) {
+    throw new Error('Nema podataka treninga za slanje.');
+  }
+
+  const authString = btoa(`API_KEY:${cleanKey}`);
+  const params = new URLSearchParams();
+  if (workoutName) params.set('name', workoutName);
+  if (description) params.set('description', description);
+
+  const url = `https://intervals.icu/api/v1/athlete/${cleanId}/activities?${params.toString()}`;
+
+  const formData = new FormData();
+  const safeName = (workoutName || 'ergvibe_trening').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const blob = new Blob([fitUint8Array], { type: 'application/octet-stream' });
+  formData.append('file', blob, `${safeName}.fit`);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${authString}`,
+      'Accept': 'application/json'
+    },
+    body: formData
+  });
+
+  if (res.status === 401) throw new Error('Intervals.icu API ključ ili ID su neispravni.');
+  if (res.status === 429) throw new Error('Previše zahtjeva prema Intervals.icu serveru.');
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Greška pri slanju na Intervals.icu (${res.status}): ${errText}`);
+  }
+
+  return res.json().catch(() => ({}));
 };

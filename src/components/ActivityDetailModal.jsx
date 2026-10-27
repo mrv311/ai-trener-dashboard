@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2, Upload, Trash2 } from 'lucide-react';
 import { downloadActivityFitFile, getActivityStreams, updateActivityName } from '../services/intervalsApi';
 import { calculateEF, calculateVI, calculateCogganMetrics } from '../utils/performanceMetrics';
+import { exportFITFromStream } from '../utils/exportUtils';
 import { supabase } from '../services/supabaseClient';
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { parseFitFile, validateFitFile, calculateTSS } from '../utils/fitParser';
@@ -73,7 +74,7 @@ const parseStreamData = (raw) => {
   return [];
 };
 
-export default function ActivityDetailModal({ activity, isOpen, onClose, intervalsId, intervalsKey }) {
+export default function ActivityDetailModal({ activity, isOpen, onClose, intervalsId, intervalsKey, userId, userProfile }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [streamsData, setStreamsData] = useState([]);
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
@@ -92,11 +93,16 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
   // Učitaj FTP iz profila
   useEffect(() => {
+    if (userProfile?.ftp && Number(userProfile.ftp) > 0) {
+      setUserFtp(Number(userProfile.ftp));
+      return;
+    }
     try {
-      const stored = JSON.parse(localStorage.getItem('ai_trener_profile') || '{}');
-      if (stored.ftp && stored.ftp > 0) setUserFtp(stored.ftp);
+      const stored = JSON.parse(localStorage.getItem(`ai_trener_profile_${userId || 'guest'}`) || localStorage.getItem('ai_trener_profile') || '{}');
+      const fallbackFtp = Number(stored.ftp) || Number(localStorage.getItem('ai_trener_user_ftp'));
+      if (fallbackFtp > 0) setUserFtp(fallbackFtp);
     } catch (e) { }
-  }, []);
+  }, [userProfile?.ftp, userId]);
 
   // Sync displayTitle s activity.title kad se modal otvori
   useEffect(() => {
@@ -132,38 +138,54 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
     setIsSavingTitle(true);
     try {
-      // 1. Pokušaj Intervals.icu (neće raditi za Strava aktivnosti)
+      // 1. Pokušaj Intervals.icu (samo za Intervals aktivnosti kada su ključevi postavljeni)
       const realActId = activity.actId || activity.id?.toString().replace('act-', '');
-      if (intervalsId && intervalsKey && realActId) {
+      if (!activity.isSupabase && intervalsId && intervalsKey && realActId) {
         try {
           await updateActivityName(intervalsId, intervalsKey, realActId, newName);
-          console.log('[Rename] Intervals.icu updated');
         } catch (apiErr) {
           console.warn('[Rename] Intervals.icu skipped:', apiErr.message);
         }
       }
 
-      // 2. Spremi u Supabase — traži po datumu ako nemamo supabaseMetrics
-      let sbId = supabaseMetrics?.id;
-      if (!sbId && activity.date) {
-        const { data } = await supabase
-          .from('completed_activities')
-          .select('id')
-          .gte('started_at', `${activity.date}T00:00:00`)
-          .lte('started_at', `${activity.date}T23:59:59`)
-          .order('started_at', { ascending: false })
-          .limit(1);
-        if (data?.[0]) sbId = data[0].id;
-      }
-      if (sbId) {
-        await supabase.from('completed_activities').update({ title: newName }).eq('id', sbId);
-        console.log('[Rename] Supabase updated, id:', sbId);
-      } else {
-        console.warn('[Rename] No Supabase record found for date:', activity.date);
+      // 2. Ažuriraj u localStorage ako postoji lokalni zapis
+      try {
+        const localKey = `ai_trener_local_completed_activities_${userId || 'guest'}`;
+        const localList = JSON.parse(localStorage.getItem(localKey) || '[]');
+        let changedLocal = false;
+        const updatedList = localList.map(item => {
+          if (String(item.id) === String(activity.supabaseId) || (activity.started_at && item.started_at === activity.started_at)) {
+            changedLocal = true;
+            return { ...item, title: newName };
+          }
+          return item;
+        });
+        if (changedLocal) {
+          localStorage.setItem(localKey, JSON.stringify(updatedList));
+        }
+      } catch (e) { }
+
+      // 3. Spremi u Supabase (samo za prijavljenog korisnika i pravi Supabase zapis)
+      if (userId && userId !== 'guest') {
+        let sbId = supabaseMetrics?.id || activity.supabaseId;
+        if (!sbId && activity.date) {
+          const { data } = await supabase
+            .from('completed_activities')
+            .select('id')
+            .eq('user_id', userId)
+            .gte('started_at', `${activity.date}T00:00:00`)
+            .lte('started_at', `${activity.date}T23:59:59`)
+            .order('started_at', { ascending: false })
+            .limit(1);
+          if (data?.[0]) sbId = data[0].id;
+        }
+        if (sbId && !String(sbId).startsWith('local_act_')) {
+          await supabase.from('completed_activities').update({ title: newName }).eq('id', sbId);
+        }
       }
 
-      console.log('[Rename] Setting displayTitle to:', newName);
       setDisplayTitle(newName);
+      window.dispatchEvent(new CustomEvent('activity-title-updated', { detail: { activityId: activity.id, newTitle: newName } }));
     } catch (err) {
       console.error('[Rename] error:', err);
     } finally {
@@ -191,67 +213,78 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
       setIsLoadingStreams(true);
       setDataSource(null);
 
-      // 0. Ako je Supabase aktivnost, dohvati direktno po ID-u
-      if (activity.isSupabase && activity.supabaseId) {
-        console.log('[ActivityDetail] Dohvaćam Supabase aktivnost po ID-u:', activity.supabaseId);
-        try {
-          const { data, error } = await supabase
-            .from('completed_activities')
-            .select('id, title, avg_power, np, avg_hr, avg_cadence, tss, if_factor, work_kj, duration_seconds, distance_m, avg_speed_kmh, ftp_used, stream_data')
-            .eq('id', activity.supabaseId)
-            .single();
+      const applyLocalRecord = (record) => {
+        if (!record || !mounted) return false;
+        setDataSource('supabase');
+        setSupabaseMetrics(record);
+        setStreamMetrics({
+          np: record.np || 0,
+          avgPower: record.avg_power || 0,
+          maxPower: 0,
+          avgHr: record.avg_hr || 0
+        });
 
-          if (!mounted) return;
+        if (record.stream_data && record.stream_data.length > 0) {
+          const parsedData = parseStreamData(record.stream_data);
+          const step = Math.max(1, Math.ceil(parsedData.length / 3000));
+          const finalData = [];
+          let maxP = 0;
 
-          if (!error && data) {
-            console.log('[ActivityDetail] Pronađen Supabase zapis:', {
-              id: data.id,
-              title: data.title,
-              avg_power: data.avg_power,
-              np: data.np,
-              stream_length: data.stream_data?.length
-            });
-
-            setDataSource('supabase');
-            setSupabaseMetrics(data);
-
-            setStreamMetrics({
-              np: data.np || 0,
-              avgPower: data.avg_power || 0,
-              maxPower: 0,
-              avgHr: data.avg_hr || 0
-            });
-
-            if (data.stream_data && data.stream_data.length > 0) {
-              console.log('[ActivityDetail] Parsiram stream_data, duljina:', data.stream_data.length);
-              const parsedData = parseStreamData(data.stream_data);
-              console.log('[ActivityDetail] Parsirano:', parsedData.length, 'točaka');
-
-              const step = Math.max(1, Math.ceil(parsedData.length / 3000));
-              const finalData = [];
-              let maxP = 0;
-
-              for (let i = 0; i < parsedData.length; i += step) {
-                const pt = parsedData[i];
-                if (pt.watts > maxP) maxP = pt.watts;
-                finalData.push({ time: pt.time, watts: pt.watts, hr: pt.hr });
-              }
-
-              console.log('[ActivityDetail] Finalni podaci za graf:', finalData.length, 'točaka, maxPower:', maxP);
-
-              if (maxP > 0 && mounted) {
-                setStreamMetrics(prev => ({ ...prev, maxPower: maxP }));
-              }
-
-              if (mounted) setStreamsData(finalData);
-            } else {
-              console.warn('[ActivityDetail] Nema stream_data u zapisu');
-            }
-          } else {
-            console.error('[ActivityDetail] Greška pri dohvaćanju Supabase aktivnosti:', error);
+          for (let i = 0; i < parsedData.length; i += step) {
+            const pt = parsedData[i];
+            if (pt.watts > maxP) maxP = pt.watts;
+            finalData.push({ time: pt.time, watts: pt.watts, hr: pt.hr });
           }
-        } catch (err) {
-          console.error('[ActivityDetail] Supabase greška:', err);
+
+          if (maxP > 0 && mounted) {
+            setStreamMetrics(prev => ({ ...prev, maxPower: maxP }));
+          }
+          if (mounted) setStreamsData(finalData);
+        }
+        return true;
+      };
+
+      // 0. Ako je ErgVibe aktivnost (Supabase ili localStorage Gost/offline), dohvati direktno
+      if (activity.isSupabase && activity.supabaseId) {
+        const isLocalOnlyId = String(activity.supabaseId).startsWith('local_act_') || userId === 'guest';
+
+        let resolvedRecord = null;
+
+        if (!isLocalOnlyId && userId) {
+          try {
+            const { data, error } = await supabase
+              .from('completed_activities')
+              .select('id, started_at, title, workout_source, avg_power, np, avg_hr, avg_cadence, tss, if_factor, work_kj, duration_seconds, distance_m, avg_speed_kmh, ftp_used, stream_data')
+              .eq('id', activity.supabaseId)
+              .single();
+
+            if (!error && data) {
+              resolvedRecord = data;
+            }
+          } catch (err) {
+            console.error('[ActivityDetail] Supabase greška:', err);
+          }
+        }
+
+        // Fallback ili primarni izvor za Gosta iz localStorage-a
+        if (!resolvedRecord || !resolvedRecord.stream_data) {
+          try {
+            const localList = JSON.parse(localStorage.getItem(`ai_trener_local_completed_activities_${userId || 'guest'}`) || '[]');
+            const localMatch = localList.find(item => {
+              if (String(item.id) === String(activity.supabaseId)) return true;
+              if (activity.started_at && item.started_at) {
+                return Math.abs(new Date(item.started_at).getTime() - new Date(activity.started_at).getTime()) < 60000;
+              }
+              return false;
+            });
+            if (localMatch) {
+              resolvedRecord = resolvedRecord ? { ...localMatch, ...resolvedRecord, stream_data: resolvedRecord.stream_data || localMatch.stream_data } : localMatch;
+            }
+          } catch (e) { }
+        }
+
+        if (resolvedRecord) {
+          applyLocalRecord(resolvedRecord);
         }
 
         if (mounted) setIsLoadingStreams(false);
@@ -309,11 +342,10 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
         }
       }
 
-      // 2. Fallback: Supabase completed_activities (po datumu)
-      if (!intervalsSuccess && mounted) {
+      // 2. Fallback: Supabase completed_activities (po datumu, samo za prijavljene korisnike)
+      if (!intervalsSuccess && mounted && userId && userId !== 'guest') {
         try {
           const actDate = activity.date;
-          console.log('[ActivityDetail] Tražim Supabase podatke za datum:', actDate);
 
           if (actDate) {
             const dayStart = `${actDate}T00:00:00`;
@@ -321,7 +353,8 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
             const { data, error } = await supabase
               .from('completed_activities')
-              .select('id, title, avg_power, np, avg_hr, avg_cadence, tss, if_factor, work_kj, duration_seconds, distance_m, avg_speed_kmh, ftp_used, stream_data')
+              .select('id, started_at, title, workout_source, avg_power, np, avg_hr, avg_cadence, tss, if_factor, work_kj, duration_seconds, distance_m, avg_speed_kmh, ftp_used, stream_data')
+              .eq('user_id', userId)
               .gte('started_at', dayStart)
               .lte('started_at', dayEnd)
               .order('started_at', { ascending: false })
@@ -329,60 +362,8 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
             if (!mounted) return;
 
-            console.log('[ActivityDetail] Supabase odgovor:', { error, dataLength: data?.length, hasStreamData: !!data?.[0]?.stream_data });
-
             if (!error && data && data.length > 0) {
-              const record = data[0];
-              console.log('[ActivityDetail] Pronađen zapis:', {
-                id: record.id,
-                title: record.title,
-                avg_power: record.avg_power,
-                np: record.np,
-                stream_length: record.stream_data?.length
-              });
-
-              if (!mounted) return;
-
-              setDataSource('supabase');
-              setSupabaseMetrics(record);
-
-              // Postavi metrike iz Supabase-a
-              setStreamMetrics({
-                np: record.np || 0,
-                avgPower: record.avg_power || 0,
-                maxPower: 0, // Supabase nema max_power, izračunat ćemo iz streama
-                avgHr: record.avg_hr || 0
-              });
-
-              // Pretvori Supabase stream format {t, p, hr, cad, spd, dist} u chart format
-              if (record.stream_data && record.stream_data.length > 0) {
-                console.log('[ActivityDetail] Parsiram stream_data, duljina:', record.stream_data.length);
-                const parsedData = parseStreamData(record.stream_data);
-                console.log('[ActivityDetail] Parsirano:', parsedData.length, 'točaka');
-
-                const step = Math.max(1, Math.ceil(parsedData.length / 3000));
-                const finalData = [];
-                let maxP = 0;
-
-                for (let i = 0; i < parsedData.length; i += step) {
-                  const pt = parsedData[i];
-                  if (pt.watts > maxP) maxP = pt.watts;
-                  finalData.push({ time: pt.time, watts: pt.watts, hr: pt.hr });
-                }
-
-                console.log('[ActivityDetail] Finalni podaci za graf:', finalData.length, 'točaka, maxPower:', maxP);
-
-                // Update maxPower iz streama
-                if (maxP > 0 && mounted) {
-                  setStreamMetrics(prev => ({ ...prev, maxPower: maxP }));
-                }
-
-                if (mounted) setStreamsData(finalData);
-              } else {
-                console.warn('[ActivityDetail] Nema stream_data u zapisu');
-              }
-            } else {
-              console.warn('[ActivityDetail] Nije pronađen zapis u Supabase za datum:', actDate);
+              applyLocalRecord(data[0]);
             }
           }
         } catch (err) {
@@ -395,7 +376,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
     fetchData();
     return () => { mounted = false; };
-  }, [activity, isOpen, intervalsId, intervalsKey, userFtp]);
+  }, [activity, isOpen, intervalsId, intervalsKey, userFtp, userId]);
 
   const maxPowerStream = useMemo(() => {
     if (!streamsData.length) return 300;
@@ -408,8 +389,26 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const handleDownload = async () => {
     try {
       setIsDownloading(true);
-      const realActivityId = activity.actId || activity.id.toString().replace('act-', '');
-      await downloadActivityFitFile(intervalsId, intervalsKey, realActivityId);
+
+      // 1. Ako imamo lokalne/ErgVibe stream podatke, generiraj standardni .FIT direktno u pregledniku!
+      if (supabaseMetrics?.stream_data && Array.isArray(supabaseMetrics.stream_data) && supabaseMetrics.stream_data.length > 0) {
+        const firstPt = supabaseMetrics.stream_data[0];
+        const streamForExport = ('t' in firstPt || 'time' in firstPt)
+          ? supabaseMetrics.stream_data
+          : parseStreamData(supabaseMetrics.stream_data);
+        const startIso = supabaseMetrics.started_at || activity.started_at || (activity.date ? `${activity.date}T12:00:00` : new Date().toISOString());
+        exportFITFromStream(streamForExport, displayTitle || activity.title || 'Trening', startIso);
+        return;
+      }
+
+      // 2. Inače preuzmi originalni .FIT s Intervals.icu (ako je aktivnost s Intervals.icu i ključevi postoje)
+      if (!activity.isSupabase && intervalsId && intervalsKey) {
+        const realActivityId = activity.actId || activity.id.toString().replace('act-', '');
+        await downloadActivityFitFile(intervalsId, intervalsKey, realActivityId);
+        return;
+      }
+
+      throw new Error('Za ovu aktivnost nisu pronađeni detaljni stream podaci za .FIT izvoz.');
     } catch (error) {
       alert(error.message);
     } finally {
@@ -421,7 +420,6 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validacija
     const validation = validateFitFile(file);
     if (!validation.valid) {
       alert(validation.error);
@@ -430,27 +428,18 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
 
     setIsUploading(true);
     try {
-      // Parsiraj FIT datoteku
       const fitData = await parseFitFile(file);
-      console.log('[ActivityDetailModal] Parsirani FIT podaci:', fitData);
 
-      // Izračunaj TSS ako nije dostupan
       if (!fitData.tss && fitData.np && userFtp) {
         fitData.tss = calculateTSS(fitData.np, fitData.duration_seconds, userFtp);
       }
 
-      // Dohvati trenutni profil za weight_kg
-      let weightKg = null;
-      try {
-        const storedProfile = JSON.parse(localStorage.getItem('ai_trener_profile') || '{}');
-        weightKg = storedProfile.weight || null;
-      } catch (e) { }
+      const weightKg = userProfile?.weight || 75;
 
-      // Spremi u Supabase
       const activityData = {
         started_at: fitData.started_at,
         title: activity.title || displayTitle || 'Garmin Trening',
-        workout_source: 'garmin', // Ili 'external' ako nije Garmin
+        workout_source: 'garmin',
         duration_seconds: fitData.duration_seconds,
         avg_power: fitData.avg_power,
         np: fitData.np,
@@ -466,35 +455,38 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
         stream_data: fitData.stream_data
       };
 
-      // Ako je Supabase aktivnost, ažuriraj postojeću
-      if (activity.isSupabase && activity.supabaseId) {
-        const { error } = await supabase
-          .from('completed_activities')
-          .update(activityData)
-          .eq('id', activity.supabaseId);
-
-        if (error) throw error;
-
-        alert('✅ Aktivnost uspješno ažurirana iz FIT datoteke!');
-      } else {
-        // Inače, kreiraj novu aktivnost
-        const { data, error } = await supabase
-          .from('completed_activities')
-          .insert([activityData])
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        alert('✅ Nova aktivnost uspješno kreirana iz FIT datoteke!');
+      // Ažuriraj u localStorage
+      const localKey = `ai_trener_local_completed_activities_${userId || 'guest'}`;
+      const localList = JSON.parse(localStorage.getItem(localKey) || '[]');
+      if (activity.isSupabase && activity.supabaseId && localList.some(item => String(item.id) === String(activity.supabaseId))) {
+        const updatedLocal = localList.map(item => String(item.id) === String(activity.supabaseId) ? { ...item, ...activityData } : item);
+        localStorage.setItem(localKey, JSON.stringify(updatedLocal));
+      } else if (userId === 'guest') {
+        const newLocal = { id: 'local_act_' + Date.now(), ...activityData };
+        localStorage.setItem(localKey, JSON.stringify([newLocal, ...localList].slice(0, 50)));
       }
 
-      // Osvježi prikaz
+      // Ako je prijavljeni korisnik, ažuriraj/unesi i u Supabase
+      if (userId && userId !== 'guest') {
+        if (activity.isSupabase && activity.supabaseId && !String(activity.supabaseId).startsWith('local_act_')) {
+          const { error } = await supabase
+            .from('completed_activities')
+            .update(activityData)
+            .eq('id', activity.supabaseId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from('completed_activities')
+            .insert([{ ...activityData, user_id: userId }]);
+          if (error) throw error;
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent('activity-title-updated', { detail: { activityId: 'refresh', newTitle: '' } }));
       onClose();
-      window.location.reload(); // Jednostavno rješenje za osvježavanje
     } catch (error) {
       console.error('[ActivityDetailModal] Greška pri uploadu:', error);
-      alert('❌ Greška pri importu FIT datoteke: ' + error.message);
+      alert('Greška pri importu FIT datoteke: ' + error.message);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -504,47 +496,40 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   };
 
   const handleDeleteActivity = async () => {
-    console.log('[ActivityDetailModal] handleDeleteActivity pozvan za aktivnost:', {
-      id: activity.id,
-      isSupabase: activity.isSupabase,
-      supabaseId: activity.supabaseId,
-      title: activity.title
-    });
-
-    if (!window.confirm('⚠️ Sigurno želiš obrisati ovaj trening? Ova radnja se ne može poništiti.')) {
+    if (!window.confirm('Sigurno želiš obrisati ovaj trening? Ova radnja se ne može poništiti.')) {
       return;
     }
 
     setIsDeleting(true);
     try {
-      // Samo Supabase aktivnosti se mogu brisati
       if (activity.isSupabase && activity.supabaseId) {
-        console.log('[ActivityDetailModal] Brišem Supabase aktivnost ID:', activity.supabaseId);
+        if (userId && userId !== 'guest' && !String(activity.supabaseId).startsWith('local_act_')) {
+          const { error } = await supabase
+            .from('completed_activities')
+            .delete()
+            .eq('id', activity.supabaseId);
 
-        const { error } = await supabase
-          .from('completed_activities')
-          .delete()
-          .eq('id', activity.supabaseId);
-
-        if (error) {
-          console.error('[ActivityDetailModal] Supabase delete error:', error);
-          throw error;
+          if (error) {
+            console.warn('[ActivityDetailModal] Supabase delete warning:', error);
+          }
         }
 
-        console.log('[ActivityDetailModal] Aktivnost uspješno obrisana iz Supabase');
-        alert('✅ Trening uspješno obrisan!');
+        // Ukloni i iz localStorage-a
+        try {
+          const localKey = `ai_trener_local_completed_activities_${userId || 'guest'}`;
+          const localList = JSON.parse(localStorage.getItem(localKey) || '[]');
+          const updatedLocal = localList.filter(item => String(item.id) !== String(activity.supabaseId));
+          localStorage.setItem(localKey, JSON.stringify(updatedLocal));
+        } catch (e) { }
+
+        window.dispatchEvent(new CustomEvent('activity-title-updated', { detail: { activityId: 'refresh', newTitle: '' } }));
         onClose();
-        window.location.reload(); // Osvježi stranicu
       } else {
-        console.warn('[ActivityDetailModal] Aktivnost nije Supabase ili nema supabaseId:', {
-          isSupabase: activity.isSupabase,
-          supabaseId: activity.supabaseId
-        });
-        alert('❌ Samo lokalno spremljeni treninzi se mogu brisati iz ove aplikacije.');
+        alert('Samo lokalno spremljeni treninzi se mogu brisati iz ove aplikacije.');
       }
     } catch (error) {
       console.error('[ActivityDetailModal] Greška pri brisanju:', error);
-      alert('❌ Greška pri brisanju: ' + error.message);
+      alert('Greška pri brisanju: ' + error.message);
     } finally {
       setIsDeleting(false);
     }

@@ -248,24 +248,84 @@ export async function parseWorkoutFile(fileText, fileName) {
 }
 
 export function categorizeWorkout(steps) {
+  if (!steps || steps.length === 0) return 'Ostalo';
+
+  const totalDur = steps.reduce((sum, s) => sum + (s.duration || 0), 0);
+  if (totalDur === 0) return 'Ostalo';
+
+  // 1. Prepoznavanje čistih Oporavak (Active Recovery) vožnji:
+  // većina vremena u Z1 (<= 56% FTP), prosjek <= 58% i najviše do 60s kratkih spin-upova >= 76%
+  let z1Dur = 0;
+  let highDur = 0;
+  let weightedSum = 0;
+  steps.forEach(s => {
+    const p = s.power || 0;
+    const d = s.duration || 0;
+    weightedSum += p * d;
+    if (p <= 56) z1Dur += d;
+    if (p >= 76) highDur += d;
+  });
+  const avgPct = weightedSum / totalDur;
+  if (highDur <= 60 && ((z1Dur / totalDur >= 0.65 && avgPct <= 58) || avgPct <= 54)) {
+    return 'Oporavak';
+  }
+
+  // 2. Kontinuirani Over-Under / Criss-Cross blokovi (>= 150s bez pada ispod 76%):
+  // ako bazni rad (76-106%) čini >= 65% bloka, a surgeovi iznad praga traju <= 60s,
+  // bodujemo blok prema efektivnom prosječnom intenzitetu umjesto da ga kratki šprintevi gurnu u Anaerobni.
+  const effectiveSteps = [];
+  let idx = 0;
+  while (idx < steps.length) {
+    if ((steps[idx].power || 0) >= 76) {
+      let end = idx;
+      let blockDur = 0;
+      let baseDur = 0;
+      let maxSurgeDur = 0;
+      while (end < steps.length && (steps[end].power || 0) >= 76) {
+        const d = steps[end].duration || 0;
+        const p = steps[end].power || 0;
+        blockDur += d;
+        if (p <= 106) baseDur += d;
+        else if (d > maxSurgeDur) maxSurgeDur = d;
+        end++;
+      }
+      if (blockDur >= 150 && baseDur > 0 && baseDur / blockDur >= 0.65 && maxSurgeDur <= 60) {
+        let blockWeighted = 0;
+        for (let k = idx; k < end; k++) {
+          const d = steps[k].duration || 0;
+          const p = steps[k].power || 0;
+          const pEff = (d <= 15 && p > 135) ? 120 : p;
+          blockWeighted += pEff * d;
+        }
+        effectiveSteps.push({ duration: blockDur, power: Math.round(blockWeighted / blockDur) });
+        idx = end;
+        continue;
+      }
+    }
+    effectiveSteps.push(steps[idx]);
+    idx++;
+  }
+
+  // 3. Bodovanje po zonama uz prigušenje izoliranih <= 20s neuromuskularnih openera
   const scores = { recovery: 0, endurance: 0, tempo: 0, sweetspot: 0, threshold: 0, vo2max: 0, anaerobic: 0 };
 
-  steps.forEach(s => {
-    const p = s.power;
-    const dur = s.duration;
-    const intensity = p / 100;
+  effectiveSteps.forEach(s => {
+    const p = s.power || 0;
+    const dur = s.duration || 0;
+    const cappedP = (dur <= 20 && p > 145) ? 145 : Math.min(p, 170);
+    const intensity = cappedP / 100;
     const tss = (dur / 3600) * (intensity * intensity) * 100;
 
-    if (p < 55) scores.recovery += tss * 0.1; // Jako sniženo bodovanje (zagrijavanje)
-    else if (p < 76) scores.endurance += tss * 0.5; // Lagano sniženo
+    if (p <= 55) scores.recovery += tss * 0.35; // Sniženo bodovanje (zagrijavanje / hlađenje)
+    else if (p < 76) scores.endurance += tss * 0.55;
     else if (p < 88) scores.tempo += tss * 1.5;
-    else if (p < 95) scores.sweetspot += tss * 2.0; // Sweet Spot je često dominantan cilj
-    else if (p < 106) scores.threshold += tss * 3.0; // Visok intenzitet vuče klasifikaciju
-    else if (p < 121) scores.vo2max += tss * 4.0;
-    else scores.anaerobic += tss * 5.0; // Sprint/Anaerobni jako brzo preuzimaju klasifikaciju
+    else if (p < 95) scores.sweetspot += tss * 2.2; // Sweet Spot je često dominantan cilj
+    else if (p < 106) scores.threshold += tss * 2.8;
+    else if (p < 121) scores.vo2max += tss * 3.5;
+    else scores.anaerobic += tss * (dur <= 20 ? 2.6 : 3.8);
   });
 
-  let maxScore = 0;
+  let maxScore = -1;
   let dominantCategory = 'recovery';
 
   for (const [cat, score] of Object.entries(scores)) {
@@ -501,25 +561,38 @@ function parseZWO(xmlText) {
     const typeStr = node.tagName || '';
     const type = typeStr.toLowerCase();
 
+    const zoneMap = { 1: 50, 2: 65, 3: 82, 4: 98, 5: 113, 6: 135, 7: 160 };
+    const getZonePct = (attrName, def = 65) => {
+      const z = parseInt(getAttr(node, attrName, attrName.toLowerCase()));
+      return (z && zoneMap[z]) ? zoneMap[z] : def;
+    };
+
     if (type === 'warmup' || type === 'cooldown' || type === 'ramp') {
       const duration = parseInt(getAttr(node, 'Duration', 'duration'));
       const powerLowAttr = getAttr(node, 'PowerLow', 'powerlow');
       const powerHighAttr = getAttr(node, 'PowerHigh', 'powerhigh');
+      const singlePwr = getAttr(node, 'Power', 'power');
 
-      let powerLow = powerLowAttr ? parseFloat(powerLowAttr) * 100 : 50;
-      let powerHigh = powerHighAttr ? parseFloat(powerHighAttr) * 100 : 50;
+      let powerLow = powerLowAttr ? parseFloat(powerLowAttr) * 100 : (singlePwr ? parseFloat(singlePwr) * 100 : getZonePct('Zone', 50));
+      let powerHigh = powerHighAttr ? parseFloat(powerHighAttr) * 100 : (singlePwr ? parseFloat(singlePwr) * 100 : getZonePct('Zone', 50));
 
       steps.push({
         name: type === 'warmup' ? 'Zagrijavanje' : (type === 'cooldown' ? 'Hlađenje' : 'Rampa'),
         duration: duration || 0,
         power: Math.round((powerLow + powerHigh) / 2)
       });
-    } else if (type === 'steadystate') {
+    } else if (type === 'steadystate' || type === 'solidstate') {
       const duration = parseInt(getAttr(node, 'Duration', 'duration'));
       const powerAttr = getAttr(node, 'Power', 'power');
-      const power = powerAttr ? parseFloat(powerAttr) * 100 : 65;
+      let power = powerAttr ? parseFloat(powerAttr) * 100 : null;
+      if (power === null) {
+        const pl = getAttr(node, 'PowerLow', 'powerlow');
+        const ph = getAttr(node, 'PowerHigh', 'powerhigh');
+        if (pl || ph) power = ((parseFloat(pl || 0.6) + parseFloat(ph || 0.6)) * 50);
+        else power = getZonePct('Zone', 65);
+      }
       steps.push({
-        name: 'Interval',
+        name: power < 55 ? 'Oporavak' : 'Interval',
         duration: duration || 0,
         power: Math.round(power)
       });
@@ -530,8 +603,21 @@ function parseZWO(xmlText) {
       const onPowAttr = getAttr(node, 'OnPower', 'onpower', 'PowerOn');
       const offPowAttr = getAttr(node, 'OffPower', 'offpower', 'PowerOff');
 
-      const onPow = onPowAttr ? parseFloat(onPowAttr) * 100 : 100;
-      const offPow = offPowAttr ? parseFloat(offPowAttr) * 100 : 50;
+      let onPow = onPowAttr ? parseFloat(onPowAttr) * 100 : null;
+      if (onPow === null) {
+        const onLow = getAttr(node, 'PowerOnLow', 'poweronlow');
+        const onHigh = getAttr(node, 'PowerOnHigh', 'poweronhigh');
+        if (onLow || onHigh) onPow = ((parseFloat(onLow || 1) + parseFloat(onHigh || 1)) * 50);
+        else onPow = getZonePct('PowerOnZone', 100);
+      }
+
+      let offPow = offPowAttr ? parseFloat(offPowAttr) * 100 : null;
+      if (offPow === null) {
+        const offLow = getAttr(node, 'PowerOffLow', 'powerofflow');
+        const offHigh = getAttr(node, 'PowerOffHigh', 'poweroffhigh');
+        if (offLow || offHigh) offPow = ((parseFloat(offLow || 0.5) + parseFloat(offHigh || 0.5)) * 50);
+        else offPow = getZonePct('PowerOffZone', 50);
+      }
 
       for (let r = 0; r < repeat; r++) {
         if (onDur) steps.push({ name: `On (${r + 1}/${repeat})`, duration: onDur, power: Math.round(onPow) });
@@ -539,10 +625,18 @@ function parseZWO(xmlText) {
       }
     } else if (type === 'freeride') {
       const duration = parseInt(getAttr(node, 'Duration', 'duration'));
+      const isFtpTest = getAttr(node, 'ftptest', 'flatroad') === '1' && duration >= 600;
       steps.push({
-        name: 'Slobodna Vožnja',
+        name: isFtpTest ? 'FTP Test' : 'Slobodna Vožnja',
         duration: duration || 0,
-        power: 55
+        power: isFtpTest ? 100 : 55
+      });
+    } else if (type === 'maxeffort') {
+      const duration = parseInt(getAttr(node, 'Duration', 'duration'));
+      steps.push({
+        name: 'Maksimalni Napor',
+        duration: duration || 0,
+        power: 150
       });
     }
   }

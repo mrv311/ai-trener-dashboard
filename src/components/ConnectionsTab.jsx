@@ -1,118 +1,202 @@
-import React from 'react';
-import { CheckCircle, XCircle, Clock, Link as LinkIcon, Activity } from 'lucide-react';
-import SupabaseSyncModule from './SupabaseSyncModule';
+import React, { useState, useEffect } from 'react';
+import { CheckCircle, XCircle, Clock, Link as LinkIcon, Unlink, HardDriveDownload, ShieldCheck, Check, Eye, EyeOff } from 'lucide-react';
 
-export default function ConnectionsTab({ connectionStatus, intervalsId, setId, intervalsKey, setKey, onSave, userId }) {
-  const saveSettings = () => { 
-    if (intervalsKey) setKey(String(intervalsKey).trim());
-    if (intervalsId) setId(String(intervalsId).trim());
-    setTimeout(() => {
-      onSave(); 
-    }, 50);
+export default function ConnectionsTab({ connectionStatus, connectionError, intervalsId, setId, intervalsKey, setKey, onSave, onDisconnect, userId }) {
+  const [draftId, setDraftId] = useState(() => String(intervalsId ?? ''));
+  const [draftKey, setDraftKey] = useState(() => String(intervalsKey ?? ''));
+  const [showKey, setShowKey] = useState(false);
+
+  useEffect(() => {
+    setDraftId(String(intervalsId ?? ''));
+  }, [intervalsId]);
+
+  useEffect(() => {
+    setDraftKey(String(intervalsKey ?? ''));
+  }, [intervalsKey]);
+
+  const isConfigured = Boolean(String(intervalsId ?? '').trim() && String(intervalsKey ?? '').trim());
+
+  const saveSettings = (e) => {
+    if (e) e.preventDefault();
+    const cleanId = String(draftId ?? '').trim();
+    const cleanKey = String(draftKey ?? '').trim();
+
+    const unchanged = cleanId === String(intervalsId ?? '').trim() && cleanKey === String(intervalsKey ?? '').trim();
+    setId(cleanId);
+    setKey(cleanKey);
+
+    if (unchanged && onSave) {
+      onSave();
+    }
+  };
+
+  const handleDisconnect = () => {
+    setDraftId('');
+    setDraftKey('');
+    setId('');
+    setKey('');
+    if (onDisconnect) {
+      onDisconnect();
+    }
   };
 
   return (
-    <div className="max-w-5xl mx-auto bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 animate-in fade-in flex flex-col p-8 mb-8 relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/5 blur-[100px] rounded-full pointer-events-none"></div>
+    <div className="max-w-5xl mx-auto bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 animate-in fade-in flex flex-col p-6 md:p-8 mb-8 relative overflow-hidden">
+      <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 blur-[100px] rounded-full pointer-events-none"></div>
 
       <div className="mb-8 border-b border-zinc-800/80 pb-6 relative z-10">
-        <h2 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
-          Integracije i Spajanje
+        <h2 className="text-xl md:text-2xl font-black text-zinc-100 flex items-center gap-2.5 tracking-tight">
+          Način rada i vanjske veze
         </h2>
-        <p className="text-zinc-400 text-sm mt-2">Povežite aplikaciju sa željenim platformama za analizu i dohvaćanje podataka.</p>
+        <p className="text-zinc-400 text-sm mt-2 leading-relaxed max-w-2xl">
+          ErgVibe radi potpuno samostalno bez obaveznih vanjskih računa. Povezivanje s platformom Intervals.icu je opcionalno.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative z-10">
-        
-        {/* Intervals.icu - Glavna integracija */}
-        <div className="bg-orange-500/5 border border-orange-500/20 rounded-2xl p-6 shadow-lg backdrop-blur-md">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-cyan-500/20 to-emerald-500/10 rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.15)] border border-orange-500/30 flex items-center justify-center">
-              <span className="font-black text-xl text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]">i</span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 relative z-10 items-start">
+
+        {/* 1. Samostalni način rada & .FIT Izvoz */}
+        <div className="bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                <HardDriveDownload className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-zinc-100 text-base">Samostalan način rada</h3>
+                <span className="text-[11px] text-zinc-500">Direktan izvoz treninga</span>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-zinc-100">Intervals.icu</h3>
-              <p className="text-xs text-zinc-400">Glavni izvor tvojih struktuiranih treninga.</p>
-            </div>
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3" /> Uvijek aktivan
+            </span>
           </div>
 
-          <div className="flex items-center justify-between bg-zinc-950/50 p-3 rounded-lg border border-zinc-800 mb-6">
-            <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Status veze:</p>
-            
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Svaki odrađeni trening automatski se sprema u memoriju aplikacije. Po završetku vožnje u tabu <strong className="text-zinc-200">Trenažer</strong> jednim klikom preuzimaš industrijski standardnu <strong className="text-cyan-400">.FIT datoteku</strong> kompatibilnu s:
+          </p>
+
+          <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-zinc-300">
+            <div className="bg-zinc-900/80 border border-zinc-800 p-2.5 rounded-xl flex items-center gap-2">
+              <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" /> Garmin Connect
+            </div>
+            <div className="bg-zinc-900/80 border border-zinc-800 p-2.5 rounded-xl flex items-center gap-2">
+              <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" /> Strava
+            </div>
+            <div className="bg-zinc-900/80 border border-zinc-800 p-2.5 rounded-xl flex items-center gap-2">
+              <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" /> TrainingPeaks
+            </div>
+            <div className="bg-zinc-900/80 border border-zinc-800 p-2.5 rounded-xl flex items-center gap-2">
+              <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" /> Bilo koji analizator
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Intervals.icu sinkronizacija */}
+        <form onSubmit={saveSettings} className="bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400">
+                <LinkIcon className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-zinc-100 text-base">Intervals.icu</h3>
+                <span className="text-[11px] text-zinc-500">Automatski kalendar i upload</span>
+              </div>
+            </div>
+
             {connectionStatus === 'connected' && (
-              <div className="flex items-center text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full text-xs font-bold border border-emerald-500/20 shadow-[0_0_10px_rgba(52,211,153,0.1)]">
-                <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> Spojeno
-              </div>
-            )}
-            {connectionStatus === 'error' && (
-              <div className="flex items-center text-red-400 bg-red-500/10 px-3 py-1 rounded-full text-xs font-bold border border-red-500/20 shadow-[0_0_10px_rgba(248,113,113,0.1)]">
-                <XCircle className="w-3.5 h-3.5 mr-1.5" /> Greška
-              </div>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" /> Povezano
+              </span>
             )}
             {connectionStatus === 'connecting' && (
-              <div className="flex items-center text-orange-400 bg-orange-500/10 px-3 py-1 rounded-full text-xs font-bold border border-orange-500/20 shadow-[0_0_10px_rgba(34,211,238,0.1)]">
-                <Clock className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Obrada...
-              </div>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                <Clock className="w-3 h-3 animate-spin" /> Spajanje...
+              </span>
+            )}
+            {connectionStatus === 'error' && (
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center gap-1" title={connectionError}>
+                <XCircle className="w-3 h-3" /> Greška
+              </span>
             )}
             {connectionStatus === 'idle' && (
-              <div className="flex items-center text-zinc-400 bg-zinc-800/50 px-3 py-1 rounded-full text-xs font-bold border border-zinc-700">
-                Odspojeno
-              </div>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700">
+                Nije spojeno
+              </span>
             )}
           </div>
 
-          <div className="space-y-4">
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Ako želiš automatsko povlačenje treninga iz svog Intervals.icu kalendara i automatski upload po završetku vožnje, unesi svoje pristupne podatke:
+          </p>
+
+          <div className="space-y-3 mt-1">
             <div>
-              <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Intervals ID</label>
-              <input type="text" value={intervalsId} onChange={e => setId(e.target.value)} className="w-full bg-zinc-900/80 border border-zinc-700 rounded-lg p-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 focus:shadow-[0_0_10px_rgba(34,211,238,0.2)] font-mono text-sm text-zinc-200 transition-all placeholder:text-zinc-600" placeholder="npr. 15670332" />
+              <label className="block text-[11px] font-black uppercase tracking-wider text-zinc-400 mb-1.5">
+                Korisnički ID (Athlete ID)
+              </label>
+              <input
+                type="text"
+                value={draftId}
+                onChange={(e) => setDraftId(e.target.value)}
+                placeholder="npr. i12345 ili brojčani ID"
+                className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-3.5 py-2.5 text-zinc-100 font-mono text-xs focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all placeholder:text-zinc-600"
+              />
             </div>
-            
+
             <div>
-              <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">API Key</label>
-              <input type="password" value={intervalsKey} onChange={e => setKey(e.target.value)} className="w-full bg-zinc-900/80 border border-zinc-700 rounded-lg p-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 focus:shadow-[0_0_10px_rgba(34,211,238,0.2)] font-mono text-sm text-zinc-200 transition-all placeholder:text-zinc-600" placeholder="Zalijepi API ključ" />
+              <label className="block text-[11px] font-black uppercase tracking-wider text-zinc-400 mb-1.5">
+                API Ključ (Settings &gt; Developer &gt; API Keys)
+              </label>
+              <div className="relative">
+                <input
+                  type={showKey ? 'text' : 'password'}
+                  value={draftKey}
+                  onChange={(e) => setDraftKey(e.target.value)}
+                  placeholder="Unesi svoj privatni API ključ"
+                  className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-3.5 py-2.5 pr-10 text-zinc-100 font-mono text-xs focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all placeholder:text-zinc-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                  title={showKey ? 'Sakrij ključ' : 'Prikaži ključ'}
+                >
+                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
-            
-            <div className="pt-2">
-              <button onClick={saveSettings} className="w-full bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 py-3 rounded-lg font-bold shadow-[0_4px_15px_rgba(34,211,238,0.3)] hover:shadow-[0_4px_20px_rgba(34,211,238,0.5)] transition-all text-sm uppercase tracking-wider flex items-center justify-center gap-2 border border-cyan-400/30">
+
+            {connectionError && (
+              <p className="text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg p-2.5 font-medium">
+                {connectionError}
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="submit"
+                disabled={!String(draftId ?? '').trim() || !String(draftKey ?? '').trim()}
+                className="flex-1 bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-950 py-3 px-4 rounded-xl font-bold shadow-[0_4px_15px_rgba(34,211,238,0.25)] transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-cyan-400/30"
+              >
                 <LinkIcon className="w-4 h-4" /> Spremi i Poveži
               </button>
+
+              {(isConfigured || String(draftId ?? '').trim() || String(draftKey ?? '').trim()) && (
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  className="px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider bg-zinc-800/80 hover:bg-red-500/15 text-zinc-300 hover:text-red-400 border border-zinc-700 hover:border-red-500/30 transition-all flex items-center justify-center gap-2 shrink-0"
+                >
+                  <Unlink className="w-4 h-4" /> Odspoji
+                </button>
+              )}
             </div>
           </div>
-        </div>
-
-        {/* Ostale, Dummy Integracije */}
-        <div className="space-y-4">
-          <DummyIntegration name="Strava" description="Preuzimanje GPS rute i segmenta." colorClass="text-orange-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]" bgClass="bg-orange-500/10 border-orange-500/20" letter="S" />
-          <DummyIntegration name="Garmin Connect" description="Sinkronizacija wellness metrike i spavanja." colorClass="text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]" bgClass="bg-cyan-500/10 border-cyan-500/20" letter="G" />
-          <DummyIntegration name="TrainingPeaks" description="Uvoz kupljenih trenažnih planova." colorClass="text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.5)]" bgClass="bg-emerald-500/10 border-emerald-500/20" letter="T" />
-          <DummyIntegration name="TrainerDay" description="Preuzimanje workout blockova." colorClass="text-indigo-400 drop-shadow-[0_0_5px_rgba(129,140,248,0.5)]" bgClass="bg-indigo-500/10 border-indigo-500/20" letter="TD" />
-
-          {/* NOVI MODUL - Sinhronizacija s bazom */}
-          <SupabaseSyncModule intervalsId={intervalsId} intervalsKey={intervalsKey} userId={userId} />
-        </div>
+        </form>
 
       </div>
-    </div>
-  );
-}
-
-function DummyIntegration({ name, description, colorClass, bgClass, letter }) {
-  return (
-    <div className="flex items-center justify-between p-4 border border-zinc-800/80 rounded-2xl bg-zinc-900/30 backdrop-blur-sm shadow-sm hover:bg-zinc-800/50 hover:shadow-lg transition-all group">
-      <div className="flex items-center gap-4">
-        <div className={`w-10 h-10 ${bgClass} border rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110`}>
-            <span className={`font-black text-sm ${colorClass}`}>{letter}</span>
-        </div>
-        <div>
-          <h4 className="font-bold text-zinc-100 text-sm flex items-center gap-2 group-hover:text-white transition-colors">
-            {name}
-          </h4>
-          <p className="text-xs text-zinc-500 mt-0.5">{description}</p>
-        </div>
-      </div>
-      <button className="px-5 py-2 bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold transition-all shrink-0 border border-zinc-700 group-hover:border-zinc-600">
-        Poveži
-      </button>
     </div>
   );
 }

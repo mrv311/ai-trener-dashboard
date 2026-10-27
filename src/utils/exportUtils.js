@@ -3,7 +3,7 @@
 * Podržava i stari format (workoutHistory) i novi JSONB format (stream_data).
 */
 import { FitWriter } from '@markw65/fit-file-writer';
-import { calculateDistanceStream } from './virtualDistance';
+import { calculateDistanceStream } from './virtualDistance.js';
 
 const buildTrackpoint = (pointTime, power, hr, cadence, distanceM, speedKmh) => {
   let tp = `
@@ -102,7 +102,7 @@ const downloadTCX = (tcxString, workoutName, startTime) => {
  * Exportira trening iz živog workoutHistory arraya (koristi se u TrainerTab).
  * Originalna funkcionalnost — sada koristi zajedničke helper-e.
  */
-export const exportToTCX = (workoutHistory, workoutName = "Trening", sessionStartTime = null) => {
+export const exportToTCX = (workoutHistory, workoutName = "Trening", sessionStartTime = null, userMassKg = 75) => {
   if (!workoutHistory || workoutHistory.length === 0) return null;
 
   const durationSecs = workoutHistory[workoutHistory.length - 1].time;
@@ -116,7 +116,7 @@ export const exportToTCX = (workoutHistory, workoutName = "Trening", sessionStar
   }
 
   // Generiraj stream s brzinom i udaljenosti
-  const distResult = calculateDistanceStream(workoutHistory, 75); // 75kg default ako nemamo iz profila
+  const distResult = calculateDistanceStream(workoutHistory, userMassKg || 75);
   const enrichedStream = distResult.stream;
 
   let trackpoints = '';
@@ -154,30 +154,42 @@ export const exportTCXFromStream = (streamData, title = "Trening", startedAtISO)
 };
 
 /**
- * Pomoćna funkcija za kreiranje binarnih FIT formata
+ * Pomoćna funkcija za kreiranje binarnih FIT formata (kompatibilno s Garmin Connect, Strava, Intervals.icu, Wahoo)
  */
 const generateFitData = (samples, startTime) => {
   const fw = new FitWriter();
   const fitStart = fw.time(startTime);
 
+  const durationSecs = samples.length > 0
+    ? (samples[samples.length - 1].t !== undefined ? samples[samples.length - 1].t : samples[samples.length - 1].time) || 0
+    : 0;
+  const endTime = new Date(startTime.getTime() + durationSecs * 1000);
+  const fitEnd = fw.time(endTime);
+
   fw.writeMessage("file_id", {
     type: "activity",
     manufacturer: "development",
+    product: 1,
+    serial_number: 0x45524756, // "ERGV"
     time_created: fitStart
   }, null, true);
 
-  const durationSecs = samples.length > 0 ? (samples[samples.length - 1].t !== undefined ? samples[samples.length - 1].t : samples[samples.length - 1].time) : 0;
+  fw.writeMessage("event", {
+    timestamp: fitStart,
+    event: "timer",
+    event_type: "start"
+  });
 
-  fw.writeMessage("session", {
-    start_time: fitStart,
-    total_elapsed_time: durationSecs,
-    total_timer_time: durationSecs,
-  }, null, true);
+  let sumPower = 0; let countPower = 0; let maxPower = 0;
+  let sumHr = 0; let countHr = 0; let maxHr = 0;
+  let sumCad = 0; let countCad = 0; let maxCad = 0;
+  let maxSpeedMs = 0;
+  let totalDistance = 0;
 
-  samples.forEach((sample) => {
+  samples.forEach((sample, idx) => {
     const t = sample.t !== undefined ? sample.t : sample.time;
     const p = sample.p !== undefined ? sample.p : sample.power;
-    const hr = sample.hr !== undefined ? sample.hr : sample.hr;
+    const hr = sample.hr;
     const cad = sample.cad !== undefined ? sample.cad : sample.cadence;
     const dist = sample.dist !== undefined ? sample.dist : null;
     const spdKmh = sample.spd !== undefined ? sample.spd : null;
@@ -185,17 +197,130 @@ const generateFitData = (samples, startTime) => {
     const pTime = new Date(startTime.getTime() + t * 1000);
     const record = { timestamp: fw.time(pTime) };
 
-    if (dist != null && dist > 0) record.distance = dist;
-    if (spdKmh != null && spdKmh > 0) record.speed = spdKmh / 3.6; // Pretvaranje km/h u m/s za FIT
-    if (hr > 0) record.heart_rate = Math.round(hr);
-    if (cad > 0) record.cadence = Math.round(cad);
-    if (p > 0) record.power = Math.round(p);
+    if (dist != null && dist >= 0) {
+      record.distance = dist;
+      if (dist > totalDistance) totalDistance = dist;
+    }
+    if (spdKmh != null && spdKmh >= 0) {
+      const spdMs = spdKmh / 3.6; // Pretvaranje km/h u m/s za FIT
+      record.speed = spdMs;
+      if (spdMs > maxSpeedMs) maxSpeedMs = spdMs;
+    }
+    if (hr > 0) {
+      const roundedHr = Math.round(hr);
+      record.heart_rate = roundedHr;
+      sumHr += roundedHr;
+      countHr++;
+      if (roundedHr > maxHr) maxHr = roundedHr;
+    }
+    if (cad > 0) {
+      const roundedCad = Math.round(cad);
+      record.cadence = roundedCad;
+      sumCad += roundedCad;
+      countCad++;
+      if (roundedCad > maxCad) maxCad = roundedCad;
+    }
+    if (p != null && p >= 0) {
+      const roundedP = Math.round(p);
+      record.power = roundedP;
+      if (roundedP > 0) {
+        sumPower += roundedP;
+        countPower++;
+        if (roundedP > maxPower) maxPower = roundedP;
+      }
+    }
 
-    fw.writeMessage("record", record);
+    fw.writeMessage("record", record, null, idx === samples.length - 1);
   });
+
+  fw.writeMessage("event", {
+    timestamp: fitEnd,
+    event: "timer",
+    event_type: "stop_all"
+  }, null, true);
+
+  const avgPower = countPower > 0 ? Math.round(sumPower / countPower) : 0;
+  const avgHr = countHr > 0 ? Math.round(sumHr / countHr) : 0;
+  const avgCad = countCad > 0 ? Math.round(sumCad / countCad) : 0;
+  const avgSpeedMs = durationSecs > 0 && totalDistance > 0 ? totalDistance / durationSecs : 0;
+  const totalWorkJ = Math.round(sumPower); // 1 uzorak u sekundi = J
+
+  const summaryBase = {
+    timestamp: fitEnd,
+    start_time: fitStart,
+    total_elapsed_time: durationSecs,
+    total_timer_time: durationSecs,
+    total_distance: totalDistance,
+    sport: "cycling",
+    sub_sport: "indoor_cycling",
+    event: "lap",
+    event_type: "stop"
+  };
+
+  if (avgPower > 0) {
+    summaryBase.avg_power = avgPower;
+    summaryBase.max_power = maxPower;
+    summaryBase.total_work = totalWorkJ;
+    summaryBase.total_calories = Math.round(totalWorkJ / 1000);
+  }
+  if (avgHr > 0) {
+    summaryBase.avg_heart_rate = avgHr;
+    summaryBase.max_heart_rate = maxHr;
+  }
+  if (avgCad > 0) {
+    summaryBase.avg_cadence = avgCad;
+    summaryBase.max_cadence = maxCad;
+  }
+  if (avgSpeedMs > 0) {
+    summaryBase.avg_speed = avgSpeedMs;
+    summaryBase.max_speed = maxSpeedMs;
+  }
+
+  fw.writeMessage("lap", summaryBase, null, true);
+
+  fw.writeMessage("session", {
+    ...summaryBase,
+    first_lap_index: 0,
+    num_laps: 1,
+    trigger: "activity_end"
+  }, null, true);
+
+  fw.writeMessage("activity", {
+    timestamp: fitEnd,
+    total_timer_time: durationSecs,
+    num_sessions: 1,
+    type: "manual",
+    event: "activity",
+    event_type: "stop",
+    local_timestamp: fitEnd - endTime.getTimezoneOffset() * 60
+  }, null, true);
 
   const myFitData = fw.finish();
   return new Uint8Array(myFitData.buffer, myFitData.byteOffset, myFitData.byteLength);
+};
+
+/**
+ * Generira binarni FIT Uint8Array iz živog workoutHistory niza (za upload ili preuzimanje).
+ */
+export const buildFitUint8Array = (workoutHistory, sessionStartTime = null, userMassKg = 75) => {
+  if (!workoutHistory || workoutHistory.length === 0) return null;
+  const durationSecs = workoutHistory[workoutHistory.length - 1].time;
+
+  let startTime;
+  if (sessionStartTime) {
+    startTime = new Date(sessionStartTime);
+  } else {
+    startTime = new Date();
+    startTime.setSeconds(startTime.getSeconds() - durationSecs);
+  }
+
+  const distResult = calculateDistanceStream(workoutHistory, userMassKg || 75);
+  const enrichedStream = distResult.stream;
+
+  return {
+    uint8: generateFitData(enrichedStream, startTime),
+    startTime
+  };
 };
 
 /**
@@ -215,28 +340,16 @@ const downloadFIT = (uint8, workoutName, startTime) => {
   setTimeout(() => URL.revokeObjectURL(url), 100);
 };
 
-export const exportToFIT = (workoutHistory, workoutName = "Trening", sessionStartTime = null) => {
-  if (!workoutHistory || workoutHistory.length === 0) return null;
-  const durationSecs = workoutHistory[workoutHistory.length - 1].time;
-
-  let startTime;
-  if (sessionStartTime) {
-    startTime = new Date(sessionStartTime);
-  } else {
-    startTime = new Date();
-    startTime.setSeconds(startTime.getSeconds() - durationSecs);
-  }
-
-  const distResult = calculateDistanceStream(workoutHistory, 75);
-  const enrichedStream = distResult.stream;
-
-  const fitArray = generateFitData(enrichedStream, startTime);
-  downloadFIT(fitArray, workoutName, startTime);
+export const exportToFIT = (workoutHistory, workoutName = "Trening", sessionStartTime = null, userMassKg = 75) => {
+  const built = buildFitUint8Array(workoutHistory, sessionStartTime, userMassKg);
+  if (!built) return null;
+  downloadFIT(built.uint8, workoutName, built.startTime);
 };
 
 export const exportFITFromStream = (streamData, title = "Trening", startedAtISO) => {
   if (!streamData || streamData.length === 0) return null;
-  const startTime = new Date(startedAtISO);
-  const fitArray = generateFitData(streamData, startTime);
-  downloadFIT(fitArray, title, startTime);
+  const startTime = startedAtISO ? new Date(startedAtISO) : new Date();
+  const safeStart = isNaN(startTime.getTime()) ? new Date() : startTime;
+  const fitArray = generateFitData(streamData, safeStart);
+  downloadFIT(fitArray, title, safeStart);
 };

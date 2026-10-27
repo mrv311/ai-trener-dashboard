@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare, Sparkles } from 'lucide-react';
+import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare, Sparkles, Search } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/performanceMetrics';
 import { parseWorkoutFile } from '../utils/workoutParser';
 import { calculateCogganMetrics, expandStepsToSeconds } from '../utils/performanceMetrics';
@@ -16,6 +16,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
   const [editCategory, setEditCategory] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [selectedDetailWorkout, setSelectedDetailWorkout] = useState(null);
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split('T')[0]);
@@ -37,7 +38,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
     if (!selectedDetailWorkout || !scheduleDate) return;
     const records = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
     
-    const metrics = getWorkoutMetrics(selectedDetailWorkout);
+    const metrics = getCachedWorkoutMetrics(selectedDetailWorkout);
 
     const newRecord = {
       ...selectedDetailWorkout,
@@ -49,6 +50,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
       workout_source: 'library'
     };
     localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify([...records, newRecord]));
+    window.dispatchEvent(new CustomEvent('local-workouts-updated'));
     setScheduleSuccess(true);
     setTimeout(() => {
       setScheduleSuccess(false);
@@ -284,7 +286,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
         </div>
       ) : (
         <div className="w-full">
-          {!activeFolder ? (
+          {!activeFolder && !searchQuery.trim() ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 md:gap-6">
               {sortedCategories.map(cat => (
                 <button 
@@ -296,7 +298,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
                     <Folder className="w-12 h-12" fill="currentColor" fillOpacity={0.2} />
                   </div>
                   <h3 className="text-xl font-black tracking-tight">{cat}</h3>
-                  <p className="text-xs font-bold opacity-60 uppercase tracking-widest mt-1">{groupedWorkouts[cat].length} treninga</p>
+                  <p className="text-xs font-bold opacity-60 uppercase tracking-widest mt-1">{(groupedWorkouts[cat] || []).length} treninga</p>
                 </button>
               ))}
               {workouts.length === 0 && !loading && !error && (
@@ -312,11 +314,24 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-4 bg-zinc-900/40 rounded-2xl p-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-xl bg-zinc-950/50 shadow-inner">
-                    <FolderOpen className="w-6 h-6 text-zinc-400" />
+                    {activeFolder ? <FolderOpen className="w-6 h-6 text-zinc-400" /> : <Search className="w-6 h-6 text-orange-500" />}
                   </div>
                   <div>
-                    <h3 className="text-xl font-black tracking-tight text-white">{activeFolder}</h3>
-                    <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">{(groupedWorkouts[activeFolder] || []).length} treninga u mapi</p>
+                    <h3 className="text-xl font-black tracking-tight text-white">
+                      {activeFolder ? activeFolder : `Pretraga: "${searchQuery}"`}
+                    </h3>
+                    <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">
+                      {(() => {
+                        const baseList = activeFolder ? (groupedWorkouts[activeFolder] || []) : workouts;
+                        const count = searchQuery.trim()
+                          ? baseList.filter(w => {
+                              const q = searchQuery.toLowerCase();
+                              return (w.title && w.title.toLowerCase().includes(q)) || (w.description && w.description.toLowerCase().includes(q));
+                            }).length
+                          : baseList.length;
+                        return `${count} treninga ${activeFolder ? 'u mapi' : 'pronađeno'}`;
+                      })()}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center flex-wrap gap-3 w-full sm:w-auto">
@@ -341,15 +356,35 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
                       {sortOrder === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}
                     </button>
                   </div>
-                  <button onClick={() => setActiveFolder(null)} className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-zinc-800/50 border border-zinc-700/50 text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all font-bold text-sm shadow-sm">
-                    <ArrowLeft className="w-4 h-4" /> Nazad na mape
-                  </button>
+                  {activeFolder ? (
+                    <button onClick={() => setActiveFolder(null)} className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-zinc-800/50 border border-zinc-700/50 text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all font-bold text-sm shadow-sm">
+                      <ArrowLeft className="w-4 h-4" /> Nazad na mape
+                    </button>
+                  ) : (
+                    <button onClick={() => setSearchQuery('')} className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-zinc-800/50 border border-zinc-700/50 text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all font-bold text-sm shadow-sm">
+                      <X className="w-4 h-4" /> Prikaži mape
+                    </button>
+                  )}
                 </div>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 {(() => {
-                  const items = [...(groupedWorkouts[activeFolder] || [])];
+                  let items = activeFolder ? [...(groupedWorkouts[activeFolder] || [])] : [...workouts];
+                  if (searchQuery.trim()) {
+                    const q = searchQuery.toLowerCase();
+                    items = items.filter(w => 
+                      (w.title && w.title.toLowerCase().includes(q)) || 
+                      (w.description && w.description.toLowerCase().includes(q))
+                    );
+                  }
+                  if (items.length === 0) {
+                    return (
+                      <div className="col-span-full py-16 text-center text-zinc-500 font-bold">
+                        Nema pronađenih treninga za pojam "${searchQuery}".
+                      </div>
+                    );
+                  }
                   items.sort((a, b) => {
                     if (sortBy === 'name') {
                       return sortOrder === 'asc' 
@@ -363,8 +398,8 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
                     } else if (sortBy === 'duration') {
                       valA = a.duration_seconds; valB = b.duration_seconds;
                     } else {
-                      const metricsA = getWorkoutMetrics(a);
-                      const metricsB = getWorkoutMetrics(b);
+                      const metricsA = getCachedWorkoutMetrics(a);
+                      const metricsB = getCachedWorkoutMetrics(b);
                       if (sortBy === 'tss') { valA = metricsA.tss; valB = metricsB.tss; }
                       if (sortBy === 'np') { valA = metricsA.np; valB = metricsB.np; }
                     }
@@ -433,13 +468,18 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
+                        {!activeFolder && (
+                          <span className="flex items-center px-2.5 h-8 rounded-full bg-zinc-950 border border-zinc-800 text-[10px] font-bold text-orange-400 shrink-0">
+                            {workout.category}
+                          </span>
+                        )}
                         <div className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-950 border border-zinc-800 text-xs font-black text-zinc-400 shadow-sm shadow-black shrink-0">
                           {workout.difficulty_score}
                         </div>
                       </div>
                     </div>
                     
-                    <p className="text-zinc-500 text-sm mb-5 leading-relaxed flex-1 relative z-10">
+                    <p className="text-zinc-500 text-sm mb-5 leading-relaxed flex-1 relative z-10 line-clamp-3">
                       {workout.description}
                     </p>
 
@@ -472,7 +512,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
                           <span className="text-zinc-300 font-extrabold text-[9px] tracking-wider whitespace-nowrap">{formatTime(workout.duration_seconds)}</span>
                         </div>
                         {(() => {
-                          const metrics = getWorkoutMetrics(workout);
+                          const metrics = getCachedWorkoutMetrics(workout);
                           return (
                             <>
                               <div className="flex bg-zinc-950 px-1 py-1 rounded border border-zinc-800 items-center justify-center gap-1 shadow-inner shrink-0 cursor-default" title={`Prosječna snaga: ${metrics.avg}W`}>
@@ -547,7 +587,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
 
                {/* METRIKE */}
                {(() => {
-                 const m = getWorkoutMetrics(selectedDetailWorkout);
+                 const m = getCachedWorkoutMetrics(selectedDetailWorkout);
                  return (
                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
                       <div className="bg-zinc-950/50 p-4 border border-zinc-800/80 rounded-xl relative overflow-hidden">
