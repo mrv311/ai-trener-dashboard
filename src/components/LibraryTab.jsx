@@ -196,7 +196,7 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
   };
 
   const getWorkoutMetrics = (workout) => {
-    if (!workout.steps || workout.steps.length === 0) return { np: 0, avg: 0, tss: 0, if_factor: "0.00" };
+    if (!workout || !workout.steps || workout.steps.length === 0) return { np: 0, avg: 0, tss: 0, if_factor: "0.00" };
     
     const powerArray = expandStepsToSeconds(workout.steps, ftp);
     const metrics = calculateCogganMetrics(powerArray, ftp);
@@ -207,6 +207,19 @@ export default function LibraryTab({ onSelectWorkout, ftp = 250, userId }) {
       tss: metrics.tss,
       if_factor: metrics.ifFactor
     };
+  };
+
+  const metricsMap = useMemo(() => {
+    const map = new Map();
+    workouts.forEach(w => {
+      map.set(w.id, getWorkoutMetrics(w));
+    });
+    return map;
+  }, [workouts, ftp]);
+
+  const getCachedWorkoutMetrics = (workout) => {
+    if (!workout) return { np: 0, avg: 0, tss: 0, if_factor: "0.00" };
+    return metricsMap.get(workout.id) || getWorkoutMetrics(workout);
   };
 
   const getFolderStyles = (cat) => {
