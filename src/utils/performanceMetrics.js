@@ -128,6 +128,74 @@ export function calculateVI(np, avgPower) {
   return Number((np / avgPower).toFixed(2));
 }
 
+/**
+ * Računa Aerobic Decoupling (Pw:HR %) prema dr. Andrewu Cogganu.
+ * Uspoređuje Efficiency Factor (EF = NP / Avg HR) prve i druge polovice glavnog dijela treninga.
+ * Pozitivna vrijednost (< 5% stabilna baza, > 5% zamor/kardijalni drift) označava rast pulsa u odnosu na snagu.
+ *
+ * @param {Array<Object>} streamData - Niz točaka s poljima (watts|power|p) i (hr|heartrate|heartRate)
+ * @param {number} [ftp=250] - FTP sportaša
+ * @returns {{ decoupling: number, efFirst: number, efSecond: number } | null}
+ */
+export function calculateAerobicDecoupling(streamData, ftp = 250) {
+  if (!Array.isArray(streamData) || streamData.length < 300) return null;
+
+  const normalized = [];
+  for (let i = 0; i < streamData.length; i++) {
+    const pt = streamData[i];
+    if (!pt) continue;
+    const p = Number(pt.watts ?? pt.power ?? pt.p ?? 0);
+    const hr = Number(pt.hr ?? pt.heartrate ?? pt.heartRate ?? 0);
+    const t = pt.time ?? pt.t ?? i;
+    if (hr > 40) {
+      normalized.push({ t, p: p > 0 ? p : 0, hr });
+    }
+  }
+
+  // Treba nam barem ~10 minuta validnih HR+Power točaka
+  if (normalized.length < 300) return null;
+
+  // Ako trening traje duže (>35 min), preskačemo prvih ~8% (zagrijavanje) i zadnjih ~5% (hlađenje)
+  // kako početno dizanje pulsa ne bi umjetno iskrivilo aerobni drift
+  let core = normalized;
+  if (normalized.length >= 1000) {
+    const startIdx = Math.floor(normalized.length * 0.08);
+    const endIdx = Math.floor(normalized.length * 0.95);
+    if (endIdx - startIdx >= 400) {
+      core = normalized.slice(startIdx, endIdx);
+    }
+  }
+
+  const mid = Math.floor(core.length / 2);
+  const firstHalf = core.slice(0, mid);
+  const secondHalf = core.slice(mid);
+
+  if (firstHalf.length < 120 || secondHalf.length < 120) return null;
+
+  const m1 = calculateCogganMetrics(firstHalf.map(x => x.p), ftp);
+  const m2 = calculateCogganMetrics(secondHalf.map(x => x.p), ftp);
+
+  const avgHr1 = firstHalf.reduce((s, x) => s + x.hr, 0) / firstHalf.length;
+  const avgHr2 = secondHalf.reduce((s, x) => s + x.hr, 0) / secondHalf.length;
+
+  const pwr1 = m1.np > 0 ? m1.np : m1.avgPower;
+  const pwr2 = m2.np > 0 ? m2.np : m2.avgPower;
+
+  if (!pwr1 || !pwr2 || avgHr1 <= 0 || avgHr2 <= 0) return null;
+
+  const ef1 = pwr1 / avgHr1;
+  const ef2 = pwr2 / avgHr2;
+  if (ef1 <= 0) return null;
+
+  const decoupling = ((ef1 - ef2) / ef1) * 100;
+
+  return {
+    decoupling: Number(decoupling.toFixed(1)),
+    efFirst: Number(ef1.toFixed(2)),
+    efSecond: Number(ef2.toFixed(2))
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // eFTP (Estimated FTP) Detection — Single-Workout Analysis
 // ─────────────────────────────────────────────────────────────────────────────

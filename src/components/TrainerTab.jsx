@@ -2,9 +2,8 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X } from 'lucide-react';
 import TrainerModals from './trainer/TrainerModals';
 import TrainerGraph from './trainer/TrainerGraph';
-import { getZoneColorForTrainer } from '../utils/performanceMetrics';
+import { getZoneColorForTrainer, calculateCogganMetrics, calculateEF, calculateVI, calculateAerobicDecoupling } from '../utils/performanceMetrics';
 import { exportToTCX, exportToFIT, buildFitUint8Array } from '../utils/exportUtils';
-import { calculateCogganMetrics } from '../utils/performanceMetrics';
 import { calculateDistanceStream } from '../utils/virtualDistance';
 import { parseIntervalsCode } from '../utils/workoutParser';
 import { uploadActivityToIntervals } from '../services/intervalsApi';
@@ -72,7 +71,7 @@ class PowerMatchPID {
 
 const pidController = new PowerMatchPID();
 
-export default function TrainerTab({ profile, userId, workoutFromCalendar, onClose, intervalsId, intervalsKey }) {
+export default function TrainerTab({ profile, userId, workoutFromCalendar, onClose, intervalsId, intervalsKey, workouts = [], wellnessData = {}, onAddWorkoutToCalendar }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [sessionStartTime, setSessionStartTime] = useState(null);
@@ -749,9 +748,14 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     const avgPower = pwrData.length ? Math.round(pwrData.reduce((a, b) => a + b.power, 0) / pwrData.length) : 0;
     const avgHr = hrData.length ? Math.round(hrData.reduce((a, b) => a + b.hr, 0) / hrData.length) : 0;
     const avgCadence = cadData.length ? Math.round(cadData.reduce((a, b) => a + b.cadence, 0) / cadData.length) : 0;
+    const maxPower = pwrData.length ? Math.max(...pwrData.map(x => x.power)) : 0;
+    const ef = calculateEF(finalMetrics.np, avgHr);
+    const vi = calculateVI(finalMetrics.np, avgPower);
+    const decouplingInfo = calculateAerobicDecoupling(workoutHistory, profile?.ftp || 200);
 
     setSummaryStats({
       avgPower,
+      maxPower,
       avgHr,
       avgCadence,
       totalDur: elapsedTime,
@@ -760,6 +764,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       ifFactor: finalMetrics.ifFactor,
       tss: finalMetrics.tss,
       workKj: finalMetrics.workKj,
+      ef,
+      vi,
+      decoupling: decouplingInfo?.decoupling ?? null,
+      efFirst: decouplingInfo?.efFirst ?? null,
+      efSecond: decouplingInfo?.efSecond ?? null,
       distanceKm,
       avgSpeedKmh
     });
@@ -950,6 +959,10 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         handleReset={handleCloseWorkout}
         handleExportTcx={() => exportToTCX(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime, profile?.weight || 75)}
         handleExportFit={() => exportToFIT(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime, profile?.weight || 75)}
+        athleteProfile={profile}
+        liveWorkouts={workouts}
+        wellnessData={wellnessData}
+        onAddWorkoutToCalendar={onAddWorkoutToCalendar}
       />
 
       {/* GORNJA TRAKA: Bluetooth gumbi */}

@@ -3,7 +3,7 @@ import {
   Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart,
   User, Loader2, Monitor, LogOut, Link as LinkIcon,
   MoreHorizontal, X, Database, TrendingUp, ClipboardList, PanelLeftClose, PanelLeftOpen,
-  LogIn, HelpCircle
+  LogIn, HelpCircle, Sparkles
 } from 'lucide-react';
 
 import CalendarTab from './components/CalendarTab';
@@ -12,6 +12,7 @@ import FitnessTab from './components/FitnessTab';
 import ProfileTab from './components/ProfileTab';
 import ConnectionsTab from './components/ConnectionsTab';
 import LibraryTab from './components/LibraryTab';
+import AICoachTab from './components/AICoachTab';
 import AuthPage from './components/AuthPage';
 import AuthModal from './components/AuthModal';
 import OnboardingModal from './components/OnboardingModal';
@@ -37,6 +38,7 @@ const TABS = {
   calendar: { label: 'Kalendar', icon: <CalendarIcon />, component: CalendarTab },
   library: { label: 'Knjižnica', icon: <Database />, component: LibraryTab },
   trainer: { label: 'Trenažer', icon: <Monitor />, component: TrainerTab },
+  aiCoach: { label: 'AI Trener', shortLabel: 'AI Trener', icon: <Sparkles />, component: AICoachTab },
   fitness: { label: 'Kondicija', icon: <Activity />, component: FitnessTab },
   profile: { label: 'Profil', icon: <User />, component: ProfileTab },
   connections: { label: 'Veze', icon: <LinkIcon />, component: ConnectionsTab }
@@ -247,11 +249,11 @@ export default function App() {
         </div>
 
         <nav className="mt-6 flex-1 px-3 space-y-2 overflow-y-auto hide-scrollbar">
-          {['calendar', 'library', 'trainer', 'fitness', 'profile'].map(tabId => (
+          {['calendar', 'library', 'trainer', 'aiCoach', 'fitness', 'profile'].map(tabId => (
             <NavItem
               key={tabId}
               icon={TABS[tabId].icon}
-              label={TABS[tabId].label.split(' ')[0]} // Kraći labeli za sidebar
+              label={TABS[tabId].shortLabel || TABS[tabId].label.split(' ')[0]} // Kraći labeli za sidebar
               active={activeTab === tabId}
               onClick={() => handleTabChange(tabId)}
               collapsed={isSidebarCollapsed}
@@ -374,9 +376,22 @@ export default function App() {
                 workoutFromCalendar={selectedWorkout}
                 intervalsId={intervalsId}
                 intervalsKey={intervalsKey}
+                workouts={workouts}
+                wellnessData={wellnessData}
+                onAddWorkoutToCalendar={handleCreateWorkout}
                 onClose={() => { setSelectedWorkout(null); handleTabChange('calendar'); }}
               />
             </div>
+
+            {activeTab === 'aiCoach' && (
+              <AICoachTab
+                profile={athleteProfile}
+                workouts={workouts}
+                wellnessData={wellnessData}
+                onAddWorkoutToCalendar={handleCreateWorkout}
+                onStartWorkoutInTrainer={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
+              />
+            )}
 
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
 
@@ -423,6 +438,7 @@ export default function App() {
           <div className="flex justify-around items-center h-14">
             <MobileTab icon={<CalendarIcon />} label="Kalendar" active={activeTab === 'calendar'} onClick={() => handleTabChange('calendar')} />
             <MobileTab icon={<Monitor />} label="Trenažer" active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
+            <MobileTab icon={<Sparkles />} label="AI Trener" active={activeTab === 'aiCoach'} onClick={() => handleTabChange('aiCoach')} />
             <MobileTab icon={<ClipboardList />} label="Kondicija" active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
             <MobileTab icon={<MoreHorizontal />} label="Više" active={['library', 'profile', 'connections'].includes(activeTab) || isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
           </div>

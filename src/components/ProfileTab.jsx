@@ -374,6 +374,7 @@ export default function ProfileTab({
         intervalsKey={intervalsKey}
         userId={userId}
         userProfile={profile}
+        workouts={workouts}
       />
 
     </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Square, Award, CheckCircle2, Download, Route, Gauge, Loader2, AlertCircle, Clock, RefreshCw } from 'lucide-react';
+import WorkoutAIAnalysisPanel from '../ai/WorkoutAIAnalysisPanel';
 
 const formatDurationClock = (totalSeconds) => {
   const secs = Math.max(0, Math.round(totalSeconds || 0));
@@ -27,7 +28,11 @@ export default function TrainerModals({
   onRetryIntervalsUpload,
   handleReset,
   handleExportTcx,
-  handleExportFit
+  handleExportFit,
+  athleteProfile,
+  liveWorkouts = [],
+  wellnessData = {},
+  onAddWorkoutToCalendar
 }) {
   return (
     <>
@@ -51,7 +56,7 @@ export default function TrainerModals({
       {/* MODAL: Završetak treninga */}
       {isFinished && summaryStats && (
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm rounded-[32px] flex items-center justify-center p-4 md:p-6 animate-in zoom-in-95 duration-300">
-          <div className="bg-zinc-900 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl flex flex-col items-center text-center border border-zinc-800 max-h-full overflow-y-auto custom-scrollbar">
+          <div className="bg-zinc-900 rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl flex flex-col items-center text-center border border-zinc-800 max-h-full overflow-y-auto custom-scrollbar">
             <div className="bg-orange-500/10 border border-orange-500/20 shadow-[inset_0_0_15px_rgba(34,211,238,0.1)] p-3 md:p-4 rounded-full mb-3 md:mb-4 shrink-0">
               <Award className="w-10 h-10 md:w-14 md:h-14 text-orange-500 drop-shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
             </div>
@@ -109,8 +114,8 @@ export default function TrainerModals({
               </div>
             </div>
 
-            {/* Coggan metrike: NP, IF, TSS, Rad */}
-            <div className="grid grid-cols-4 gap-2 w-full mb-5 shrink-0">
+            {/* Coggan metrike: NP, IF, TSS, Rad, EF, Decoupling */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 w-full mb-4 shrink-0">
               <div className="bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
                 <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">NP</p>
                 <p className="text-base font-black text-zinc-200 tabular-nums">{summaryStats.np || 0} <span className="text-[10px] text-zinc-500">W</span></p>
@@ -127,6 +132,55 @@ export default function TrainerModals({
                 <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">Rad</p>
                 <p className="text-base font-black text-zinc-200 tabular-nums">{summaryStats.workKj || 0} <span className="text-[10px] text-zinc-500">kJ</span></p>
               </div>
+              <div className="bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">EF</p>
+                <p className="text-base font-black text-cyan-400 tabular-nums">{summaryStats.ef || '-'}</p>
+              </div>
+              <div className="bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">Pw:HR</p>
+                <p className={`text-base font-black tabular-nums ${
+                  summaryStats.decoupling != null
+                    ? summaryStats.decoupling <= 5 ? 'text-emerald-400' : 'text-amber-400'
+                    : 'text-zinc-400'
+                }`}>
+                  {summaryStats.decoupling != null ? `${summaryStats.decoupling}%` : '-'}
+                </p>
+              </div>
+            </div>
+
+            {/* AI Analiza završenog treninga */}
+            <div className="w-full mb-4 shrink-0">
+              <WorkoutAIAnalysisPanel
+                compact
+                activity={{
+                  id: `trainer_done_${new Date().toISOString().slice(0, 10)}_${workoutFromCalendar?.title || 'free'}`,
+                  title: workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja',
+                  date: new Date().toISOString().slice(0, 10),
+                  category: workoutFromCalendar?.category || 'Trenažer'
+                }}
+                metrics={{
+                  np: summaryStats.np,
+                  avgPower: summaryStats.avgPower,
+                  maxPower: summaryStats.maxPower || 0,
+                  avgHr: summaryStats.avgHr,
+                  avgCadence: summaryStats.avgCadence,
+                  durationMin: Math.round((summaryStats.totalDur || 0) / 60),
+                  plannedDurationMin: workoutFromCalendar?.duration || 0,
+                  tss: summaryStats.tss,
+                  plannedTss: workoutFromCalendar?.tss || 0,
+                  ef: summaryStats.ef,
+                  vi: summaryStats.vi,
+                  decoupling: summaryStats.decoupling,
+                  efFirst: summaryStats.efFirst,
+                  efSecond: summaryStats.efSecond,
+                  workKj: summaryStats.workKj,
+                  ftp: athleteProfile?.ftp || 270
+                }}
+                athleteProfile={athleteProfile}
+                liveWorkouts={liveWorkouts}
+                wellnessData={wellnessData}
+                onAddWorkoutToCalendar={onAddWorkoutToCalendar}
+              />
             </div>
 
             {/* Status spremanja i opcionalne sinkronizacije */}

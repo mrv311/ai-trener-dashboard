@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Clock, Link as LinkIcon, Unlink, HardDriveDownload, ShieldCheck, Check, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Link as LinkIcon, Unlink, HardDriveDownload, ShieldCheck, Check, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { getGeminiConfigStatus, setCustomGeminiApiKey } from '../services/geminiService';
 
 export default function ConnectionsTab({ connectionStatus, connectionError, intervalsId, setId, intervalsKey, setKey, onSave, onDisconnect, userId }) {
   const [draftId, setDraftId] = useState(() => String(intervalsId ?? ''));
   const [draftKey, setDraftKey] = useState(() => String(intervalsKey ?? ''));
   const [showKey, setShowKey] = useState(false);
+  const [geminiStatus, setGeminiStatus] = useState(() => getGeminiConfigStatus());
+  const [customGeminiDraft, setCustomGeminiDraft] = useState('');
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
 
   useEffect(() => {
     setDraftId(String(intervalsId ?? ''));
@@ -195,6 +199,78 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
             </div>
           </div>
         </form>
+
+        {/* 3. Google Gemini AI Trener integracija */}
+        <div className="lg:col-span-2 bg-zinc-950/60 border border-cyan-500/20 rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-zinc-100 text-base">Google Gemini AI Trener</h3>
+                <span className="text-[11px] text-zinc-500">Post-workout analiza, 8-godišnja baza i generator planova</span>
+              </div>
+            </div>
+
+            {geminiStatus.configured ? (
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" /> {geminiStatus.source === 'env' ? 'Aktivan putem .env' : 'Aktivan (Prilagođeni ključ)'}
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                Ključ nije unesen
+              </span>
+            )}
+          </div>
+
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Gemini API ključ iz tvoje lokalne <code className="text-cyan-300 bg-zinc-900 px-1.5 py-0.5 rounded">.env</code> datoteke (<code className="text-zinc-300">VITE_GEMINI_API_KEY</code>) zaštićen je od slanja na GitHub. Po potrebi ovdje možeš postaviti i privremeni ključ u pregledniku:
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <div className="relative flex-1">
+              <input
+                type={showGeminiKey ? 'text' : 'password'}
+                value={customGeminiDraft}
+                onChange={(e) => setCustomGeminiDraft(e.target.value)}
+                placeholder={geminiStatus.source === 'env' ? 'Koristi se siguran ključ iz .env datoteke (opcionalna zamjena)' : 'Unesi Gemini API ključ (AIzaSy...)'}
+                className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-3.5 py-2.5 pr-10 text-zinc-100 font-mono text-xs focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all placeholder:text-zinc-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowGeminiKey(!showGeminiKey)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                {showGeminiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <button
+              type="button"
+              disabled={!customGeminiDraft.trim()}
+              onClick={() => {
+                setCustomGeminiApiKey(customGeminiDraft);
+                setCustomGeminiDraft('');
+                setGeminiStatus(getGeminiConfigStatus());
+              }}
+              className="px-5 py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 disabled:opacity-40 text-cyan-300 border border-cyan-500/30 font-bold text-xs uppercase tracking-wider transition-all shrink-0"
+            >
+              Spremi ključ
+            </button>
+            {geminiStatus.source === 'custom' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomGeminiApiKey('');
+                  setGeminiStatus(getGeminiConfigStatus());
+                }}
+                className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-rose-500/15 text-zinc-300 hover:text-rose-400 border border-zinc-700 text-xs font-bold transition-all shrink-0"
+              >
+                Vrati na .env
+              </button>
+            )}
+          </div>
+        </div>
 
       </div>
     </div>

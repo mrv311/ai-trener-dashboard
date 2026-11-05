@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2, Upload, Trash2 } from 'lucide-react';
+import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2, Upload, Trash2, Sparkles } from 'lucide-react';
 import { downloadActivityFitFile, getActivityStreams, updateActivityName } from '../services/intervalsApi';
-import { calculateEF, calculateVI, calculateCogganMetrics } from '../utils/performanceMetrics';
+import { calculateEF, calculateVI, calculateCogganMetrics, calculateAerobicDecoupling } from '../utils/performanceMetrics';
 import { exportFITFromStream } from '../utils/exportUtils';
 import { supabase } from '../services/supabaseClient';
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { parseFitFile, validateFitFile, calculateTSS } from '../utils/fitParser';
+import WorkoutAIAnalysisPanel from './ai/WorkoutAIAnalysisPanel';
 
 const formatDur = (mins) => {
   if (!mins) return '-';
@@ -74,7 +75,19 @@ const parseStreamData = (raw) => {
   return [];
 };
 
-export default function ActivityDetailModal({ activity, isOpen, onClose, intervalsId, intervalsKey, userId, userProfile }) {
+export default function ActivityDetailModal({
+  activity,
+  isOpen,
+  onClose,
+  intervalsId,
+  intervalsKey,
+  userId,
+  userProfile,
+  workouts = [],
+  wellnessData = {},
+  onAddWorkoutToCalendar,
+  onStartWorkoutInTrainer
+}) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [streamsData, setStreamsData] = useState([]);
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
@@ -90,6 +103,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
   const [isDeleting, setIsDeleting] = useState(false);
   const titleInputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const aiSectionRef = useRef(null);
 
   // Učitaj FTP iz profila
   useEffect(() => {
@@ -384,6 +398,10 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
     return md > 0 ? md : 300;
   }, [streamsData]);
 
+  const decouplingInfo = useMemo(() => {
+    return calculateAerobicDecoupling(streamsData, userFtp);
+  }, [streamsData, userFtp]);
+
   if (!isOpen || !activity) return null;
 
   const handleDownload = async () => {
@@ -635,12 +653,23 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
               )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-rose-500/20 rounded-lg transition-colors border border-transparent hover:border-rose-500/30"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => aiSectionRef.current?.scrollIntoView({ behavior: 'smooth' })}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 transition-all"
+              title="Skoči na AI analizu treninga"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">AI Analiza</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-rose-500/20 rounded-lg transition-colors border border-transparent hover:border-rose-500/30"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
@@ -837,9 +866,9 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
               </div>
             </div>
 
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 md:col-span-2">
               <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-800 pb-2">Napredne Metrike</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center shadow-inner">
                   <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">Variability Index (VI)</span>
                   <div className="flex items-baseline gap-2">
@@ -847,7 +876,7 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                     <span className="text-xs text-zinc-500 font-medium">NP / Avg Pwr</span>
                   </div>
                   <div className="text-[10px] text-zinc-500 mt-1">
-                    {vi > 1.1 ? "Neravnomjeran napor (kriterij, MTB)" : vi > 1.0 ? "Umjereno ravnomjerno" : "Vrlo glatko (TT)"}
+                    {vi > 1.1 ? "Neravnomjeran napor (intervali, MTB)" : vi > 1.0 ? "Umjereno ravnomjerno" : "Vrlo glatko (ERG / TT)"}
                   </div>
                 </div>
                 <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center shadow-inner">
@@ -860,9 +889,66 @@ export default function ActivityDetailModal({ activity, isOpen, onClose, interva
                     Pokazatelj aerobne efikasnosti pogona
                   </div>
                 </div>
+                <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center shadow-inner">
+                  <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">Aerobic Decoupling (Pw:HR)</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className={`text-2xl font-black ${
+                      decouplingInfo?.decoupling != null
+                        ? decouplingInfo.decoupling <= 5 ? 'text-emerald-400' : 'text-amber-400'
+                        : 'text-zinc-100'
+                    }`}>
+                      {decouplingInfo?.decoupling != null ? `${decouplingInfo.decoupling}%` : '-'}
+                    </span>
+                    <span className="text-xs text-zinc-500 font-medium">Drift</span>
+                  </div>
+                  <div className="text-[10px] text-zinc-500 mt-1">
+                    {decouplingInfo?.decoupling != null
+                      ? decouplingInfo.decoupling <= 5
+                        ? `Stabilna baza (${decouplingInfo.efFirst} → ${decouplingInfo.efSecond})`
+                        : `Kardijalni drift / intervali (${decouplingInfo.efFirst} → ${decouplingInfo.efSecond})`
+                      : 'Zahtijeva snagu i puls (>10 min)'}
+                  </div>
+                </div>
               </div>
             </div>
 
+          </div>
+
+          {/* AI TRENER ANALIZA TRENINGA */}
+          <div ref={aiSectionRef}>
+            <WorkoutAIAnalysisPanel
+              activity={{ ...activity, title: displayTitle || activity.title }}
+              metrics={{
+                np: actualNp,
+                avgPower: actualAvgPower,
+                maxPower: actualMaxPower,
+                avgHr: actualAvgHr,
+                avgCadence: sb.avg_cadence || activity.average_cadence || 0,
+                durationMin: actualDur,
+                plannedDurationMin: plannedDur,
+                tss: actualTss,
+                plannedTss: plannedTss,
+                ef,
+                vi,
+                decoupling: decouplingInfo?.decoupling ?? null,
+                efFirst: decouplingInfo?.efFirst ?? null,
+                efSecond: decouplingInfo?.efSecond ?? null,
+                workKj: sb.work_kj || 0,
+                ftp: userFtp
+              }}
+              athleteProfile={userProfile}
+              liveWorkouts={workouts}
+              wellnessData={wellnessData}
+              onAddWorkoutToCalendar={onAddWorkoutToCalendar}
+              onStartWorkoutInTrainer={
+                onStartWorkoutInTrainer
+                  ? (w) => {
+                      onClose();
+                      onStartWorkoutInTrainer(w);
+                    }
+                  : undefined
+              }
+            />
           </div>
         </div>
 

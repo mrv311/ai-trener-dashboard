@@ -774,6 +774,10 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         intervalsKey={intervalsKey}
         userId={userId}
         userProfile={profile}
+        workouts={workouts}
+        wellnessData={wellnessData}
+        onAddWorkoutToCalendar={handleCreateWorkout}
+        onStartWorkoutInTrainer={onSelectWorkout}
       />
       {selectedDateForNew && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setSelectedDateForNew(null)}>
