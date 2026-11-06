@@ -12,9 +12,14 @@ let cachedBaseHistory = null;
  */
 export async function loadBaseHistory() {
   if (cachedBaseHistory) return cachedBaseHistory;
-  const mod = await import('../data/historical_workouts.json', { with: { type: 'json' } });
-  cachedBaseHistory = Array.isArray(mod.default) ? mod.default : mod;
-  return cachedBaseHistory;
+  try {
+    const mod = await import('../data/historical_workouts.json');
+    cachedBaseHistory = Array.isArray(mod.default) ? mod.default : (Array.isArray(mod) ? mod : []);
+    return cachedBaseHistory;
+  } catch (err) {
+    console.warn('[historyService] Nije moguće učitati ugrađenu bazu:', err);
+    return [];
+  }
 }
 
 export function getHistoryOptions(userId = null) {
