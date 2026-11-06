@@ -9,8 +9,15 @@ import ActivityDetailModal from './ActivityDetailModal';
 import { extractIntensityData, parseWorkoutFile } from '../utils/workoutParser';
 
 const formatDur = (mins) => {
-  const h = Math.floor(mins / 60);
-  return `${h > 0 ? h + 'h ' : ''}${String(mins % 60).padStart(2, '0')}m`;
+  if (!mins || isNaN(mins) || mins <= 0) return '00m';
+  let cleanMins = Math.round(mins);
+  if (cleanMins >= 360 && cleanMins % 60 === 0) {
+    cleanMins = Math.round(cleanMins / 60);
+  } else if (cleanMins > 1440) {
+    cleanMins = Math.round(cleanMins / 60);
+  }
+  const h = Math.floor(cleanMins / 60);
+  return `${h > 0 ? h + 'h ' : ''}${String(cleanMins % 60).padStart(2, '0')}m`;
 };
 
 const getCardBg = (sc) => {

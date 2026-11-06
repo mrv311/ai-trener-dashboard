@@ -195,6 +195,9 @@ export default function AICoachTab({
           title: w.title,
           category: w.category,
           intervalsCode: w.intervalsCode,
+          steps: w.steps,
+          durationMinutes: w.durationMinutes,
+          estimatedTss: w.estimatedTss,
           date: targetDate,
           ftp
         });
@@ -708,7 +711,10 @@ export default function AICoachTab({
                             title: `${wo.dayName ? wo.dayName + ': ' : ''}${wo.title}`,
                             category: wo.category,
                             intervalsCode: wo.intervalsCode,
-                            coachNote: wo.coachNote,
+                            steps: wo.steps,
+                            durationMinutes: wo.durationMinutes,
+                            estimatedTss: wo.estimatedTss,
+                            coachNote: wo.coachNote || wo.description,
                             date: calcDate
                           }}
                           ftp={ftp}

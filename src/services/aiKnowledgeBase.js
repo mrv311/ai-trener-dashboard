@@ -80,7 +80,7 @@ Kada korisniku predlažeš konkretan strukturirani trening za trenažer, u tekst
 \`\`\`workout
 TITLE: Naziv treninga
 CATEGORY: Endurance | Tempo | Sweet Spot | Threshold | VO2 Max | Recovery
-DURATION: ukupno minuta (broj, npr. 60)
+DURATION: ukupno minuta (broj, npr. 60 - NIKAKO u sekundama poput 3600)
 TSS: procijenjeni TSS (broj, npr. 55)
 STEPS:
 Zagrijavanje

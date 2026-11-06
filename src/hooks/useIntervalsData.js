@@ -215,7 +215,36 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     const supabaseDateMap = new Map(); // Mapa za brzu provjeru Supabase aktivnosti po datumu
     const todayStr = new Date().toISOString().split('T')[0];
 
-    const localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
+    const rawLocalScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
+    let needsLocalFix = false;
+    const localScheduled = rawLocalScheduled.map(item => {
+      let d = item.duration;
+      let s = item.duration_seconds;
+      let fixed = false;
+      if (s && s > 21600 && s % 60 === 0) {
+        s = Math.round(s / 60);
+        fixed = true;
+      }
+      if (d && d >= 360 && d % 60 === 0) {
+        d = Math.round(d / 60);
+        fixed = true;
+      } else if (!d && s) {
+        d = Math.round(s / 60);
+        fixed = true;
+      }
+      if (fixed) {
+        needsLocalFix = true;
+        return { ...item, duration: d, duration_seconds: s || (d * 60) };
+      }
+      return item;
+    });
+    if (needsLocalFix) {
+      try {
+        localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify(localScheduled));
+      } catch {
+        // ignore
+      }
+    }
 
     // Kreiraj Map objekte za O(1) lookup - OPTIMIZACIJA
     const eventsByDate = new Map();
@@ -589,9 +618,14 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         }
       }
 
+      let evDur = Math.round((ev.moving_time || 0) / 60);
+      if (evDur >= 360 && evDur % 60 === 0) evDur = Math.round(evDur / 60);
+      else if (evDur > 1440) evDur = Math.round(evDur / 60);
+      evDur = Math.max(1, evDur);
+
       finalWorkouts.push({
         id: `ev-${ev.id}`, eventId: ev.id, date: evDate, title: ev.name || 'Planirano',
-        duration: Math.round((ev.moving_time || 0) / 60), plannedDuration: Math.round((ev.moving_time || 0) / 60),
+        duration: evDur, plannedDuration: evDur,
         tss: Math.round(ev.icu_training_load || 0), plannedTss: Math.round(ev.icu_training_load || 0),
         statusColor: complianceColor, isCompleted: false,
         workout_doc: ev.workout_doc,
@@ -605,12 +639,27 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       if (consumedLocalIds.has(sched.id)) return;
       let complianceColor = 'grey';
       if (sched.date < todayStr) complianceColor = 'red-missed';
+
+      let rawDur = sched.duration || sched.plannedDuration;
+      let rawSec = sched.duration_seconds;
+      if (rawSec && rawSec > 21600 && rawSec % 60 === 0) {
+        rawSec = Math.round(rawSec / 60);
+      }
+      if (rawDur && rawDur >= 360 && rawDur % 60 === 0) {
+        rawDur = Math.round(rawDur / 60);
+      } else if (!rawDur && rawSec) {
+        rawDur = Math.round(rawSec / 60);
+      } else if (rawDur > 1440) {
+        rawDur = Math.round(rawDur / 60);
+      }
+      const cleanDuration = Math.max(10, Math.round(rawDur || 60));
+
       finalWorkouts.push({
         id: `local-${sched.id}`,
         date: sched.date,
         title: sched.title,
-        duration: sched.duration_seconds ? Math.round(sched.duration_seconds / 60) : sched.duration,
-        plannedDuration: sched.duration_seconds ? Math.round(sched.duration_seconds / 60) : sched.duration,
+        duration: cleanDuration,
+        plannedDuration: cleanDuration,
         tss: sched.tss,
         plannedTss: sched.tss,
         statusColor: complianceColor,
@@ -891,13 +940,24 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
 
   const handleCreateWorkout = useCallback(async (workoutObj) => {
     // 1. Priprema optimističnog stanja (kreiramo lokalni zapis)
+    let durMin = workoutObj.duration;
+    if (durMin && durMin >= 360 && durMin % 60 === 0) {
+      durMin = Math.round(durMin / 60);
+    } else if (durMin > 1440) {
+      durMin = Math.round(durMin / 60);
+    } else if (!durMin && workoutObj.duration_seconds) {
+      durMin = Math.round(workoutObj.duration_seconds / 60);
+    }
+    durMin = Math.max(10, Math.round(durMin || 60));
+    const durSec = durMin * 60;
+
     let localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
     const newLocalWorkout = {
       id: workoutObj.id.replace('local-', ''),
       date: workoutObj.date,
       title: workoutObj.title,
-      duration: workoutObj.duration,
-      duration_seconds: (workoutObj.duration || 0) * 60,
+      duration: durMin,
+      duration_seconds: durSec,
       tss: workoutObj.tss,
       workout_doc: workoutObj.description,
       steps: Array.isArray(workoutObj.allSteps) && workoutObj.allSteps.length > 0 ? workoutObj.allSteps : workoutObj.description,
@@ -922,7 +982,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         name: workoutObj.title,
         description: workoutObj.description,
         icu_training_load: workoutObj.tss,
-        moving_time: workoutObj.duration * 60,
+        moving_time: durSec,
         type: workoutObj.type === 'run' ? 'Run' : (workoutObj.type === 'strength' ? 'WeightTraining' : 'Ride')
       };
 

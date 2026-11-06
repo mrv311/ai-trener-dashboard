@@ -1,6 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { CalendarPlus, Play, Check, Clock, Activity } from 'lucide-react';
 import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty } from '../../utils/workoutParser';
+
+/**
+ * Pretvara strukturirani niz koraka (npr. iz AI JSON plana) u Intervals.icu tekstualni kod.
+ */
+export function stepsToIntervalsCode(steps) {
+  if (!Array.isArray(steps) || steps.length === 0) return '';
+  return steps.map(st => {
+    const sec = st.duration || 60;
+    const mins = Math.floor(sec / 60);
+    const remSec = Math.round(sec % 60);
+    let durStr = '';
+    if (mins > 0 && remSec === 0) durStr = `${mins}m`;
+    else if (mins > 0 && remSec > 0) durStr = `${mins}m${remSec}s`;
+    else durStr = `${remSec}s`;
+
+    let pwrStr = '50%';
+    if (typeof st.power === 'number') pwrStr = `${Math.round(st.power)}%`;
+    else if (st.power?.start != null && st.power?.end != null) pwrStr = `${Math.round(st.power.start)}-${Math.round(st.power.end)}%`;
+    else if (st.power) pwrStr = `${st.power}%`;
+
+    const label = st.name || st.text ? ` ${st.name || st.text}` : '';
+    return `- ${durStr} ${pwrStr}${label}`;
+  }).join('\n');
+}
 
 /**
  * Proširuje "3x" blokove s više koraka (npr. radni interval + odmor) u eksplicitni niz koraka
@@ -57,28 +81,72 @@ export function buildErgVibeWorkoutObject({
   title = 'AI Trening',
   category = '',
   intervalsCode = '',
+  steps,
+  durationMinutes,
+  estimatedTss,
   date,
   ftp = 270
 }) {
-  const normalizedCode = normalizeIntervalsWorkoutText(intervalsCode);
+  let effectiveCode = intervalsCode;
+  if (!effectiveCode && Array.isArray(steps) && steps.length > 0) {
+    effectiveCode = stepsToIntervalsCode(steps);
+  }
+
+  const normalizedCode = normalizeIntervalsWorkoutText(effectiveCode);
   const parsed = parseIntervalsCode(normalizedCode, ftp);
 
-  const enrichedSteps = (parsed.allSteps || []).map((st, idx) => ({
-    ...st,
-    name: st.name || (idx === 0 && st.power <= 65 ? 'Zagrijavanje' : st.power >= 85 ? 'Radni Interval' : 'Aerobno / Oporavak')
-  }));
+  // Koraci: iz parsiranog teksta ili izravno predani niz
+  let enrichedSteps = [];
+  if (parsed.allSteps && parsed.allSteps.length > 0) {
+    enrichedSteps = parsed.allSteps.map((st, idx) => ({
+      ...st,
+      name: st.name || (idx === 0 && st.power <= 65 ? 'Zagrijavanje' : st.power >= 85 ? 'Radni Interval' : 'Aerobno / Oporavak')
+    }));
+  } else if (Array.isArray(steps) && steps.length > 0) {
+    enrichedSteps = steps.map((st, idx) => ({
+      ...st,
+      name: st.name || (idx === 0 && st.power <= 65 ? 'Zagrijavanje' : st.power >= 85 ? 'Radni Interval' : 'Aerobno / Oporavak')
+    }));
+  }
+
+  // PRAVILAN IZRAČUN TRAJANJA:
+  // parseIntervalsCode vraća duration u SEKUNDAMA (totalDurMins * 60).
+  let calculatedDurationMin = 0;
+  if (parsed.duration && parsed.duration > 0) {
+    calculatedDurationMin = Math.round(parsed.duration / 60);
+  } else if (enrichedSteps.length > 0) {
+    const totalStepSec = enrichedSteps.reduce((acc, s) => acc + (s.duration || 0), 0);
+    calculatedDurationMin = Math.round(totalStepSec / 60);
+  } else if (durationMinutes && Number(durationMinutes) > 0) {
+    calculatedDurationMin = Number(durationMinutes);
+  } else {
+    calculatedDurationMin = 60;
+  }
+
+  // Sigurnosna zaštita: ako je trajanje slučajno došlo u sekundama (npr. >= 600 i djeljivo sa 60 ili >= 1440)
+  if (calculatedDurationMin >= 600 && calculatedDurationMin % 60 === 0) {
+    calculatedDurationMin = Math.round(calculatedDurationMin / 60);
+  } else if (calculatedDurationMin > 1440) {
+    calculatedDurationMin = Math.round(calculatedDurationMin / 60);
+  }
+
+  const durationMin = Math.max(10, Math.round(calculatedDurationMin));
+  const durationSec = durationMin * 60;
 
   const resolvedCategory = category || categorizeWorkout(enrichedSteps) || 'Endurance';
   const diffScore = calculateCategoryDifficulty(enrichedSteps, resolvedCategory);
   const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const resolvedTss = Math.max(5, Math.round(parsed.tss || estimatedTss || (durationMin * 0.75)));
 
   return {
     id: `local-ai_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     date: date || tomorrowIso,
     title: title.trim() || 'AI Strukturirani Trening',
-    duration: Math.max(10, Math.round(parsed.duration || 60)),
-    duration_seconds: Math.max(600, Math.round((parsed.duration || 60) * 60)),
-    tss: Math.max(5, Math.round(parsed.tss || 45)),
+    duration: durationMin,
+    duration_seconds: durationSec,
+    plannedDuration: durationMin,
+    plannedTss: resolvedTss,
+    tss: resolvedTss,
     description: normalizedCode,
     workout_doc: normalizedCode,
     allSteps: enrichedSteps,
@@ -112,34 +180,70 @@ export function AIWorkoutCard({
   let title = structuredWorkout?.title || 'AI Preporučeni Trening';
   let category = structuredWorkout?.category || '';
   let stepsCode = structuredWorkout?.intervalsCode || '';
+  let stepsArray = structuredWorkout?.steps || null;
+  let durationMinutes = structuredWorkout?.durationMinutes || null;
+  let estimatedTss = structuredWorkout?.estimatedTss || null;
 
   if (rawBlock && !structuredWorkout) {
-    const lines = rawBlock.split(/\r?\n/);
-    const stepLines = [];
-    let inSteps = false;
-
-    lines.forEach(l => {
-      const t = l.trim();
-      if (/^TITLE:/i.test(t)) title = t.replace(/^TITLE:\s*/i, '').trim();
-      else if (/^CATEGORY:/i.test(t)) category = t.replace(/^CATEGORY:\s*/i, '').trim();
-      else if (/^DURATION:/i.test(t) || /^TSS:/i.test(t)) {
-        // izračunat ćemo točno iz koraka uz fallback
-      } else if (/^STEPS:/i.test(t)) {
-        inSteps = true;
-      } else if (inSteps || t.startsWith('-') || /^\d+x$/i.test(t)) {
-        stepLines.push(l);
+    const trimmed = rawBlock.trim();
+    // Provjera je li rawBlock JSON (npr. iz ergvibe-workout ili sličnog bloka)
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const parsedJson = JSON.parse(trimmed);
+        if (parsedJson.title) title = parsedJson.title;
+        if (parsedJson.category) category = parsedJson.category;
+        if (parsedJson.durationMinutes) durationMinutes = parsedJson.durationMinutes;
+        if (parsedJson.estimatedTss) estimatedTss = parsedJson.estimatedTss;
+        if (Array.isArray(parsedJson.steps)) {
+          stepsArray = parsedJson.steps;
+          stepsCode = stepsToIntervalsCode(parsedJson.steps);
+        }
+        if (parsedJson.intervalsCode) stepsCode = parsedJson.intervalsCode;
+      } catch {
+        // nije JSON, nastavi s linijskim parsiranjem
       }
-    });
-    stepsCode = stepLines.join('\n').trim();
+    }
+
+    if (!stepsCode && !stepsArray) {
+      const lines = rawBlock.split(/\r?\n/);
+      const stepLines = [];
+      let inSteps = false;
+
+      lines.forEach(l => {
+        const t = l.trim();
+        if (/^TITLE:/i.test(t)) title = t.replace(/^TITLE:\s*/i, '').trim();
+        else if (/^CATEGORY:/i.test(t)) category = t.replace(/^CATEGORY:\s*/i, '').trim();
+        else if (/^DURATION:/i.test(t)) {
+          const rawDurStr = t.replace(/^DURATION:\s*/i, '').replace(/m(in)?/i, '').trim();
+          const parsedD = parseInt(rawDurStr, 10);
+          if (!isNaN(parsedD) && parsedD > 0) {
+            durationMinutes = parsedD >= 600 && parsedD % 60 === 0 ? Math.round(parsedD / 60) : parsedD;
+          }
+        } else if (/^TSS:/i.test(t)) {
+          const parsedT = parseInt(t.replace(/^TSS:\s*/i, '').trim(), 10);
+          if (!isNaN(parsedT)) estimatedTss = parsedT;
+        } else if (/^STEPS:/i.test(t)) {
+          inSteps = true;
+        } else if (inSteps || t.startsWith('-') || /^\d+x$/i.test(t)) {
+          stepLines.push(l);
+        }
+      });
+      stepsCode = stepLines.join('\n').trim();
+    }
   }
 
-  const built = buildErgVibeWorkoutObject({
-    title,
-    category,
-    intervalsCode: stepsCode,
-    date: targetDate,
-    ftp
-  });
+  const built = useMemo(() => {
+    return buildErgVibeWorkoutObject({
+      title,
+      category,
+      intervalsCode: stepsCode,
+      steps: stepsArray,
+      durationMinutes,
+      estimatedTss,
+      date: targetDate,
+      ftp
+    });
+  }, [title, category, stepsCode, stepsArray, durationMinutes, estimatedTss, targetDate, ftp]);
 
   const totalSec = built.allSteps.reduce((s, x) => s + (x.duration || 0), 0) || 1;
 
@@ -372,9 +476,9 @@ export default function AIMarkdown({
 }) {
   if (!text) return null;
 
-  // Odvoji ```workout ... ``` blokove od običnog markdowna
+  // Odvoji ```workout ... ``` ili ```ergvibe-workout ... ``` blokove od običnog markdowna
   const segments = [];
-  const regex = /```workout\s*([\s\S]*?)```/gi;
+  const regex = /```(?:workout|ergvibe-workout)\s*([\s\S]*?)```/gi;
   let lastIdx = 0;
   let match;
 

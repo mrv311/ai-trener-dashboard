@@ -349,12 +349,29 @@ export async function chatWithAICoach({
 
 ### SPECIFIČNA UPUTA ZA CHAT I GENERIRANJE ERGVIBE TRENINGA:
 1. Odgovaraj kao vrhunski biciklistički trener i fiziolog. Budi jasan, precizan i motivirajuć.
-2. Ako sportaš zatraži novi trening ili ti predložiš trening za danas/trenažer, na kraju odgovora OBAVEZNO uključi strukturirani JSON blok s koracima za trenažer u sljedećem formatu:
+2. Ako sportaš zatraži novi trening ili ti predložiš trening za danas/trenažer, na kraju odgovora OBAVEZNO uključi strukturirani blok u formatu:
+\`\`\`workout
+TITLE: Naziv Treninga
+CATEGORY: SweetSpot | Endurance | Threshold | VO2max | Anaerobic | Recovery
+DURATION: 60
+TSS: 65
+STEPS:
+Zagrijavanje
+- 10m 55%
+Glavni dio
+3x
+- 8m 90%
+- 4m 50%
+Hlađenje
+- 10m 50%
+\`\`\`
+ili u JSON formatu:
 \`\`\`ergvibe-workout
 {
   "title": "Naziv Treninga",
   "description": "Kratki opis cilja i fiziološkog podražaja",
-  "category": "Endurance | SweetSpot | Threshold | VO2max | Anaerobic | Recovery",
+  "category": "SweetSpot | Endurance | Threshold | VO2max | Anaerobic | Recovery",
+  "durationMinutes": 60,
   "steps": [
     { "name": "Zagrijavanje", "duration": 600, "power": 55 },
     { "name": "Z2 Rampa", "duration": 300, "power": 68 },
@@ -363,7 +380,7 @@ export async function chatWithAICoach({
   ]
 }
 \`\`\`
-Trajanje "duration" je u SEKUNDAMA, a "power" je u postocima FTP-a (% FTP).`;
+VAŽNO: DURATION i durationMinutes su U MINUTAMA (npr. 60 ili 75, NIKAKO u sekundama poput 3600). U steps nizu, pojedinačni "duration" je u sekundama, a "power" je u % FTP.`;
 
   const formattedContents = chatHistory.map(m => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -435,6 +452,7 @@ Format JSON-a:
           "durationMinutes": 60,
           "estimatedTss": 65,
           "description": "Fiziološki cilj i uputa",
+          "intervalsCode": "- 10m 55% Zagrijavanje\\n3x\\n- 8m 90% Sweet Spot\\n- 4m 50% Oporavak\\n- 10m 45% Hlađenje",
           "steps": [
             { "name": "Zagrijavanje", "duration": 600, "power": 55 },
             { "name": "Interval 1", "duration": 480, "power": 90 },
@@ -444,7 +462,8 @@ Format JSON-a:
       ]
     }
   ]
-}`;
+}
+Napomena za jedinice: 'durationMinutes' je OBAVEZNO cijeli broj minuta (npr. 60 ili 90, NIKAKO sekunde). U steps nizu 'duration' je u sekundama, a 'power' u postotku FTP-a (% FTP).`;
 
   const rawJsonText = await callGeminiApi({
     systemInstruction,
