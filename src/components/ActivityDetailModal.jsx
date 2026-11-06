@@ -939,6 +939,7 @@ export default function ActivityDetailModal({
               athleteProfile={userProfile}
               liveWorkouts={workouts}
               wellnessData={wellnessData}
+              userId={userId}
               onAddWorkoutToCalendar={onAddWorkoutToCalendar}
               onStartWorkoutInTrainer={
                 onStartWorkoutInTrainer

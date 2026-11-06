@@ -17,9 +17,47 @@ export async function loadBaseHistory() {
   return cachedBaseHistory;
 }
 
-export function getExtraImportedHistory() {
+export function getHistoryOptions(userId = null) {
+  const isLocalhost = typeof window !== 'undefined' && (
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+  );
+  const key = `ergvibe_include_coach_archive_${userId || 'guest'}`;
+  const savedPref = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+
+  let includeBaseHistory = false;
+  if (savedPref !== null) {
+    includeBaseHistory = savedPref === 'true';
+  } else if (isLocalhost) {
+    // Na lokalnom razvoju kod vlasnika uključeno po defaultu
+    includeBaseHistory = true;
+  } else {
+    // Na produkciji (npr. Vercel) za goste po defaultu isključeno
+    includeBaseHistory = false;
+  }
+
+  return { includeBaseHistory };
+}
+
+export function setIncludeCoachArchive(include, userId = null) {
+  const key = `ergvibe_include_coach_archive_${userId || 'guest'}`;
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(key, include ? 'true' : 'false');
+    window.dispatchEvent(new CustomEvent('ergvibe-history-settings-updated', { detail: { include, userId } }));
+  }
+}
+
+export function getExtraImportedHistory(userId = null) {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY_EXTRA_HISTORY) || '[]');
+    if (typeof localStorage === 'undefined') return [];
+    const specificKey = `ergvibe_extra_historical_workouts_${userId || 'guest'}`;
+    const specificData = localStorage.getItem(specificKey);
+    if (specificData) return JSON.parse(specificData);
+
+    // Fallback na v1 ključ ako postoji
+    const v1Data = localStorage.getItem(STORAGE_KEY_EXTRA_HISTORY);
+    if (v1Data) return JSON.parse(v1Data);
+    return [];
   } catch {
     return [];
   }
@@ -56,7 +94,7 @@ const toNum = (v, decimals = 0) => {
 /**
  * Parsira novi Intervals.icu CSV export iz preglednika i sprema nove zapise u localStorage.
  */
-export async function importIntervalsCsvText(csvText) {
+export async function importIntervalsCsvText(csvText, userId = null) {
   if (!csvText || typeof csvText !== 'string') {
     throw new Error('CSV datoteka je prazna ili neispravna.');
   }
@@ -71,11 +109,10 @@ export async function importIntervalsCsvText(csvText) {
     throw new Error('Nepoznat CSV format. Koristi standardni Intervals.icu CSV izvoz aktivnosti.');
   }
 
-  const base = await loadBaseHistory();
-  const existingExtra = getExtraImportedHistory();
+  const existingExtra = getExtraImportedHistory(userId);
 
   const knownKeys = new Set();
-  [...base, ...existingExtra].forEach(r => {
+  existingExtra.forEach(r => {
     knownKeys.add(String(r.id));
     if (r.date) knownKeys.add(`${r.date.slice(0, 10)}_${(r.name || '').toLowerCase().trim()}`);
   });
@@ -137,12 +174,16 @@ export async function importIntervalsCsvText(csvText) {
   }
 
   const mergedExtra = [...newlyParsed, ...existingExtra].sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  localStorage.setItem(STORAGE_KEY_EXTRA_HISTORY, JSON.stringify(mergedExtra));
+  const specificKey = `ergvibe_extra_historical_workouts_${userId || 'guest'}`;
+  localStorage.setItem(specificKey, JSON.stringify(mergedExtra));
+  if (!userId || userId === 'owner') {
+    localStorage.setItem(STORAGE_KEY_EXTRA_HISTORY, JSON.stringify(mergedExtra));
+  }
 
   return {
     addedCount: newlyParsed.length,
     totalExtraCount: mergedExtra.length,
-    totalCount: base.length + mergedExtra.length
+    totalCount: mergedExtra.length
   };
 }
 
@@ -182,15 +223,24 @@ function normalizeLiveWorkout(w, fallbackFtp = 270) {
 
 /**
  * Vraća kompletnu, dedupliciranu kronološku listu svih odrađenih treninga (od najnovijeg prema najstarijem).
+ * options: { userId, includeBaseHistory }
  */
-export async function getMergedHistoricalWorkouts(liveWorkouts = [], fallbackFtp = 270) {
-  const base = await loadBaseHistory();
-  const extra = getExtraImportedHistory();
+export async function getMergedHistoricalWorkouts(liveWorkouts = [], fallbackFtp = 270, options = {}) {
+  const { userId = null, includeBaseHistory } = options;
+  const resolvedIncludeBase = includeBaseHistory !== undefined
+    ? includeBaseHistory
+    : getHistoryOptions(userId).includeBaseHistory;
+
+  let base = [];
+  if (resolvedIncludeBase) {
+    base = await loadBaseHistory();
+  }
+  const extra = getExtraImportedHistory(userId);
 
   const mapByKey = new Map();
   const dateTitleSet = new Set();
 
-  // Prvo punimo povijesne (jer imaju bogate metrike poput decouplinga, HRRc, CTL, TSB)
+  // Prvo punimo povijesne (ako su uključeni ili ako ima uvezenih)
   [...extra, ...base].forEach(item => {
     const cleanId = String(item.id).replace(/^act-/, '');
     mapByKey.set(cleanId, item);
@@ -220,9 +270,9 @@ export async function getMergedHistoricalWorkouts(liveWorkouts = [], fallbackFtp
 /**
  * Pokušava pronaći točan povijesni zapis za aktivnost (kako bismo obogatili podatke s Decouplingom, HRRc, RHR, CTL, TSB).
  */
-export async function findExactHistoricalRecord(activity) {
+export async function findExactHistoricalRecord(activity, options = {}) {
   if (!activity) return null;
-  const all = await getMergedHistoricalWorkouts();
+  const all = await getMergedHistoricalWorkouts([], 270, options);
   const targetId = String(activity.actId || activity.id || '').replace(/^act-/, '');
   const targetDate = (activity.started_at || activity.date || '').slice(0, 10);
   const targetTitle = (activity.title || activity.name || '').toLowerCase().trim();
@@ -248,8 +298,8 @@ function cleanWorkoutBaseName(name = '') {
 /**
  * Pronalazi najsličnije povijesne treninge (isti naziv treninga + treninzi iste zone intenziteta i trajanja).
  */
-export async function findSimilarHistoricalWorkouts(target, liveWorkouts = [], limit = 8) {
-  const all = await getMergedHistoricalWorkouts(liveWorkouts, target?.ftp || 270);
+export async function findSimilarHistoricalWorkouts(target, liveWorkouts = [], limit = 8, options = {}) {
+  const all = await getMergedHistoricalWorkouts(liveWorkouts, target?.ftp || 270, options);
   const targetDate = (target?.date || target?.started_at || '').slice(0, 10);
   const targetId = String(target?.actId || target?.id || '').replace(/^act-/, '');
   const targetCleanName = cleanWorkoutBaseName(target?.title || target?.name || '');
@@ -296,8 +346,8 @@ export async function findSimilarHistoricalWorkouts(target, liveWorkouts = [], l
 /**
  * Računa višegodišnju statistiku i osobne benchmarke po zonama za UI i AI Trenera.
  */
-export async function getHistoricalDashboardStats(liveWorkouts = []) {
-  const all = await getMergedHistoricalWorkouts(liveWorkouts);
+export async function getHistoricalDashboardStats(liveWorkouts = [], options = {}) {
+  const all = await getMergedHistoricalWorkouts(liveWorkouts, 270, options);
   if (!all.length) return null;
 
   const byYearMap = {};
@@ -420,14 +470,20 @@ export async function buildAthleteContextPrompt({
   athleteProfile,
   liveWorkouts = [],
   wellnessData = {},
-  targetActivity = null
+  targetActivity = null,
+  userId = null,
+  includeBaseHistory
 }) {
+  const resolvedIncludeBase = includeBaseHistory !== undefined
+    ? includeBaseHistory
+    : getHistoryOptions(userId).includeBaseHistory;
+
   const ftp = Number(athleteProfile?.ftp) || 270;
   const weight = Number(athleteProfile?.weight) || 74;
   const wkg = weight > 0 ? (ftp / weight).toFixed(2) : '-';
 
-  const stats = await getHistoricalDashboardStats(liveWorkouts);
-  const allWorkouts = await getMergedHistoricalWorkouts(liveWorkouts, ftp);
+  const stats = await getHistoricalDashboardStats(liveWorkouts, { userId, includeBaseHistory: resolvedIncludeBase });
+  const allWorkouts = await getMergedHistoricalWorkouts(liveWorkouts, ftp, { userId, includeBaseHistory: resolvedIncludeBase });
 
   // Dohvati najsvježiji PMC (CTL / ATL / TSB) iz wellnessData ili zadnjeg povijesnog zapisa
   let pmcLine = '';
@@ -465,21 +521,32 @@ export async function buildAthleteContextPrompt({
   if (athleteProfile?.primaryGoal) lines.push(`- Primarni cilj: ${athleteProfile.primaryGoal}${athleteProfile.goalDate ? ` (Ciljni datum: ${athleteProfile.goalDate})` : ''}`);
   if (pmcLine) lines.push(`- ${pmcLine}`);
 
-  if (stats) {
-    lines.push('\n## VIŠEGODIŠNJA BAZA TRENINGA SPORTAŠA (2019. – 2026.)');
-    lines.push(`- Ukupno analiziranih treninga u bazi: ${stats.totalWorkouts} (${stats.totalHours} sati, ${stats.totalTss} TSS, raspon ${stats.minDate} do ${stats.maxDate}, povijesni vršni FTP: ${stats.peakFtp} W).`);
-    lines.push('- Osobni fiziološki benchmarkovi sportaša kroz povijest:');
-    lines.push(`  * Z2 Endurance (55–75% FTP): prosječni EF svih vremena = ${stats.benchmarks.z2AvgEfAllTime ?? '-'}, nedavni Z2 EF = ${stats.benchmarks.z2AvgEfRecent ?? '-'}, prosječni Z2 Decoupling = ${stats.benchmarks.z2AvgDecoupling ?? '-'}%`);
-    lines.push(`  * Tempo / Sweet Spot (76–93% FTP): prosječni EF = ${stats.benchmarks.sstAvgEf ?? '-'}, prosječni Decoupling = ${stats.benchmarks.sstAvgDecoupling ?? '-'}%`);
-    lines.push(`  * Threshold / VO2max (>93% FTP): prosječni EF = ${stats.benchmarks.highIntAvgEf ?? '-'}`);
-    lines.push('- Sažetak po sezonama:');
-    stats.yearlyStats.forEach(y => {
-      lines.push(`  * ${y.year}: ${y.count} vožnji, ${y.hours}h, ${y.tss} TSS | FTP ${y.minFtp}-${y.maxFtp}W (prosjek ${y.avgFtp}W) | Z2 EF: ${y.avgZ2Ef ?? '-'}`);
-    });
+  if (stats && stats.totalWorkouts > 0) {
+    if (resolvedIncludeBase) {
+      lines.push('\n## REFERENTNA / VIŠEGODIŠNJA BAZA TRENINGA SPORTAŠA (2019. – 2026.)');
+    } else {
+      lines.push('\n## POVIJEST TRENINGA SPORTAŠA');
+    }
+    lines.push(`- Ukupno analiziranih treninga u bazi: ${stats.totalWorkouts} (${stats.totalHours} sati, ${stats.totalTss} TSS, raspon ${stats.minDate} do ${stats.maxDate}, vršni FTP: ${stats.peakFtp} W).`);
+    if (stats.benchmarks?.z2AvgEfAllTime) {
+      lines.push('- Osobni fiziološki benchmarkovi sportaša:');
+      lines.push(`  * Z2 Endurance (55–75% FTP): prosječni EF = ${stats.benchmarks.z2AvgEfAllTime ?? '-'}, nedavni Z2 EF = ${stats.benchmarks.z2AvgEfRecent ?? '-'}, prosječni Z2 Decoupling = ${stats.benchmarks.z2AvgDecoupling ?? '-'}%`);
+      lines.push(`  * Tempo / Sweet Spot (76–93% FTP): prosječni EF = ${stats.benchmarks.sstAvgEf ?? '-'}, prosječni Decoupling = ${stats.benchmarks.sstAvgDecoupling ?? '-'}%`);
+      lines.push(`  * Threshold / VO2max (>93% FTP): prosječni EF = ${stats.benchmarks.highIntAvgEf ?? '-'}`);
+    }
+    if (stats.yearlyStats && stats.yearlyStats.length > 0) {
+      lines.push('- Sažetak po sezonama:');
+      stats.yearlyStats.forEach(y => {
+        lines.push(`  * ${y.year}: ${y.count} vožnji, ${y.hours}h, ${y.tss} TSS | FTP ${y.minFtp}-${y.maxFtp}W (prosjek ${y.avgFtp}W) | Z2 EF: ${y.avgZ2Ef ?? '-'}`);
+      });
+    }
+  } else {
+    lines.push('\n## POVIJEST TRENINGA');
+    lines.push('- Sportaš nema učitanu višegodišnju povijest vožnji. Sve analize, savjete i planove temelji na njegovom trenutnom profilu, unesenom FTP-u, zadanim ciljevima i znanstvenim načelima sportske fiziologije.');
   }
 
   if (recentCompleted.length > 0) {
-    lines.push('\n## NEDAVNI TRENINZI (ZADNJIH 16 AKTIVNOSTI)');
+    lines.push(`\n## NEDAVNI TRENINZI (ZADNJIH ${recentCompleted.length} AKTIVNOSTI)`);
     recentCompleted.forEach(r => lines.push(formatHistoryRowCompact(r)));
   }
 
@@ -491,9 +558,9 @@ export async function buildAthleteContextPrompt({
   }
 
   if (targetActivity) {
-    const similar = await findSimilarHistoricalWorkouts(targetActivity, liveWorkouts, 8);
+    const similar = await findSimilarHistoricalWorkouts(targetActivity, liveWorkouts, 8, { userId, includeBaseHistory: resolvedIncludeBase });
     if (similar.length > 0) {
-      lines.push('\n## POVIJESNE USPOREDBE ZA OVAJ TRENING (ISTI NAZIV ILI ISTA ZONA INTENZITETA I TRAJANJA)');
+      lines.push('\n## USPOREDBE ZA OVAJ TRENING (ISTI NAZIV ILI ZONA INTENZITETA I TRAJANJA)');
       similar.forEach(s => lines.push(formatHistoryRowCompact(s)));
     }
   }

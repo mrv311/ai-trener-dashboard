@@ -405,6 +405,7 @@ export default function App() {
                 profile={athleteProfile}
                 workouts={workouts}
                 wellnessData={wellnessData}
+                userId={currentUserId}
                 onAddWorkoutToCalendar={handleCreateWorkout}
                 onStartWorkoutInTrainer={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
               />

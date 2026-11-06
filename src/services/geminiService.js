@@ -215,18 +215,20 @@ export async function analyzeWorkoutWithGemini({
   liveWorkouts = [],
   wellnessData = {},
   userNote = '',
-  model = 'gemini-3.8-flash'
+  model = 'gemini-3.8-flash',
+  userId = null
 }) {
-  const athleteContextPrompt = buildAthleteContextPrompt({
+  const athleteContextPrompt = await buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
     wellnessData,
-    targetActivity: activity
+    targetActivity: activity,
+    userId
   });
 
   const knowledgeBasePrompt = compileKnowledgeBasePrompt();
 
-  const exactHistory = await findExactHistoricalRecord(activity);
+  const exactHistory = await findExactHistoricalRecord(activity, { userId });
 
   const durationMin = Math.round((activity.moving_time || activity.elapsed_time || (activity.duration ? activity.duration * 60 : 0)) / 60);
   const avgWatts = Math.round(activity.avg_power || metrics.avgPower || 0);
@@ -286,13 +288,15 @@ export async function askWorkoutFollowUp({
   athleteProfile,
   liveWorkouts = [],
   wellnessData = {},
-  model = 'gemini-3.8-flash'
+  model = 'gemini-3.8-flash',
+  userId = null
 }) {
-  const athleteContextPrompt = buildAthleteContextPrompt({
+  const athleteContextPrompt = await buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
     wellnessData,
-    targetActivity: activity
+    targetActivity: activity,
+    userId
   });
 
   const knowledgeBasePrompt = compileKnowledgeBasePrompt();
@@ -335,12 +339,14 @@ export async function chatWithAICoach({
   athleteProfile,
   liveWorkouts = [],
   wellnessData = {},
-  model = 'gemini-3.8-flash'
+  model = 'gemini-3.8-flash',
+  userId = null
 }) {
-  const athleteContextPrompt = buildAthleteContextPrompt({
+  const athleteContextPrompt = await buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
-    wellnessData
+    wellnessData,
+    userId
   });
 
   const knowledgeBasePrompt = compileKnowledgeBasePrompt();
@@ -414,12 +420,14 @@ export async function generateStructuredTrainingPlan({
   liveWorkouts = [],
   wellnessData = {},
   userNotes = '',
-  model = 'gemini-3.8-flash'
+  model = 'gemini-3.8-flash',
+  userId = null
 }) {
-  const athleteContextPrompt = buildAthleteContextPrompt({
+  const athleteContextPrompt = await buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
-    wellnessData
+    wellnessData,
+    userId
   });
 
   const knowledgeBasePrompt = compileKnowledgeBasePrompt();

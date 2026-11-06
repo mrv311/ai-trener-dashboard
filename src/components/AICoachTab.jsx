@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Sparkles, Bot, Send, Loader2, CalendarPlus, Trash2, BookOpen,
   History, ClipboardList, MessageSquare, Upload, Plus, Check,
-  AlertCircle, Zap, ToggleLeft, ToggleRight, ChevronDown, ChevronUp
+  AlertCircle, Zap, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Shield
 } from 'lucide-react';
 import {
   chatWithAICoach,
@@ -19,7 +19,9 @@ import {
 } from '../services/aiKnowledgeBase';
 import {
   getHistoricalDashboardStats,
-  importIntervalsCsvText
+  importIntervalsCsvText,
+  getHistoryOptions,
+  setIncludeCoachArchive
 } from '../services/historyService';
 import AIMarkdown, { AIWorkoutCard, buildErgVibeWorkoutObject } from './ai/AIMarkdown';
 
@@ -46,11 +48,13 @@ export default function AICoachTab({
   profile,
   workouts = [],
   wellnessData = {},
+  userId = null,
   onAddWorkoutToCalendar,
   onStartWorkoutInTrainer
 }) {
   const [subTab, setSubTab] = useState('chat'); // 'chat' | 'planner' | 'knowledge'
   const [selectedModel, setSelectedModel] = useState('gemini-3.8-flash');
+  const [includeCoachArchive, setIncludeCoachArchiveState] = useState(() => getHistoryOptions(userId).includeBaseHistory);
 
   // --- CHAT STATE ---
   const [messages, setMessages] = useState(() => {
@@ -115,11 +119,16 @@ export default function AICoachTab({
 
   useEffect(() => {
     let active = true;
-    getHistoricalDashboardStats(workouts).then(st => {
+    getHistoricalDashboardStats(workouts, { userId, includeBaseHistory: includeCoachArchive }).then(st => {
       if (active) setHistStats(st);
     });
     return () => { active = false; };
-  }, [workouts]);
+  }, [workouts, userId, includeCoachArchive]);
+
+  const handleToggleCoachArchive = (checked) => {
+    setIncludeCoachArchive(checked, userId);
+    setIncludeCoachArchiveState(checked);
+  };
 
   const sendMessage = async (textOverride) => {
     const content = (textOverride ?? chatInput).trim();
@@ -137,7 +146,8 @@ export default function AICoachTab({
         athleteProfile: profile,
         liveWorkouts: workouts,
         wellnessData,
-        model: selectedModel
+        model: selectedModel,
+        userId
       });
       setMessages([...nextMessages, { role: 'model', text: reply }]);
     } catch (err) {
@@ -172,7 +182,8 @@ export default function AICoachTab({
         athleteProfile: profile,
         liveWorkouts: workouts,
         wellnessData,
-        model: selectedModel
+        model: selectedModel,
+        userId
       });
       const planWithMeta = { ...plan, startDate: planStartDate, generatedAt: new Date().toISOString() };
       setGeneratedPlan(planWithMeta);
@@ -213,8 +224,8 @@ export default function AICoachTab({
     if (!file) return;
     try {
       const text = await file.text();
-      const res = await importIntervalsCsvText(text);
-      const updatedStats = await getHistoricalDashboardStats(workouts);
+      const res = await importIntervalsCsvText(text, userId);
+      const updatedStats = await getHistoricalDashboardStats(workouts, { userId, includeBaseHistory: includeCoachArchive });
       setHistStats(updatedStats);
       setCsvImportStatus({
         type: 'success',
@@ -776,7 +787,31 @@ export default function AICoachTab({
               </div>
             )}
 
-            {histStats && (
+            {/* Prekidač za trenersku referentnu arhivu */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-zinc-950/70 rounded-xl border border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <Shield className="w-4 h-4 text-cyan-400 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-zinc-200">Trenerska referentna arhiva (1.896 vožnji)</p>
+                  <p className="text-[11px] text-zinc-400">
+                    {includeCoachArchive
+                      ? 'Uključena višegodišnja baza (2019.–2026.) kao referentni model za AI analizu i usporedbe.'
+                      : 'Isključeno — AI analizira i planira isključivo prema vašem profilu i osobnim treninzima.'}
+                  </p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={includeCoachArchive}
+                  onChange={(e) => handleToggleCoachArchive(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-500"></div>
+              </label>
+            </div>
+
+            {histStats && histStats.totalWorkouts > 0 ? (
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="bg-zinc-950/70 border border-zinc-800 rounded-xl p-3.5">
@@ -826,6 +861,15 @@ export default function AICoachTab({
                   </table>
                 </div>
               </>
+            ) : (
+              <div className="p-6 bg-zinc-950/40 rounded-xl border border-zinc-800/80 text-center space-y-2">
+                <History className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
+                <h4 className="text-sm font-bold text-zinc-200">Nema učitanih povijesnih treninga za ovaj profil</h4>
+                <p className="text-xs text-zinc-400 max-w-md mx-auto">
+                  AI vaše treninge i planove korigira prema vašem zadanom FTP-u, težini, raspoloživom vremenu i odrađenim vožnjama na trenažeru.
+                  Možete učitati svoj Intervals.icu CSV izvoz klikom na "Nadopuni CSV" iznad, ili uključiti trenersku referentnu arhivu.
+                </p>
+              </div>
             )}
           </div>
 

@@ -15,6 +15,7 @@ export default function WorkoutAIAnalysisPanel({
   athleteProfile,
   liveWorkouts = [],
   wellnessData = {},
+  userId = null,
   onAddWorkoutToCalendar,
   onStartWorkoutInTrainer,
   compact = false
@@ -53,7 +54,8 @@ export default function WorkoutAIAnalysisPanel({
         athleteProfile,
         liveWorkouts,
         wellnessData,
-        userNote
+        userNote,
+        userId
       });
       setAnalysisText(result);
       setQaHistory([]);
@@ -89,7 +91,8 @@ export default function WorkoutAIAnalysisPanel({
         question: q,
         athleteProfile,
         liveWorkouts,
-        wellnessData
+        wellnessData,
+        userId
       });
       const finalHistory = [...optimisticHistory, { role: 'model', text: answer }];
       setQaHistory(finalHistory);
