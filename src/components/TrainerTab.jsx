@@ -63,13 +63,19 @@ class PowerMatchPID {
     const derivative = dt > 0 ? (error - this.prevError) / dt : 0;
     this.prevError = error;
 
-    const correction = this.kP * error + this.kI * this.integral + this.kD * derivative;
+    // Sigurnosni limit korekcije (±45W) sprječava divljanje otpora kod naglog pada kadence ili jednostranog PM-a
+    const rawCorrection = this.kP * error + this.kI * this.integral + this.kD * derivative;
+    const clampedCorrection = Math.max(-45, Math.min(45, rawCorrection));
 
-    return Math.round(targetPower + correction);
+    return Math.round(targetPower + clampedCorrection);
   }
 }
 
 const pidController = new PowerMatchPID();
+const FTMS_SERVICE_UUID = '00001826-0000-1000-8000-00805f9b34fb';
+const FTMS_INDOOR_BIKE_DATA_UUID = '00002ad2-0000-1000-8000-00805f9b34fb';
+const FTMS_CONTROL_POINT_UUID = '00002ad9-0000-1000-8000-00805f9b34fb';
+const sleepMs = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function TrainerTab({ profile, userId, workoutFromCalendar, onClose, intervalsId, intervalsKey, workouts = [], wellnessData = {}, onAddWorkoutToCalendar }) {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -78,17 +84,28 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
   const [currentHR, setCurrentHR] = useState(0);
   const [currentPower, setCurrentPower] = useState(0);       // Snaga s trenažera
-  const [pmPower, setPmPower] = useState(0);                 // Snaga s powermetra
+  const [pmPower, setPmPower] = useState(0);                 // Sirova snaga s powermetra
+  const [pmDoublePower, setPmDoublePower] = useState(() => {
+    try {
+      return localStorage.getItem('ergvibe_pm_double_watts') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [halfPowerDetected, setHalfPowerDetected] = useState(false);
   const [currentCadence, setCurrentCadence] = useState(0);
   const [isHrConnected, setIsHrConnected] = useState(false);
   const [isPowerConnected, setIsPowerConnected] = useState(false);   // Trenažer
   const [isPmConnected, setIsPmConnected] = useState(false);         // Powermetar
+  const [trainerDeviceName, setTrainerDeviceName] = useState('');
+  const [pmDeviceName, setPmDeviceName] = useState('');
   const [powerMatchEnabled, setPowerMatchEnabled] = useState(false); // Power Match toggle
 
   const [controlMode, setControlMode] = useState('ERG');
   const [ergIntensity, setErgIntensity] = useState(100);
   const [resistanceLevel, setResistanceLevel] = useState(30);
   const [ftmsControlChar, setFtmsControlChar] = useState(null);
+  const [ftmsStatus, setFtmsStatus] = useState('idle'); // 'idle' | 'connecting' | 'ready' | 'unsupported' | 'error'
 
   const [workoutHistory, setWorkoutHistory] = useState([]);
   const [isFinished, setIsFinished] = useState(false);
@@ -100,9 +117,41 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
   const crankDataRef = useRef({ revs: -1, time: -1 });
   const pmCrankDataRef = useRef({ revs: -1, time: -1 });
+  const lastCadenceUpdateTimeRef = useRef(0);
   const hrDeviceRef = useRef(null);
   const trainerDeviceRef = useRef(null);
   const pmDeviceRef = useRef(null);
+  const isPmConnectedRef = useRef(false);
+  const ftmsWriteQueueRef = useRef(Promise.resolve());
+  const displayRollingRef = useRef([]);
+  const pmLiveBufferRef = useRef([]);
+  const halfPowerCounterRef = useRef(0);
+  const loadedWorkoutKeyRef = useRef(null);
+
+  useEffect(() => {
+    isPmConnectedRef.current = isPmConnected;
+  }, [isPmConnected]);
+
+  const togglePmDoublePower = useCallback(() => {
+    setPmDoublePower(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('ergvibe_pm_double_watts', String(next));
+      } catch {
+        // ignore storage error
+      }
+      if (next) setHalfPowerDetected(false);
+      displayRollingRef.current = [];
+      pmLiveBufferRef.current = [];
+      pidController.reset();
+      return next;
+    });
+  }, []);
+
+  const effectivePmPower = useMemo(
+    () => (pmDoublePower ? pmPower * 2 : pmPower),
+    [pmPower, pmDoublePower]
+  );
 
   const historyRef = useRef([]);
   useEffect(() => { historyRef.current = workoutHistory; }, [workoutHistory]);
@@ -131,8 +180,10 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     } catch (e) { console.warn('Trainer disconnect error:', e); }
     trainerDeviceRef.current = null;
     setIsPowerConnected(false);
+    setTrainerDeviceName('');
     setCurrentPower(0);
     setFtmsControlChar(null);
+    setFtmsStatus('idle');
 
     try {
       if (pmDeviceRef.current && pmDeviceRef.current.gatt?.connected) {
@@ -140,14 +191,20 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       }
     } catch (e) { console.warn('PM disconnect error:', e); }
     pmDeviceRef.current = null;
+    isPmConnectedRef.current = false;
     setIsPmConnected(false);
+    setPmDeviceName('');
     setPmPower(0);
+    setHalfPowerDetected(false);
+    halfPowerCounterRef.current = 0;
     setPowerMatchEnabled(false);
     pidController.reset();
 
     setCurrentCadence(0);
     crankDataRef.current = { revs: -1, time: -1 };
     pmCrankDataRef.current = { revs: -1, time: -1 };
+    displayRollingRef.current = [];
+    pmLiveBufferRef.current = [];
   }, []);
 
   // Čišćenje BLE konekcija pri unmount-u komponente
@@ -181,8 +238,12 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   ]);
 
   useEffect(() => {
-    if (!workoutFromCalendar) return;
+    if (!workoutFromCalendar) {
+      loadedWorkoutKeyRef.current = null;
+      return;
+    }
 
+    const currentFtp = Number(profile?.ftp) || 200;
     let parsedRecipe = [];
 
     if (workoutFromCalendar.workout_doc && workoutFromCalendar.workout_doc.steps) {
@@ -197,14 +258,21 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
             }
           } else {
             let pwr = 50;
-            if (step.power) {
-              if (step.power.value) pwr = step.power.value;
-              else if (step.power.start && step.power.end) pwr = (step.power.start + step.power.end) / 2;
+            if (typeof step.power === 'number') {
+              pwr = step.power;
+            } else if (step.power) {
+              let rawVal = null;
+              if (step.power.value != null) rawVal = step.power.value;
+              else if (step.power.start != null && step.power.end != null) rawVal = (step.power.start + step.power.end) / 2;
+              if (rawVal != null) {
+                const units = String(step.power.units || '').toLowerCase();
+                pwr = units === 'w' ? Math.round((rawVal / currentFtp) * 100) : rawVal;
+              }
             }
             flatSteps.push({
-              name: step.text || (pwr > 80 ? 'Radni Interval' : 'Odmor'),
+              name: step.name || step.text || (pwr > 80 ? 'Radni Interval' : 'Odmor'),
               duration: step.duration || 60,
-              power: pwr
+              power: Math.round(pwr)
             });
           }
         });
@@ -213,42 +281,56 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       parsedRecipe = extractSteps(workoutFromCalendar.workout_doc.steps);
     } else if (workoutFromCalendar.steps && Array.isArray(workoutFromCalendar.steps)) {
       // Supabase / Library format
-      parsedRecipe = workoutFromCalendar.steps;
+      parsedRecipe = workoutFromCalendar.steps.map(s => ({
+        ...s,
+        name: s.name || s.text || 'Interval'
+      }));
     } else if (typeof workoutFromCalendar.workout_doc === 'string' && workoutFromCalendar.workout_doc.trim()) {
-      const parsed = parseIntervalsCode(workoutFromCalendar.workout_doc, profile?.ftp || 200);
-      if (parsed?.allSteps?.length > 0) parsedRecipe = parsed.allSteps;
+      const parsed = parseIntervalsCode(workoutFromCalendar.workout_doc, currentFtp);
+      if (parsed?.allSteps?.length > 0) {
+        parsedRecipe = parsed.allSteps.map(s => ({ ...s, name: s.name || s.text || 'Interval' }));
+      }
     } else if (typeof workoutFromCalendar.steps === 'string' && workoutFromCalendar.steps.trim()) {
-      const parsed = parseIntervalsCode(workoutFromCalendar.steps, profile?.ftp || 200);
-      if (parsed?.allSteps?.length > 0) parsedRecipe = parsed.allSteps;
+      const parsed = parseIntervalsCode(workoutFromCalendar.steps, currentFtp);
+      if (parsed?.allSteps?.length > 0) {
+        parsedRecipe = parsed.allSteps.map(s => ({ ...s, name: s.name || s.text || 'Interval' }));
+      }
     }
 
     if (parsedRecipe.length > 0) {
       setWorkoutRecipe(parsedRecipe);
-      setElapsedTime(0);
-      setSessionStartTime(null);
-      setWorkoutHistory([]);
-      setIsFinished(false);
-      setShowStopPrompt(false);
-      setIntervalsUploadStatus(null);
-      setIntervalsUploadError(null);
-      setSaveStatus(null);
-      setIsPlaying(false);
+      // Resetiraj tijek treninga samo ako je odabran novi trening (ne ako se asinkrono učitao FTP)
+      const workoutIdentity = `${workoutFromCalendar.id || ''}_${workoutFromCalendar.title || ''}_${parsedRecipe.length}`;
+      if (loadedWorkoutKeyRef.current !== workoutIdentity) {
+        loadedWorkoutKeyRef.current = workoutIdentity;
+        setElapsedTime(0);
+        setSessionStartTime(null);
+        setWorkoutHistory([]);
+        setIsFinished(false);
+        setShowStopPrompt(false);
+        setIntervalsUploadStatus(null);
+        setIntervalsUploadError(null);
+        setSaveStatus(null);
+        setIsPlaying(false);
+      }
     }
   }, [workoutFromCalendar, profile?.ftp]);
 
   const totalDuration = useMemo(() => workoutRecipe.reduce((acc, step) => acc + step.duration, 0), [workoutRecipe]);
 
+  const usePmAsPrimary = isPmConnected && (powerMatchEnabled || !isPowerConnected);
+
   const stateRef = useRef({
-    powerMatchEnabled, isPmConnected, isPowerConnected, isHrConnected,
-    pmPower, currentPower, currentHR, currentCadence
+    powerMatchEnabled, usePmAsPrimary, isPmConnected, isPowerConnected, isHrConnected,
+    effectivePmPower, currentPower, currentHR, currentCadence
   });
 
   useEffect(() => {
     stateRef.current = {
-      powerMatchEnabled, isPmConnected, isPowerConnected, isHrConnected,
-      pmPower, currentPower, currentHR, currentCadence
+      powerMatchEnabled, usePmAsPrimary, isPmConnected, isPowerConnected, isHrConnected,
+      effectivePmPower, currentPower, currentHR, currentCadence
     };
-  }, [powerMatchEnabled, isPmConnected, isPowerConnected, isHrConnected, pmPower, currentPower, currentHR, currentCadence]);
+  }, [powerMatchEnabled, usePmAsPrimary, isPmConnected, isPowerConnected, isHrConnected, effectivePmPower, currentPower, currentHR, currentCadence]);
 
   const lastUpdateRef = useRef(Date.now());
   const workerRef = useRef(null);
@@ -366,9 +448,9 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
             const newElapsed = prev + deltaSecs;
 
             const s = stateRef.current;
-            const recordedPower = (s.powerMatchEnabled && s.isPmConnected) ? s.pmPower : (s.isPowerConnected ? s.currentPower : 0);
+            const recordedPower = s.usePmAsPrimary ? s.effectivePmPower : (s.isPowerConnected ? s.currentPower : 0);
             const hr = s.isHrConnected ? s.currentHR : 0;
-            const cad = (s.isPmConnected ? s.currentCadence : (s.isPowerConnected ? s.currentCadence : 0));
+            const cad = (s.isPmConnected || s.isPowerConnected) ? s.currentCadence : 0;
 
             if (prev < totalDuration) {
               setWorkoutHistory(hist => {
@@ -407,16 +489,43 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   }, [elapsedTime, isPlaying, totalDuration]);
 
   useEffect(() => {
-    const anyPower = (isPmConnected ? pmPower : 0) || (isPowerConnected ? currentPower : 0);
+    const anyPower = (isPmConnected ? effectivePmPower : 0) || (isPowerConnected ? currentPower : 0);
     // Ne pokreći automatski ako je trening završen ili modal otvoren ili ako je već bilo podataka (stari trening)
-    if (!isPlaying && !isFinished && !showStopPrompt && !summaryStats && anyPower > 10) {
+    if (!isPlaying && !isFinished && !showStopPrompt && !summaryStats && anyPower > 15) {
       setIsPlaying(true);
     }
-  }, [currentPower, pmPower, isPlaying, isFinished, showStopPrompt, summaryStats, isPowerConnected, isPmConnected]);
+  }, [currentPower, effectivePmPower, isPlaying, isFinished, showStopPrompt, summaryStats, isPowerConnected, isPmConnected]);
+
+  // Automatsko nuliranje kadence nakon prestanka okretanja pedala (>3.5s bez impulsa)
+  // i detekcija jednostranog PowerMetra koji šalje ~50% snage (npr. Assioma UNO bez uključenog BLE ×2)
+  useEffect(() => {
+    if (!isPowerConnected && !isPmConnected) return;
+    const watchdog = setInterval(() => {
+      if (lastCadenceUpdateTimeRef.current > 0 && Date.now() - lastCadenceUpdateTimeRef.current > 3500) {
+        setCurrentCadence(0);
+      }
+      const trW = stateRef.current.currentPower;
+      const rawPmW = pmPower;
+      if (isPowerConnected && isPmConnected && !pmDoublePower && trW >= 75 && rawPmW >= 20) {
+        const ratio = rawPmW / trW;
+        if (ratio >= 0.36 && ratio <= 0.62) {
+          halfPowerCounterRef.current += 1;
+          if (halfPowerCounterRef.current >= 4) {
+            setHalfPowerDetected(true);
+          }
+        } else if (ratio > 0.75) {
+          halfPowerCounterRef.current = 0;
+          setHalfPowerDetected(false);
+        }
+      }
+    }, 1000);
+    return () => clearInterval(watchdog);
+  }, [isPowerConnected, isPmConnected, pmDoublePower, pmPower]);
 
   useEffect(() => {
     pidController.reset();
-  }, [powerMatchEnabled]);
+    displayRollingRef.current = [];
+  }, [powerMatchEnabled, usePmAsPrimary, pmDoublePower]);
 
   let currentStepIndex = 0;
   let timeAccumulated = 0;
@@ -451,14 +560,23 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   const baseTargetPower = Math.round((currentStep.power / 100) * ftpValue);
   const activeTargetPower = Math.round(baseTargetPower * (ergIntensity / 100));
 
+  // Konzistentan 3-sekundni zaglađeni prikaz isključivo s aktivnog izvora snage (nikada ne miješa Trenažer i PM)
   const displayPower = useMemo(() => {
-    const current = (isPmConnected ? pmPower : (isPowerConnected ? currentPower : 0));
-    if (!isPlaying || workoutHistory.length === 0) return current;
+    const rawActive = usePmAsPrimary
+      ? effectivePmPower
+      : (isPowerConnected ? currentPower : 0);
 
-    const recent = workoutHistory.slice(-2);
-    const sum = recent.reduce((acc, h) => acc + h.power, 0) + current;
-    return Math.round(sum / (recent.length + 1));
-  }, [pmPower, currentPower, isPmConnected, isPowerConnected, isPlaying, workoutHistory]);
+    if (rawActive <= 0) {
+      displayRollingRef.current = [];
+      return 0;
+    }
+
+    const buf = displayRollingRef.current;
+    buf.push(rawActive);
+    if (buf.length > 3) buf.shift();
+    const sum = buf.reduce((acc, v) => acc + v, 0);
+    return Math.round(sum / buf.length);
+  }, [usePmAsPrimary, effectivePmPower, currentPower, isPowerConnected]);
 
   const displayHR = isHrConnected ? currentHR : 0;
   const displayCadence = currentCadence;
@@ -487,11 +605,35 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  const parseCyclingPowerData = (view, crankRef, setPowerFn, setCadenceFn) => {
-    const flags = view.getUint16(0, true);
-    setPowerFn(view.getInt16(2, true));
+  // Serijalizirani red čekanja za FTMS GATT upise — sprječava "GATT operation already in progress" kolizije!
+  const enqueueFtmsWrite = useCallback((char, data) => {
+    if (!char) return Promise.resolve(false);
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const nextOp = ftmsWriteQueueRef.current
+      .then(async () => {
+        if (!trainerDeviceRef.current?.gatt?.connected) return false;
+        if (typeof char.writeValueWithResponse === 'function') {
+          await char.writeValueWithResponse(bytes);
+        } else {
+          await char.writeValue(bytes);
+        }
+        return true;
+      })
+      .catch((err) => {
+        console.warn('[FTMS] GATT write upozorenje:', err);
+        return false;
+      });
+    ftmsWriteQueueRef.current = nextOp;
+    return nextOp;
+  }, []);
 
-    if ((flags & 0x20) !== 0) {
+  const parseCyclingPowerData = (view, crankRef, onPower, onCadence) => {
+    if (!view || view.byteLength < 4) return;
+    const flags = view.getUint16(0, true);
+    const watts = Math.max(0, view.getInt16(2, true));
+    onPower(watts);
+
+    if ((flags & 0x20) !== 0 && onCadence) {
       let offset = 4;
       if ((flags & 0x01) !== 0) offset += 1;
       if ((flags & 0x04) !== 0) offset += 2;
@@ -506,9 +648,12 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           let revDiff = crankRevs - crankRef.current.revs;
           if (timeDiff < 0) timeDiff += 65536;
           if (revDiff < 0) revDiff += 65536;
-          if (timeDiff > 0) {
+          if (timeDiff > 0 && revDiff > 0) {
             const rpm = Math.round((revDiff / (timeDiff / 1024)) * 60);
-            if (rpm >= 0 && rpm < 200) setCadenceFn(rpm);
+            if (rpm > 0 && rpm < 200) {
+              lastCadenceUpdateTimeRef.current = Date.now();
+              onCadence(rpm);
+            }
           }
         }
         crankRef.current = { revs: crankRevs, time: crankTime };
@@ -516,10 +661,51 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     }
   };
 
+  // FTMS Indoor Bike Data (0x2AD2) parser — služi kao fallback za snagu/kadencu i održava FTMS sesiju aktivnom
+  const parseIndoorBikeData = (view, useForPower, useForCadence) => {
+    if (!view || view.byteLength < 2) return;
+    const flags = view.getUint16(0, true);
+    let offset = 2;
 
-  // setup helperi za auto-connect
+    // Bit 0 (More Data): 0 = Instantaneous Speed je prisutan (2 bajta)
+    if ((flags & 0x0001) === 0) offset += 2;
+    // Bit 1: Average Speed (2 bajta)
+    if ((flags & 0x0002) !== 0) offset += 2;
+    // Bit 2: Instantaneous Cadence (uint16, 0.5 rpm rezolucija)
+    if ((flags & 0x0004) !== 0) {
+      if (useForCadence && view.byteLength >= offset + 2 && !isPmConnectedRef.current) {
+        const rpm = Math.round(view.getUint16(offset, true) * 0.5);
+        if (rpm > 0 && rpm < 200) {
+          lastCadenceUpdateTimeRef.current = Date.now();
+          setCurrentCadence(rpm);
+        } else if (rpm === 0) {
+          setCurrentCadence(0);
+        }
+      }
+      offset += 2;
+    }
+    // Bit 3: Average Cadence (2 bajta)
+    if ((flags & 0x0008) !== 0) offset += 2;
+    // Bit 4: Total Distance (uint24 = 3 bajta)
+    if ((flags & 0x0010) !== 0) offset += 3;
+    // Bit 5: Resistance Level (sint16 = 2 bajta)
+    if ((flags & 0x0020) !== 0) offset += 2;
+    // Bit 6: Instantaneous Power (sint16 = 2 bajta)
+    if ((flags & 0x0040) !== 0 && useForPower && view.byteLength >= offset + 2) {
+      const watts = Math.max(0, view.getInt16(offset, true));
+      setCurrentPower(watts);
+    }
+  };
+
+  // setup helperi za BLE uređaje
   const setupHRDevice = async (device) => {
     hrDeviceRef.current = device;
+    device.addEventListener('gattserverdisconnected', () => {
+      if (hrDeviceRef.current === device) {
+        setIsHrConnected(false);
+        setCurrentHR(0);
+      }
+    });
     const server = await device.gatt.connect();
     const service = await server.getPrimaryService('heart_rate');
     const char = await service.getCharacteristic('heart_rate_measurement');
@@ -534,41 +720,145 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
   const setupTrainerDevice = async (device) => {
     trainerDeviceRef.current = device;
-    const server = await device.gatt.connect();
-    const powerService = await server.getPrimaryService('cycling_power');
-    const powerChar = await powerService.getCharacteristic('cycling_power_measurement');
-    await powerChar.startNotifications();
-    setIsPowerConnected(true);
+    setTrainerDeviceName(device.name || 'Trenažer');
+    setFtmsStatus('connecting');
+    crankDataRef.current = { revs: -1, time: -1 };
 
-    powerChar.addEventListener('characteristicvaluechanged', (e) => {
-      parseCyclingPowerData(e.target.value, crankDataRef, setCurrentPower, setCurrentCadence);
+    device.addEventListener('gattserverdisconnected', () => {
+      if (trainerDeviceRef.current === device) {
+        setIsPowerConnected(false);
+        setCurrentPower(0);
+        setFtmsControlChar(null);
+        setFtmsStatus('idle');
+        if (!isPmConnectedRef.current) setCurrentCadence(0);
+      }
     });
 
+    const server = await device.gatt.connect();
+    let hasCpsPower = false;
+    let hasCpsCadence = false;
+
+    // 1. Pokušaj spojiti Cycling Power Service (0x1818) za čitanje snage trenažera
     try {
-      const ftmsService = await server.getPrimaryService('00001826-0000-1000-8000-00805f9b34fb');
-      const controlPoint = await ftmsService.getCharacteristic('00002ad9-0000-1000-8000-00805f9b34fb');
-      setFtmsControlChar(controlPoint);
+      const powerService = await server.getPrimaryService('cycling_power');
+      const powerChar = await powerService.getCharacteristic('cycling_power_measurement');
+      await powerChar.startNotifications();
+      hasCpsPower = true;
+
+      powerChar.addEventListener('characteristicvaluechanged', (e) => {
+        const view = e.target.value;
+        if (view && view.byteLength >= 2 && (view.getUint16(0, true) & 0x20) !== 0) {
+          hasCpsCadence = true;
+        }
+        parseCyclingPowerData(
+          view,
+          crankDataRef,
+          setCurrentPower,
+          // Ako je spojen vanjski PowerMeter (npr. Assioma), kadencu čitamo isključivo s pedala!
+          (rpm) => {
+            if (!isPmConnectedRef.current) setCurrentCadence(rpm);
+          }
+        );
+      });
+    } catch (cpsErr) {
+      console.info('[Trainer] Cycling Power servis nije dostupan, koristim FTMS Indoor Bike Data:', cpsErr);
+    }
+
+    // 2. Spoji FTMS servis (0x1826) STROGO SEKVENCIJALNO bez GATT kolizija:
+    //    Indoor Bike Data (0x2AD2) -> Control Point (0x2AD9) -> Request Control (0x00) -> Start/Resume (0x07)
+    try {
+      const ftmsService = await server.getPrimaryService(FTMS_SERVICE_UUID);
+
+      try {
+        const ibdChar = await ftmsService.getCharacteristic(FTMS_INDOOR_BIKE_DATA_UUID);
+        await ibdChar.startNotifications();
+        ibdChar.addEventListener('characteristicvaluechanged', (e) => {
+          parseIndoorBikeData(e.target.value, !hasCpsPower, !hasCpsCadence);
+        });
+      } catch (ibdErr) {
+        console.info('[FTMS] Indoor Bike Data nije dostupan:', ibdErr);
+      }
+
+      const controlPoint = await ftmsService.getCharacteristic(FTMS_CONTROL_POINT_UUID);
       await controlPoint.startNotifications();
-      await controlPoint.writeValue(new Uint8Array([0x00]));
-      console.log("FTMS kontrola preuzeta.");
+
+      controlPoint.addEventListener('characteristicvaluechanged', (e) => {
+        const v = e.target.value;
+        if (v && v.byteLength >= 3 && v.getUint8(0) === 0x80) {
+          const reqOp = v.getUint8(1);
+          const result = v.getUint8(2);
+          // 0x04 = Control Not Permitted -> trenažer je izgubio kontrolnu sesiju, automatski preuzmi natrag!
+          if (result === 0x04 && reqOp !== 0x00) {
+            console.warn('[FTMS] Trenažer traži ponovno preuzimanje kontrole (0x04). Šaljem 0x00 -> 0x07...');
+            enqueueFtmsWrite(controlPoint, new Uint8Array([0x00]));
+            enqueueFtmsWrite(controlPoint, new Uint8Array([0x07]));
+          }
+        }
+      });
+
+      // Prvo zatraži kontrolu (0x00) i pokreni FTMS sesiju (0x07) PRIJE postavljanja React statea!
+      await enqueueFtmsWrite(controlPoint, new Uint8Array([0x00]));
+      await sleepMs(150);
+      await enqueueFtmsWrite(controlPoint, new Uint8Array([0x07]));
+      await sleepMs(150);
+
+      setIsPowerConnected(true);
+      setFtmsStatus('ready');
+      setFtmsControlChar(controlPoint);
+      console.log('[FTMS] Kontrola (0x00) i Start (0x07) uspješno preuzeti.');
     } catch (ftmsErr) {
-      console.warn("FTMS greška:", ftmsErr);
+      console.warn('[FTMS] Kontrola otpora nije dostupna na ovom uređaju:', ftmsErr);
+      if (hasCpsPower) {
+        setIsPowerConnected(true);
+        setFtmsStatus('unsupported');
+      } else {
+        setFtmsStatus('error');
+        throw new Error('Odabrani uređaj ne podržava ni FTMS ni Cycling Power.');
+      }
     }
   };
 
   const setupPmDevice = async (device) => {
     pmDeviceRef.current = device;
+    setPmDeviceName(device.name || 'PowerMeter');
+    pmCrankDataRef.current = { revs: -1, time: -1 };
+    pmLiveBufferRef.current = [];
+    halfPowerCounterRef.current = 0;
+    setHalfPowerDetected(false);
+
+    device.addEventListener('gattserverdisconnected', () => {
+      if (pmDeviceRef.current === device) {
+        isPmConnectedRef.current = false;
+        setIsPmConnected(false);
+        setPmPower(0);
+        setHalfPowerDetected(false);
+        setPowerMatchEnabled(false);
+        pidController.reset();
+      }
+    });
+
     const server = await device.gatt.connect();
     const powerService = await server.getPrimaryService('cycling_power');
     const powerChar = await powerService.getCharacteristic('cycling_power_measurement');
     await powerChar.startNotifications();
+    isPmConnectedRef.current = true;
     setIsPmConnected(true);
     setPowerMatchEnabled(true);
     pidController.reset();
-    console.log("Powermetar spojen, Power Match aktiviran.");
+    console.log('[BLE] Powermetar spojen, Power Match aktiviran.');
 
     powerChar.addEventListener('characteristicvaluechanged', (e) => {
-      parseCyclingPowerData(e.target.value, pmCrankDataRef, setPmPower, setCurrentCadence);
+      parseCyclingPowerData(
+        e.target.value,
+        pmCrankDataRef,
+        (rawWatts) => {
+          setPmPower(rawWatts);
+          const buf = pmLiveBufferRef.current;
+          buf.push(rawWatts);
+          if (buf.length > 3) buf.shift();
+        },
+        setCurrentCadence
+      );
     });
   };
 
@@ -596,17 +886,22 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         trainerDeviceRef.current.gatt.disconnect();
       }
       setIsPowerConnected(false);
+      setTrainerDeviceName('');
       setCurrentPower(0);
       setCurrentCadence(prevCadence => isPmConnected ? prevCadence : 0);
       trainerDeviceRef.current = null;
       setFtmsControlChar(null);
+      setFtmsStatus('idle');
       return;
     }
     try {
       if (!navigator.bluetooth) { alert("Tvoj preglednik ne podržava Web Bluetooth."); return; }
       const device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: ['cycling_power'] }],
-        optionalServices: ['00001826-0000-1000-8000-00805f9b34fb']
+        filters: [
+          { services: [FTMS_SERVICE_UUID] },
+          { services: ['cycling_power'] }
+        ],
+        optionalServices: ['cycling_power', FTMS_SERVICE_UUID]
       });
       await setupTrainerDevice(device);
     } catch (err) {
@@ -619,11 +914,16 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       if (pmDeviceRef.current && pmDeviceRef.current.gatt.connected) {
         pmDeviceRef.current.gatt.disconnect();
       }
+      isPmConnectedRef.current = false;
       setIsPmConnected(false);
+      setPmDeviceName('');
       setPmPower(0);
+      setHalfPowerDetected(false);
+      halfPowerCounterRef.current = 0;
       setPowerMatchEnabled(false);
       pidController.reset();
       pmDeviceRef.current = null;
+      pmLiveBufferRef.current = [];
       return;
     }
     try {
@@ -637,62 +937,86 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     }
   };
 
-  const lastErgCommandTimeRef = useRef(0);
-  const lastTargetPowerRef = useRef(activeTargetPower);
+  const ergParamsRef = useRef({
+    activeTargetPower,
+    controlMode,
+    ftmsControlChar,
+    powerMatchEnabled,
+    isPmConnected,
+    pmDoublePower,
+    halfPowerDetected,
+    currentCadence,
+    ftp: profile?.ftp || 250
+  });
 
   useEffect(() => {
-    const sendErgCommand = async () => {
-      if (!ftmsControlChar || controlMode !== 'ERG') return;
-
-      const now = Date.now();
-      const targetChanged = lastTargetPowerRef.current !== activeTargetPower;
-
-      if (targetChanged) {
-        lastTargetPowerRef.current = activeTargetPower;
-        pidController.reset();
-      } else {
-        if (powerMatchEnabled && isPmConnected) {
-          if (now - lastErgCommandTimeRef.current < 2000) return; // Svake 2 sekunde
-        } else {
-          if (now - lastErgCommandTimeRef.current < 5000) return; // Osvježi svakih 5 sekundi
-        }
-      }
-
-      try {
-        let commandPower = activeTargetPower;
-
-        if (powerMatchEnabled && isPmConnected && pmPower > 0) {
-          const recentPm = workoutHistory.slice(-2).map(h => h.power);
-          const avgPmPower = recentPm.length > 0
-            ? Math.round((recentPm.reduce((a, b) => a + b, 0) + pmPower) / (recentPm.length + 1))
-            : pmPower;
-
-          commandPower = pidController.compute(activeTargetPower, avgPmPower);
-          const maxTrainerW = Math.round((profile?.ftp || 250) * 1.5);
-          commandPower = Math.max(30, Math.min(maxTrainerW, commandPower));
-        }
-
-        lastErgCommandTimeRef.current = now;
-        const buffer = new ArrayBuffer(3);
-        const view = new DataView(buffer);
-        view.setUint8(0, 0x05);
-        view.setInt16(1, commandPower, true);
-        await ftmsControlChar.writeValue(buffer);
-      } catch (e) { console.error("Greška pri slanju ERG komande", e); }
+    ergParamsRef.current = {
+      activeTargetPower,
+      controlMode,
+      ftmsControlChar,
+      powerMatchEnabled,
+      isPmConnected,
+      pmDoublePower,
+      halfPowerDetected,
+      currentCadence,
+      ftp: profile?.ftp || 250
     };
-    sendErgCommand();
-  }, [activeTargetPower, controlMode, ftmsControlChar, pmPower, powerMatchEnabled, isPmConnected, workoutHistory, profile]);
+  }, [activeTargetPower, controlMode, ftmsControlChar, powerMatchEnabled, isPmConnected, pmDoublePower, halfPowerDetected, currentCadence, profile?.ftp]);
+
+  const dispatchErgTarget = useCallback((resetPid = false) => {
+    const p = ergParamsRef.current;
+    if (!p.ftmsControlChar || p.controlMode !== 'ERG') return;
+
+    if (resetPid) {
+      pidController.reset();
+    }
+
+    let commandPower = p.activeTargetPower;
+    const isHalfPowerBlocked = p.halfPowerDetected && !p.pmDoublePower;
+
+    if (p.powerMatchEnabled && p.isPmConnected && !isHalfPowerBlocked) {
+      const rawBuf = pmLiveBufferRef.current;
+      const mult = p.pmDoublePower ? 2 : 1;
+      const scaledAvg = rawBuf.length > 0
+        ? Math.round((rawBuf.reduce((a, b) => a + b, 0) / rawBuf.length) * mult)
+        : 0;
+
+      // Korigiraj otpor samo dok vozač aktivno okreće pedale (>=45 rpm i >=35 W) kako kratko usporavanje ne bi zabilo otpor
+      if (scaledAvg >= 35 && p.currentCadence >= 45) {
+        commandPower = pidController.compute(p.activeTargetPower, scaledAvg);
+      }
+      const maxTrainerW = Math.round((p.ftp || 250) * 1.5);
+      commandPower = Math.max(30, Math.min(maxTrainerW, commandPower));
+    }
+
+    const buffer = new ArrayBuffer(3);
+    const view = new DataView(buffer);
+    view.setUint8(0, 0x05);
+    view.setInt16(1, commandPower, true);
+    enqueueFtmsWrite(p.ftmsControlChar, new Uint8Array(buffer));
+  }, [enqueueFtmsWrite]);
+
+  // Trenutno slanje nove ERG snage čim se promijeni interval, intenzitet, mod (RES->ERG), P.Match ON/OFF ili ×2 prekidač!
+  useEffect(() => {
+    if (!ftmsControlChar || controlMode !== 'ERG') return;
+    dispatchErgTarget(true);
+  }, [activeTargetPower, controlMode, ftmsControlChar, powerMatchEnabled, pmDoublePower, halfPowerDetected, dispatchErgTarget]);
+
+  // Periodičko osvježavanje ERG cilja (svake 2s uz Power Match, inače svake 4s za stabilan FTMS lock)
+  useEffect(() => {
+    if (!ftmsControlChar || controlMode !== 'ERG') return;
+    const intervalMs = (powerMatchEnabled && isPmConnected) ? 2000 : 4000;
+    const timer = setInterval(() => {
+      dispatchErgTarget(false);
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }, [ftmsControlChar, controlMode, powerMatchEnabled, isPmConnected, dispatchErgTarget]);
 
   useEffect(() => {
-    const sendResCommand = async () => {
-      if (ftmsControlChar && controlMode === 'RES') {
-        try {
-          await ftmsControlChar.writeValue(new Uint8Array([0x04, resistanceLevel]));
-        } catch (e) { console.error("Greška pri slanju RES komande", e); }
-      }
-    };
-    sendResCommand();
-  }, [resistanceLevel, controlMode, ftmsControlChar]);
+    if (ftmsControlChar && controlMode === 'RES') {
+      enqueueFtmsWrite(ftmsControlChar, new Uint8Array([0x04, resistanceLevel]));
+    }
+  }, [resistanceLevel, controlMode, ftmsControlChar, enqueueFtmsWrite]);
 
   const toggleMode = () => setControlMode(prev => prev === 'ERG' ? 'RES' : 'ERG');
   const increaseErg = () => setErgIntensity(prev => prev + 2);
@@ -966,51 +1290,74 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       />
 
       {/* GORNJA TRAKA: Bluetooth gumbi */}
-      <div className="flex gap-1.5 md:gap-4 flex-wrap overflow-x-auto pb-0 md:pb-0 shrink-0">
+      <div className="flex gap-1.5 md:gap-3 flex-wrap overflow-x-auto pb-0 md:pb-0 shrink-0">
         <button
           onClick={connectTrainer}
-          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-5 py-1.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base shrink-0 ${isPowerConnected ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-sky-400 border-zinc-800/80'}`}
+          title={trainerDeviceName ? `Spojen: ${trainerDeviceName}` : 'Spoji pametni trenažer (FTMS / Cycling Power)'}
+          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-sm shrink-0 ${
+            isPowerConnected
+              ? (ftmsStatus === 'ready'
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30')
+              : 'bg-zinc-900/50 hover:bg-zinc-800 text-sky-400 border-zinc-800/80'
+          }`}
         >
-          {isPowerConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-5 md:h-5" /> : <Bluetooth className="w-3.5 h-3.5 md:w-5 md:h-5" />}
-          {isPowerConnected ? 'Trenažer Spojen' : 'Spoji Trenažer'}
+          {isPowerConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <Bluetooth className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+          {isPowerConnected
+            ? `${trainerDeviceName || 'Trenažer'} ${ftmsStatus === 'ready' ? '(ERG)' : '(Bez ERG)'}`
+            : 'Spoji Trenažer'}
         </button>
 
         <button
           onClick={connectPowerMeter}
-          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-5 py-1.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base shrink-0 ${isPmConnected ? 'bg-violet-500/10 text-violet-400 border-violet-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-violet-400 border-zinc-800/80'}`}
+          title={pmDeviceName ? `Spojen: ${pmDeviceName}` : 'Spoji vanjski PowerMeter (npr. Favero Assioma)'}
+          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-sm shrink-0 ${isPmConnected ? 'bg-violet-500/10 text-violet-400 border-violet-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-violet-400 border-zinc-800/80'}`}
         >
-          {isPmConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-5 md:h-5" /> : <Activity className="w-3.5 h-3.5 md:w-5 md:h-5" />}
-          {isPmConnected ? 'PowerMeter Spojen' : 'Spoji PowerMeter'}
+          {isPmConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <Activity className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+          {isPmConnected ? (pmDeviceName || 'PowerMeter Spojen') : 'Spoji PowerMeter'}
         </button>
 
         <button
           onClick={connectHR}
-          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-5 py-1.5 md:py-3 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-base shrink-0 ${isHrConnected ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-rose-500 border-zinc-800/80'}`}
+          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-sm shrink-0 ${isHrConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-rose-500 border-zinc-800/80'}`}
         >
-          {isHrConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-5 md:h-5" /> : <Heart className="w-3.5 h-3.5 md:w-5 md:h-5" />}
+          {isHrConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <Heart className="w-3.5 h-3.5 md:w-4 md:h-4" />}
           {isHrConnected ? 'Pulsmetar Spojen' : 'Spoji Pulsmetar'}
         </button>
 
         {isPmConnected && (
-          <button
-            onClick={() => { setPowerMatchEnabled(prev => !prev); pidController.reset(); }}
-            className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-5 py-1.5 md:py-3 rounded-xl font-bold transition-all border shadow-sm text-xs md:text-base shrink-0 ${powerMatchEnabled ? 'bg-violet-600 text-white border-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.3)]' : 'bg-zinc-900/50 text-violet-500 border-zinc-800 hover:bg-zinc-800'}`}
-          >
-            <Activity className="w-3.5 h-3.5 md:w-5 md:h-5" />
-            P.Match {powerMatchEnabled ? 'ON' : 'OFF'}
-          </button>
+          <>
+            <button
+              onClick={() => { setPowerMatchEnabled(prev => !prev); pidController.reset(); }}
+              title="Uskladi otpor trenažera prema očitanju PowerMetra"
+              className={`flex items-center gap-1 md:gap-1.5 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-xl font-bold transition-all border shadow-sm text-xs md:text-sm shrink-0 ${powerMatchEnabled ? 'bg-violet-600 text-white border-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.3)]' : 'bg-zinc-900/50 text-violet-400 border-zinc-800 hover:bg-zinc-800'}`}
+            >
+              <Activity className="w-3.5 h-3.5 md:w-4 md:h-4" />
+              P.Match {powerMatchEnabled ? 'ON' : 'OFF'}
+            </button>
+
+            <button
+              onClick={togglePmDoublePower}
+              title="Udvostruči snagu jednostrane pedale (npr. Assioma UNO kada u Favero aplikaciji nije uključen Unified Channel L). Isključi ako Favero aplikacija već udvostručuje snagu!"
+              className={`flex items-center gap-1 px-2.5 md:px-3.5 py-1.5 md:py-2.5 rounded-xl font-black transition-all border shadow-sm text-xs md:text-sm shrink-0 ${
+                pmDoublePower
+                  ? 'bg-amber-500 text-zinc-950 border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.35)]'
+                  : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:bg-zinc-800 hover:text-zinc-200'
+              }`}
+            >
+              ×2 Uno {pmDoublePower ? 'ON' : 'OFF'}
+            </button>
+          </>
         )}
 
-
-
         <div className="ml-auto flex items-center justify-end bg-zinc-900/40 backdrop-blur-md rounded-xl border border-zinc-800/80 shadow-sm overflow-hidden shrink-0">
-          <div className="px-3 py-1.5 md:px-4 md:py-3 text-zinc-500 font-medium text-xs md:text-sm truncate max-w-[140px] sm:max-w-none">
+          <div className="px-3 py-1.5 md:px-4 md:py-2.5 text-zinc-500 font-medium text-xs md:text-sm truncate max-w-[140px] sm:max-w-none">
             <span className="hidden sm:inline">Trening: </span><span className="text-zinc-100 font-bold uppercase">{workoutFromCalendar ? workoutFromCalendar.title : "Slobodna Vožnja"}</span>
           </div>
           {onClose && (
             <button
               onClick={onClose}
-              className="px-3 py-1.5 md:px-4 md:py-3 bg-zinc-800 hover:bg-zinc-700 hover:text-white transition-colors text-zinc-400 font-bold border-l border-zinc-700/50 flex items-center gap-2"
+              className="px-3 py-1.5 md:px-4 md:py-2.5 bg-zinc-800 hover:bg-zinc-700 hover:text-white transition-colors text-zinc-400 font-bold border-l border-zinc-700/50 flex items-center gap-2"
             >
               <X className="w-4 h-4 md:w-5 md:h-5" /> <span className="hidden md:inline">Zatvori</span>
             </button>
@@ -1018,19 +1365,47 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         </div>
       </div>
 
+      {/* DIJAGNOSTIČKE OBAVIJESTI ZA BLE / FTMS / ASSIOMA UNO */}
+      {isPowerConnected && ftmsStatus === 'unsupported' && (
+        <div className="bg-amber-950/50 border border-amber-500/40 text-amber-200 rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between gap-2 shrink-0">
+          <span>
+            ⚠️ Spojeni uređaj ({trainerDeviceName}) ne nudi FTMS kontrolu otpora (ERG neće mijenjati otpor). Provjeri jesi li slučajno odabrao pedale umjesto Direta ili drži li druga aplikacija (Zwift / MyETraining / Garmin) aktivnu vezu s trenažerom.
+          </span>
+        </div>
+      )}
+
+      {halfPowerDetected && !pmDoublePower && isPmConnected && isPowerConnected && (
+        <div className="bg-amber-950/60 border border-amber-500/50 text-amber-200 rounded-xl px-3 py-2 text-xs font-semibold flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <span>
+            ⚠️ PowerMeter ({pmPower} W) šalje ~50% snage trenažera ({currentPower} W) — jednostrana pedala (Assioma UNO) bez BLE ×2! Power Match korekcija je automatski pauzirana kako ne bi udvostručila otpor.
+          </span>
+          <button
+            onClick={togglePmDoublePower}
+            className="px-3 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-black text-xs shrink-0 transition-colors"
+          >
+            Uključi ×2 Uno odmah
+          </button>
+        </div>
+      )}
+
       {/* GLAVNI GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3 shrink-[2] min-h-0" style={{minHeight: 0}}>
         <div className="md:col-span-2 lg:col-span-2 bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-2 md:p-4 flex flex-col relative overflow-hidden min-h-0">
           <div className={`absolute top-0 left-0 w-full h-2 ${getZoneColorForTrainer(currentStep.power)} transition-colors duration-500 shadow-[0_0_10px_rgba(255,255,255,0.2)]`}></div>
           
           <div className="flex justify-between items-start w-full z-10 shrink-0">
-            <div className="flex items-center gap-2 mt-1 md:mt-0">
+            <div className="flex items-center gap-2 mt-1 md:mt-0 flex-wrap">
               <span className="text-zinc-500 font-black uppercase tracking-widest text-[9px] md:text-xs">
-                {(powerMatchEnabled && isPmConnected) ? 'PM Snaga' : 'Trenutna Snaga'}
+                {usePmAsPrimary ? `PM Snaga${pmDoublePower ? ' (×2)' : ''}` : (isPowerConnected ? 'Snaga Trenažera' : 'Trenutna Snaga')}
               </span>
-              {powerMatchEnabled && isPmConnected && (
+              {powerMatchEnabled && isPmConnected && !(halfPowerDetected && !pmDoublePower) && (
                 <span className="bg-violet-500/10 text-violet-400 text-[8px] md:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-violet-500/20">
                   Power Match Active
+                </span>
+              )}
+              {!powerMatchEnabled && isPmConnected && isPowerConnected && (
+                <span className="bg-sky-500/10 text-sky-400 text-[8px] md:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-sky-500/20">
+                  Izvor: Trenažer (P.Match OFF)
                 </span>
               )}
             </div>
@@ -1064,12 +1439,17 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
               <span className="text-lg md:text-2xl lg:text-3xl font-bold text-zinc-600 pb-1 md:pb-2">W</span>
             </div>
 
-            {powerMatchEnabled && isPmConnected && isPowerConnected && (
-              <div className="text-xs font-bold text-zinc-500 mb-0.5">
-                Trenažer: <span className="text-zinc-300">{currentPower} W</span>
-                <span className="mx-1 md:mx-2 text-zinc-700">·</span>
-                Razlika: <span className={Math.abs(pmPower - currentPower) > 15 ? 'text-amber-400' : 'text-emerald-400'}>
-                  {pmPower - currentPower > 0 ? '+' : ''}{pmPower - currentPower} W
+            {isPmConnected && isPowerConnected && (
+              <div className="text-xs font-bold text-zinc-500 mb-0.5 flex items-center gap-1.5 flex-wrap justify-center">
+                <span>Trenažer: <span className="text-zinc-300">{currentPower} W</span></span>
+                <span className="text-zinc-700">·</span>
+                <span>Pedale{pmDoublePower ? ' (×2)' : ''}: <span className="text-violet-300">{effectivePmPower} W</span></span>
+                <span className="text-zinc-700">·</span>
+                <span>
+                  Razlika:{' '}
+                  <span className={Math.abs(effectivePmPower - currentPower) > 15 ? 'text-amber-400' : 'text-emerald-400'}>
+                    {effectivePmPower - currentPower > 0 ? '+' : ''}{effectivePmPower - currentPower} W
+                  </span>
                 </span>
               </div>
             )}
@@ -1084,7 +1464,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                   <div className="flex flex-col items-center justify-center leading-tight">
                     <div>
                       Cilj: <span className="text-zinc-100">{activeTargetPower} W</span>
-                      {powerMatchEnabled && isPmConnected && (
+                      {powerMatchEnabled && isPmConnected && !(halfPowerDetected && !pmDoublePower) && (
                         <span className="text-violet-400 ml-1 md:ml-2 text-xs md:text-sm font-black drop-shadow-[0_0_5px_rgba(167,139,250,0.5)]">⟳ PM</span>
                       )}
                     </div>
