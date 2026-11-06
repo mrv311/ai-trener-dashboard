@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X } from 'lucide-react';
+import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X, Gamepad2, ArrowUpDown, RotateCcw, Battery } from 'lucide-react';
 import TrainerModals from './trainer/TrainerModals';
 import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer, calculateCogganMetrics, calculateEF, calculateVI, calculateAerobicDecoupling } from '../utils/performanceMetrics';
@@ -8,12 +8,32 @@ import { calculateDistanceStream } from '../utils/virtualDistance';
 import { parseIntervalsCode } from '../utils/workoutParser';
 import { uploadActivityToIntervals } from '../services/intervalsApi';
 import { supabase } from '../services/supabaseClient';
+import {
+  ZwiftClickController,
+  VIRTUAL_GEAR_MIN,
+  VIRTUAL_GEAR_MAX,
+  VIRTUAL_GEAR_DEFAULT,
+  gearToResistancePercent,
+  gearToSimulatedGrade
+} from '../services/zwiftClickService';
+
+let sharedAudioCtx = null;
+const getAudioCtx = () => {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+    sharedAudioCtx = new AudioContext();
+  }
+  if (sharedAudioCtx.state === 'suspended') {
+    sharedAudioCtx.resume().catch(() => {});
+  }
+  return sharedAudioCtx;
+};
 
 const playBeep = (freq = 800, duration = 0.2) => {
   try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
+    const ctx = getAudioCtx();
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
@@ -22,14 +42,41 @@ const playBeep = (freq = 800, duration = 0.2) => {
 
     osc.type = 'sine';
     osc.frequency.setValueAtTime(freq, ctx.currentTime);
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+    gain.gain.setValueAtTime(0.001, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + 0.03);
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
 
     osc.start();
     osc.stop(ctx.currentTime + duration);
   } catch (e) {
     console.warn("AudioContext nije dostupan", e);
+  }
+};
+
+// Kratki elektronički Di2 / AXS zvuk promjene brzine
+const playShiftSound = (direction = 'up') => {
+  try {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.type = 'triangle';
+    const startFreq = direction === 'up' ? 1050 : 950;
+    const endFreq = direction === 'up' ? 1480 : 660;
+    osc.frequency.setValueAtTime(startFreq, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(endFreq, ctx.currentTime + 0.045);
+
+    gain.gain.setValueAtTime(0.001, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.005, ctx.currentTime + 0.055);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.06);
+  } catch {
+    // ignore audio errors
   }
 };
 
@@ -74,6 +121,7 @@ class PowerMatchPID {
 const pidController = new PowerMatchPID();
 const FTMS_SERVICE_UUID = '00001826-0000-1000-8000-00805f9b34fb';
 const FTMS_INDOOR_BIKE_DATA_UUID = '00002ad2-0000-1000-8000-00805f9b34fb';
+const FTMS_SUPPORTED_RESISTANCE_RANGE_UUID = '00002ad6-0000-1000-8000-00805f9b34fb';
 const FTMS_CONTROL_POINT_UUID = '00002ad9-0000-1000-8000-00805f9b34fb';
 const sleepMs = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -103,9 +151,42 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
   const [controlMode, setControlMode] = useState('ERG');
   const [ergIntensity, setErgIntensity] = useState(100);
-  const [resistanceLevel, setResistanceLevel] = useState(30);
+  const [virtualGear, setVirtualGear] = useState(() => {
+    try {
+      const saved = parseInt(localStorage.getItem('ergvibe_virtual_gear') || '', 10);
+      if (Number.isFinite(saved) && saved >= VIRTUAL_GEAR_MIN && saved <= VIRTUAL_GEAR_MAX) {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
+    return VIRTUAL_GEAR_DEFAULT;
+  });
+  const [resPhysicsMode, setResPhysicsMode] = useState(() => {
+    try {
+      return localStorage.getItem('ergvibe_res_physics_mode') === 'SIM' ? 'SIM' : 'RES';
+    } catch {
+      return 'RES';
+    }
+  });
+  const resistanceLevel = useMemo(() => gearToResistancePercent(virtualGear), [virtualGear]);
+  const simulatedGrade = useMemo(() => gearToSimulatedGrade(virtualGear), [virtualGear]);
   const [ftmsControlChar, setFtmsControlChar] = useState(null);
   const [ftmsStatus, setFtmsStatus] = useState('idle'); // 'idle' | 'connecting' | 'ready' | 'unsupported' | 'error'
+
+  // Zwift Click (Virtual Shifting & ERG daljinski upravljač)
+  const zwiftClickRef = useRef(null);
+  if (!zwiftClickRef.current) {
+    zwiftClickRef.current = new ZwiftClickController();
+  }
+  const [zwiftClickState, setZwiftClickState] = useState(() => zwiftClickRef.current.getSnapshot());
+  const [showClickSettings, setShowClickSettings] = useState(false);
+  const [shiftToast, setShiftToast] = useState(null);
+  const shiftToastTimerRef = useRef(null);
+  const resHoldTimerRef = useRef(null);
+  const resHoldIntervalRef = useRef(null);
+  const ergHoldTimerRef = useRef(null);
+  const ergLongPressFiredRef = useRef(false);
 
   const [workoutHistory, setWorkoutHistory] = useState([]);
   const [isFinished, setIsFinished] = useState(false);
@@ -123,6 +204,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   const pmDeviceRef = useRef(null);
   const isPmConnectedRef = useRef(false);
   const ftmsWriteQueueRef = useRef(Promise.resolve());
+  const ftmsResRangeRef = useRef({ rawMin: 0, rawMax: 100, rawInc: 1, hasRangeChar: false });
+  const ftmsResFormatRef = useRef('uint8'); // 'uint8' | 'sint16'
+  const resFormatFlippedRef = useRef(false);
+  const dispatchResTargetRef = useRef(null);
+  const dispatchErgTargetRef = useRef(null);
   const displayRollingRef = useRef([]);
   const pmLiveBufferRef = useRef([]);
   const halfPowerCounterRef = useRef(0);
@@ -199,6 +285,16 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     halfPowerCounterRef.current = 0;
     setPowerMatchEnabled(false);
     pidController.reset();
+
+    try {
+      if (zwiftClickRef.current) {
+        zwiftClickRef.current.disconnect();
+      }
+    } catch (e) { console.warn('Zwift Click disconnect error:', e); }
+    if (resHoldTimerRef.current) clearTimeout(resHoldTimerRef.current);
+    if (resHoldIntervalRef.current) clearInterval(resHoldIntervalRef.current);
+    if (ergHoldTimerRef.current) clearTimeout(ergHoldTimerRef.current);
+    if (shiftToastTimerRef.current) clearTimeout(shiftToastTimerRef.current);
 
     setCurrentCadence(0);
     crankDataRef.current = { revs: -1, time: -1 };
@@ -403,7 +499,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     setIntervalsUploadError(null);
     setSaveStatus(null);
     setErgIntensity(100);
-    setResistanceLevel(30);
+    setVirtualGear(VIRTUAL_GEAR_DEFAULT);
     setControlMode('ERG');
     setLiveMetrics({ np: 0, ifFactor: "0.00", tss: 0, workKj: 0 });
 
@@ -779,6 +875,32 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         console.info('[FTMS] Indoor Bike Data nije dostupan:', ibdErr);
       }
 
+      // Očitaj stvarni hardverski raspon kočnice (0x2AD6 Supported Resistance Level Range) za precizne virtualne brzine
+      ftmsResRangeRef.current = { rawMin: 0, rawMax: 100, rawInc: 1, hasRangeChar: false };
+      ftmsResFormatRef.current = 'uint8';
+      resFormatFlippedRef.current = false;
+      try {
+        const rangeChar = await ftmsService.getCharacteristic(FTMS_SUPPORTED_RESISTANCE_RANGE_UUID);
+        const rangeVal = await rangeChar.readValue();
+        if (rangeVal && rangeVal.byteLength >= 6) {
+          const rawMin = rangeVal.getInt16(0, true);
+          const rawMax = rangeVal.getInt16(2, true);
+          const rawInc = rangeVal.getUint16(4, true) || 1;
+          if (rawMax > rawMin) {
+            ftmsResRangeRef.current = { rawMin, rawMax, rawInc, hasRangeChar: true };
+            ftmsResFormatRef.current = rawMax > 255 ? 'sint16' : 'uint8';
+            console.log('[FTMS] Podržani raspon otpora (0x2AD6):', {
+              rawMin,
+              rawMax,
+              rawInc,
+              initialFormat: ftmsResFormatRef.current
+            });
+          }
+        }
+      } catch (rangeErr) {
+        console.info('[FTMS] 0x2AD6 Supported Resistance Range nije dostupan (koristim 0-100):', rangeErr);
+      }
+
       const controlPoint = await ftmsService.getCharacteristic(FTMS_CONTROL_POINT_UUID);
       await controlPoint.startNotifications();
 
@@ -792,6 +914,24 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
             console.warn('[FTMS] Trenažer traži ponovno preuzimanje kontrole (0x04). Šaljem 0x00 -> 0x07...');
             enqueueFtmsWrite(controlPoint, new Uint8Array([0x00]));
             enqueueFtmsWrite(controlPoint, new Uint8Array([0x07]));
+            setTimeout(() => {
+              if (dispatchErgTargetRef.current) dispatchErgTargetRef.current(false);
+              if (dispatchResTargetRef.current) dispatchResTargetRef.current();
+            }, 250);
+          } else if (reqOp === 0x04 && result === 0x03) {
+            // Invalid Parameter za Set Target Resistance (razlika uint8 vs sint16 među FTMS firmwareima)
+            if (!resFormatFlippedRef.current) {
+              resFormatFlippedRef.current = true;
+              ftmsResFormatRef.current = ftmsResFormatRef.current === 'uint8' ? 'sint16' : 'uint8';
+              console.warn(`[FTMS] 0x04 otpor vratio 0x03; prebacujem format na ${ftmsResFormatRef.current} i ponavljam...`);
+              if (dispatchResTargetRef.current) dispatchResTargetRef.current();
+            } else {
+              console.warn('[FTMS] 0x04 odbijen u oba formata; automatski prebacujem na 0x11 SIM nagib.');
+              setResPhysicsMode('SIM');
+            }
+          } else if (reqOp === 0x04 && result === 0x02) {
+            console.warn('[FTMS] 0x04 nije podržan na ovom trenažeru; automatski prebacujem na 0x11 SIM nagib.');
+            setResPhysicsMode('SIM');
           }
         }
       });
@@ -996,6 +1136,10 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     enqueueFtmsWrite(p.ftmsControlChar, new Uint8Array(buffer));
   }, [enqueueFtmsWrite]);
 
+  useEffect(() => {
+    dispatchErgTargetRef.current = dispatchErgTarget;
+  }, [dispatchErgTarget]);
+
   // Trenutno slanje nove ERG snage čim se promijeni interval, intenzitet, mod (RES->ERG), P.Match ON/OFF ili ×2 prekidač!
   useEffect(() => {
     if (!ftmsControlChar || controlMode !== 'ERG') return;
@@ -1012,17 +1156,159 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     return () => clearInterval(timer);
   }, [ftmsControlChar, controlMode, powerMatchEnabled, isPmConnected, dispatchErgTarget]);
 
+  // --- VIRTUAL SHIFTING & RESISTANCE / SIM FTMS SLANJE ---
+  const resParamsRef = useRef({
+    ftmsControlChar,
+    controlMode,
+    virtualGear,
+    resistanceLevel,
+    simulatedGrade,
+    resPhysicsMode
+  });
+
   useEffect(() => {
-    if (ftmsControlChar && controlMode === 'RES') {
-      enqueueFtmsWrite(ftmsControlChar, new Uint8Array([0x04, resistanceLevel]));
+    resParamsRef.current = {
+      ftmsControlChar,
+      controlMode,
+      virtualGear,
+      resistanceLevel,
+      simulatedGrade,
+      resPhysicsMode
+    };
+  }, [ftmsControlChar, controlMode, virtualGear, resistanceLevel, simulatedGrade, resPhysicsMode]);
+
+  const dispatchResTarget = useCallback(() => {
+    const p = resParamsRef.current;
+    if (!p.ftmsControlChar || p.controlMode !== 'RES') return;
+
+    if (p.resPhysicsMode === 'SIM') {
+      // FTMS 0x11: Set Indoor Bike Simulation Parameters (Wind=0, Grade=0.01% units, Crr=0.0040, Cw=0.51)
+      const buf = new ArrayBuffer(7);
+      const view = new DataView(buf);
+      view.setUint8(0, 0x11);
+      view.setInt16(1, 0, true); // wind speed 0 m/s
+      view.setInt16(3, Math.round(p.simulatedGrade * 100), true); // grade u 0.01% koracima
+      view.setUint8(5, 40); // Crr = 0.0040
+      view.setUint8(6, 51); // Cw = 0.51 kg/m
+      enqueueFtmsWrite(p.ftmsControlChar, new Uint8Array(buf));
+      return;
     }
-  }, [resistanceLevel, controlMode, ftmsControlChar, enqueueFtmsWrite]);
+
+    // FTMS 0x04: Set Target Resistance Level (skalirano na hardverski 0x2AD6 raspon trenažera, npr. Elite Direto)
+    const range = ftmsResRangeRef.current;
+    const pct = p.resistanceLevel; // 5..97%
+    let rawTarget = pct;
+
+    if (range.hasRangeChar && range.rawMax > range.rawMin) {
+      const inc = range.rawInc || 1;
+      const mapped = range.rawMin + (pct / 100) * (range.rawMax - range.rawMin);
+      rawTarget = Math.round(mapped / inc) * inc;
+      rawTarget = Math.max(range.rawMin, Math.min(range.rawMax, rawTarget));
+    } else if (ftmsResFormatRef.current === 'sint16') {
+      rawTarget = Math.round(pct * 10);
+    }
+
+    if (ftmsResFormatRef.current === 'sint16') {
+      const buf = new ArrayBuffer(3);
+      const view = new DataView(buf);
+      view.setUint8(0, 0x04);
+      view.setInt16(1, rawTarget, true);
+      enqueueFtmsWrite(p.ftmsControlChar, new Uint8Array(buf));
+    } else {
+      // uint8 format: ako je rawMax > 255 a format je prisilno uint8, skaliraj sa 0.1 na 0..100
+      const byteVal = rawTarget > 255 ? Math.round(rawTarget / 10) : rawTarget;
+      const clampedByte = Math.max(0, Math.min(255, Math.round(byteVal)));
+      enqueueFtmsWrite(p.ftmsControlChar, new Uint8Array([0x04, clampedByte]));
+    }
+  }, [enqueueFtmsWrite]);
+
+  useEffect(() => {
+    dispatchResTargetRef.current = dispatchResTarget;
+  }, [dispatchResTarget]);
+
+  // Trenutno slanje nove brzine / otpora u RES modu
+  useEffect(() => {
+    if (!ftmsControlChar || controlMode !== 'RES') return;
+    dispatchResTarget();
+  }, [virtualGear, resistanceLevel, simulatedGrade, resPhysicsMode, controlMode, ftmsControlChar, dispatchResTarget]);
+
+  // Lagano osvježavanje otpora u RES modu svake 5s kako kočnica ne bi zaspala u pauzi pedaliranja
+  useEffect(() => {
+    if (!ftmsControlChar || controlMode !== 'RES') return;
+    const timer = setInterval(() => {
+      dispatchResTarget();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [ftmsControlChar, controlMode, dispatchResTarget]);
+
+  const showHudToast = useCallback((text, subtext = '', tone = 'indigo') => {
+    if (shiftToastTimerRef.current) clearTimeout(shiftToastTimerRef.current);
+    setShiftToast({ text, subtext, tone, id: Date.now() });
+    shiftToastTimerRef.current = setTimeout(() => {
+      setShiftToast(null);
+    }, 1500);
+  }, []);
+
+  const shiftVirtualGear = useCallback((delta, source = '') => {
+    setVirtualGear(prev => {
+      const next = Math.max(VIRTUAL_GEAR_MIN, Math.min(VIRTUAL_GEAR_MAX, prev + delta));
+      if (next !== prev) {
+        playShiftSound(delta > 0 ? 'up' : 'down');
+        try {
+          localStorage.setItem('ergvibe_virtual_gear', String(next));
+        } catch {
+          // ignore
+        }
+      }
+      const nextPct = gearToResistancePercent(next);
+      const nextGrade = gearToSimulatedGrade(next);
+      const modeDetail = resParamsRef.current.resPhysicsMode === 'SIM'
+        ? `Nagib ${nextGrade > 0 ? '+' : ''}${nextGrade.toFixed(1)}%`
+        : `Otpor ${nextPct}%`;
+      showHudToast(
+        `Brzina ${next} / ${VIRTUAL_GEAR_MAX}`,
+        `${source ? `${source} · ` : ''}${modeDetail}`,
+        'indigo'
+      );
+      return next;
+    });
+  }, [showHudToast]);
+
+  const toggleResPhysicsMode = useCallback(() => {
+    setResPhysicsMode(prev => {
+      const next = prev === 'RES' ? 'SIM' : 'RES';
+      try {
+        localStorage.setItem('ergvibe_res_physics_mode', next);
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  const connectZwiftClick = async () => {
+    const controller = zwiftClickRef.current;
+    if (!controller) return;
+    if (controller.connected) {
+      controller.disconnect();
+      setShowClickSettings(false);
+      return;
+    }
+    try {
+      await controller.requestAndConnect();
+      showHudToast('Zwift Click spojen!', 'Spremno za virtualne brzine i ERG kontrolu', 'emerald');
+    } catch (err) {
+      if (err && err.name !== 'NotFoundError') {
+        alert('Nije uspjelo spajanje na Zwift Click: ' + err.message);
+      }
+    }
+  };
 
   const toggleMode = () => setControlMode(prev => prev === 'ERG' ? 'RES' : 'ERG');
   const increaseErg = () => setErgIntensity(prev => prev + 2);
   const decreaseErg = () => setErgIntensity(prev => Math.max(50, prev - 2));
-  const increaseRes = () => setResistanceLevel(prev => Math.min(100, prev + 1));
-  const decreaseRes = () => setResistanceLevel(prev => Math.max(0, prev - 1));
+  const increaseRes = () => shiftVirtualGear(1);
+  const decreaseRes = () => shiftVirtualGear(-1);
 
   const handleStopClick = () => {
     if (elapsedTime > 0) { setIsPlaying(false); setShowStopPrompt(true); }
@@ -1235,6 +1521,117 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     });
   };
 
+  // --- ZWIFT CLICK POVEZIVANJE AKCIJA (RES 24 brzine + ERG kontrola) ---
+  const clickActionRef = useRef({
+    controlMode,
+    showStopPrompt,
+    isFinished,
+    handleSkip,
+    shiftVirtualGear,
+    showHudToast
+  });
+
+  useEffect(() => {
+    clickActionRef.current = {
+      controlMode,
+      showStopPrompt,
+      isFinished,
+      handleSkip,
+      shiftVirtualGear,
+      showHudToast
+    };
+  }, [controlMode, showStopPrompt, isFinished, handleSkip, shiftVirtualGear, showHudToast]);
+
+  useEffect(() => {
+    const controller = zwiftClickRef.current;
+    if (!controller) return;
+
+    const clearHoldTimers = () => {
+      if (resHoldTimerRef.current) clearTimeout(resHoldTimerRef.current);
+      if (resHoldIntervalRef.current) clearInterval(resHoldIntervalRef.current);
+      if (ergHoldTimerRef.current) clearTimeout(ergHoldTimerRef.current);
+      resHoldTimerRef.current = null;
+      resHoldIntervalRef.current = null;
+      ergHoldTimerRef.current = null;
+    };
+
+    controller.onStateChange = (snap) => {
+      setZwiftClickState(snap);
+    };
+
+    controller.onButtonDown = (dir) => {
+      const ctx = clickActionRef.current;
+      if (ctx.showStopPrompt || ctx.isFinished) return;
+
+      clearHoldTimers();
+
+      if (ctx.controlMode === 'RES') {
+        const delta = dir === 'up' ? 1 : -1;
+        ctx.shiftVirtualGear(delta, 'Zwift Click');
+        // Di2 / AXS Multi-Shift pri držanju tipke (>450ms, svake 220ms)
+        resHoldTimerRef.current = setTimeout(() => {
+          resHoldIntervalRef.current = setInterval(() => {
+            clickActionRef.current.shiftVirtualGear(delta, 'Multi-Shift');
+          }, 220);
+        }, 450);
+      } else {
+        // ERG mod: dugi pritisak (850ms) = Preskoči interval (+) ili Play/Pause (-)
+        ergLongPressFiredRef.current = false;
+        ergHoldTimerRef.current = setTimeout(() => {
+          ergLongPressFiredRef.current = true;
+          const liveCtx = clickActionRef.current;
+          if (dir === 'up') {
+            playBeep(950, 0.12);
+            setTimeout(() => playBeep(1280, 0.16), 130);
+            liveCtx.handleSkip();
+            liveCtx.showHudToast('Sljedeći interval', 'Zwift Click (dugi +)', 'emerald');
+          } else {
+            playBeep(720, 0.18);
+            setIsPlaying(prev => {
+              const next = !prev;
+              liveCtx.showHudToast(
+                next ? 'Trening pokrenut' : 'Trening pauziran',
+                'Zwift Click (dugi -)',
+                next ? 'emerald' : 'amber'
+              );
+              return next;
+            });
+          }
+        }, 850);
+      }
+    };
+
+    controller.onButtonUp = (dir) => {
+      const ctx = clickActionRef.current;
+      const wasLongPress = ergLongPressFiredRef.current;
+      clearHoldTimers();
+
+      if (ctx.showStopPrompt || ctx.isFinished) return;
+
+      if (ctx.controlMode === 'ERG' && !wasLongPress) {
+        if (dir === 'up') {
+          playShiftSound('up');
+          setErgIntensity(prev => {
+            const next = prev + 2;
+            ctx.showHudToast(`ERG Intenzitet: ${next}%`, 'Zwift Click (+2%)', 'cyan');
+            return next;
+          });
+        } else {
+          playShiftSound('down');
+          setErgIntensity(prev => {
+            const next = Math.max(50, prev - 2);
+            ctx.showHudToast(`ERG Intenzitet: ${next}%`, 'Zwift Click (-2%)', 'cyan');
+            return next;
+          });
+        }
+      }
+    };
+
+    return () => {
+      clearHoldTimers();
+    };
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Allow default behavior inside text inputs or textareas
@@ -1247,14 +1644,25 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       if (e.code === 'Space') {
         e.preventDefault();
         setIsPlaying(p => !p);
-      } else if (e.code === 'ArrowUp') {
+      } else if (e.code === 'ArrowUp' || e.code === 'Equal' || e.code === 'NumpadAdd') {
         e.preventDefault();
-        if (controlMode === 'ERG') setErgIntensity(p => p + 3);
-        else setResistanceLevel(p => Math.min(100, p + 3));
-      } else if (e.code === 'ArrowDown') {
+        if (controlMode === 'ERG') {
+          playShiftSound('up');
+          setErgIntensity(p => p + 2);
+        } else {
+          shiftVirtualGear(1, 'Tipkovnica');
+        }
+      } else if (e.code === 'ArrowDown' || e.code === 'Minus' || e.code === 'NumpadSubtract') {
         e.preventDefault();
-        if (controlMode === 'ERG') setErgIntensity(p => Math.max(50, p - 3));
-        else setResistanceLevel(p => Math.max(0, p - 3));
+        if (controlMode === 'ERG') {
+          playShiftSound('down');
+          setErgIntensity(p => Math.max(50, p - 2));
+        } else {
+          shiftVirtualGear(-1, 'Tipkovnica');
+        }
+      } else if (e.code === 'KeyM') {
+        e.preventDefault();
+        setControlMode(prev => prev === 'ERG' ? 'RES' : 'ERG');
       } else if (e.code === 'KeyS') {
         e.preventDefault();
         handleSkip();
@@ -1262,7 +1670,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showStopPrompt, isFinished, controlMode, handleSkip]);
+  }, [showStopPrompt, isFinished, controlMode, handleSkip, shiftVirtualGear]);
 
   return (
     <div className="w-full max-w-[1800px] mx-auto flex flex-col flex-1 gap-1 md:gap-2 xl:gap-4 animate-in fade-in relative px-1 md:px-2 min-h-0">
@@ -1325,6 +1733,41 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           {isHrConnected ? 'Pulsmetar Spojen' : 'Spoji Pulsmetar'}
         </button>
 
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={connectZwiftClick}
+            title={
+              zwiftClickState.connected
+                ? `Spojen: ${zwiftClickState.deviceName} (klikni za odspajanje)`
+                : 'Probudi Zwift Click pritiskom na tipku (plava LED pulsira) i klikni za spajanje'
+            }
+            className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-sm shrink-0 ${
+              zwiftClickState.connected
+                ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/35 shadow-[0_0_10px_rgba(34,211,238,0.18)]'
+                : 'bg-zinc-900/50 hover:bg-zinc-800 text-cyan-400 border-zinc-800/80'
+            }`}
+          >
+            {zwiftClickState.connected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <Gamepad2 className="w-3.5 h-3.5 md:w-4 md:h-4" />}
+            <span>{zwiftClickState.connected ? (zwiftClickState.deviceName || 'Zwift Click') : 'Zwift Click'}</span>
+            {zwiftClickState.connected && zwiftClickState.batteryLevel != null && (
+              <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/15 px-1.5 py-0.5 rounded-md border border-emerald-500/25 flex items-center gap-0.5">
+                <Battery className="w-3 h-3" /> {zwiftClickState.batteryLevel}%
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setShowClickSettings(v => !v)}
+            title="Postavke virtualnog mjenjača i kalibracija Zwift Click tipki"
+            className={`px-2 py-1.5 md:py-2.5 rounded-xl border text-xs font-bold transition-colors shrink-0 ${
+              showClickSettings
+                ? 'bg-cyan-500 text-zinc-950 border-cyan-400'
+                : 'bg-zinc-900/50 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border-zinc-800/80'
+            }`}
+          >
+            <Settings2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+          </button>
+        </div>
+
         {isPmConnected && (
           <>
             <button
@@ -1365,6 +1808,120 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         </div>
       </div>
 
+      {/* ZWIFT CLICK POSTAVKE, DIJAGNOSTIKA I KALIBRACIJA TIPKI */}
+      {showClickSettings && (
+        <div className="bg-zinc-950/95 border border-cyan-500/35 rounded-2xl p-3 md:p-4 space-y-2.5 shadow-2xl shrink-0 animate-in fade-in">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Gamepad2 className="w-4 h-4 text-cyan-400 shrink-0" />
+              <span className="text-xs md:text-sm font-black text-zinc-100">
+                Virtualni Mjenjač (Zwift Click / Play / Ride)
+              </span>
+              {zwiftClickState.connected ? (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  Spojen · Klikova: {zwiftClickState.clickCount}
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700">
+                  Nije spojen — pritisni tipku na Clicku (plava LED pulsira) i klikni &quot;Zwift Click&quot;
+                </span>
+              )}
+              {zwiftClickState.connected && zwiftClickState.lastPacketHex && (
+                <span className="text-[10px] font-mono text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
+                  BLE: {zwiftClickState.lastPacketHex}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => zwiftClickRef.current?.toggleSwapButtons()}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-colors ${
+                  zwiftClickState.swapButtons
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-700'
+                }`}
+                title="Zamijeni ulogu gornje i donje tipke ako je Zwift Click montiran naopako na volanu"
+              >
+                <ArrowUpDown className="w-3.5 h-3.5" />
+                {zwiftClickState.swapButtons ? 'Tipke: Obrnuto (-/+)' : 'Tipke: Standard (+/-)'}
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleResPhysicsMode}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-colors ${
+                  resPhysicsMode === 'SIM'
+                    ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                    : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
+                }`}
+                title="Odaberi šalje li virtualni mjenjač u RES modu linearni otpor kočnice (FTMS 0x04) ili simulirani nagib ceste (FTMS 0x11)"
+              >
+                {resPhysicsMode === 'RES' ? 'RES: Kočnica (0x04)' : 'RES: Nagib SIM (0x11)'}
+              </button>
+
+              {zwiftClickState.connected && zwiftClickState.calibrationStep === 'idle' && (
+                <button
+                  type="button"
+                  onClick={() => zwiftClickRef.current?.startCalibration()}
+                  className="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-colors"
+                  title="Ručno nauči + i - tipku ako tvoj firmware koristi nestandardni kod"
+                >
+                  Kalibriraj +/-
+                </button>
+              )}
+
+              {zwiftClickState.hasCustomMap && zwiftClickState.calibrationStep === 'idle' && (
+                <button
+                  type="button"
+                  onClick={() => zwiftClickRef.current?.clearCustomMap()}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-700 text-xs font-bold"
+                  title="Vrati na tvorničko dekodiranje protokola"
+                >
+                  <RotateCcw className="w-3 h-3" /> Reset mape
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowClickSettings(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800"
+                title="Sakrij postavke"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {zwiftClickState.calibrationStep !== 'idle' && (
+            <div className="flex items-center justify-between gap-2 bg-cyan-950/50 border border-cyan-500/40 rounded-xl px-3 py-2 text-xs font-bold text-cyan-200">
+              <span>
+                {zwiftClickState.calibrationStep === 'wait_plus' && '1/2 👉 Pritisni na Zwift Clicku tipku koju želiš za VIŠU brzinu (+)...'}
+                {zwiftClickState.calibrationStep === 'wait_release' && '👍 Super! Pusti tipku...'}
+                {zwiftClickState.calibrationStep === 'wait_minus' && '2/2 👉 Sada pritisni tipku koju želiš za NIŽU brzinu (-)...'}
+              </span>
+              <button
+                type="button"
+                onClick={() => zwiftClickRef.current?.cancelCalibration()}
+                className="px-2.5 py-1 rounded-lg bg-zinc-900 text-zinc-300 border border-zinc-700 text-xs"
+              >
+                Odustani
+              </button>
+            </div>
+          )}
+
+          <div className="text-[11px] text-zinc-400 flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800/80 pt-2">
+            <span>
+              <strong className="text-indigo-300">RES mod (Slobodna vožnja):</strong> kratki <code className="text-zinc-200">+/-</code> = brzine 1–24, držanje = brzi Multi-Shift.
+            </span>
+            <span>
+              <strong className="text-cyan-300">ERG mod (Trening):</strong> kratki <code className="text-zinc-200">+/-</code> = ±2% intenzitet · dugi <code className="text-zinc-200">+</code> = preskoči interval · dugi <code className="text-zinc-200">-</code> = Start/Pauza.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* DIJAGNOSTIČKE OBAVIJESTI ZA BLE / FTMS / ASSIOMA UNO */}
       {isPowerConnected && ftmsStatus === 'unsupported' && (
         <div className="bg-amber-950/50 border border-amber-500/40 text-amber-200 rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between gap-2 shrink-0">
@@ -1392,6 +1949,29 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3 shrink-[2] min-h-0" style={{minHeight: 0}}>
         <div className="md:col-span-2 lg:col-span-2 bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-2 md:p-4 flex flex-col relative overflow-hidden min-h-0">
           <div className={`absolute top-0 left-0 w-full h-2 ${getZoneColorForTrainer(currentStep.power)} transition-colors duration-500 shadow-[0_0_10px_rgba(255,255,255,0.2)]`}></div>
+
+          {/* PLUTAJUĆI HUD ZA PROMJENU VIRTUALNE BRZINE / ZWIFT CLICK */}
+          {shiftToast && (
+            <div
+              key={shiftToast.id}
+              className={`absolute top-12 md:top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-4 py-1.5 rounded-2xl border backdrop-blur-md shadow-2xl flex items-center gap-2 animate-in fade-in zoom-in-95 ${
+                shiftToast.tone === 'emerald'
+                  ? 'bg-emerald-950/90 border-emerald-400/50 text-emerald-200'
+                  : shiftToast.tone === 'amber'
+                  ? 'bg-amber-950/90 border-amber-400/50 text-amber-200'
+                  : shiftToast.tone === 'cyan'
+                  ? 'bg-cyan-950/90 border-cyan-400/50 text-cyan-200'
+                  : 'bg-indigo-950/90 border-indigo-400/50 text-indigo-100'
+              }`}
+            >
+              <span className="text-sm md:text-base font-black tracking-tight">{shiftToast.text}</span>
+              {shiftToast.subtext && (
+                <span className="text-[11px] md:text-xs font-semibold opacity-80 border-l border-white/20 pl-2">
+                  {shiftToast.subtext}
+                </span>
+              )}
+            </div>
+          )}
           
           <div className="flex justify-between items-start w-full z-10 shrink-0">
             <div className="flex items-center gap-2 mt-1 md:mt-0 flex-wrap">
@@ -1408,10 +1988,15 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                   Izvor: Trenažer (P.Match OFF)
                 </span>
               )}
+              {zwiftClickState.connected && (
+                <span className="bg-cyan-500/10 text-cyan-300 text-[8px] md:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-cyan-500/25">
+                  Zwift Click ON
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-1 md:gap-2 bg-zinc-950/50 p-1 md:p-2 rounded-2xl border border-zinc-800 shadow-lg">
-              <button onClick={toggleMode} className="flex items-center gap-1 md:gap-1.5 px-2 py-1 md:px-4 md:py-2 bg-zinc-800 shadow-sm border border-zinc-700 rounded-xl text-[9px] md:text-xs font-bold text-zinc-300 uppercase tracking-wider hover:bg-zinc-700 hover:text-white transition-colors active:scale-95">
+              <button onClick={toggleMode} title="Prebaci između ERG i RES (Virtual Shifting) moda (tipka M)" className="flex items-center gap-1 md:gap-1.5 px-2 py-1 md:px-4 md:py-2 bg-zinc-800 shadow-sm border border-zinc-700 rounded-xl text-[9px] md:text-xs font-bold text-zinc-300 uppercase tracking-wider hover:bg-zinc-700 hover:text-white transition-colors active:scale-95">
                 <Settings2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">{controlMode} Mode</span><span className="sm:hidden">{controlMode}</span>
               </button>
               <div className="w-px h-5 md:h-8 bg-zinc-800 mx-0.5 md:mx-1"></div>
@@ -1423,9 +2008,14 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                 </div>
               ) : (
                 <div className="flex items-center gap-0.5 md:gap-2">
-                  <button onClick={decreaseRes} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
-                  <span className="w-10 md:w-16 text-center font-black text-zinc-100 text-sm md:text-lg">Lvl {resistanceLevel}</span>
-                  <button onClick={increaseRes} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                  <button onClick={decreaseRes} title="Niža brzina (-)" className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                  <div className="min-w-[64px] md:min-w-[88px] text-center leading-tight">
+                    <div className="font-black text-indigo-300 text-xs md:text-base">G {virtualGear}/{VIRTUAL_GEAR_MAX}</div>
+                    <div className="text-[9px] md:text-[10px] font-bold text-zinc-500">
+                      {resPhysicsMode === 'SIM' ? `${simulatedGrade > 0 ? '+' : ''}${simulatedGrade.toFixed(1)}%` : `${resistanceLevel}%`}
+                    </div>
+                  </div>
+                  <button onClick={increaseRes} title="Viša brzina (+)" className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
                 </div>
               )}
             </div>
@@ -1476,7 +2066,47 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                   </div>
                 )
               ) : (
-                <>Slobodno <span className="text-indigo-400 ml-1 md:ml-2">(Otpor {resistanceLevel}%)</span></>
+                <div className="flex flex-col items-center gap-1 py-0.5">
+                  <div className="flex items-center gap-2 flex-wrap justify-center leading-tight">
+                    <span className="text-zinc-200 font-black">
+                      Brzina <span className="text-indigo-400">{virtualGear}</span>
+                      <span className="text-zinc-500 text-xs md:text-sm"> / {VIRTUAL_GEAR_MAX}</span>
+                    </span>
+                    <span className="text-zinc-600">·</span>
+                    <span className="text-indigo-300 text-xs md:text-base font-bold">
+                      {resPhysicsMode === 'SIM'
+                        ? `Nagib ${simulatedGrade > 0 ? '+' : ''}${simulatedGrade.toFixed(1)}%`
+                        : `Otpor ${resistanceLevel}%`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={toggleResPhysicsMode}
+                      title="Prebaci način otpora između linearne kočnice (0x04) i simulacije nagiba (0x11)"
+                      className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
+                    >
+                      {resPhysicsMode === 'SIM' ? 'SIM' : 'RES'}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-0.5" aria-hidden="true">
+                    {Array.from({ length: VIRTUAL_GEAR_MAX }, (_, idx) => {
+                      const g = idx + 1;
+                      const active = g <= virtualGear;
+                      const isCurrent = g === virtualGear;
+                      return (
+                        <span
+                          key={g}
+                          className={`h-1.5 rounded-full transition-all ${
+                            isCurrent
+                              ? 'w-2.5 bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]'
+                              : active
+                              ? 'w-1.5 bg-indigo-500/80'
+                              : 'w-1 bg-zinc-800'
+                          }`}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
           </div>
