@@ -74,6 +74,19 @@ export function getExtraImportedHistory(userId = null) {
   }
 }
 
+export function clearExtraImportedHistory(userId = null) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const specificKey = `ergvibe_extra_historical_workouts_${userId || 'guest'}`;
+    localStorage.removeItem(specificKey);
+    if (!userId || userId === 'owner') {
+      localStorage.removeItem(STORAGE_KEY_EXTRA_HISTORY);
+    }
+  } catch (e) {
+    console.warn('[historyService] Greška pri brisanju CSV povijesti:', e);
+  }
+}
+
 function parseCSVLine(line) {
   const result = [];
   let cur = '';

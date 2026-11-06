@@ -151,6 +151,15 @@ export function removeCustomKnowledgeSource(id) {
   return updated;
 }
 
+export function clearAllCustomKnowledgeSources() {
+  try {
+    localStorage.removeItem(STORAGE_KEY_CUSTOM_SOURCES);
+  } catch (e) {
+    console.warn('[aiKnowledgeBase] Greška pri brisanju svih izvora:', e);
+  }
+  return [];
+}
+
 /**
  * Sastavlja aktivnu bazu znanja za Gemini sistemski prompt.
  */

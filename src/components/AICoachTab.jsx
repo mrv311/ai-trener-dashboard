@@ -22,12 +22,16 @@ import {
   toggleBuiltInModule,
   getCustomKnowledgeSources,
   addCustomKnowledgeSource,
-  removeCustomKnowledgeSource
+  removeCustomKnowledgeSource,
+  clearAllCustomKnowledgeSources
 } from '../services/aiKnowledgeBase';
 import {
   getHistoricalDashboardStats,
   importIntervalsCsvText,
-  getHistoryOptions
+  getHistoryOptions,
+  setIncludeCoachArchive,
+  getExtraImportedHistory,
+  clearExtraImportedHistory
 } from '../services/historyService';
 import AIMarkdown, { AIWorkoutCard, buildErgVibeWorkoutObject } from './ai/AIMarkdown';
 
@@ -107,6 +111,7 @@ export default function AICoachTab({
   const [histStats, setHistStats] = useState(null);
   const [disabledModules, setDisabledModules] = useState(() => getDisabledModuleIds());
   const [customSources, setCustomSources] = useState(() => getCustomKnowledgeSources());
+  const [extraCsvCount, setExtraCsvCount] = useState(() => getExtraImportedHistory(userId).length);
   const [expandedModuleId, setExpandedModuleId] = useState(null);
   const [newSourceTitle, setNewSourceTitle] = useState('');
   const [newSourceAuthor, setNewSourceAuthor] = useState('');
@@ -122,6 +127,10 @@ export default function AICoachTab({
   const [csvImportStatus, setCsvImportStatus] = useState(null);
   const csvInputRef = useRef(null);
   const docFileInputRef = useRef(null);
+
+  useEffect(() => {
+    setExtraCsvCount(getExtraImportedHistory(userId).length);
+  }, [userId]);
 
   const geminiStatus = getGeminiConfigStatus();
   const ftp = Number(profile?.ftp) || 270;
@@ -241,17 +250,66 @@ export default function AICoachTab({
     try {
       const text = await file.text();
       const res = await importIntervalsCsvText(text, userId);
+      setExtraCsvCount(res.totalExtraCount);
       const updatedStats = await getHistoricalDashboardStats(workouts, { userId, includeBaseHistory: includeCoachArchive });
       setHistStats(updatedStats);
       setCsvImportStatus({
         type: 'success',
-        msg: `Uspješno obrađeno! Dodano ${res.addedCount} novih treninga (ukupno u bazi: ${res.totalCount}).`
+        msg: `Uspješno obrađeno! Dodano ${res.addedCount} novih treninga (ukupno u CSV bazi: ${res.totalExtraCount}).`
       });
     } catch (err) {
       setCsvImportStatus({ type: 'error', msg: err.message });
     } finally {
       if (csvInputRef.current) csvInputRef.current.value = '';
     }
+  };
+
+  const handleClearCsv = async () => {
+    const count = getExtraImportedHistory(userId).length;
+    if (count === 0) return;
+    const confirmed = window.confirm(
+      `Jeste li sigurni da želite ukloniti sve uvezene CSV treninge (${count} aktivnosti)?\n\nNakon brisanja ostat će samo vaše redovne vožnje zabilježene kroz aplikaciju ili ugrađenu bazu.`
+    );
+    if (!confirmed) return;
+
+    clearExtraImportedHistory(userId);
+    setExtraCsvCount(0);
+    const updatedStats = await getHistoricalDashboardStats(workouts, { userId, includeBaseHistory: includeCoachArchive });
+    setHistStats(updatedStats);
+    setCsvImportStatus({
+      type: 'info',
+      msg: `Uvezeni CSV podaci (${count} aktivnosti) su uspješno uklonjeni iz lokalne memorije.`
+    });
+    if (csvInputRef.current) csvInputRef.current.value = '';
+  };
+
+  const handleDeleteCustomSource = (id, title) => {
+    const confirmed = window.confirm(`Jeste li sigurni da želite ukloniti izvor "${title || 'Nepoznat'}" iz Baze Znanja?`);
+    if (!confirmed) return;
+    const updated = removeCustomKnowledgeSource(id);
+    setCustomSources(updated);
+  };
+
+  const handleClearAllCustomSources = () => {
+    if (!customSources.length) return;
+    const confirmed = window.confirm(
+      `Jeste li sigurni da želite obrisati sve vlastite dodane izvore (${customSources.length} izvora/knjiga)? Ova radnja je nepovratna.`
+    );
+    if (!confirmed) return;
+    const updated = clearAllCustomKnowledgeSources();
+    setCustomSources(updated);
+  };
+
+  const handleCancelAddSource = () => {
+    setShowAddSourceForm(false);
+    setSourceProcessError(null);
+    setNewSourceTitle('');
+    setNewSourceAuthor('');
+    setNewSourceCategory('Vlastita literatura');
+    setNewSourceContent('');
+    setNewSourceUrl('');
+    setYoutubeInputUrl('');
+    if (docFileInputRef.current) docFileInputRef.current.value = '';
   };
 
   const handleDocumentFileLoad = async (e) => {
@@ -835,11 +893,11 @@ export default function AICoachTab({
                 </p>
               </div>
 
-              <div>
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => csvInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all shadow-sm"
                 >
                   <Upload className="w-3.5 h-3.5" /> Učitaj CSV
                 </button>
@@ -850,6 +908,17 @@ export default function AICoachTab({
                   onChange={handleCsvUpload}
                   className="hidden"
                 />
+
+                {extraCsvCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearCsv}
+                    title="Ukloni sve uvezene CSV treninge iz lokalne memorije"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all shadow-sm"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Obriši CSV ({extraCsvCount})
+                  </button>
+                )}
               </div>
             </div>
 
@@ -857,7 +926,9 @@ export default function AICoachTab({
               <div className={`p-3 rounded-xl text-xs font-bold border ${
                 csvImportStatus.type === 'success'
                   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                  : csvImportStatus.type === 'info'
+                    ? 'bg-sky-500/10 border-sky-500/30 text-sky-300'
+                    : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
               }`}>
                 {csvImportStatus.msg}
               </div>
@@ -936,13 +1007,25 @@ export default function AICoachTab({
                   Izvori na kojima Gemini temelji analizu i periodizaciju
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowAddSourceForm(v => !v)}
-                className="flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5" /> Dodaj izvor
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                {customSources.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllCustomSources}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all"
+                    title="Obriši sve vlastite izvore"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Obriši sve ({customSources.length})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAddSourceForm(v => !v)}
+                  className="flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Dodaj izvor
+                </button>
+              </div>
             </div>
 
             {showAddSourceForm && (
@@ -1177,11 +1260,8 @@ export default function AICoachTab({
                     <div className="flex items-center gap-2 self-end sm:self-auto">
                       <button
                         type="button"
-                        onClick={() => {
-                          setShowAddSourceForm(false);
-                          setSourceProcessError(null);
-                        }}
-                        className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-zinc-400 hover:text-zinc-200"
+                        onClick={handleCancelAddSource}
+                        className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-zinc-400 hover:text-zinc-200 transition-colors"
                       >
                         Odustani
                       </button>
@@ -1198,8 +1278,81 @@ export default function AICoachTab({
               </div>
             )}
 
+            {/* Korisnički dodani vlastiti izvori */}
+            {customSources.length > 0 && (
+              <div className="space-y-3 pb-3 border-b border-zinc-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Vlastita literatura i izvori ({customSources.length})
+                  </span>
+                  <span className="text-[10px] text-zinc-500">
+                    Spremljeno u pregledniku
+                  </span>
+                </div>
+                {customSources.map(src => {
+                  const isExpanded = expandedModuleId === src.id;
+                  return (
+                    <div key={src.id} className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3.5 space-y-2.5 transition-all">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[9px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                              {src.category || 'Vlastiti izvor'}
+                            </span>
+                            {src.sourceUrl && (
+                              <a
+                                href={src.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
+                              >
+                                <ExternalLink className="w-3 h-3" /> Poveznica
+                              </a>
+                            )}
+                          </div>
+                          <h4 className="text-xs md:text-sm font-bold text-zinc-100 mt-1 truncate">{src.title}</h4>
+                          <p className="text-[11px] text-zinc-400">{src.author || 'Nepoznat autor'}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCustomSource(src.id, src.title)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition-colors shrink-0"
+                          title="Ukloni ovaj izvor iz baze znanja"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Ukloni
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedModuleId(isExpanded ? null : src.id)}
+                        className="text-[11px] font-bold text-zinc-400 hover:text-zinc-200 flex items-center gap-1"
+                      >
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        {isExpanded ? 'Sakrij sadržaj' : 'Prikaži sadržaj bilješke / sažetka'}
+                      </button>
+                      {isExpanded ? (
+                        <pre className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-60 overflow-y-auto custom-scrollbar">
+                          {src.content}
+                        </pre>
+                      ) : (
+                        <p className="text-xs text-zinc-400 line-clamp-2">{src.content}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Ugrađeni moduli */}
             <div className="space-y-2.5">
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[11px] font-black uppercase tracking-wider text-cyan-400">
+                  Ugrađeni trenerski moduli ({BUILT_IN_KNOWLEDGE_MODULES.length})
+                </span>
+                <span className="text-[10px] text-zinc-500">
+                  Aktivni i predefinirani
+                </span>
+              </div>
               {BUILT_IN_KNOWLEDGE_MODULES.map(mod => {
                 const isEnabled = !disabledModules.includes(mod.id);
                 const isExpanded = expandedModuleId === mod.id;
@@ -1242,59 +1395,6 @@ export default function AICoachTab({
                       <pre className="mt-2 p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-56 overflow-y-auto custom-scrollbar">
                         {mod.content}
                       </pre>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Korisnički dodani izvori */}
-              {customSources.map(src => {
-                const isExpanded = expandedModuleId === src.id;
-                return (
-                  <div key={src.id} className="rounded-xl border border-emerald-500/25 bg-emerald-950/10 p-3.5 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                            {src.category || 'Vlastiti izvor'}
-                          </span>
-                          {src.sourceUrl && (
-                            <a
-                              href={src.sourceUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
-                            >
-                              <ExternalLink className="w-3 h-3" /> Izvor
-                            </a>
-                          )}
-                        </div>
-                        <h4 className="text-xs md:text-sm font-bold text-zinc-100 mt-1 truncate">{src.title}</h4>
-                        <p className="text-[11px] text-zinc-500">{src.author || 'Nepoznat autor'}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setCustomSources(removeCustomKnowledgeSource(src.id))}
-                        className="text-zinc-500 hover:text-rose-400 transition-colors p-1 shrink-0"
-                        title="Ukloni izvor"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setExpandedModuleId(isExpanded ? null : src.id)}
-                      className="text-[11px] font-bold text-zinc-400 hover:text-zinc-200 flex items-center gap-1"
-                    >
-                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                      {isExpanded ? 'Sakrij sadržaj' : 'Prikaži sadržaj bilješke / sažetka'}
-                    </button>
-                    {isExpanded ? (
-                      <pre className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-60 overflow-y-auto custom-scrollbar">
-                        {src.content}
-                      </pre>
-                    ) : (
-                      <p className="text-xs text-zinc-400 line-clamp-2">{src.content}</p>
                     )}
                   </div>
                 );
