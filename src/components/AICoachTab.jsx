@@ -2,13 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Sparkles, Bot, Send, Loader2, CalendarPlus, Trash2, BookOpen,
   History, ClipboardList, MessageSquare, Upload, Plus, Check,
-  AlertCircle, Zap, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Shield
+  AlertCircle, Zap, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Shield,
+  FileText, ExternalLink, Video
 } from 'lucide-react';
 import {
   chatWithAICoach,
   generateStructuredTrainingPlan,
-  getGeminiConfigStatus
+  getGeminiConfigStatus,
+  analyzeYouTubeVideoForKnowledgeBase
 } from '../services/geminiService';
+import {
+  parsePdfFile,
+  parseEpubFile,
+  parseTextFile
+} from '../services/documentParser';
 import {
   BUILT_IN_KNOWLEDGE_MODULES,
   getDisabledModuleIds,
@@ -26,6 +33,14 @@ import AIMarkdown, { AIWorkoutCard, buildErgVibeWorkoutObject } from './ai/AIMar
 
 const STORAGE_KEY_CHAT = 'ergvibe_ai_coach_chat_v1';
 const STORAGE_KEY_PLAN = 'ergvibe_ai_saved_plan_v1';
+
+function YoutubeIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" {...props}>
+      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+    </svg>
+  );
+}
 
 const QUICK_PROMPTS = [
   'Analiziraj moja zadnja 2 tjedna treninga, trenutni fitness (CTL) i formu (TSB).',
@@ -95,11 +110,18 @@ export default function AICoachTab({
   const [expandedModuleId, setExpandedModuleId] = useState(null);
   const [newSourceTitle, setNewSourceTitle] = useState('');
   const [newSourceAuthor, setNewSourceAuthor] = useState('');
+  const [newSourceCategory, setNewSourceCategory] = useState('Vlastita literatura');
   const [newSourceContent, setNewSourceContent] = useState('');
+  const [newSourceUrl, setNewSourceUrl] = useState('');
   const [showAddSourceForm, setShowAddSourceForm] = useState(false);
+  const [sourceImportMode, setSourceImportMode] = useState('upload'); // 'upload' | 'youtube' | 'manual'
+  const [isProcessingSource, setIsProcessingSource] = useState(false);
+  const [sourceProcessingStatus, setSourceProcessingStatus] = useState('');
+  const [sourceProcessError, setSourceProcessError] = useState(null);
+  const [youtubeInputUrl, setYoutubeInputUrl] = useState('');
   const [csvImportStatus, setCsvImportStatus] = useState(null);
   const csvInputRef = useRef(null);
-  const txtSourceInputRef = useRef(null);
+  const docFileInputRef = useRef(null);
 
   const geminiStatus = getGeminiConfigStatus();
   const ftp = Number(profile?.ftp) || 270;
@@ -232,19 +254,73 @@ export default function AICoachTab({
     }
   };
 
-  const handleTxtFileLoad = async (e) => {
+  const handleDocumentFileLoad = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    setIsProcessingSource(true);
+    setSourceProcessError(null);
+    const ext = file.name.split('.').pop()?.toLowerCase();
+
     try {
-      const text = await file.text();
-      if (!newSourceTitle) {
-        setNewSourceTitle(file.name.replace(/\.[^.]+$/, ''));
+      if (ext === 'pdf') {
+        setSourceProcessingStatus('Čitam PDF dokument i izvlačim tekst...');
+        const res = await parsePdfFile(file);
+        setNewSourceTitle(res.title || file.name);
+        setNewSourceAuthor(res.author || '');
+        setNewSourceCategory(res.category || 'PDF literatura');
+        setNewSourceContent(res.content || '');
+      } else if (ext === 'epub') {
+        setSourceProcessingStatus('Otvaram EPUB e-knjigu i pripremam poglavlja...');
+        const res = await parseEpubFile(file);
+        setNewSourceTitle(res.title || file.name);
+        setNewSourceAuthor(res.author || '');
+        setNewSourceCategory(res.category || 'EPUB knjiga');
+        setNewSourceContent(res.content || '');
+      } else {
+        setSourceProcessingStatus('Učitavam tekstualni dokument...');
+        const res = await parseTextFile(file);
+        setNewSourceTitle(res.title || file.name);
+        setNewSourceAuthor(res.author || '');
+        setNewSourceCategory(res.category || 'Tekstualni dokument');
+        setNewSourceContent(res.content || '');
       }
-      setNewSourceContent(prev => (prev ? prev + '\n\n' + text : text));
+      setSourceImportMode('manual');
     } catch (err) {
-      alert('Greška pri čitanju datoteke: ' + err.message);
+      console.error('[AICoachTab] Greška pri parsiranju dokumenta:', err);
+      setSourceProcessError('Greška pri čitanju datoteke: ' + (err.message || 'Nepoznata greška'));
     } finally {
-      if (txtSourceInputRef.current) txtSourceInputRef.current.value = '';
+      setIsProcessingSource(false);
+      setSourceProcessingStatus('');
+      if (docFileInputRef.current) docFileInputRef.current.value = '';
+    }
+  };
+
+  const handleAnalyzeYouTube = async (e) => {
+    if (e) e.preventDefault();
+    if (!youtubeInputUrl.trim() || isProcessingSource) return;
+
+    setIsProcessingSource(true);
+    setSourceProcessError(null);
+    setSourceProcessingStatus('Gemini AI gleda videozapis i priprema stručni trenerski sažetak...');
+
+    try {
+      const res = await analyzeYouTubeVideoForKnowledgeBase(youtubeInputUrl);
+      setNewSourceTitle(res.title || 'YouTube predavanje');
+      setNewSourceAuthor(res.author || 'YouTube');
+      setNewSourceCategory(res.category || 'YouTube predavanje / podcast');
+      setNewSourceUrl(res.sourceUrl || youtubeInputUrl);
+      setNewSourceContent(res.content || '');
+      setSourceImportMode('manual');
+    } catch (err) {
+      console.error('[AICoachTab] Greška pri analizi YouTube videa:', err);
+      setSourceProcessError(
+        'Gemini nije uspio automatski analizirati video: ' + (err.message || '') +
+        '. Možete otvoriti video, kopirati transkript s YouTubea i zalijepiti ga u polje sadržaja.'
+      );
+    } finally {
+      setIsProcessingSource(false);
+      setSourceProcessingStatus('');
     }
   };
 
@@ -254,13 +330,19 @@ export default function AICoachTab({
       const updated = addCustomKnowledgeSource({
         title: newSourceTitle,
         author: newSourceAuthor,
-        content: newSourceContent
+        category: newSourceCategory,
+        content: newSourceContent,
+        sourceUrl: newSourceUrl
       });
       setCustomSources(updated);
       setNewSourceTitle('');
       setNewSourceAuthor('');
+      setNewSourceCategory('Vlastita literatura');
       setNewSourceContent('');
+      setNewSourceUrl('');
+      setYoutubeInputUrl('');
       setShowAddSourceForm(false);
+      setSourceProcessError(null);
     } catch (err) {
       alert(err.message);
     }
@@ -864,65 +946,256 @@ export default function AICoachTab({
             </div>
 
             {showAddSourceForm && (
-              <form onSubmit={handleSaveCustomSource} className="bg-zinc-950/90 border border-emerald-500/30 rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-emerald-400 uppercase tracking-wider">
-                    Novi izvor znanja (Knjiga / Sažetak / Protokol)
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => txtSourceInputRef.current?.click()}
-                    className="text-[11px] font-bold text-cyan-400 hover:underline flex items-center gap-1"
-                  >
-                    <Upload className="w-3 h-3" /> Učitaj .TXT / .MD
-                  </button>
-                  <input
-                    ref={txtSourceInputRef}
-                    type="file"
-                    accept=".txt,.md"
-                    onChange={handleTxtFileLoad}
-                    className="hidden"
-                  />
+              <div className="bg-zinc-950/90 border border-emerald-500/30 rounded-2xl p-4 md:p-5 space-y-4 shadow-2xl animate-in fade-in">
+                {/* Zaglavlje i odabir načina unosa */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
+                  <div>
+                    <span className="text-xs font-black text-emerald-400 uppercase tracking-wider block">
+                      Novi izvor znanja za AI Trenera
+                    </span>
+                    <span className="text-[11px] text-zinc-400">
+                      Učitajte PDF, EPUB, YouTube video ili ručno unesite bilješke
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-xl border border-zinc-800 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setSourceImportMode('upload')}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        sourceImportMode === 'upload'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      <Upload className="w-3.5 h-3.5" /> Datoteka
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSourceImportMode('youtube')}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        sourceImportMode === 'youtube'
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 shadow-sm'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      <YoutubeIcon className="w-3.5 h-3.5 text-rose-400" /> YouTube
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSourceImportMode('manual')}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        sourceImportMode === 'manual'
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5" /> Obrazac
+                    </button>
+                  </div>
                 </div>
-                <input
-                  type="text"
-                  required
-                  value={newSourceTitle}
-                  onChange={(e) => setNewSourceTitle(e.target.value)}
-                  placeholder="Naslov knjige ili poglavlja (npr. Fast After 50 - Joe Friel)"
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-emerald-500"
-                />
-                <input
-                  type="text"
-                  value={newSourceAuthor}
-                  onChange={(e) => setNewSourceAuthor(e.target.value)}
-                  placeholder="Autor (opcionalno)"
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-emerald-500"
-                />
-                <textarea
-                  rows={5}
-                  required
-                  value={newSourceContent}
-                  onChange={(e) => setNewSourceContent(e.target.value)}
-                  placeholder="Zalijepi ključne principe, bilješke ili sažetak knjige koje želiš da AI Trener uvijek uzima u obzir..."
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 outline-none focus:border-emerald-500 resize-y"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddSourceForm(false)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-zinc-400 hover:text-zinc-200"
-                  >
-                    Odustani
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-xs"
-                  >
-                    Spremi u Bazu Znanja
-                  </button>
-                </div>
-              </form>
+
+                {/* 1. UČITAVANJE DATOTEKE (.PDF, .EPUB, .MD, .TXT) */}
+                {sourceImportMode === 'upload' && (
+                  <div className="space-y-3">
+                    <div
+                      onClick={() => docFileInputRef.current?.click()}
+                      className="border-2 border-dashed border-zinc-700 hover:border-emerald-500/60 bg-zinc-900/50 hover:bg-zinc-900/80 rounded-2xl p-6 text-center cursor-pointer transition-all group"
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                        <Upload className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-sm font-bold text-zinc-100 mb-1">
+                        Kliknite za odabir PDF, EPUB, TXT ili Markdown datoteke
+                      </h4>
+                      <p className="text-xs text-zinc-400 max-w-sm mx-auto mb-3">
+                        Aplikacija u pregledniku automatski čita stranice ili poglavlja i priprema tekst za bazu.
+                      </p>
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                          .PDF dokument
+                        </span>
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                          .EPUB e-knjiga
+                        </span>
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                          .MD bilješke
+                        </span>
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700">
+                          .TXT tekst
+                        </span>
+                      </div>
+                    </div>
+                    <input
+                      ref={docFileInputRef}
+                      type="file"
+                      accept=".pdf,.epub,.txt,.md"
+                      onChange={handleDocumentFileLoad}
+                      className="hidden"
+                    />
+                  </div>
+                )}
+
+                {/* 2. YOUTUBE VIDEO IMPORT */}
+                {sourceImportMode === 'youtube' && (
+                  <form onSubmit={handleAnalyzeYouTube} className="space-y-3">
+                    <div className="p-3 bg-zinc-900/60 rounded-xl border border-zinc-800 space-y-1">
+                      <p className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" /> Automatska AI analiza YouTube videa
+                      </p>
+                      <p className="text-[11px] text-zinc-400 leading-relaxed">
+                        Zalijepite poveznicu na biciklistički podcast, studiju ili predavanje (npr. Dylan Johnson, Empirical Cycling, TrainerRoad). 
+                        Gemini će pogledati video i strukturirati ključne fiziološke koncepte, nalaze i trenažne protokole.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="relative flex-1">
+                        <YoutubeIcon className="w-4 h-4 text-rose-400 absolute left-3 top-3" />
+                        <input
+                          type="url"
+                          required
+                          value={youtubeInputUrl}
+                          onChange={(e) => setYoutubeInputUrl(e.target.value)}
+                          placeholder="https://www.youtube.com/watch?v=..."
+                          className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-100 outline-none focus:border-rose-500 transition-colors"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={isProcessingSource || !youtubeInputUrl.trim()}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-400 hover:to-amber-400 disabled:opacity-50 text-zinc-950 font-black text-xs flex items-center justify-center gap-1.5 shrink-0 transition-all shadow-md"
+                      >
+                        {isProcessingSource ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                        Analiziraj video
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Status obrade */}
+                {isProcessingSource && (
+                  <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center gap-3 text-xs font-bold text-cyan-300">
+                    <Loader2 className="w-4 h-4 animate-spin text-cyan-400 shrink-0" />
+                    <span>{sourceProcessingStatus || 'Obrada izvora u tijeku...'}</span>
+                  </div>
+                )}
+
+                {/* Greška obrade */}
+                {sourceProcessError && (
+                  <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                    <span className="flex-1">{sourceProcessError}</span>
+                  </div>
+                )}
+
+                {/* Obrazac za pregled i spremanje */}
+                <form onSubmit={handleSaveCustomSource} className="space-y-3 pt-2 border-t border-zinc-800">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div className="sm:col-span-2">
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                        Naslov izvora / knjige / videa *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newSourceTitle}
+                        onChange={(e) => setNewSourceTitle(e.target.value)}
+                        placeholder="npr. Fast After 50 ili Z2 Mitochondria Study"
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                        Autor / Kanal / Izvor
+                      </label>
+                      <input
+                        type="text"
+                        value={newSourceAuthor}
+                        onChange={(e) => setNewSourceAuthor(e.target.value)}
+                        placeholder="npr. Joe Friel ili Dylan Johnson"
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                        Kategorija izvora
+                      </label>
+                      <select
+                        value={newSourceCategory}
+                        onChange={(e) => setNewSourceCategory(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-emerald-500"
+                      >
+                        <option value="PDF literatura">PDF literatura</option>
+                        <option value="EPUB knjiga">EPUB e-knjiga</option>
+                        <option value="YouTube predavanje / podcast">YouTube predavanje / podcast</option>
+                        <option value="Knjiga / poglavlje">Knjiga / poglavlje</option>
+                        <option value="Trenažni protokol">Trenažni protokol</option>
+                        <option value="Vlastita literatura">Vlastita literatura</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                        Poveznica / URL (opcionalno)
+                      </label>
+                      <input
+                        type="url"
+                        value={newSourceUrl}
+                        onChange={(e) => setNewSourceUrl(e.target.value)}
+                        placeholder="https://..."
+                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                        Sadržaj izvora i trenerska pravila *
+                      </label>
+                      <span className="text-[10px] text-zinc-500 font-mono">
+                        {newSourceContent.length.toLocaleString('hr-HR')} / 55.000 znakova
+                      </span>
+                    </div>
+                    <textarea
+                      rows={6}
+                      required
+                      value={newSourceContent}
+                      onChange={(e) => setNewSourceContent(e.target.value)}
+                      placeholder="Zalijepite ključne principe, pravila, zone ili bilješke koje želite da AI Trener uvijek uvažava..."
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 outline-none focus:border-emerald-500 resize-y font-mono leading-relaxed"
+                    />
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                    <span className="text-[11px] text-zinc-500">
+                      Spremljeno u vašu privatnu bazu znanja (AI uzima u obzir pri analizi i planovima).
+                    </span>
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddSourceForm(false);
+                          setSourceProcessError(null);
+                        }}
+                        className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-zinc-400 hover:text-zinc-200"
+                      >
+                        Odustani
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isProcessingSource || !newSourceTitle.trim() || !newSourceContent.trim()}
+                        className="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-zinc-950 font-black text-xs flex items-center gap-1.5 shadow-md"
+                      >
+                        <Check className="w-3.5 h-3.5" /> Spremi u Bazu Znanja
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
             )}
 
             {/* Ugrađeni moduli */}
@@ -975,28 +1248,57 @@ export default function AICoachTab({
               })}
 
               {/* Korisnički dodani izvori */}
-              {customSources.map(src => (
-                <div key={src.id} className="rounded-xl border border-emerald-500/25 bg-emerald-950/10 p-3.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400">
-                        Vlastiti izvor
-                      </span>
-                      <h4 className="text-xs md:text-sm font-bold text-zinc-100">{src.title}</h4>
-                      <p className="text-[11px] text-zinc-500">{src.author}</p>
+              {customSources.map(src => {
+                const isExpanded = expandedModuleId === src.id;
+                return (
+                  <div key={src.id} className="rounded-xl border border-emerald-500/25 bg-emerald-950/10 p-3.5 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                            {src.category || 'Vlastiti izvor'}
+                          </span>
+                          {src.sourceUrl && (
+                            <a
+                              href={src.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
+                            >
+                              <ExternalLink className="w-3 h-3" /> Izvor
+                            </a>
+                          )}
+                        </div>
+                        <h4 className="text-xs md:text-sm font-bold text-zinc-100 mt-1 truncate">{src.title}</h4>
+                        <p className="text-[11px] text-zinc-500">{src.author || 'Nepoznat autor'}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCustomSources(removeCustomKnowledgeSource(src.id))}
+                        className="text-zinc-500 hover:text-rose-400 transition-colors p-1 shrink-0"
+                        title="Ukloni izvor"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setCustomSources(removeCustomKnowledgeSource(src.id))}
-                      className="text-zinc-500 hover:text-rose-400 transition-colors p-1"
-                      title="Ukloni izvor"
+                      onClick={() => setExpandedModuleId(isExpanded ? null : src.id)}
+                      className="text-[11px] font-bold text-zinc-400 hover:text-zinc-200 flex items-center gap-1"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      {isExpanded ? 'Sakrij sadržaj' : 'Prikaži sadržaj bilješke / sažetka'}
                     </button>
+                    {isExpanded ? (
+                      <pre className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-60 overflow-y-auto custom-scrollbar">
+                        {src.content}
+                      </pre>
+                    ) : (
+                      <p className="text-xs text-zinc-400 line-clamp-2">{src.content}</p>
+                    )}
                   </div>
-                  <p className="text-xs text-zinc-400 mt-1.5 line-clamp-3">{src.content}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

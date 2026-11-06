@@ -125,7 +125,7 @@ export function getCustomKnowledgeSources() {
   }
 }
 
-export function addCustomKnowledgeSource({ title, author = '', category = 'Vlastita literatura', content }) {
+export function addCustomKnowledgeSource({ title, author = '', category = 'Vlastita literatura', content, sourceUrl = '' }) {
   if (!title?.trim() || !content?.trim()) {
     throw new Error('Naziv i sadržaj izvora su obavezni.');
   }
@@ -136,6 +136,7 @@ export function addCustomKnowledgeSource({ title, author = '', category = 'Vlast
     author: author.trim() || 'Osobna bilješka / Knjiga',
     category: category.trim() || 'Vlastita literatura',
     content: content.trim().slice(0, 60000), // sigurnosni limit za localStorage (~60k znakova po izvoru)
+    sourceUrl: (sourceUrl || '').trim(),
     createdAt: new Date().toISOString()
   };
   const updated = [newItem, ...existing];

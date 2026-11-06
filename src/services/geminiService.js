@@ -489,3 +489,91 @@ Napomena za jedinice: 'durationMinutes' je OBAVEZNO cijeli broj minuta (npr. 60 
     throw new Error('AI nije vratio valjani JSON format plana. Pokušaj ponovno.');
   }
 }
+
+/**
+ * Analizira javni YouTube video i pretvara ga u strukturirani trenerski sažetak za bazu znanja.
+ * Koristi Google Gemini multimodalno razumijevanje videa.
+ */
+export async function analyzeYouTubeVideoForKnowledgeBase(youtubeUrl) {
+  const cleanUrl = String(youtubeUrl || '').trim();
+  const match = cleanUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|live\/))([\w-]{11})/);
+  if (!match) {
+    throw new Error('Nevažeća YouTube poveznica. Unesi ispravan URL (npr. https://www.youtube.com/watch?v=...)');
+  }
+  const videoId = match[1];
+  const standardUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+  const promptText = `Analiziraj ovaj YouTube video s biciklističkom, fiziološkom ili sportskom tematikom. 
+Tvoj zadatak je izvući i strukturirati znanje iz videa za potrebe baze znanja osobnog biciklističkog AI trenera.
+
+Formatiraj odgovor točno u ovom formatu (obavezno sačuvaj ključne oznake):
+TITLE: [Naslov teme ili točan naslov videa]
+AUTHOR: [Ime kanala, govornika ili autora predavanja]
+CATEGORY: YouTube predavanje / podcast
+SUMMARY: [Sažetak u 2-3 rečenice o tome što video obrađuje i koji je ključni zaključak za biciklista]
+CONTENT:
+### 1. KLJUČNI ZNANSTVENI I FIZIOLOŠKI KONCEPTI
+(Glavni nalazi studija, mehanizmi adaptacije, mitohondriji, laktat, zona 2, VO2max itd.)
+
+### 2. TRENERSKE PREPORUKE I PROTOKOLI
+(Konkretne preporuke iz videa: intenziteti u % FTP/pulsa, intervali, omjeri rada i odmora, prehrana/ugljikohidrati, regeneracija)
+
+### 3. PRAKTIČNI SAVJETI ZA PRIMJENU
+(Kako biciklist rekreativac ili natjecatelj ovo može primijeniti u svom tjednom planu)`;
+
+  const contents = [
+    {
+      role: 'user',
+      parts: [
+        {
+          fileData: {
+            mimeType: 'video/mp4',
+            fileUri: standardUrl
+          }
+        },
+        {
+          text: promptText
+        }
+      ]
+    }
+  ];
+
+  const rawText = await callGeminiApi({
+    contents,
+    model: 'gemini-2.5-flash',
+    temperature: 0.3
+  });
+
+  let title = `YouTube: ${videoId}`;
+  let author = 'YouTube';
+  let category = 'YouTube predavanje / podcast';
+  let summary = '';
+  let content = rawText;
+
+  const titleMatch = rawText.match(/^TITLE:\s*(.+)$/m);
+  if (titleMatch) title = titleMatch[1].trim();
+
+  const authorMatch = rawText.match(/^AUTHOR:\s*(.+)$/m);
+  if (authorMatch) author = authorMatch[1].trim();
+
+  const categoryMatch = rawText.match(/^CATEGORY:\s*(.+)$/m);
+  if (categoryMatch) category = categoryMatch[1].trim();
+
+  const summaryMatch = rawText.match(/^SUMMARY:\s*(.+)$/m);
+  if (summaryMatch) summary = summaryMatch[1].trim();
+
+  const contentIdx = rawText.indexOf('CONTENT:');
+  if (contentIdx !== -1) {
+    content = rawText.slice(contentIdx + 'CONTENT:'.length).trim();
+  }
+
+  return {
+    title,
+    author,
+    category,
+    summary,
+    content: (summary ? `> **Sažetak:** ${summary}\n\n` : '') + content,
+    videoId,
+    sourceUrl: standardUrl
+  };
+}
