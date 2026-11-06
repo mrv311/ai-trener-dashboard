@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   User, Zap, Save, CheckCircle2, Activity, CalendarDays, 
-  Clock, Heart, Cloud, LogIn, HelpCircle, ChevronRight, RefreshCw 
+  Clock, Heart, Cloud, LogIn, HelpCircle, ChevronRight, RefreshCw,
+  Lock, Gauge, Award, ShieldCheck
 } from 'lucide-react';
 import ActivityDetailModal from './ActivityDetailModal';
 
@@ -16,28 +17,28 @@ export default function ProfileTab({
   intervalsConnected,
   athleteInfo,
   onOpenAuthModal,
-  onOpenOnboarding
+  onOpenOnboarding,
+  onNavigateToCalendar
 }) {
   const [formData, setFormData] = useState({
     username: profile?.username || 'Odvažni Vozač',
-    weight: profile?.weight || 75.9,
-    ftp: profile?.ftp || 270,
-    maxHr: profile?.maxHr || 180,
-    thresholdHr: profile?.thresholdHr || 160
+    weight: profile?.weight !== undefined && profile?.weight !== null ? profile.weight : 75.9,
+    ftp: profile?.ftp !== undefined && profile?.ftp !== null ? profile.ftp : 270,
+    maxHr: profile?.maxHr !== undefined && profile?.maxHr !== null ? profile.maxHr : 180,
+    thresholdHr: profile?.thresholdHr !== undefined && profile?.thresholdHr !== null ? profile.thresholdHr : 160
   });
 
   const [selectedActivity, setSelectedActivity] = useState(null);
-  const [showAllWorkouts, setShowAllWorkouts] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
     setFormData({
       username: profile.username || 'Odvažni Vozač',
-      weight: profile.weight ?? 75.9,
-      ftp: profile.ftp ?? 270,
-      maxHr: profile.maxHr ?? 180,
-      thresholdHr: profile.thresholdHr ?? 160
+      weight: profile.weight !== undefined && profile.weight !== null ? profile.weight : 75.9,
+      ftp: profile.ftp !== undefined && profile.ftp !== null ? profile.ftp : 270,
+      maxHr: profile.maxHr !== undefined && profile.maxHr !== null ? profile.maxHr : 180,
+      thresholdHr: profile.thresholdHr !== undefined && profile.thresholdHr !== null ? profile.thresholdHr : 160
     });
   }, [profile?.username, profile?.weight, profile?.ftp, profile?.maxHr, profile?.thresholdHr]);
 
@@ -51,18 +52,61 @@ export default function ProfileTab({
     const updatedData = {
       ...formData,
       username: String(formData.username || '').trim() || 'Gost Vozač',
-      weight: Number(formData.weight) || 75,
+      weight: Number(formData.weight) || 75.9,
       ftp: Number(formData.ftp) || 200,
       maxHr: Number(formData.maxHr) || 180,
-      thresholdHr: Number(formData.thresholdHr) || 160
+      thresholdHr: Number(formData.thresholdHr) || 160,
+      isManualFtp: true,
+      isManualWeight: true,
+      isManualHr: true,
+      lastFtpUpdate: new Date().toISOString()
     };
-    if (Number(updatedData.ftp) !== Number(profile?.ftp)) {
-      updatedData.lastFtpUpdate = new Date().toISOString();
-    }
     setProfile(updatedData);
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
   };
+
+  const handleRefreshFromIntervals = () => {
+    if (!athleteInfo) return;
+    const athleteFirstName = athleteInfo.firstname || (athleteInfo.name ? athleteInfo.name.trim().split(' ')[0] : '');
+    const icuFtp = Number(athleteInfo.icu_ftp || athleteInfo.ftp);
+    const icuWeight = Number(athleteInfo.weight || athleteInfo.icu_weight);
+    const icuMaxHr = Number(athleteInfo.icu_max_hr || athleteInfo.max_hr);
+    const icuLthr = Number(athleteInfo.icu_threshold_hr || athleteInfo.lthr);
+
+    const updated = {
+      ...formData,
+      username: athleteFirstName || formData.username,
+      ftp: icuFtp || formData.ftp,
+      weight: icuWeight || formData.weight,
+      maxHr: icuMaxHr || formData.maxHr,
+      thresholdHr: icuLthr || formData.thresholdHr,
+      isManualFtp: false,
+      isManualWeight: false,
+      isManualHr: false,
+      lastSyncWithIntervals: new Date().toISOString()
+    };
+    setFormData(updated);
+    setProfile(updated);
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 3000);
+  };
+
+  // Dinamički izračun W/kg omjera i kategorije
+  const currentWeight = Number(formData.weight) || 75.9;
+  const currentFtp = Number(formData.ftp) || 200;
+  const wKg = currentWeight > 0 ? (currentFtp / currentWeight).toFixed(2) : '0.00';
+
+  const getWKgCategory = (val) => {
+    const num = parseFloat(val);
+    if (num < 2.5) return { label: 'Rekreativac', color: 'text-zinc-400 bg-zinc-800/80 border-zinc-700' };
+    if (num < 3.2) return { label: 'Klupski vozač (Z2/Z3)', color: 'text-sky-400 bg-sky-950/40 border-sky-500/30' };
+    if (num < 4.0) return { label: 'Natjecatelj / Gran Fondo', color: 'text-emerald-400 bg-emerald-950/40 border-emerald-500/30' };
+    if (num < 4.8) return { label: 'Elita (Cat 1/2)', color: 'text-orange-400 bg-orange-950/40 border-orange-500/30' };
+    return { label: 'Pro / UCI razina', color: 'text-purple-400 bg-purple-950/40 border-purple-500/30' };
+  };
+
+  const wKgCat = getWKgCategory(wKg);
 
   const powerZones = [
     { id: 'Z1', name: 'Active Recovery', min: 0, max: 55 }, { id: 'Z2', name: 'Endurance', min: 56, max: 75 },
@@ -86,9 +130,10 @@ export default function ProfileTab({
     return completed;
   }, [workouts]);
 
+  // Strogo ograničeno na zadnjih 5 treninga radi brzine i izbjegavanja zagušenja DOM-a
   const displayedWorkouts = useMemo(() => {
-    return showAllWorkouts ? allCompletedWorkouts : allCompletedWorkouts.slice(0, 5);
-  }, [allCompletedWorkouts, showAllWorkouts]);
+    return allCompletedWorkouts.slice(0, 5);
+  }, [allCompletedWorkouts]);
 
   const formatDuration = (secs) => {
     if (!secs) return "-";
@@ -139,7 +184,7 @@ export default function ProfileTab({
                 <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Sinkronizacija aktivna</span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Prijavljen: <span className="text-zinc-200 font-bold">{userEmail || 'Korisnik'}</span>. Podaci i treninzi automatski se čuvaju u Supabase oblaku.
+                Prijavljen: <span className="text-zinc-200 font-bold">{userEmail || 'Korisnik'}</span>. Podaci i treninzi automatski se čuvaju u bazi.
               </p>
             </div>
           </div>
@@ -167,22 +212,9 @@ export default function ProfileTab({
           </div>
           {athleteInfo && (
             <button
-              onClick={() => {
-                const athleteFirstName = athleteInfo.firstname || (athleteInfo.name ? athleteInfo.name.trim().split(' ')[0] : '');
-                const updated = {
-                  ...formData,
-                  username: athleteFirstName || formData.username,
-                  ftp: Number(athleteInfo.icu_ftp || athleteInfo.ftp) || formData.ftp,
-                  weight: Number(athleteInfo.weight || athleteInfo.icu_weight) || formData.weight,
-                  maxHr: Number(athleteInfo.icu_max_hr || athleteInfo.max_hr) || formData.maxHr,
-                  thresholdHr: Number(athleteInfo.icu_threshold_hr || athleteInfo.lthr) || formData.thresholdHr
-                };
-                setFormData(updated);
-                setProfile(updated);
-                setIsSaved(true);
-                setTimeout(() => setIsSaved(false), 3000);
-              }}
-              className="shrink-0 flex items-center gap-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-3 py-1.5 rounded-xl font-bold text-xs transition-all"
+              onClick={handleRefreshFromIntervals}
+              className="shrink-0 flex items-center gap-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-3 py-1.5 rounded-xl font-bold text-xs transition-all shadow-sm"
+              title="Povuci svježi FTP, težinu i puls s Intervals.icu profila"
             >
               <RefreshCw className="w-3.5 h-3.5" /> Osvježi profil s Intervals.icu
             </button>
@@ -198,7 +230,7 @@ export default function ProfileTab({
             <h2 className="text-2xl font-black text-zinc-100 tracking-tight">Profil i Postavke</h2>
           </div>
           <p className="text-zinc-400 font-medium max-w-xl text-sm leading-relaxed">
-            Osnovni podaci potrebni za izvođenje treninga, kalkulaciju W/kg i generiranje zona.
+            Fiziološki parametri za upravljanje trenažerom, izračun zona snage i analitiku treninga.
           </p>
         </div>
 
@@ -216,41 +248,85 @@ export default function ProfileTab({
 
           <button
             onClick={handleSave}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg text-xs md:text-sm ${isSaved ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 shadow-[0_4px_15px_rgba(34,211,238,0.3)] border border-cyan-500/30'
-              }`}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg text-xs md:text-sm ${
+              isSaved 
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]' 
+                : 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 shadow-[0_4px_15px_rgba(34,211,238,0.3)] border border-cyan-500/30'
+            }`}
           >
             {isSaved ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {isSaved ? 'Spremljeno' : 'Spremi Promjene'}
+            {isSaved ? 'Spremljeno (Zaključano)' : 'Spremi Promjene'}
           </button>
         </div>
       </div>
 
-      {/* 1. OSNOVNI PARAMETRI */}
+      {/* 1. OSNOVNI PARAMETRI I W/KG METRIKA */}
       <div className="bg-zinc-900/40 backdrop-blur-md rounded-3xl shadow-xl border border-zinc-800/80 p-6 flex flex-col gap-5 relative overflow-hidden">
-        <div className="flex items-center gap-2 text-zinc-100 font-bold border-b border-zinc-800/80 pb-3">
-          <Zap className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]" /> Fiziološki Podaci
+        <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 flex-wrap gap-2">
+          <div className="flex items-center gap-2 text-zinc-100 font-bold">
+            <Zap className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]" /> 
+            <span>Fiziološki Podaci</span>
+          </div>
+          
+          {/* Status izvora FTP-a */}
+          {profile?.isManualFtp ? (
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg">
+              <Lock className="w-3.5 h-3.5" />
+              <span>Ručni unos zaključan (prioritet nad Intervals.icu)</span>
+            </div>
+          ) : intervalsConnected ? (
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-1 rounded-lg">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Sinkronizirano s Intervals.icu</span>
+            </div>
+          ) : null}
         </div>
 
+        {/* Polja unosa */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
           <div className="md:col-span-1">
             <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Korisničko Ime</label>
-            <input type="text" name="username" value={formData.username} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all" />
+            <input type="text" name="username" value={formData.username} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all" />
           </div>
           <div>
             <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Težina (kg)</label>
-            <input type="number" step="0.1" name="weight" value={formData.weight} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all" />
+            <input type="number" step="0.1" name="weight" value={formData.weight} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all" />
           </div>
           <div>
             <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Trenutni FTP (W)</label>
-            <input type="number" name="ftp" value={formData.ftp} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all" />
+            <input type="number" name="ftp" value={formData.ftp} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all" />
           </div>
           <div>
             <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Max Puls (bpm)</label>
-            <input type="number" name="maxHr" value={formData.maxHr} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all" />
+            <input type="number" name="maxHr" value={formData.maxHr} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all" />
           </div>
           <div>
             <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Threshold Puls</label>
-            <input type="number" name="thresholdHr" value={formData.thresholdHr} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition-all" />
+            <input type="number" name="thresholdHr" value={formData.thresholdHr} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all" />
+          </div>
+        </div>
+
+        {/* W/KG INTERAKTIVNA KARTICA */}
+        <div className="bg-gradient-to-r from-zinc-950/80 via-zinc-900/60 to-zinc-950/80 border border-zinc-800/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400">
+              <Gauge className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400 font-medium">Relativna snaga (W/kg):</span>
+                <span className="text-lg font-black text-zinc-100">{wKg} W/kg</span>
+                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${wKgCat.color}`}>
+                  {wKgCat.label}
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                Izračunato na temelju: <strong className="text-zinc-300">{formData.ftp} W</strong> / <strong className="text-zinc-300">{formData.weight} kg</strong>. Promjenom brojeva gore omjer se odmah osvježava.
+              </p>
+            </div>
+          </div>
+          <div className="text-[11px] text-zinc-400 sm:text-right">
+            Klikom na <strong className="text-cyan-400">"Spremi Promjene"</strong> zaključavaš ove parametre za trenažer i zonu snage.
           </div>
         </div>
       </div>
@@ -258,14 +334,19 @@ export default function ProfileTab({
       {/* 2. ZONE */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-zinc-900/40 backdrop-blur-md rounded-3xl shadow-xl border border-zinc-800/80 p-6">
-          <h3 className="text-sm font-bold text-zinc-200 mb-4 flex items-center bg-purple-500/10 text-purple-400 border border-purple-500/20 px-3 py-1.5 rounded-lg w-fit shadow-[0_0_10px_rgba(168,85,247,0.1)]"><Activity className="w-4 h-4 mr-2" /> Zone Snage (Power)</h3>
+          <h3 className="text-sm font-bold text-zinc-200 mb-4 flex items-center bg-purple-500/10 text-purple-400 border border-purple-500/20 px-3 py-1.5 rounded-lg w-fit shadow-[0_0_10px_rgba(168,85,247,0.1)]">
+            <Activity className="w-4 h-4 mr-2" /> Zone Snage (Power)
+          </h3>
           <div className="text-xs text-zinc-400 space-y-1">
             {powerZones.map(z => {
               const minW = Math.round((formData.ftp * z.min) / 100);
               const maxW = z.max ? Math.round((formData.ftp * z.max) / 100) : null;
               return (
                 <div key={z.id} className={`flex items-center justify-between py-2 border-b border-zinc-800/50 ${z.isSubZone ? 'mt-4 border-t border-zinc-700/50 pt-3 text-purple-400 font-bold' : ''}`}>
-                  <div className="w-8 font-bold text-zinc-300">{z.id}</div><div className="flex-1">{z.name}</div><div className="w-20 text-right text-zinc-500">{z.min}% {z.max ? `- ${z.max}%` : '+'}</div><div className="w-24 text-right font-bold text-zinc-200">{minW}W - {maxW ? `${maxW}W` : '+'}</div>
+                  <div className="w-8 font-bold text-zinc-300">{z.id}</div>
+                  <div className="flex-1">{z.name}</div>
+                  <div className="w-20 text-right text-zinc-500">{z.min}% {z.max ? `- ${z.max}%` : '+'}</div>
+                  <div className="w-24 text-right font-bold text-zinc-200">{minW}W - {maxW ? `${maxW}W` : '+'}</div>
                 </div>
               );
             })}
@@ -273,14 +354,19 @@ export default function ProfileTab({
         </div>
         
         <div className="bg-zinc-900/40 backdrop-blur-md rounded-3xl shadow-xl border border-zinc-800/80 p-6">
-          <h3 className="text-sm font-bold text-zinc-200 mb-4 flex items-center bg-rose-500/10 text-rose-400 border border-rose-500/20 px-3 py-1.5 rounded-lg w-fit shadow-[0_0_10px_rgba(244,63,94,0.1)]"><Heart className="w-4 h-4 mr-2" /> Zone Pulsa (HR)</h3>
+          <h3 className="text-sm font-bold text-zinc-200 mb-4 flex items-center bg-rose-500/10 text-rose-400 border border-rose-500/20 px-3 py-1.5 rounded-lg w-fit shadow-[0_0_10px_rgba(244,63,94,0.1)]">
+            <Heart className="w-4 h-4 mr-2" /> Zone Pulsa (HR)
+          </h3>
           <div className="text-xs text-zinc-400 space-y-1">
             {hrZones.map(z => {
               const minBpm = Math.round((formData.thresholdHr * z.min) / 100);
               const maxBpm = z.max ? Math.round((formData.thresholdHr * z.max) / 100) : null;
               return (
                 <div key={z.id} className="flex items-center justify-between py-2 border-b border-zinc-800/50">
-                  <div className="w-8 font-bold text-zinc-300">{z.id}</div><div className="flex-1">{z.name}</div><div className="w-20 text-right text-zinc-500">{z.min}% {z.max ? `- ${z.max}%` : '+'}</div><div className="w-24 text-right font-bold text-zinc-200">{minBpm}bpm - {maxBpm ? `${maxBpm}bpm` : formData.maxHr}</div>
+                  <div className="w-8 font-bold text-zinc-300">{z.id}</div>
+                  <div className="flex-1">{z.name}</div>
+                  <div className="w-20 text-right text-zinc-500">{z.min}% {z.max ? `- ${z.max}%` : '+'}</div>
+                  <div className="w-24 text-right font-bold text-zinc-200">{minBpm}bpm - {maxBpm ? `${maxBpm}bpm` : `${formData.maxHr}bpm`}</div>
                 </div>
               );
             })}
@@ -288,13 +374,16 @@ export default function ProfileTab({
         </div>
       </div>
 
-      {/* 3. ZADNJI TRENINGZI (POVIJEST) */}
+      {/* 3. ZADNJI TRENINGZI (POVIJEST) - OPTIMIZIRANO NA ZADNJIH 5 S LINKOM NA KALENDAR */}
       {allCompletedWorkouts.length > 0 && (
         <div className="bg-zinc-900/40 backdrop-blur-md rounded-3xl shadow-xl border border-zinc-800/80 p-6 flex flex-col gap-5 relative overflow-hidden">
           <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 flex-wrap gap-2">
             <div className="flex items-center gap-2 text-zinc-100 font-bold">
-              <Activity className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]" />
-              <span>{showAllWorkouts ? `Svi Odrađeni Treninzi (${allCompletedWorkouts.length})` : 'Zadnjih 5 Treninga'}</span>
+              <Activity className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]" />
+              <span>Zadnjih 5 Odrađenih Treninga</span>
+              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+                Ukupno u bazi: {allCompletedWorkouts.length}
+              </span>
             </div>
             <span className="text-[11px] text-zinc-400 font-medium hidden sm:inline">
               Klikni na trening za analizu, streamove i .FIT izvoz
@@ -354,14 +443,21 @@ export default function ProfileTab({
             })}
           </div>
 
-          {allCompletedWorkouts.length > 5 && (
-            <button
-              onClick={() => setShowAllWorkouts(!showAllWorkouts)}
-              className="w-full py-2.5 rounded-xl border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 text-xs font-bold text-zinc-400 hover:text-zinc-200 transition-all flex items-center justify-center gap-2 mt-1"
-            >
-              {showAllWorkouts ? 'Prikaži samo zadnjih 5' : `Prikaži svih ${allCompletedWorkouts.length} treninga`}
-            </button>
-          )}
+          <div className="flex items-center justify-between pt-3 border-t border-zinc-800/80 flex-wrap gap-3">
+            <span className="text-xs text-zinc-400">
+              Prikazano je zadnjih 5 aktivnosti radi optimalne brzine rada.
+            </span>
+            {onNavigateToCalendar && (
+              <button
+                onClick={onNavigateToCalendar}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-all shadow-[0_0_10px_rgba(34,211,238,0.1)]"
+              >
+                <CalendarDays className="w-4 h-4" />
+                Pogledaj cijelu povijest u Kalendaru
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       )}
 

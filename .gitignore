@@ -28,3 +28,6 @@ dist-ssr
 
 # Import reports
 scripts/import-reports/
+
+# Zaostali lokalni folder
+ai-trener-dashboard/

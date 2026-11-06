@@ -99,6 +99,16 @@ async function callGeminiApi({
     throw new Error('Gemini API ključ nije pronađen. Provjeri VITE_GEMINI_API_KEY u .env datoteci ili postavke u tabu Veze.');
   }
 
+  // ZAŠTITA OD NEŽELJENIH TROŠKOVA:
+  // Ako se koristi zajednički .env ključ (za goste/frendove), uvijek forsiraj ultra-ekonomični Flash model!
+  // Skuplji Pro model dopušten je isključivo ako korisnik unese vlastiti privatni ključ (source === 'custom').
+  const configStatus = getGeminiConfigStatus();
+  let effectiveModel = model;
+  if (configStatus.source === 'env' && String(effectiveModel).toLowerCase().includes('pro')) {
+    console.info('[geminiService] Zaštita potrošnje: Zajednički .env ključ smije koristiti isključivo Flash model.');
+    effectiveModel = 'gemini-2.5-flash';
+  }
+
   const generationConfig = {
     temperature,
     maxOutputTokens: 16384
@@ -124,7 +134,7 @@ async function callGeminiApi({
     });
   };
 
-  let response = await executeForModel(model);
+  let response = await executeForModel(effectiveModel);
 
   // Automatski fallback na latest alias ako specifična verzija ikada postane nedostupna
   if (response.status === 404) {

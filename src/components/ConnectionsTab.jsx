@@ -215,7 +215,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
 
             {geminiStatus.configured ? (
               <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" /> {geminiStatus.source === 'env' ? 'Aktivan putem .env' : 'Aktivan (Prilagođeni ključ)'}
+                <CheckCircle className="w-3 h-3" /> {geminiStatus.source === 'env' ? 'Aktivan putem .env (Flash način)' : 'Aktivan (Prilagođeni ključ)'}
               </span>
             ) : (
               <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20">
@@ -225,7 +225,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
           </div>
 
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Gemini API ključ iz tvoje lokalne <code className="text-cyan-300 bg-zinc-900 px-1.5 py-0.5 rounded">.env</code> datoteke (<code className="text-zinc-300">VITE_GEMINI_API_KEY</code>) zaštićen je od slanja na GitHub. Po potrebi ovdje možeš postaviti i privremeni ključ u pregledniku:
+            Zajednički ključ iz lokalne <code className="text-cyan-300 bg-zinc-900 px-1.5 py-0.5 rounded">.env</code> datoteke zaštićen je i zaključan na brzi, ekonomični <strong className="text-zinc-200">Gemini Flash</strong> model (zanemariv trošak za sve goste i vozače). Za dubinske analize ili neograničeni rad s <strong className="text-zinc-200">Gemini Pro</strong> modelom, ovdje se može postaviti vlastiti ključ:
           </p>
 
           <div className="flex flex-col sm:flex-row gap-2.5">

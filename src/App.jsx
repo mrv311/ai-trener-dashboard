@@ -30,7 +30,8 @@ const APP_VERSION = `v${pkgVersion}`;
 const DEFAULT_GUEST_PROFILE = {
   username: 'Gost Vozač', weight: 75.9, ftp: 200, thresholdHr: 160, maxHr: 180,
   birthYear: 1985, height: 180, experience: '3-5', riderType: 'all-rounder',
-  hoursPerWeek: 8, primaryGoal: '', goalDate: '', weakness: ''
+  hoursPerWeek: 8, primaryGoal: '', goalDate: '', weakness: '',
+  isManualFtp: false, isManualWeight: false, isManualHr: false
 };
 
 // 1. Centralizirana konfiguracija tabova za lakše održavanje
@@ -68,15 +69,26 @@ export default function App() {
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useLocalStorage(onboardingKey, false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        supabase.auth.signOut().catch(() => {});
+        setSession(null);
+      } else {
+        setSession(session);
+      }
+      setIsSessionLoading(false);
+    }).catch(() => {
       setIsSessionLoading(false);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+      } else if (newSession) {
+        setSession(newSession);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -96,10 +108,15 @@ export default function App() {
         // Ako je ime generičko ili ako je ranije bilo pohranjeno puno ime s prezimenom iz Intervals.icu
         const hasFullLastName = prev?.username && athleteInfo.name && prev.username.trim() === athleteInfo.name.trim();
         const nextUsername = (isGenericName || hasFullLastName) && athleteFirstName ? athleteFirstName : (prev?.username || athleteFirstName || 'Vozač');
-        const nextFtp = Number(athleteInfo.icu_ftp || athleteInfo.ftp) || prev?.ftp || 200;
-        const nextWeight = Number(athleteInfo.weight || athleteInfo.icu_weight) || prev?.weight || 75;
-        const nextMaxHr = Number(athleteInfo.icu_max_hr || athleteInfo.max_hr) || prev?.maxHr || 180;
-        const nextThresholdHr = Number(athleteInfo.icu_threshold_hr || athleteInfo.lthr) || prev?.thresholdHr || 160;
+        // Zadrži ručni ili postojeći FTP korisnika ako je već definiran i različit od početnog gosta
+        const hasCustomFtp = prev?.isManualFtp || (prev?.ftp && prev?.ftp !== 200);
+        const nextFtp = hasCustomFtp ? prev.ftp : (Number(athleteInfo.icu_ftp || athleteInfo.ftp) || prev?.ftp || 200);
+
+        const hasCustomWeight = prev?.isManualWeight || (prev?.weight && prev?.weight !== 75 && prev?.weight !== 75.9);
+        const nextWeight = hasCustomWeight ? prev.weight : (Number(athleteInfo.weight || athleteInfo.icu_weight) || prev?.weight || 75.9);
+
+        const nextMaxHr = prev?.isManualHr ? prev.maxHr : (Number(athleteInfo.icu_max_hr || athleteInfo.max_hr) || prev?.maxHr || 180);
+        const nextThresholdHr = prev?.isManualHr ? prev.thresholdHr : (Number(athleteInfo.icu_threshold_hr || athleteInfo.lthr) || prev?.thresholdHr || 160);
 
         if (
           prev?.username === nextUsername &&
@@ -415,6 +432,7 @@ export default function App() {
                 athleteInfo={athleteInfo}
                 onOpenAuthModal={() => setShowAuthModal(true)}
                 onOpenOnboarding={() => setShowOnboardingModal(true)}
+                onNavigateToCalendar={() => handleTabChange('calendar')}
               />
             )}
             {activeTab === 'connections' && (

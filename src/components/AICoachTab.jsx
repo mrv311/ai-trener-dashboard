@@ -331,8 +331,14 @@ export default function AICoachTab({
             title="Odaberi Gemini model"
             className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs font-bold text-zinc-300 focus:border-cyan-500 outline-none"
           >
-            <option value="gemini-3.8-flash">⚡ Gemini 3.8 Flash (Brzi)</option>
-            <option value="gemini-3.1-pro-preview">🧠 Gemini 3.1 Pro (Dubinska analiza)</option>
+            <option value="gemini-3.8-flash">⚡ Gemini Flash (Ekonomičan & Brzi)</option>
+            {geminiStatus.source === 'custom' ? (
+              <option value="gemini-3.1-pro-preview">🧠 Gemini Pro (Dubinska analiza - tvoj ključ)</option>
+            ) : (
+              <option value="gemini-3.8-flash" disabled className="text-zinc-600">
+                🔒 Gemini Pro (Dostupan uz vlastiti ključ u tabu Veze)
+              </option>
+            )}
           </select>
         </div>
       </div>

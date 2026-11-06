@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
 
 const syncHelperStorageKeys = (prof) => {
@@ -12,6 +12,13 @@ const syncHelperStorageKeys = (prof) => {
   } catch (e) {}
 };
 
+// Dozvoljeni stupci u Supabase tablici profiles (da spriječimo greške nepostojećih kolona)
+const SUPABASE_PROFILE_COLUMNS = [
+  'weight', 'ftp', 'maxHr', 'thresholdHr', 'birthYear', 
+  'height', 'experience', 'riderType', 'hoursPerWeek', 
+  'primaryGoal', 'goalDate', 'weakness', 'username'
+];
+
 export function useProfileSync(initialValue, userId) {
   const [profile, setProfileState] = useState(initialValue);
 
@@ -23,12 +30,13 @@ export function useProfileSync(initialValue, userId) {
         return;
       }
 
+      let localParsed = null;
       try {
         const item = window.localStorage.getItem(`ai_trener_profile_${userId}`);
         if (item) {
-          const parsed = JSON.parse(item);
-          if (parsed && typeof parsed === 'object') {
-            const mergedLocal = { ...initialValue, ...parsed };
+          localParsed = JSON.parse(item);
+          if (localParsed && typeof localParsed === 'object') {
+            const mergedLocal = { ...initialValue, ...localParsed };
             setProfileState(mergedLocal);
             syncHelperStorageKeys(mergedLocal);
           }
@@ -62,11 +70,27 @@ export function useProfileSync(initialValue, userId) {
         if (data) {
           setProfileState((prev) => {
             const merged = { ...(prev || initialValue) };
+            let hasChanged = false;
             for (const key in data) {
-              if (data[key] !== null) {
-                merged[key] = data[key];
+              if (data[key] !== null && data[key] !== undefined) {
+                // Ako korisnik lokalno ima ručno postavljen FTP, ne dopusti da ga stari podaci iz baze prepišu
+                if (key === 'ftp' && prev?.isManualFtp && prev?.ftp) {
+                  continue;
+                }
+                if (merged[key] !== data[key]) {
+                  merged[key] = data[key];
+                  hasChanged = true;
+                }
               }
             }
+            if (!hasChanged) return prev;
+
+            // Zadrži lokalne zastavice ručnog unosa
+            if (prev?.isManualFtp !== undefined) merged.isManualFtp = prev.isManualFtp;
+            if (prev?.isManualWeight !== undefined) merged.isManualWeight = prev.isManualWeight;
+            if (prev?.isManualHr !== undefined) merged.isManualHr = prev.isManualHr;
+            if (prev?.lastFtpUpdate) merged.lastFtpUpdate = prev.lastFtpUpdate;
+
             window.localStorage.setItem(`ai_trener_profile_${userId}`, JSON.stringify(merged));
             syncHelperStorageKeys(merged);
             return merged;
@@ -80,43 +104,46 @@ export function useProfileSync(initialValue, userId) {
     fetchSupabaseProfile();
   }, [userId]);
 
-  // Update profile locally and remote
-  const setProfile = async (newProfileData) => {
-    try {
-      const baseProfile = profile || initialValue;
+  // Update profile locally and remote - sa stabilnom referencom (useCallback)
+  const setProfile = useCallback((newProfileData) => {
+    setProfileState((prev) => {
+      const baseProfile = prev || initialValue;
       const rawUpdated = typeof newProfileData === 'function' ? newProfileData(baseProfile) : newProfileData;
       const updatedProfile = { ...baseProfile, ...rawUpdated };
 
-      // 1. Update component state
-      setProfileState(updatedProfile);
+      // 1. Update helper keys
       syncHelperStorageKeys(updatedProfile);
 
-      // 2. Update local storage (uključujući i 'guest' profil)
+      // 2. Update local storage (uključujući i 'guest' profil i sve zastavice)
       if (userId) {
         window.localStorage.setItem(`ai_trener_profile_${userId}`, JSON.stringify(updatedProfile));
       }
 
-      // 3. Upsert to Supabase (samo za prijavljene korisnike)
-      if (!userId || userId === 'guest') return;
-
-      const payload = { user_id: userId };
-      for (const key in initialValue) {
-        if (updatedProfile[key] !== undefined) {
-          payload[key] = updatedProfile[key];
+      // 3. Upsert to Supabase (samo za prijavljene korisnike i samo dopuštene stupce)
+      if (userId && userId !== 'guest') {
+        const payload = { user_id: userId };
+        for (const col of SUPABASE_PROFILE_COLUMNS) {
+          if (updatedProfile[col] !== undefined) {
+            payload[col] = updatedProfile[col];
+          }
         }
+
+        supabase
+          .from('profiles')
+          .upsert(payload)
+          .then(({ error }) => {
+            if (error) {
+              console.error('Error saving profile to Supabase:', error);
+            }
+          })
+          .catch((err) => {
+            console.error('Error updating profile in sync layer:', err);
+          });
       }
 
-      const { error } = await supabase
-        .from('profiles')
-        .upsert(payload);
-
-      if (error) {
-        console.error('Error saving profile to Supabase:', error);
-      }
-    } catch (error) {
-      console.error('Error updating profile in sync layer:', error);
-    }
-  };
+      return updatedProfile;
+    });
+  }, [userId, initialValue]);
 
   return [profile, setProfile];
 }
