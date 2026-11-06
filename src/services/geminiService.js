@@ -1,6 +1,7 @@
 /**
  * ErgVibe Gemini AI Coaching Service
- * Povezuje Google Gemini (2.5 Flash / Pro) s 8-godišnjom bazom treninga, fiziološkom literaturom i live metrikama.
+ * Povezuje Google Gemini (Flash / Pro) putem sigurnog backend proxyja (/api/gemini)
+ * s 8-godišnjom bazom treninga, fiziološkom literaturom i live metrikama.
  */
 
 import { compileKnowledgeBasePrompt } from './aiKnowledgeBase';
@@ -32,7 +33,8 @@ export function getGeminiConfigStatus() {
   if (envKey && envKey !== 'your-gemini-api-key') {
     return { configured: true, source: 'env' };
   }
-  return { configured: false, source: 'none' };
+  // Sigurni poslužiteljski proxy na Vercelu (/api/gemini)
+  return { configured: true, source: 'proxy' };
 }
 
 export function setCustomGeminiApiKey(key) {
@@ -85,7 +87,8 @@ export function saveCachedWorkoutAnalysis(cacheKey, payload) {
 }
 
 /**
- * Niskorazinski poziv prema Google Gemini v1beta REST API-ju.
+ * Poziv prema Google Gemini AI-ju.
+ * Primarno koristi sigurni backend proxy (/api/gemini) kako se ključ nikada ne bi izložio pregledniku.
  */
 async function callGeminiApi({
   systemInstruction,
@@ -94,18 +97,51 @@ async function callGeminiApi({
   temperature = 0.4,
   responseMimeType = null
 }) {
-  const apiKey = getResolvedGeminiApiKey();
-  if (!apiKey) {
-    throw new Error('Gemini API ključ nije pronađen. Provjeri VITE_GEMINI_API_KEY u .env datoteci ili postavke u tabu Veze.');
+  const customKey = (() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY_CUSTOM_API_KEY)?.trim() || null;
+    } catch {
+      return null;
+    }
+  })();
+
+  // 1. PRIMARNO: Poziv preko sigurnog Vercel / lokalnog poslužiteljskog proxyja (/api/gemini)
+  try {
+    const proxyRes = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction,
+        contents,
+        model,
+        temperature,
+        responseMimeType,
+        customApiKey: customKey || undefined
+      })
+    });
+
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data?.text) return data.text;
+    } else if (proxyRes.status !== 404) {
+      const errJson = await proxyRes.json().catch(() => ({}));
+      throw new Error(errJson?.error || `AI poslužiteljska greška (HTTP ${proxyRes.status})`);
+    }
+  } catch (proxyErr) {
+    // Ako je proxy vratio eksplicitnu grešku, proslijedi je korisniku
+    if (proxyErr.message && !proxyErr.message.includes('Failed to fetch') && !proxyErr.message.includes('404')) {
+      throw proxyErr;
+    }
   }
 
-  // ZAŠTITA OD NEŽELJENIH TROŠKOVA:
-  // Ako se koristi zajednički .env ključ (za goste/frendove), uvijek forsiraj ultra-ekonomični Flash model!
-  // Skuplji Pro model dopušten je isključivo ako korisnik unese vlastiti privatni ključ (source === 'custom').
-  const configStatus = getGeminiConfigStatus();
+  // 2. FALLBACK: Direktni poziv samo ako proxy nije dostupan i postoji lokalni ključ
+  const fallbackKey = customKey || import.meta.env.VITE_GEMINI_API_KEY?.trim();
+  if (!fallbackKey || fallbackKey === 'your-gemini-api-key') {
+    throw new Error('Gemini AI poslužitelj nije konfiguriran (GEMINI_API_KEY). Postavi varijablu u Vercel Environment Variables ili unesi privremeni ključ u tabu Veze.');
+  }
+
   let effectiveModel = model;
-  if (configStatus.source === 'env' && String(effectiveModel).toLowerCase().includes('pro')) {
-    console.info('[geminiService] Zaštita potrošnje: Zajednički .env ključ smije koristiti isključivo Flash model.');
+  if (!customKey && String(effectiveModel).toLowerCase().includes('pro')) {
     effectiveModel = 'gemini-2.5-flash';
   }
 
@@ -126,7 +162,7 @@ async function callGeminiApi({
   };
 
   const executeForModel = async (targetModel) => {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${encodeURIComponent(fallbackKey)}`;
     return fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -136,11 +172,13 @@ async function callGeminiApi({
 
   let response = await executeForModel(effectiveModel);
 
-  // Automatski fallback na latest alias ako specifična verzija ikada postane nedostupna
   if (response.status === 404) {
-    const fallbackModel = model.includes('pro') ? 'gemini-pro-latest' : 'gemini-flash-latest';
-    if (model !== fallbackModel) {
+    const fallbackModel = String(effectiveModel).toLowerCase().includes('pro') ? 'gemini-pro-latest' : 'gemini-2.5-flash';
+    if (effectiveModel !== fallbackModel) {
       response = await executeForModel(fallbackModel);
+    }
+    if (response.status === 404) {
+      response = await executeForModel('gemini-1.5-flash');
     }
   }
 
@@ -149,9 +187,7 @@ async function callGeminiApi({
     try {
       const errJson = await response.json();
       if (errJson?.error?.message) errDetail = errJson.error.message;
-    } catch {
-      // ignore non-JSON body
-    }
+    } catch {}
     throw new Error(`Gemini API greška: ${errDetail}`);
   }
 
@@ -181,88 +217,58 @@ export async function analyzeWorkoutWithGemini({
   userNote = '',
   model = 'gemini-3.8-flash'
 }) {
-  const ftp = Number(metrics.ftp || athleteProfile?.ftp || 270);
-  const exactHist = await findExactHistoricalRecord(activity);
-
-  const np = Number(metrics.np || activity?.np || exactHist?.np || 0);
-  const avgPower = Number(metrics.avgPower || activity?.average_power || exactHist?.avgPwr || 0);
-  const maxPower = Number(metrics.maxPower || activity?.max_power || exactHist?.pMax || 0);
-  const avgHr = Number(metrics.avgHr || activity?.average_heartrate || exactHist?.avgHr || 0);
-  const maxHr = Number(metrics.maxHr || exactHist?.maxHr || 0);
-  const cadence = Number(metrics.avgCadence || exactHist?.cad || 0);
-  const durMin = Number(metrics.durationMin || activity?.duration || exactHist?.durMin || 0);
-  const plannedDurMin = Number(metrics.plannedDurationMin || activity?.plannedDuration || 0);
-  const tss = Number(metrics.tss ?? activity?.tss ?? exactHist?.tss ?? 0);
-  const plannedTss = Number(metrics.plannedTss || activity?.plannedTss || 0);
-  const ef = Number(metrics.ef || (np && avgHr ? (np / avgHr).toFixed(2) : exactHist?.ef || 0));
-  const vi = Number(metrics.vi || (np && avgPower ? (np / avgPower).toFixed(2) : exactHist?.vi || 0));
-  const decoupling = metrics.decoupling != null
-    ? metrics.decoupling
-    : (exactHist?.dec != null ? exactHist.dec : null);
-  const ifPct = np && ftp ? Number(((np / ftp) * 100).toFixed(1)) : (exactHist?.ifPct || null);
-  const workKj = metrics.workKj || exactHist?.wFtpKj ? metrics.workKj : null;
-  const workAboveFtpKj = exactHist?.wFtpKj ?? null;
-  const hrr = exactHist?.hrr ?? null;
-  const rhr = exactHist?.rhr ?? null;
-
-  const targetForMatching = {
-    id: activity?.actId || activity?.id,
-    title: activity?.title || activity?.name || 'Trening',
-    date: activity?.started_at || activity?.date || new Date().toISOString().slice(0, 10),
-    np,
-    avgPwr: avgPower,
-    ifPct,
-    durMin,
-    ftp
-  };
-
-  const athleteContext = await buildAthleteContextPrompt({
+  const athleteContextPrompt = buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
     wellnessData,
-    targetActivity: targetForMatching
+    targetActivity: activity
   });
 
-  const knowledgePrompt = compileKnowledgeBasePrompt({ includeWorkoutSyntax: true });
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
 
-  const systemInstruction = `Ti si vrhunski biciklistički trener i fiziolog sporta (ErgVibe AI Trener).
-Komuniciraš isključivo na hrvatskom jeziku — stručno, konkretno, poticajno i bez generičkih fraza.
-Uvijek navodiš točne brojke iz treninga i uspoređuješ ih s višegodišnjom poviješću ovog sportaša (2019.–2026.) te znanstvenom literaturom iz baze znanja.
+  const exactHistory = await findExactHistoricalRecord(activity);
 
-${knowledgePrompt}`;
+  const durationMin = Math.round((activity.moving_time || activity.elapsed_time || (activity.duration ? activity.duration * 60 : 0)) / 60);
+  const avgWatts = Math.round(activity.avg_power || metrics.avgPower || 0);
+  const npWatts = Math.round(activity.icu_weighted_avg_watts || metrics.np || 0);
+  const hrAvg = Math.round(activity.avg_hr || metrics.avgHr || 0);
+  const hrMax = Math.round(activity.max_hr || metrics.maxHr || 0);
+  const tss = Math.round(activity.icu_training_load || metrics.tss || 0);
+  const ifFactor = (activity.icu_intensity ? Number(activity.icu_intensity) : Number(metrics.if_factor || 0)).toFixed(2);
+  const decoupling = metrics.aerobicDecoupling !== null && metrics.aerobicDecoupling !== undefined
+    ? `${metrics.aerobicDecoupling}%`
+    : (activity.icu_pw_hr ? `${Number(activity.icu_pw_hr).toFixed(1)}%` : 'N/A');
+  const efVal = metrics.ef ? Number(metrics.ef).toFixed(2) : (activity.icu_efficiency_factor ? Number(activity.icu_efficiency_factor).toFixed(2) : 'N/A');
+  const viVal = metrics.vi ? Number(metrics.vi).toFixed(2) : (activity.icu_variability_index ? Number(activity.icu_variability_index).toFixed(2) : 'N/A');
+  const wKgVal = athleteProfile?.weight && avgWatts > 0 ? (avgWatts / athleteProfile.weight).toFixed(2) : 'N/A';
 
-  const workoutSummaryLines = [
-    `## PODACI O UPRAVO ANALIZIRANOM TRENINGU`,
-    `- Naziv treninga: "${targetForMatching.title}"`,
-    `- Datum: ${targetForMatching.date.slice(0, 10)}`,
-    `- Kategorija / Zona fokusa: ${activity?.category || 'Biciklizam'}`,
-    `- Trajanje: ${durMin} min${plannedDurMin ? ` (Planirano: ${plannedDurMin} min)` : ''}`,
-    `- Normalized Power (NP): ${np || '-'} W | Prosječna snaga: ${avgPower || '-'} W | Max snaga: ${maxPower || '-'} W`,
-    `- FTP u trenutku treninga: ${ftp} W | Intenzitet (IF): ${ifPct ? `${ifPct}% (${(ifPct / 100).toFixed(2)})` : '-'}`,
-    `- Opterećenje (TSS / Load): ${tss}${plannedTss ? ` (Planirano: ${plannedTss} TSS)` : ''}`,
-    `- Puls: Prosjek ${avgHr || '-'} bpm${maxHr ? ` | Max ${maxHr} bpm` : ''}${rhr ? ` | Jutarnji puls (RHR): ${rhr} bpm` : ''}${hrr ? ` | Oporavak pulsa u 1 min (HRRc): ${hrr} bpm` : ''}`,
-    `- Kadenca: ${cadence ? `${cadence} rpm` : 'Nije zabilježena'}`,
-    `- Efficiency Factor (EF = NP/HR): ${ef || '-'}`,
-    `- Variability Index (VI = NP/AvgP): ${vi || '-'}`,
-    `- Aerobic Decoupling (Pw:HR drift): ${decoupling != null ? `${decoupling}%` : 'Nije dostupno'}${metrics.efFirst && metrics.efSecond ? ` (EF 1. pol: ${metrics.efFirst} → EF 2. pol: ${metrics.efSecond})` : ''}`,
-    workKj ? `- Ukupan mehanički rad: ${workKj} kJ` : null,
-    workAboveFtpKj != null ? `- Rad iznad FTP-a (Work >FTP): ${workAboveFtpKj} kJ` : null,
-    userNote?.trim() ? `- Subjektivni komentar vozača / napomena: "${userNote.trim()}"` : null
-  ].filter(Boolean).join('\n');
+  const userPrompt = `Analiziraj odrađeni biciklistički trening sportaša:
 
-  const userPrompt = `${athleteContext}
+### DETALJI TRENINGA:
+- **Naziv:** ${activity.name || activity.title || 'Trening'}
+- **Datum:** ${(activity.started_at || activity.date || '').slice(0, 10)}
+- **Trajanje:** ${durationMin} min
+- **Prosječna snaga (Avg Power):** ${avgWatts} W (${wKgVal} W/kg)
+- **Normalizirana snaga (NP):** ${npWatts} W
+- **Intenzitet (IF):** ${ifFactor}
+- **Training Stress Score (TSS):** ${tss}
+- **Prosječni puls (Avg HR):** ${hrAvg} bpm | Max puls: ${hrMax} bpm
+- **Aerobic Decoupling (Pw:HR):** ${decoupling}
+- **Efficiency Factor (EF = NP / Avg HR):** ${efVal}
+- **Variability Index (VI = NP / Avg Power):** ${viVal}
+- **Izvor aktivnosti:** ${activity.workout_source || (activity.isSupabase ? 'ErgVibe Baza' : 'Intervals.icu')}
+${userNote ? `- **Subjektivna bilješka vozača:** "${userNote}"` : ''}
 
-${workoutSummaryLines}
+${exactHistory ? `### USPOREDBA S POVIJESNOM BAZOM SPORTAŠA ZA OVAJ TRENING:
+- Pronađen je povijesni zapis u 8-godišnjoj bazi (2019.–2026.):
+- Povijesni datum: ${exactHistory.date} | Naziv: ${exactHistory.title}
+- Povijesni NP: ${exactHistory.np}W | Povijesni EF: ${exactHistory.ef} | Decoupling: ${exactHistory.decoupling}% | TSS: ${exactHistory.tss}
+- Usporedi trenutni napor s povijesnim i istakni dugoročni trend.` : ''}
 
-Napravi detaljnu, ali preglednu trenersku analizu ovog treninga strukturiranu kroz sljedeće cjeline:
-1. **🎯 Izvedba i fiziološki cilj treninga** — Je li trening ispunio svoju namjenu, kakva je kvaliteta odrađenog posla (disciplina snage, VI, realizacija plana)?
-2. **🔬 Fiziološka dubinska analiza (EF, Decoupling, Puls)** — Protumači Efficiency Factor (${ef || '-'}) i Aerobic Decoupling (${decoupling != null ? decoupling + '%' : 'N/A'}) u kontekstu vrste treninga (pazi na razliku između kontinuirane Z2/SST vožnje i eksplozivnih intervala!).
-3. **📈 Usporedba s tvojom 8-godišnjom poviješću** — Usporedi ove brojke s konkretnim ranijim sličnim treninzima iz tablice povijesnih usporedbi i osobnim benchmarkovima ovog vozača. Vidi li se napredak, stabilnost ili zamor?
-4. **🔋 Kontekst forme (CTL/ATL/TSB) i oporavak** — Kako ovaj TSS utječe na trenutni blok, koliki je zamor i na što paziti u prehrani/hidrataciji/odmoru danas.
-5. **🚀 Preporuka za idući trening (idućih 24–48h)** — Što konkretno voziti sutra/prekosutra s obzirom na nedavne treninge i kalendar. Ako je prikladno, uključi jedan gotov \`\`\`workout blok koji vozač može jednim klikom spremiti u kalendar ili pokrenuti na trenažeru.`;
+Napiši analizu u strukturiranom, stručnom formatu prema zadanim trenerskim uputama.`;
 
   return callGeminiApi({
-    systemInstruction,
+    systemInstruction: `${athleteContextPrompt}\n\n${knowledgeBasePrompt}`,
     contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
     model,
     temperature: 0.35
@@ -282,25 +288,21 @@ export async function askWorkoutFollowUp({
   wellnessData = {},
   model = 'gemini-3.8-flash'
 }) {
-  const athleteContext = await buildAthleteContextPrompt({
+  const athleteContextPrompt = buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
     wellnessData,
-    targetActivity: {
-      id: activity?.actId || activity?.id,
-      title: activity?.title || activity?.name,
-      date: activity?.started_at || activity?.date,
-      ftp: athleteProfile?.ftp || 270
-    }
+    targetActivity: activity
   });
-  const knowledgePrompt = compileKnowledgeBasePrompt({ includeWorkoutSyntax: true });
 
-  const systemInstruction = `Ti si ErgVibe AI biciklistički trener. Odgovaraš na dodatno pitanje vozača vezano uz upravo analizirani trening "${activity?.title || 'Trening'}" (${(activity?.date || '').slice(0, 10)}).
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
+
+  const systemInstruction = `Ti si ErgVibe AI biciklistički trener. Odgovaraš na dodatno pitanje vozača vezano uz upravo analizirani trening "${activity?.title || activity?.name || 'Trening'}" (${(activity?.started_at || activity?.date || '').slice(0, 10)}).
 Budi konkretan, jasan i osloni se na podatke sportaša i bazu znanja. Odgovaraj na hrvatskom jeziku.
 
-${knowledgePrompt}
+${athleteContextPrompt}
 
-${athleteContext}`;
+${knowledgeBasePrompt}`;
 
   const contents = [
     { role: 'user', parts: [{ text: 'Analiziraj moj trening.' }] },
@@ -325,129 +327,138 @@ ${athleteContext}`;
 }
 
 /**
- * Konverzacijski AI Trener u glavnom "AI Trener" tabu.
+ * Interaktivni chat s AI Trenerom.
  */
 export async function chatWithAICoach({
-  messages = [],
+  chatHistory = [],
+  userMessage,
   athleteProfile,
   liveWorkouts = [],
   wellnessData = {},
   model = 'gemini-3.8-flash'
 }) {
-  const athleteContext = await buildAthleteContextPrompt({
+  const athleteContextPrompt = buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
     wellnessData
   });
-  const knowledgePrompt = compileKnowledgeBasePrompt({ includeWorkoutSyntax: true });
 
-  const systemInstruction = `Ti si ErgVibe AI Trener — osobni biciklistički trener i fiziolog ovog sportaša s potpunim uvidom u njegovih ~1.900 treninga od 2019. do danas, trenutni kalendar i stanje kondicije (CTL/ATL/TSB).
-Odgovaraš isključivo na hrvatskom jeziku, jasno, strukturirano (koristi markdown naslove, podebljanja i liste) i utemeljeno u sportskoj znanosti i konkretnim brojkama vozača.
-Kad god korisnik zatraži konkretan trening ili prijedlog vožnje za trenažer, uključi strukturirani \`\`\`workout blok kako bi ga mogao jednim klikom dodati u ErgVibe kalendar ili pokrenuti na trenažeru.
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
 
-${knowledgePrompt}
+  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
 
-${athleteContext}`;
+### SPECIFIČNA UPUTA ZA CHAT I GENERIRANJE ERGVIBE TRENINGA:
+1. Odgovaraj kao vrhunski biciklistički trener i fiziolog. Budi jasan, precizan i motivirajuć.
+2. Ako sportaš zatraži novi trening ili ti predložiš trening za danas/trenažer, na kraju odgovora OBAVEZNO uključi strukturirani JSON blok s koracima za trenažer u sljedećem formatu:
+\`\`\`ergvibe-workout
+{
+  "title": "Naziv Treninga",
+  "description": "Kratki opis cilja i fiziološkog podražaja",
+  "category": "Endurance | SweetSpot | Threshold | VO2max | Anaerobic | Recovery",
+  "steps": [
+    { "name": "Zagrijavanje", "duration": 600, "power": 55 },
+    { "name": "Z2 Rampa", "duration": 300, "power": 68 },
+    { "name": "Sweet Spot Interval", "duration": 600, "power": 90 },
+    { "name": "Oporavak", "duration": 300, "power": 50 }
+  ]
+}
+\`\`\`
+Trajanje "duration" je u SEKUNDAMA, a "power" je u postocima FTP-a (% FTP).`;
 
-  const contents = messages.map(m => ({
+  const formattedContents = chatHistory.map(m => ({
     role: m.role === 'user' ? 'user' : 'model',
     parts: [{ text: m.text }]
   }));
 
+  formattedContents.push({
+    role: 'user',
+    parts: [{ text: userMessage }]
+  });
+
   return callGeminiApi({
     systemInstruction,
-    contents,
+    contents: formattedContents,
     model,
-    temperature: 0.45
+    temperature: 0.4
   });
 }
 
 /**
- * Generator strukturiranog kratkoročnog ili višednevnog/višetjednog trening plana (JSON output).
+ * Automatsko generiranje cjelovitog periodiziranog trenažnog plana.
  */
 export async function generateStructuredTrainingPlan({
-  goal = 'Podizanje FTP-a i aerobne efikasnosti',
+  goal,
   weeks = 2,
   workoutsPerWeek = 4,
   hoursPerWeek = 6,
-  methodology = 'Polarizirani / Piramidalni (80/20)',
+  methodology,
   startDate,
-  notes = '',
   athleteProfile,
   liveWorkouts = [],
   wellnessData = {},
+  userNotes = '',
   model = 'gemini-3.8-flash'
 }) {
-  const athleteContext = await buildAthleteContextPrompt({
+  const athleteContextPrompt = buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
     wellnessData
   });
-  const knowledgePrompt = compileKnowledgeBasePrompt({ includeWorkoutSyntax: false });
 
-  const effectiveStart = startDate || new Date().toISOString().slice(0, 10);
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
 
-  const systemInstruction = `Ti si vrhunski biciklistički trener koji kreira precizne strukturirane planove treninga za pametni trenažer i cestu.
-Moraš vratiti ISKLJUČIVO ispravan JSON objekt prema traženoj shemi, na hrvatskom jeziku.
+  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
 
-${knowledgePrompt}
+### ZADATAK GENERATORA TRENAŽNOG PLANA:
+Generiraj detaljan, periodizirani trenažni plan od ${weeks} tjedna (${workoutsPerWeek} treninga tjedno, ukupno ~${hoursPerWeek} sati tjedno) počevši od datuma ${startDate}.
+Metodologija: ${methodology}.
+Glavni cilj sportaša: "${goal}".
+${userNotes ? `Dodatne želje vozača: "${userNotes}"` : ''}
 
-${athleteContext}`;
-
-  const prompt = `Kreiraj personalizirani strukturirani biciklistički trening plan za ovog vozača:
-- Glavni cilj plana: ${goal}
-- Trajanje plana: ${weeks} ${weeks === 1 ? 'tjedan' : 'tjedna'} (početak od datuma: ${effectiveStart})
-- Broj treninga tjedno: ${workoutsPerWeek} treninga
-- Raspoloživo vrijeme: ~${hoursPerWeek} sati tjedno
-- Odabrana metodologija: ${methodology}
-${notes ? `- Posebne napomene vozača: ${notes}` : ''}
-
-Prilagodi tjedni TSS i intenzitet trenutnom CTL-u i TSB-u vozača te njegovom FTP-u (${athleteProfile?.ftp || 270} W).
-Svaki trening MORA imati polje "intervalsCode" s valjanim Intervals.icu / ErgVibe tekstualnim koracima u postotku FTP-a!
-Primjer valjanog "intervalsCode" stringa (koristi \\n za nove redove):
-"Zagrijavanje\\n- 10m 55%\\nGlavni dio\\n3x\\n- 10m 90%\\n- 4m 55%\\nHlađenje\\n- 8m 50%"
-
-Vrati JSON točno ove strukture:
+VAŽNO: Odgovor MORA biti ISKLJUČIVO valjani JSON objekt (bez ikakvog uvodnog ili zaključnog teksta, bez markdown backtick oznaka \`\`\`json).
+Format JSON-a:
 {
   "planTitle": "Naziv plana",
-  "summary": "Kratki sažetak strategije plana (2-3 rečenice)",
-  "physiologicalRationale": "Zašto ovakva raspodjela zona odgovara trenutnom CTL/TSB stanju i povijesti ovog vozača",
-  "recommendedWeeklyHours": ${hoursPerWeek},
+  "summary": "Stručni pregled mezociklusa, ciljeva i raspodjele intenziteta",
   "weeks": [
     {
       "weekNumber": 1,
-      "theme": "Tema tjedna (npr. Akumulacija aerobne baze i Sweet Spot)",
-      "targetTss": 260,
+      "focus": "Fokus tjedna",
+      "targetHours": 6.5,
+      "targetTss": 380,
       "workouts": [
         {
           "dayOffset": 0,
-          "dayName": "Utorak",
+          "dayName": "Ponedjeljak",
           "title": "Naziv treninga",
-          "category": "Endurance | Tempo | Sweet Spot | Threshold | VO2 Max | Recovery",
-          "durationMin": 60,
-          "estimatedTss": 52,
-          "coachNote": "Kratka uputa za izvedbu (kadenca, disanje, cilj)",
-          "intervalsCode": "Zagrijavanje\\n- 10m 55%\\nGlavni dio\\n- 42m 68%\\nHlađenje\\n- 8m 50%"
+          "category": "SweetSpot | Endurance | Threshold | VO2max | Recovery",
+          "durationMinutes": 60,
+          "estimatedTss": 65,
+          "description": "Fiziološki cilj i uputa",
+          "steps": [
+            { "name": "Zagrijavanje", "duration": 600, "power": 55 },
+            { "name": "Interval 1", "duration": 480, "power": 90 },
+            { "name": "Pauza", "duration": 240, "power": 50 }
+          ]
         }
       ]
     }
   ]
-}
-Napomena za "dayOffset": 0 označava prvi dan plana (${effectiveStart}), 1 je sljedeći dan, itd. Unutar tjedna rasporedi treninge s pametnim razmakom za oporavak (dayOffset od 0 do ${(weeks * 7) - 1}).`;
+}`;
 
   const rawJsonText = await callGeminiApi({
     systemInstruction,
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    contents: [{ role: 'user', parts: [{ text: `Generiraj JSON trenažni plan za cilj: ${goal}` }] }],
     model,
-    temperature: 0.35,
+    temperature: 0.3,
     responseMimeType: 'application/json'
   });
 
   try {
-    const cleaned = rawJsonText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-    return JSON.parse(cleaned);
+    const cleanJson = rawJsonText.replace(/```json\s*|```/g, '').trim();
+    return JSON.parse(cleanJson);
   } catch (err) {
     console.error('[geminiService] JSON parse error:', err, rawJsonText);
-    throw new Error('AI je generirao neispravan format plana. Pokušaj ponovno.');
+    throw new Error('AI nije vratio valjani JSON format plana. Pokušaj ponovno.');
   }
 }

@@ -215,7 +215,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
 
             {geminiStatus.configured ? (
               <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" /> {geminiStatus.source === 'env' ? 'Aktivan putem .env (Flash način)' : 'Aktivan (Prilagođeni ključ)'}
+                <CheckCircle className="w-3 h-3" /> {geminiStatus.source === 'custom' ? 'Aktivan (Prilagođeni ključ)' : 'Aktivan (Sigurni Vercel Proxy - Flash)'}
               </span>
             ) : (
               <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20">
@@ -225,7 +225,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
           </div>
 
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Zajednički ključ iz lokalne <code className="text-cyan-300 bg-zinc-900 px-1.5 py-0.5 rounded">.env</code> datoteke zaštićen je i zaključan na brzi, ekonomični <strong className="text-zinc-200">Gemini Flash</strong> model (zanemariv trošak za sve goste i vozače). Za dubinske analize ili neograničeni rad s <strong className="text-zinc-200">Gemini Pro</strong> modelom, ovdje se može postaviti vlastiti ključ:
+            Aplikacija koristi sigurni backend proxy (<code className="text-cyan-300 bg-zinc-900 px-1.5 py-0.5 rounded">/api/gemini</code>). Tvoj Gemini API ključ je pohranjen na poslužitelju kao tajna (<code className="text-zinc-300">GEMINI_API_KEY</code>) i <strong className="text-zinc-200">fizički se ne šalje u preglednik</strong>, čime je 100% zaštićen od kopiranja. Za dubinske analize s Pro modelom ovdje se može postaviti i vlastiti ključ:
           </p>
 
           <div className="flex flex-col sm:flex-row gap-2.5">
@@ -234,7 +234,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                 type={showGeminiKey ? 'text' : 'password'}
                 value={customGeminiDraft}
                 onChange={(e) => setCustomGeminiDraft(e.target.value)}
-                placeholder={geminiStatus.source === 'env' ? 'Koristi se siguran ključ iz .env datoteke (opcionalna zamjena)' : 'Unesi Gemini API ključ (AIzaSy...)'}
+                placeholder={geminiStatus.source === 'custom' ? 'Unesi Gemini API ključ (AIzaSy...)' : 'Koristi se sigurni Vercel proxy (opcionalna zamjena za Pro model)'}
                 className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-3.5 py-2.5 pr-10 text-zinc-100 font-mono text-xs focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all placeholder:text-zinc-500"
               />
               <button
