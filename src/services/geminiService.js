@@ -1,7 +1,7 @@
 /**
  * ErgVibe Gemini AI Coaching Service
  * Povezuje Google Gemini (Flash / Pro) putem sigurnog backend proxyja (/api/gemini)
- * s 8-godišnjom bazom treninga, fiziološkom literaturom i live metrikama.
+ * s poviješću treninga sportaša, fiziološkom literaturom i live metrikama.
  */
 
 import { compileKnowledgeBasePrompt } from './aiKnowledgeBase';
@@ -261,11 +261,11 @@ export async function analyzeWorkoutWithGemini({
 - **Izvor aktivnosti:** ${activity.workout_source || (activity.isSupabase ? 'ErgVibe Baza' : 'Intervals.icu')}
 ${userNote ? `- **Subjektivna bilješka vozača:** "${userNote}"` : ''}
 
-${exactHistory ? `### USPOREDBA S POVIJESNOM BAZOM SPORTAŠA ZA OVAJ TRENING:
-- Pronađen je povijesni zapis u 8-godišnjoj bazi (2019.–2026.):
+${exactHistory ? `### USPOREDBA S POVIJEŠĆU SPORTAŠA ZA OVAJ TRENING:
+- Pronađen je raniji zapis ovog treninga u povijesti sportaša:
 - Povijesni datum: ${exactHistory.date} | Naziv: ${exactHistory.title}
 - Povijesni NP: ${exactHistory.np}W | Povijesni EF: ${exactHistory.ef} | Decoupling: ${exactHistory.decoupling}% | TSS: ${exactHistory.tss}
-- Usporedi trenutni napor s povijesnim i istakni dugoročni trend.` : ''}
+- Usporedi trenutni napor s povijesnim i istakni trend napretka.` : ''}
 
 Napiši analizu u strukturiranom, stručnom formatu prema zadanim trenerskim uputama.`;
 

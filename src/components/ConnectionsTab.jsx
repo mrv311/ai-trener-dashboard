@@ -209,7 +209,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
               </div>
               <div>
                 <h3 className="font-bold text-zinc-100 text-base">Google Gemini AI Trener</h3>
-                <span className="text-[11px] text-zinc-500">Post-workout analiza, 8-godišnja baza i generator planova</span>
+                <span className="text-[11px] text-zinc-500">Post-workout analiza, povijest treninga i generator planova</span>
               </div>
             </div>
 

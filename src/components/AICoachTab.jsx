@@ -20,8 +20,7 @@ import {
 import {
   getHistoricalDashboardStats,
   importIntervalsCsvText,
-  getHistoryOptions,
-  setIncludeCoachArchive
+  getHistoryOptions
 } from '../services/historyService';
 import AIMarkdown, { AIWorkoutCard, buildErgVibeWorkoutObject } from './ai/AIMarkdown';
 
@@ -29,10 +28,10 @@ const STORAGE_KEY_CHAT = 'ergvibe_ai_coach_chat_v1';
 const STORAGE_KEY_PLAN = 'ergvibe_ai_saved_plan_v1';
 
 const QUICK_PROMPTS = [
-  'Analiziraj moja zadnja 2 tjedna treninga, trenutni CTL/TSB i reci mi u kakvom sam stanju.',
-  'Usporedi moju Z2 aerobnu efikasnost (EF) i decoupling u 2026. s prethodnim sezonama (2019.–2025.).',
+  'Analiziraj moja zadnja 2 tjedna treninga, trenutni fitness (CTL) i formu (TSB).',
+  'Analiziraj moju Z2 aerobnu efikasnost (EF) i aerobni decoupling (drift pulsa) na treninzima.',
   'Predloži mi optimalan strukturirani trening za danas na trenažeru (60 min) s obzirom na zadnje vožnje.',
-  'Kako mogu podići FTP s trenutne razine prema mom rekordu od 291W uz 4 treninga tjedno?'
+  'Kako mogu optimalno strukturirati tjedan s 4 treninga za stabilan napredak i podizanje FTP-a?'
 ];
 
 function addDaysIso(baseDateIso, daysToAdd) {
@@ -124,11 +123,6 @@ export default function AICoachTab({
     });
     return () => { active = false; };
   }, [workouts, userId, includeCoachArchive]);
-
-  const handleToggleCoachArchive = (checked) => {
-    setIncludeCoachArchive(checked, userId);
-    setIncludeCoachArchiveState(checked);
-  };
 
   const sendMessage = async (textOverride) => {
     const content = (textOverride ?? chatInput).trim();
@@ -297,7 +291,7 @@ export default function AICoachTab({
               )}
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Osobni biciklistički fiziolog s uvidom u tvoju bazu (2019.–2026.), Coggan/Friel/Seiler literaturu i live kalendar
+              Osobni biciklistički fiziolog s uvidom u vaše odrađene treninge, trenersku literaturu i kalendar
             </p>
           </div>
         </div>
@@ -387,7 +381,7 @@ export default function AICoachTab({
                   Spreman za analizu, {profile?.username || 'Vozač'}!
                 </h3>
                 <p className="text-xs md:text-sm text-zinc-400 mb-6">
-                  Učitao sam tvoje povijesne treninge od 2019. do danas, trenutni FTP ({ftp} W) i kalendar. Odaberi jedno od brzih pitanja ili upiši vlastiti upit:
+                  Učitao sam vaše dostupne treninge, trenutni FTP ({ftp} W) i kalendar. Odaberite jedno od brzih pitanja ili upišite vlastiti upit:
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
@@ -493,7 +487,7 @@ export default function AICoachTab({
                 <ClipboardList className="w-4 h-4 text-cyan-400" /> Generator Strukturiranog Plana
               </h3>
               <p className="text-xs text-zinc-400 mt-0.5">
-                AI kreira plan prema tvom FTP-u ({ftp} W), trenutnom CTL/TSB zamoru i 8-godišnjoj povijesti
+                AI kreira plan prema tvom FTP-u ({ftp} W), trenutnom zamoru i zabilježenim treninzima
               </p>
             </div>
 
@@ -743,19 +737,19 @@ export default function AICoachTab({
       )}
 
       {/* =====================================================================
-          3. SUB-TAB: BAZA ZNANJA & 8-GODIŠNJA POVIJEST
+          3. SUB-TAB: BAZA ZNANJA & POVIJEST TRENINGA
          ===================================================================== */}
       {subTab === 'knowledge' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Lijeva strana: 8-godišnja baza treninga */}
+          {/* Lijeva strana: Povijest treninga */}
           <div className="lg:col-span-7 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-5 md:p-6 space-y-5 shadow-xl">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-4">
               <div>
                 <h3 className="text-base font-black text-zinc-100 flex items-center gap-2">
-                  <History className="w-4 h-4 text-cyan-400" /> Povijesna Baza Treninga (2019. – danas)
+                  <History className="w-4 h-4 text-cyan-400" /> Povijest Treninga
                 </h3>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Automatski spojena CSV arhiva i svi novi treninzi iz ErgVibea i Intervals.icu
+                  Pregled zabilježenih vožnji, opterećenja i uvezenih CSV treninga
                 </p>
               </div>
 
@@ -765,7 +759,7 @@ export default function AICoachTab({
                   onClick={() => csvInputRef.current?.click()}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all"
                 >
-                  <Upload className="w-3.5 h-3.5" /> Nadopuni CSV
+                  <Upload className="w-3.5 h-3.5" /> Učitaj CSV
                 </button>
                 <input
                   ref={csvInputRef}
@@ -786,30 +780,6 @@ export default function AICoachTab({
                 {csvImportStatus.msg}
               </div>
             )}
-
-            {/* Prekidač za trenersku referentnu arhivu */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-zinc-950/70 rounded-xl border border-zinc-800">
-              <div className="flex items-center gap-2.5">
-                <Shield className="w-4 h-4 text-cyan-400 shrink-0" />
-                <div>
-                  <p className="text-xs font-bold text-zinc-200">Trenerska referentna arhiva (1.896 vožnji)</p>
-                  <p className="text-[11px] text-zinc-400">
-                    {includeCoachArchive
-                      ? 'Uključena višegodišnja baza (2019.–2026.) kao referentni model za AI analizu i usporedbe.'
-                      : 'Isključeno — AI analizira i planira isključivo prema vašem profilu i osobnim treninzima.'}
-                  </p>
-                </div>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                <input
-                  type="checkbox"
-                  checked={includeCoachArchive}
-                  onChange={(e) => handleToggleCoachArchive(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-500"></div>
-              </label>
-            </div>
 
             {histStats && histStats.totalWorkouts > 0 ? (
               <>
@@ -867,7 +837,7 @@ export default function AICoachTab({
                 <h4 className="text-sm font-bold text-zinc-200">Nema učitanih povijesnih treninga za ovaj profil</h4>
                 <p className="text-xs text-zinc-400 max-w-md mx-auto">
                   AI vaše treninge i planove korigira prema vašem zadanom FTP-u, težini, raspoloživom vremenu i odrađenim vožnjama na trenažeru.
-                  Možete učitati svoj Intervals.icu CSV izvoz klikom na "Nadopuni CSV" iznad, ili uključiti trenersku referentnu arhivu.
+                  Možete učitati svoj Intervals.icu CSV izvoz klikom na "Učitaj CSV" iznad ili bilježiti vožnje kroz trenažer.
                 </p>
               </div>
             )}

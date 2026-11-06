@@ -1,6 +1,6 @@
 /**
- * ErgVibe Longitudinal History Service (2019 – danas)
- * Spaja ugrađenu bazu od ~1.900 povijesnih treninga s novim CSV uvozima i live aktivnostima iz aplikacije.
+ * ErgVibe Longitudinal History Service
+ * Spaja povijesne baze treninga s novim CSV uvozima i live aktivnostima iz aplikacije.
  */
 
 const STORAGE_KEY_EXTRA_HISTORY = 'ergvibe_extra_historical_workouts_v1';
@@ -23,11 +23,16 @@ export async function loadBaseHistory() {
 }
 
 export function getHistoryOptions(userId = null) {
+  // Za goste ugrađena arhiva vlasnika uopće ne postoji
+  if (userId === 'guest') {
+    return { includeBaseHistory: false };
+  }
+
   const isLocalhost = typeof window !== 'undefined' && (
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1'
   );
-  const key = `ergvibe_include_coach_archive_${userId || 'guest'}`;
+  const key = `ergvibe_include_coach_archive_${userId || 'owner'}`;
   const savedPref = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
 
   let includeBaseHistory = false;
@@ -37,7 +42,7 @@ export function getHistoryOptions(userId = null) {
     // Na lokalnom razvoju kod vlasnika uključeno po defaultu
     includeBaseHistory = true;
   } else {
-    // Na produkciji (npr. Vercel) za goste po defaultu isključeno
+    // Na produkciji (npr. Vercel) za druge korisnike po defaultu isključeno
     includeBaseHistory = false;
   }
 
@@ -45,7 +50,8 @@ export function getHistoryOptions(userId = null) {
 }
 
 export function setIncludeCoachArchive(include, userId = null) {
-  const key = `ergvibe_include_coach_archive_${userId || 'guest'}`;
+  if (userId === 'guest') return;
+  const key = `ergvibe_include_coach_archive_${userId || 'owner'}`;
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(key, include ? 'true' : 'false');
     window.dispatchEvent(new CustomEvent('ergvibe-history-settings-updated', { detail: { include, userId } }));
@@ -527,11 +533,7 @@ export async function buildAthleteContextPrompt({
   if (pmcLine) lines.push(`- ${pmcLine}`);
 
   if (stats && stats.totalWorkouts > 0) {
-    if (resolvedIncludeBase) {
-      lines.push('\n## REFERENTNA / VIŠEGODIŠNJA BAZA TRENINGA SPORTAŠA (2019. – 2026.)');
-    } else {
-      lines.push('\n## POVIJEST TRENINGA SPORTAŠA');
-    }
+    lines.push('\n## POVIJEST TRENINGA SPORTAŠA');
     lines.push(`- Ukupno analiziranih treninga u bazi: ${stats.totalWorkouts} (${stats.totalHours} sati, ${stats.totalTss} TSS, raspon ${stats.minDate} do ${stats.maxDate}, vršni FTP: ${stats.peakFtp} W).`);
     if (stats.benchmarks?.z2AvgEfAllTime) {
       lines.push('- Osobni fiziološki benchmarkovi sportaša:');

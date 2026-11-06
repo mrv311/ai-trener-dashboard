@@ -124,11 +124,11 @@ export default function WorkoutAIAnalysisPanel({
             <h3 className="text-sm font-black text-zinc-100 tracking-tight flex items-center gap-2">
               ErgVibe AI Trener Analiza
               <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                Gemini 3.8 + Povijest 2019–2026
+                Gemini 3.8 AI Trener
               </span>
             </h3>
             <p className="text-[11px] text-zinc-400">
-              Usporedba s tvojih ~1.900 treninga, Coggan metrikama (EF, Decoupling) i trenutnim CTL/TSB stanjem
+              Analiza prema Coggan metrikama (EF, Decoupling, NP), trenutnom opterećenju i povijesti vožnji
             </p>
           </div>
         </div>
@@ -174,7 +174,7 @@ export default function WorkoutAIAnalysisPanel({
             </div>
           </div>
           <div>
-            <p className="text-sm font-bold text-zinc-200">AI Trener uspoređuje trening s tvojom 8-godišnjom bazom...</p>
+            <p className="text-sm font-bold text-zinc-200">AI Trener analizira trening i fiziološke parametre...</p>
             <p className="text-xs text-zinc-500 mt-0.5">Analiza snage, Efficiency Factora, Aerobic Decouplinga i oporavka</p>
           </div>
         </div>
