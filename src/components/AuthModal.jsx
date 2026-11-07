@@ -37,11 +37,15 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
+          options: {
+            emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+          }
         });
         if (error) throw error;
 
         if (data?.user?.identities?.length === 0) {
-          setErrorMsg('Korisnik s ovom email adresom već postoji.');
+          setErrorMsg('Korisnik s ovom email adresom već postoji. Pokušajte se prijaviti.');
+          setIsLogin(true);
         } else if (data?.session) {
           if (currentUserId === 'guest' && data.user.id) {
             await migrateGuestData(data.user.id);
@@ -49,8 +53,7 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
           if (onAuthSuccess) onAuthSuccess(data.session);
           onClose();
         } else {
-          setSuccessMsg('Registracija uspješna! Provjerite email za potvrdu i prijavite se.');
-          setIsLogin(true);
+          setSuccessMsg(`Potvrdni email poslan je na ${email.trim()}. Otvorite poveznicu u primljenom mailu za dovršetak.`);
         }
       }
     } catch (error) {

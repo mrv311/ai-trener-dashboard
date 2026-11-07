@@ -3,7 +3,7 @@ import {
   Activity, Calendar as CalendarIcon,
   User, Loader2, Monitor, LogOut, Link as LinkIcon,
   MoreHorizontal, X, Database, ClipboardList, PanelLeftClose, PanelLeftOpen,
-  LogIn, Sparkles, RefreshCw
+  LogIn, Sparkles, RefreshCw, CheckCircle2, AlertCircle
 } from 'lucide-react';
 
 import CalendarTab from './components/CalendarTab';
@@ -65,6 +65,41 @@ export default function App() {
   const { workouts, wellnessData, intervalsConnected, athleteInfo, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey, currentUserId, { ftp: athleteProfile?.ftp });
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
+  const [authNotice, setAuthNotice] = useState(null);
+
+  // Detekcija i obrada povratka iz Supabase email potvrde (URL hash/params)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    const full = hash + '&' + search;
+
+    // 1. Ako je došlo do greške pri potvrdi emaila (npr. istekla poveznica)
+    const errMatch = full.match(/(?:[#?&])error_description=([^&]+)/);
+    if (errMatch) {
+      const decoded = decodeURIComponent(errMatch[1].replace(/\+/g, ' '));
+      setAuthNotice({
+        type: 'error',
+        text: decoded.toLowerCase().includes('expired') || decoded.toLowerCase().includes('invalid')
+          ? 'Poveznica za potvrdu emaila je istekla ili je već iskorištena. Prijavite se sa svojom lozinkom.'
+          : `Autentifikacija: ${decoded}`
+      });
+      window.history.replaceState(null, '', window.location.pathname);
+      return;
+    }
+
+    // 2. Ako je potvrda uspješna (type=signup ili email_change)
+    if (hash.includes('type=signup') || hash.includes('type=email_change')) {
+      setAuthNotice({
+        type: 'success',
+        text: 'Email adresa je uspješno potvrđena! Račun je aktivan i prijavljeni ste.'
+      });
+      window.history.replaceState(null, '', window.location.pathname);
+      setTimeout(() => setAuthNotice(null), 8000);
+    } else if (hash.includes('access_token')) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
 
   // Modali za autentifikaciju i onboarding vodič
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -457,6 +492,29 @@ export default function App() {
             )}
           </div>
         </header>
+
+        {authNotice && (
+          <div className={`px-4 py-2.5 text-xs font-semibold flex items-center justify-between border-b animate-in fade-in z-30 ${
+            authNotice.type === 'error'
+              ? 'bg-rose-500/15 border-rose-500/30 text-rose-300'
+              : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+          }`}>
+            <div className="flex items-center gap-2">
+              {authNotice.type === 'error' ? (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              )}
+              <span>{authNotice.text}</span>
+            </div>
+            <button
+              onClick={() => setAuthNotice(null)}
+              className="p-1 hover:opacity-80 transition-opacity ml-3 text-zinc-400 hover:text-zinc-100"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         <main className={`flex-1 min-h-0 ${['trainer', 'calendar'].includes(activeTab) ? `overflow-hidden p-1 md:p-2 short:p-1.5 ${activeTab === 'trainer' && isTrainerFullscreen ? 'pb-1.5' : 'pb-16 md:pb-2 short:md:pb-1.5'}` : 'overflow-auto p-3 md:p-6 short:p-3 pb-20 md:pb-6 short:md:pb-3'} bg-zinc-950 bg-telemetry-grid relative flex flex-col`}>
           <div className={`relative z-10 w-full ${['trainer', 'calendar'].includes(activeTab) ? 'flex-1 flex flex-col min-h-0 h-full' : ''}`}>

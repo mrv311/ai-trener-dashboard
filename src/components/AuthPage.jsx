@@ -20,22 +20,27 @@ export default function AuthPage({ onGuestLogin }) {
     try {
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({
-          email,
+          email: email.trim(),
           password,
         });
         if (error) throw error;
       } else {
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: email.trim(),
           password,
+          options: {
+            emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+          }
         });
         if (error) throw error;
 
         if (data?.user?.identities?.length === 0) {
-          setErrorMsg('Korisnik s ovom email adresom već postoji.');
-        } else {
-          setSuccessMsg('Registracija uspješna! Provjerite email za potvrdu (ako je uključeno), ili se jednostavno prijavite.');
+          setErrorMsg('Korisnik s ovom email adresom već postoji. Pokušajte se prijaviti.');
           setIsLogin(true);
+        } else if (data?.session) {
+          setSuccessMsg('Račun uspješno kreiran! Prijavljivanje...');
+        } else {
+          setSuccessMsg(`Potvrdni email je poslan na ${email.trim()}. Otvorite poveznicu u primljenom mailu za aktivaciju računa.`);
         }
       }
     } catch (error) {
