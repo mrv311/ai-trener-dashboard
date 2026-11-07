@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X, Gamepad2, ArrowUpDown, RotateCcw, Battery, Maximize2, Minimize2, Loader2, AlertCircle } from 'lucide-react';
+import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X, Gamepad2, ArrowUpDown, RotateCcw, Battery, Maximize2, Minimize2, Loader2, AlertCircle, FileText, Copy, Trash2, Search } from 'lucide-react';
 import TrainerModals from './trainer/TrainerModals';
 import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer, calculateCogganMetrics, calculateEF, calculateVI, calculateAerobicDecoupling } from '../utils/performanceMetrics';
@@ -8,6 +8,14 @@ import { calculateDistanceStream } from '../utils/virtualDistance';
 import { parseIntervalsCode } from '../utils/workoutParser';
 import { uploadActivityToIntervals } from '../services/intervalsApi';
 import { supabase } from '../services/supabaseClient';
+import {
+  logBleEvent,
+  getBleLogs,
+  clearBleLogs,
+  subscribeBleLogs,
+  getSessionBleLogs,
+  formatBleLogsAsText
+} from '../utils/bleDiagnosticLogger';
 import {
   ZwiftClickController,
   VIRTUAL_GEAR_MIN,
@@ -123,6 +131,42 @@ const FTMS_SERVICE_UUID = '00001826-0000-1000-8000-00805f9b34fb';
 const FTMS_INDOOR_BIKE_DATA_UUID = '00002ad2-0000-1000-8000-00805f9b34fb';
 const FTMS_SUPPORTED_RESISTANCE_RANGE_UUID = '00002ad6-0000-1000-8000-00805f9b34fb';
 const FTMS_CONTROL_POINT_UUID = '00002ad9-0000-1000-8000-00805f9b34fb';
+
+// Cycling Power (0x1818) + Favero Assioma 128-bitni servis (Microchip/ISSC transparent UART u primarnom ADV_IND paketu)
+const CYCLING_POWER_SERVICE_UUID = '00001818-0000-1000-8000-00805f9b34fb';
+const CYCLING_POWER_MEASUREMENT_UUID = '00002a63-0000-1000-8000-00805f9b34fb';
+const FAVERO_PROPRIETARY_SERVICE_UUID = '49535343-fe7d-4ae5-8fa9-9fafd205e455';
+const BATTERY_SERVICE_UUID = '0000180f-0000-1000-8000-00805f9b34fb';
+const BATTERY_LEVEL_UUID = '00002a19-0000-1000-8000-00805f9b34fb';
+
+const PM_OPTIONAL_SERVICES = [
+  'cycling_power',
+  CYCLING_POWER_SERVICE_UUID,
+  FAVERO_PROPRIETARY_SERVICE_UUID,
+  'battery_service',
+  BATTERY_SERVICE_UUID,
+  'device_information'
+];
+
+// Multi-filter lista za PowerMetre: hvata uređaje i kad Windows BLE propusti SCAN_RSP s 0x1818 dok drži trenažer/HR/Click aktivnima
+const PM_DEVICE_FILTERS = [
+  { services: ['cycling_power'] },
+  { services: [CYCLING_POWER_SERVICE_UUID] },
+  { services: [FAVERO_PROPRIETARY_SERVICE_UUID] },
+  { namePrefix: 'ASSIOMA' },
+  { namePrefix: 'Assioma' },
+  { namePrefix: 'FAVERO' },
+  { namePrefix: 'Favero' },
+  { namePrefix: 'Stages' },
+  { namePrefix: '4iiii' },
+  { namePrefix: 'Garmin' },
+  { namePrefix: 'Rally' },
+  { namePrefix: 'Vector' },
+  { namePrefix: 'QUARQ' },
+  { namePrefix: 'Magene' },
+  { namePrefix: 'Rotor' }
+];
+
 const sleepMs = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const isBrowserFullscreenActive = () =>
@@ -146,7 +190,13 @@ const formatBleErrorMessage = (err, deviceLabel) => {
   if (/already in progress/i.test(msg)) {
     return `Bluetooth traženje je već u tijeku u pregledniku. Pričekaj trenutak ili osvježi stranicu (F5).`;
   }
+  if (/ne emitira Cycling Power/i.test(msg)) {
+    return msg;
+  }
   if (/gatt|connection attempt failed|disconnected/i.test(msg)) {
+    if (deviceLabel === 'PowerMeter') {
+      return 'Spajanje na PowerMeter (Assioma) nije uspjelo. Provjeri: (1) zavrti pedale 2 kruga, (2) ugasi Bluetooth na mobitelu / zatvori Favero aplikaciju i Garmin, (3) ukloni Assioma iz Windows Bluetooth postavki ako je tamo uparena.';
+    }
     return `Spajanje na ${deviceLabel} nije uspjelo. Provjeri je li uređaj budan i da nije već spojen na mobitel, Garmin ili Zwift.`;
   }
   return `Nije uspjelo spajanje na ${deviceLabel}: ${msg}`;
@@ -178,6 +228,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   const [isPmConnected, setIsPmConnected] = useState(false);         // Powermetar
   const [trainerDeviceName, setTrainerDeviceName] = useState('');
   const [pmDeviceName, setPmDeviceName] = useState('');
+  const [pmBatteryLevel, setPmBatteryLevel] = useState(null);
   const [powerMatchEnabled, setPowerMatchEnabled] = useState(false); // Power Match toggle
 
   const [controlMode, setControlMode] = useState('ERG');
@@ -226,6 +277,15 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   const [fullscreenBleModal, setFullscreenBleModal] = useState(null); // { target: 'trainer'|'pm'|'hr'|'click', lastConnectedLabel: string|null }
   const [fsSettling, setFsSettling] = useState(false);
   const exitingFsForBleRef = useRef(false);
+  const [showBleLogModal, setShowBleLogModal] = useState(false);
+  const [bleLogs, setBleLogs] = useState(() => getBleLogs());
+  const [bleLogCopied, setBleLogCopied] = useState(false);
+
+  useEffect(() => {
+    return subscribeBleLogs((updated) => {
+      setBleLogs([...updated]);
+    });
+  }, []);
 
   const showHudToast = useCallback((text, subtext = '', tone = 'indigo') => {
     if (shiftToastTimerRef.current) clearTimeout(shiftToastTimerRef.current);
@@ -272,6 +332,10 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   const trainerDeviceRef = useRef(null);
   const pmDeviceRef = useRef(null);
   const isPmConnectedRef = useRef(false);
+  const pmIntentionalDisconnectRef = useRef(false);
+  const pmReconnectingRef = useRef(false);
+  const pmDisconnectCleanupRef = useRef(null);
+  const pmCharCleanupRef = useRef(null);
   const ftmsWriteQueueRef = useRef(Promise.resolve());
   const ftmsResRangeRef = useRef({ rawMin: 0, rawMax: 100, rawInc: 1, hasRangeChar: false });
   const ftmsResFormatRef = useRef('uint8'); // 'uint8' | 'sint16'
@@ -340,7 +404,17 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     setFtmsControlChar(null);
     setFtmsStatus('idle');
 
+    pmIntentionalDisconnectRef.current = true;
+    pmReconnectingRef.current = false;
     try {
+      if (pmCharCleanupRef.current) {
+        pmCharCleanupRef.current();
+        pmCharCleanupRef.current = null;
+      }
+      if (pmDisconnectCleanupRef.current) {
+        pmDisconnectCleanupRef.current();
+        pmDisconnectCleanupRef.current = null;
+      }
       if (pmDeviceRef.current && pmDeviceRef.current.gatt?.connected) {
         pmDeviceRef.current.gatt.disconnect();
       }
@@ -349,6 +423,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     isPmConnectedRef.current = false;
     setIsPmConnected(false);
     setPmDeviceName('');
+    setPmBatteryLevel(null);
     setPmPower(0);
     setHalfPowerDetected(false);
     halfPowerCounterRef.current = 0;
@@ -870,11 +945,13 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
   // setup helperi za BLE uređaje
   const setupHRDevice = async (device) => {
+    const devLabel = device?.name || 'Pulsmetar';
     hrDeviceRef.current = device;
     device.addEventListener('gattserverdisconnected', () => {
       if (hrDeviceRef.current === device) {
         setIsHrConnected(false);
         setCurrentHR(0);
+        logBleEvent('warn', 'HR', 'Pulsmetar odspojen', devLabel);
       }
     });
     const server = await device.gatt.connect();
@@ -882,6 +959,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     const char = await service.getCharacteristic('heart_rate_measurement');
     await char.startNotifications();
     setIsHrConnected(true);
+    logBleEvent('ok', 'HR', 'Pulsmetar spojen (0x180D)', devLabel);
     char.addEventListener('characteristicvaluechanged', (e) => {
       const val = e.target.value;
       const flags = val.getUint8(0);
@@ -890,8 +968,9 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   };
 
   const setupTrainerDevice = async (device) => {
+    const devLabel = device?.name || 'Trenažer';
     trainerDeviceRef.current = device;
-    setTrainerDeviceName(device.name || 'Trenažer');
+    setTrainerDeviceName(devLabel);
     setFtmsStatus('connecting');
     crankDataRef.current = { revs: -1, time: -1 };
 
@@ -902,9 +981,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         setFtmsControlChar(null);
         setFtmsStatus('idle');
         if (!isPmConnectedRef.current) setCurrentCadence(0);
+        logBleEvent('warn', 'TRAINER', 'Trenažer odspojen (gattserverdisconnected)', devLabel);
       }
     });
 
+    logBleEvent('info', 'TRAINER', 'GATT spajanje na trenažer', devLabel);
     const server = await device.gatt.connect();
     let hasCpsPower = false;
     let hasCpsCadence = false;
@@ -1020,9 +1101,9 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       setIsPowerConnected(true);
       setFtmsStatus('ready');
       setFtmsControlChar(controlPoint);
-      console.log('[FTMS] Kontrola (0x00) i Start (0x07) uspješno preuzeti.');
+      logBleEvent('ok', 'TRAINER', 'FTMS kontrola (0x00) i Start (0x07) uspješno preuzeti', devLabel);
     } catch (ftmsErr) {
-      console.warn('[FTMS] Kontrola otpora nije dostupna na ovom uređaju:', ftmsErr);
+      logBleEvent('warn', 'TRAINER', 'FTMS kontrola otpora nije dostupna', ftmsErr);
       if (hasCpsPower) {
         setIsPowerConnected(true);
         setFtmsStatus('unsupported');
@@ -1033,48 +1114,196 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     }
   };
 
+  const connectPmGattAndSubscribe = async (device, maxAttempts = 3) => {
+    const devLabel = device?.name || device?.id || 'PowerMeter';
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        logBleEvent('info', 'PM', `GATT spajanje (${attempt}/${maxAttempts})`, devLabel);
+        if (attempt > 1) {
+          try {
+            if (device.gatt?.connected) device.gatt.disconnect();
+          } catch {
+            // ignore
+          }
+          await sleepMs(400 * attempt);
+        }
+
+        const server = await device.gatt.connect();
+        // Stabilizacijska pauza za Windows WinRT BLE GATT cache (posebno dok su trenažer/HR/Click već spojeni)
+        await sleepMs(350);
+
+        let powerService = null;
+        try {
+          powerService = await server.getPrimaryService('cycling_power');
+        } catch (svcErr1) {
+          logBleEvent('warn', 'PM', 'Alias cycling_power nije odmah pronađen, tražim puni 0x1818 UUID', svcErr1);
+          try {
+            powerService = await server.getPrimaryService(CYCLING_POWER_SERVICE_UUID);
+          } catch (svcErr2) {
+            if (attempt >= 2 && /No Services matching|NotFoundError/i.test(`${svcErr2?.name} ${svcErr2?.message}`)) {
+              throw new Error(
+                `Odabrani uređaj (${devLabel}) ne emitira Cycling Power servis (0x1818). Provjeri jesi li odabrao Assioma pedalu i da Favero aplikacija na mobitelu nije spojena na nju.`
+              );
+            }
+            throw svcErr2;
+          }
+        }
+
+        let powerChar = null;
+        try {
+          powerChar = await powerService.getCharacteristic('cycling_power_measurement');
+        } catch {
+          powerChar = await powerService.getCharacteristic(CYCLING_POWER_MEASUREMENT_UUID);
+        }
+
+        await sleepMs(120);
+        await powerChar.startNotifications();
+
+        if (pmCharCleanupRef.current) {
+          try { pmCharCleanupRef.current(); } catch { /* ignore */ }
+          pmCharCleanupRef.current = null;
+        }
+
+        const onPmValueChanged = (e) => {
+          parseCyclingPowerData(
+            e.target.value,
+            pmCrankDataRef,
+            (rawWatts) => {
+              setPmPower(rawWatts);
+              const buf = pmLiveBufferRef.current;
+              buf.push(rawWatts);
+              if (buf.length > 3) buf.shift();
+            },
+            setCurrentCadence
+          );
+        };
+        powerChar.addEventListener('characteristicvaluechanged', onPmValueChanged);
+        pmCharCleanupRef.current = () => {
+          try { powerChar.removeEventListener('characteristicvaluechanged', onPmValueChanged); } catch { /* ignore */ }
+        };
+
+        // Sekvencijalno čitanje razine baterije pedale (0x180F -> 0x2A19) bez paralelnih GATT sudara
+        try {
+          let battSvc = null;
+          try {
+            battSvc = await server.getPrimaryService('battery_service');
+          } catch {
+            battSvc = await server.getPrimaryService(BATTERY_SERVICE_UUID);
+          }
+          let battChar = null;
+          try {
+            battChar = await battSvc.getCharacteristic('battery_level');
+          } catch {
+            battChar = await battSvc.getCharacteristic(BATTERY_LEVEL_UUID);
+          }
+          const battVal = await battChar.readValue();
+          if (battVal && battVal.byteLength >= 1) {
+            const pct = battVal.getUint8(0);
+            if (pct >= 0 && pct <= 100) {
+              setPmBatteryLevel(pct);
+              logBleEvent('info', 'PM', `Baterija pedale: ${pct}%`, devLabel);
+            }
+          }
+        } catch {
+          // Baterija nije obvezna — ignoriraj ako nije dostupna
+        }
+
+        return true;
+      } catch (err) {
+        lastError = err;
+        logBleEvent('warn', 'PM', `GATT pokušaj ${attempt}/${maxAttempts} neuspješan`, err);
+      }
+    }
+
+    throw lastError || new Error('GATT spajanje na PowerMeter nije uspjelo.');
+  };
+
   const setupPmDevice = async (device) => {
+    const devLabel = device?.name || 'PowerMeter';
+    pmIntentionalDisconnectRef.current = false;
+    pmReconnectingRef.current = false;
+
+    if (pmDisconnectCleanupRef.current) {
+      try { pmDisconnectCleanupRef.current(); } catch { /* ignore */ }
+      pmDisconnectCleanupRef.current = null;
+    }
+
     pmDeviceRef.current = device;
-    setPmDeviceName(device.name || 'PowerMeter');
+    setPmDeviceName(devLabel);
+    setPmBatteryLevel(null);
     pmCrankDataRef.current = { revs: -1, time: -1 };
     pmLiveBufferRef.current = [];
     halfPowerCounterRef.current = 0;
     setHalfPowerDetected(false);
 
-    device.addEventListener('gattserverdisconnected', () => {
-      if (pmDeviceRef.current === device) {
-        isPmConnectedRef.current = false;
-        setIsPmConnected(false);
-        setPmPower(0);
-        setHalfPowerDetected(false);
-        setPowerMatchEnabled(false);
-        pidController.reset();
+    const onPmDisconnected = async () => {
+      if (pmDeviceRef.current !== device) return;
+      isPmConnectedRef.current = false;
+      setIsPmConnected(false);
+      setPmPower(0);
+      setHalfPowerDetected(false);
+      pidController.reset();
+
+      if (pmIntentionalDisconnectRef.current) {
+        logBleEvent('info', 'PM', 'PowerMeter ručno odspojen', devLabel);
+        return;
       }
-    });
 
-    const server = await device.gatt.connect();
-    const powerService = await server.getPrimaryService('cycling_power');
-    const powerChar = await powerService.getCharacteristic('cycling_power_measurement');
-    await powerChar.startNotifications();
-    isPmConnectedRef.current = true;
-    setIsPmConnected(true);
-    setPowerMatchEnabled(true);
-    pidController.reset();
-    console.log('[BLE] Powermetar spojen, Power Match aktiviran.');
+      logBleEvent('warn', 'PM', 'Prekid BLE veze s pedalom — pokrećem auto-reconnect', devLabel);
+      if (pmReconnectingRef.current) return;
+      pmReconnectingRef.current = true;
 
-    powerChar.addEventListener('characteristicvaluechanged', (e) => {
-      parseCyclingPowerData(
-        e.target.value,
-        pmCrankDataRef,
-        (rawWatts) => {
-          setPmPower(rawWatts);
-          const buf = pmLiveBufferRef.current;
-          buf.push(rawWatts);
-          if (buf.length > 3) buf.shift();
-        },
-        setCurrentCadence
-      );
-    });
+      try {
+        for (let r = 1; r <= 4; r++) {
+          await sleepMs(1500);
+          if (pmIntentionalDisconnectRef.current || pmDeviceRef.current !== device) return;
+          try {
+            await connectPmGattAndSubscribe(device, 1);
+            isPmConnectedRef.current = true;
+            setIsPmConnected(true);
+            pidController.reset();
+            logBleEvent('ok', 'PM', `Auto-reconnect uspio (pokušaj ${r}/4)`, devLabel);
+            showHudToast('PowerMeter ponovno spojen!', devLabel, 'emerald');
+            return;
+          } catch (reErr) {
+            logBleEvent('warn', 'PM', `Auto-reconnect ${r}/4 nije uspio`, reErr);
+          }
+        }
+        logBleEvent('error', 'PM', 'Auto-reconnect odustao nakon 4 pokušaja', devLabel);
+        showHudToast('PowerMeter odspojen', 'Klikni PowerMeter za ponovno spajanje', 'amber');
+      } finally {
+        pmReconnectingRef.current = false;
+      }
+    };
+
+    device.addEventListener('gattserverdisconnected', onPmDisconnected);
+    pmDisconnectCleanupRef.current = () => {
+      try { device.removeEventListener('gattserverdisconnected', onPmDisconnected); } catch { /* ignore */ }
+    };
+
+    try {
+      await connectPmGattAndSubscribe(device, 3);
+      isPmConnectedRef.current = true;
+      setIsPmConnected(true);
+      setPowerMatchEnabled(true);
+      pidController.reset();
+      logBleEvent('ok', 'PM', 'PowerMeter uspješno spojen (0x1818 Cycling Power + Power Match ON)', devLabel);
+    } catch (err) {
+      pmIntentionalDisconnectRef.current = true;
+      if (pmDisconnectCleanupRef.current) {
+        pmDisconnectCleanupRef.current();
+        pmDisconnectCleanupRef.current = null;
+      }
+      pmDeviceRef.current = null;
+      isPmConnectedRef.current = false;
+      setIsPmConnected(false);
+      setPmDeviceName('');
+      setPmBatteryLevel(null);
+      logBleEvent('error', 'PM', 'Inicijalno spajanje PowerMetra nije uspjelo', err);
+      throw err;
+    }
   };
 
 
@@ -1084,6 +1313,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       return;
     }
     if (!navigator.bluetooth) {
+      logBleEvent('error', 'HR', 'Web Bluetooth nije podržan u pregledniku');
       setBleErrorBanner('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).');
       return;
     }
@@ -1092,12 +1322,19 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       bleConnectingRef.current = 'hr';
       setBleConnectingType('hr');
       setBleErrorBanner(null);
+      logBleEvent('info', 'HR', 'Otvoren Bluetooth izbornik (filter: heart_rate)');
 
       const device = await reqPromise;
+      logBleEvent('info', 'HR', 'Korisnik odabrao uređaj', device.name || device.id || 'bez imena');
       await setupHRDevice(device);
       showHudToast('Pulsmetar spojen!', device.name || 'Heart Rate', 'emerald');
       setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: device.name || 'Pulsmetar' } : null));
     } catch (err) {
+      if (isUserCancelledBle(err)) {
+        logBleEvent('info', 'HR', 'Korisnik zatvorio Bluetooth izbornik bez odabira');
+      } else {
+        logBleEvent('error', 'HR', 'Greška pri spajanju pulsmetra', err);
+      }
       const msg = formatBleErrorMessage(err, 'Pulsmetar');
       if (msg) setBleErrorBanner(msg);
     } finally {
@@ -1129,6 +1366,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       return;
     }
     if (!navigator.bluetooth) {
+      logBleEvent('error', 'TRAINER', 'Web Bluetooth nije podržan u pregledniku');
       setBleErrorBanner('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).');
       return;
     }
@@ -1138,18 +1376,25 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           { services: [FTMS_SERVICE_UUID] },
           { services: ['cycling_power'] }
         ],
-        optionalServices: ['cycling_power', FTMS_SERVICE_UUID]
+        optionalServices: ['cycling_power', CYCLING_POWER_SERVICE_UUID, FTMS_SERVICE_UUID]
       });
       bleConnectingRef.current = 'trainer';
       setBleConnectingType('trainer');
       setBleErrorBanner(null);
+      logBleEvent('info', 'TRAINER', 'Otvoren Bluetooth izbornik (FTMS + Cycling Power)');
 
       const device = await reqPromise;
+      logBleEvent('info', 'TRAINER', 'Korisnik odabrao trenažer', device.name || device.id || 'bez imena');
       await setupTrainerDevice(device);
       showHudToast('Trenažer spojen!', device.name || 'FTMS Trenažer', 'emerald');
       setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: device.name || 'FTMS Trenažer' } : null));
     } catch (err) {
       setFtmsStatus('idle');
+      if (isUserCancelledBle(err)) {
+        logBleEvent('info', 'TRAINER', 'Korisnik zatvorio Bluetooth izbornik bez odabira');
+      } else {
+        logBleEvent('error', 'TRAINER', 'Greška pri spajanju trenažera', err);
+      }
       const msg = formatBleErrorMessage(err, 'FTMS Trenažer');
       if (msg) setBleErrorBanner(msg);
     } finally {
@@ -1179,28 +1424,52 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     connectTrainerDirect();
   };
 
-  const connectPowerMeterDirect = async () => {
+  const connectPowerMeterDirect = async (acceptAll = false) => {
     if (bleConnectingRef.current) {
       showHudToast('Bluetooth zauzet', 'Pričekaj završetak trenutnog traženja', 'amber');
       return;
     }
     if (!navigator.bluetooth) {
+      logBleEvent('error', 'PM', 'Web Bluetooth nije podržan u pregledniku');
       setBleErrorBanner('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).');
       return;
     }
     try {
-      const reqPromise = navigator.bluetooth.requestDevice({
-        filters: [{ services: ['cycling_power'] }]
-      });
+      // VAŽNO: requestDevice MORA biti prvi poziv unutar klika radi očuvanja Chrome User Activation geste!
+      const reqOptions = acceptAll === true
+        ? { acceptAllDevices: true, optionalServices: PM_OPTIONAL_SERVICES }
+        : { filters: PM_DEVICE_FILTERS, optionalServices: PM_OPTIONAL_SERVICES };
+
+      const reqPromise = navigator.bluetooth.requestDevice(reqOptions);
       bleConnectingRef.current = 'pm';
       setBleConnectingType('pm');
       setBleErrorBanner(null);
+      logBleEvent(
+        'info',
+        'PM',
+        acceptAll === true
+          ? 'Otvoren Bluetooth izbornik (SVI BLE UREĐAJI - Assioma Fallback)'
+          : 'Otvoren Bluetooth izbornik (0x1818 + Favero UUID + Assioma/PM prefiksi)',
+        `Aktivni senzori: Trenažer=${isPowerConnected ? 'DA' : 'NE'}, HR=${isHrConnected ? 'DA' : 'NE'}, Click=${zwiftClickState.connected ? 'DA' : 'NE'}`
+      );
 
       const device = await reqPromise;
+      logBleEvent('info', 'PM', 'Korisnik odabrao PowerMeter u izborniku', `${device.name || '(bez imena)'} [id=${device.id || '?'}]`);
       await setupPmDevice(device);
       showHudToast('PowerMeter spojen!', device.name || 'PowerMeter', 'emerald');
       setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: device.name || 'PowerMeter' } : null));
     } catch (err) {
+      if (isUserCancelledBle(err)) {
+        logBleEvent(
+          'warn',
+          'PM',
+          acceptAll === true
+            ? 'Izbornik (Svi BLE uređaji) zatvoren bez odabira — pedala možda spava ili je spojena na mobitel/Windows'
+            : 'Izbornik zatvoren bez odabira — probaj gumb "Svi BLE uređaji (Assioma)" ili provjeri je li pedala spojena na mobitel'
+        );
+      } else {
+        logBleEvent('error', 'PM', 'Greška pri spajanju PowerMetra', err);
+      }
       const msg = formatBleErrorMessage(err, 'PowerMeter');
       if (msg) setBleErrorBanner(msg);
     } finally {
@@ -1211,12 +1480,24 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
   const connectPowerMeter = () => {
     if (isPmConnected) {
+      pmIntentionalDisconnectRef.current = true;
+      pmReconnectingRef.current = false;
+      if (pmCharCleanupRef.current) {
+        try { pmCharCleanupRef.current(); } catch { /* ignore */ }
+        pmCharCleanupRef.current = null;
+      }
+      if (pmDisconnectCleanupRef.current) {
+        try { pmDisconnectCleanupRef.current(); } catch { /* ignore */ }
+        pmDisconnectCleanupRef.current = null;
+      }
       if (pmDeviceRef.current && pmDeviceRef.current.gatt?.connected) {
         pmDeviceRef.current.gatt.disconnect();
       }
+      logBleEvent('info', 'PM', 'Korisnik ručno odspojio PowerMeter', pmDeviceName || 'PowerMeter');
       isPmConnectedRef.current = false;
       setIsPmConnected(false);
       setPmDeviceName('');
+      setPmBatteryLevel(null);
       setPmPower(0);
       setHalfPowerDetected(false);
       halfPowerCounterRef.current = 0;
@@ -1230,7 +1511,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       openFullscreenBleHandoff('pm');
       return;
     }
-    connectPowerMeterDirect();
+    connectPowerMeterDirect(false);
   };
 
   const ergParamsRef = useRef({
@@ -1303,10 +1584,12 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   }, [activeTargetPower, controlMode, ftmsControlChar, powerMatchEnabled, pmDoublePower, halfPowerDetected, dispatchErgTarget]);
 
   // Periodičko osvježavanje ERG cilja (svake 2s uz Power Match, inače svake 4s za stabilan FTMS lock)
+  // Pauzira se dok traje BLE spajanje / GATT otkrivanje servisa na drugom senzoru kako Windows BLE adapter ne bi imao koliziju paketa!
   useEffect(() => {
     if (!ftmsControlChar || controlMode !== 'ERG') return;
     const intervalMs = (powerMatchEnabled && isPmConnected) ? 2000 : 4000;
     const timer = setInterval(() => {
+      if (bleConnectingRef.current || pmReconnectingRef.current) return;
       dispatchErgTarget(false);
     }, intervalMs);
     return () => clearInterval(timer);
@@ -1392,6 +1675,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   useEffect(() => {
     if (!ftmsControlChar || controlMode !== 'RES') return;
     const timer = setInterval(() => {
+      if (bleConnectingRef.current || pmReconnectingRef.current) return;
       dispatchResTarget();
     }, 5000);
     return () => clearInterval(timer);
@@ -1450,11 +1734,18 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       bleConnectingRef.current = 'click';
       setBleConnectingType('click');
       setBleErrorBanner(null);
+      logBleEvent('info', 'CLICK', 'Otvoren Bluetooth izbornik za Zwift Click');
 
       const snap = await connectPromise;
+      logBleEvent('ok', 'CLICK', 'Zwift Click spojen', snap?.deviceName || 'Zwift Click');
       showHudToast('Zwift Click spojen!', 'Spremno za virtualne brzine i ERG kontrolu', 'emerald');
       setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: snap?.deviceName || 'Zwift Click' } : null));
     } catch (err) {
+      if (isUserCancelledBle(err)) {
+        logBleEvent('info', 'CLICK', 'Korisnik zatvorio Zwift Click izbornik bez odabira');
+      } else {
+        logBleEvent('error', 'CLICK', 'Greška pri spajanju Zwift Clicka', err);
+      }
       const msg = formatBleErrorMessage(err, 'Zwift Click');
       if (msg) setBleErrorBanner(msg);
     } finally {
@@ -1480,7 +1771,8 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
   const triggerDirectBleByKey = (sensorKey) => {
     if (sensorKey === 'trainer') connectTrainerDirect();
-    else if (sensorKey === 'pm') connectPowerMeterDirect();
+    else if (sensorKey === 'pm') connectPowerMeterDirect(false);
+    else if (sensorKey === 'pm_all') connectPowerMeterDirect(true);
     else if (sensorKey === 'hr') connectHRDirect();
     else if (sensorKey === 'click') connectZwiftClickDirect();
   };
@@ -1581,8 +1873,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
     setSaveStatus('saving');
 
-    // Eksplicitno pretvori stream u JSON format
-    const streamDataToSave = distResult.stream.length > 0 ? distResult.stream : null;
+    // Eksplicitno pretvori stream u JSON format (+ priloži BLE dijagnostički log sesije u prvi zapis za sinkronizaciju s garažnog PC-a u Supabase)
+    const sessionBleLog = getSessionBleLogs(startedAt.toISOString(), 80);
+    const streamDataToSave = distResult.stream.length > 0
+      ? distResult.stream.map((pt, idx) => (idx === 0 && sessionBleLog.length > 0 ? { ...pt, ble_log: sessionBleLog } : pt))
+      : null;
 
     const activityPayload = {
       started_at: startedAt.toISOString(),
@@ -1905,6 +2200,14 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         return;
       }
 
+      if (showBleLogModal) {
+        if (e.code === 'Escape') {
+          e.preventDefault();
+          setShowBleLogModal(false);
+        }
+        return;
+      }
+
       if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         toggleFullscreen();
@@ -1942,7 +2245,34 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fullscreenBleModal, showStopPrompt, isFinished, controlMode, handleSkip, shiftVirtualGear, toggleFullscreen]);
+  }, [fullscreenBleModal, showBleLogModal, showStopPrompt, isFinished, controlMode, handleSkip, shiftVirtualGear, toggleFullscreen]);
+
+  const hasRecentBleError = useMemo(() => {
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    return bleLogs.some(l => l.level === 'error' && new Date(l.ts).getTime() >= cutoff);
+  }, [bleLogs]);
+
+  const handleCopyBleLogs = async () => {
+    try {
+      await navigator.clipboard.writeText(formatBleLogsAsText(bleLogs));
+      setBleLogCopied(true);
+      setTimeout(() => setBleLogCopied(false), 2000);
+    } catch {
+      showHudToast('Kopiranje nije uspjelo', 'Označi tekst ručno', 'amber');
+    }
+  };
+
+  const openBleDiagnosticModal = () => {
+    if (isBrowserFullscreenActive()) {
+      try {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } catch {
+        // ignore
+      }
+    }
+    setShowBleLogModal(true);
+  };
 
   const sensorMetaMap = {
     trainer: { label: 'FTMS Trenažer', connected: isPowerConnected, detail: trainerDeviceName || 'Trenažer' },
@@ -2006,10 +2336,10 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                     type="button"
                     disabled={fsSettling || Boolean(bleConnectingType)}
                     onClick={() => {
-                      setFullscreenBleModal(prev => (prev ? { ...prev, target: sKey } : null));
                       if (!info.connected) {
                         triggerDirectBleByKey(sKey);
                       }
+                      setFullscreenBleModal(prev => (prev ? { ...prev, target: sKey } : null));
                     }}
                     className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-xs font-bold transition-all text-left disabled:opacity-50 ${
                       info.connected
@@ -2031,6 +2361,34 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                 );
               })}
             </div>
+
+            {fullscreenBleModal.target === 'pm' && !isPmConnected && (
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-violet-950/30 border border-violet-500/30 rounded-xl px-3 py-2">
+                <span className="text-[11px] text-zinc-300">
+                  Assioma se ne prikazuje na popisu?
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={fsSettling || Boolean(bleConnectingType)}
+                    onClick={() => triggerDirectBleByKey('pm_all')}
+                    className="px-2.5 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-400/40 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors"
+                  >
+                    Svi BLE uređaji (Assioma)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFullscreenBleModal(null);
+                      setShowBleLogModal(true);
+                    }}
+                    className="px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors"
+                  >
+                    BLE Log
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col sm:flex-row gap-2 pt-1">
               {!sensorMetaMap[fullscreenBleModal.target]?.connected ? (
@@ -2074,6 +2432,119 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                   Natrag u Fullscreen
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: BLE DIJAGNOSTIKA, LOGOVI I FAVERO ASSIOMA FALLBACK */}
+      {showBleLogModal && (
+        <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 md:p-6 animate-in fade-in duration-150">
+          <div className="carbon-panel border-violet-400/40 rounded-2xl p-4 md:p-5 max-w-2xl w-full max-h-[90vh] shadow-2xl flex flex-col gap-3">
+            <div className="flex items-start justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-violet-500/15 border border-violet-500/35 text-violet-300 shrink-0">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
+                    WEB BLUETOOTH CRNA KUTIJA
+                  </div>
+                  <h3 className="font-display font-bold text-base md:text-lg uppercase tracking-wide text-zinc-100">
+                    BLE Dijagnostika &amp; Assioma Spajanje
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBleLogModal(false)}
+                className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-800"
+                title="Zatvori (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Brze radnje: Svi BLE uređaji (Assioma Fallback) + Kopiraj + Očisti */}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {!isPmConnected && (
+                <button
+                  type="button"
+                  disabled={Boolean(bleConnectingType)}
+                  onClick={() => {
+                    connectPowerMeterDirect(true);
+                    setShowBleLogModal(false);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-500 hover:bg-violet-400 disabled:opacity-50 text-zinc-950 font-mono text-xs font-bold uppercase tracking-wider transition-all"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Traži sve BLE uređaje (Assioma Fallback)</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleCopyBleLogs}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 font-mono text-xs font-bold uppercase tracking-wider transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5 text-volt-400" />
+                <span>{bleLogCopied ? 'Kopirano!' : 'Kopiraj Log'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => clearBleLogs()}
+                className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-rose-300 border border-zinc-800 font-mono text-xs font-bold uppercase tracking-wider transition-colors ml-auto"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Očisti</span>
+              </button>
+            </div>
+
+            {/* Kratki podsjetnik za Favero Assioma UNO / Windows u garaži */}
+            <div className="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-300 space-y-1.5 shrink-0">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                3 najčešća uzroka kad se Assioma UNO ne spaja na PC:
+              </div>
+              <p className="leading-relaxed">
+                <strong className="text-zinc-100">1. Mobitel / Favero App / Garmin:</strong> Assioma UNO standardno prima samo <strong className="text-amber-300">1 aktivnu BLE vezu</strong>. Ako je ostala spojena na Favero aplikaciju na mobitelu ili Garmin, pedala prestaje emitirati BLE prema PC-u — privremeno isključi Bluetooth na mobitelu.
+              </p>
+              <p className="leading-relaxed">
+                <strong className="text-zinc-100">2. Windows Bluetooth postavke:</strong> Pedala <strong className="text-rose-300">ne smije</strong> biti uparena izravno u <em>Windows Settings &rarr; Bluetooth &amp; devices</em> (ako tamo piše <em>Paired/Connected</em>, klikni <em>Remove device</em> i spajaj isključivo u Chromeu).
+              </p>
+              <p className="leading-relaxed">
+                <strong className="text-zinc-100">3. Buđenje pedala:</strong> Zavrti kurblu 2 kruga da bljesnu narančaste LED diode neposredno prije klika na spajanje.
+              </p>
+            </div>
+
+            {/* Live lista događaja (najnoviji na vrhu) */}
+            <div className="flex-1 min-h-[160px] max-h-[280px] overflow-y-auto bg-black/70 border border-zinc-800 rounded-xl p-2.5 font-mono text-[11px] space-y-1">
+              {bleLogs.length === 0 ? (
+                <div className="text-zinc-500 py-8 text-center">
+                  Još nema zabilježenih BLE događaja na ovom računalu.
+                </div>
+              ) : (
+                [...bleLogs].reverse().map((entry, idx) => {
+                  const tone =
+                    entry.level === 'error'
+                      ? 'text-rose-300 border-rose-500/30 bg-rose-950/25'
+                      : entry.level === 'warn'
+                      ? 'text-amber-300 border-amber-500/25 bg-amber-950/20'
+                      : entry.level === 'ok'
+                      ? 'text-emerald-300 border-emerald-500/25 bg-emerald-950/20'
+                      : 'text-zinc-300 border-zinc-800/80 bg-zinc-900/40';
+                  return (
+                    <div key={`${entry.ts}-${idx}`} className={`px-2 py-1 rounded border ${tone} break-words`}>
+                      <span className="text-zinc-500 mr-1.5">{entry.timeLocal || entry.ts}</span>
+                      <span className="font-bold mr-1.5">[{entry.sensor}]</span>
+                      <span>{entry.event}</span>
+                      {entry.detail && <span className="text-zinc-400"> — {entry.detail}</span>}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="text-[10px] font-mono text-zinc-500 flex items-center justify-between shrink-0">
+              <span>Ukupno zapisa: {bleLogs.length} (automatski se sinkronizira u Supabase uz spremljeni trening)</span>
             </div>
           </div>
         </div>
@@ -2156,6 +2627,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
             <span className="tracking-tight whitespace-nowrap">
               {bleConnectingType === 'pm' ? 'Spajam PM...' : isPmConnected ? (pmDeviceName || 'PowerMeter') : 'PowerMeter'}
             </span>
+            {isPmConnected && pmBatteryLevel != null && (
+              <span className="text-[10px] font-mono telemetry-num text-violet-200 bg-violet-500/15 px-1.5 py-0.5 rounded border border-violet-400/30 flex items-center gap-0.5">
+                <Battery className="w-3 h-3" /> {pmBatteryLevel}%
+              </span>
+            )}
           </button>
 
           {isPmConnected && (
@@ -2258,6 +2734,21 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
           <button
             type="button"
+            onClick={openBleDiagnosticModal}
+            title="BLE Dijagnostika, povijest grešaka i rezervno traženje Assioma pedala"
+            className={`flex items-center gap-1.5 px-2 py-1.5 md:py-2 short:py-1 rounded-lg border font-mono text-[11px] font-bold uppercase tracking-wider transition-all ${
+              hasRecentBleError
+                ? 'bg-rose-500/15 text-rose-300 border-rose-500/40 hover:bg-rose-500/25'
+                : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-violet-300 border-zinc-800'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline">BLE Log</span>
+            {hasRecentBleError && <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />}
+          </button>
+
+          <button
+            type="button"
             onClick={toggleFullscreen}
             title={isFullscreen ? 'Izađi iz punog zaslona (tipka F ili Esc)' : 'Puni zaslon za TV / garažu (tipka F)'}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg border font-mono text-[11px] font-bold uppercase tracking-wider transition-all ${
@@ -2295,19 +2786,44 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
       {/* OBAVIJEST O BLUETOOTH GREŠCI (bez window.alert koji gasi Fullscreen i blokira dretvu) */}
       {bleErrorBanner && !fullscreenBleModal && (
-        <div className="bg-rose-950/60 border border-rose-500/45 text-rose-200 rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between gap-2 shrink-0 animate-in fade-in">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="bg-rose-950/60 border border-rose-500/45 text-rose-200 rounded-xl px-3 py-2 text-xs font-semibold flex flex-wrap items-center justify-between gap-2 shrink-0 animate-in fade-in">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{bleErrorBanner}</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setBleErrorBanner(null)}
-            className="p-1 rounded hover:bg-rose-500/20 text-rose-300 shrink-0"
-            title="Sakrij obavijest"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {!isPmConnected && (
+              <button
+                type="button"
+                disabled={Boolean(bleConnectingType)}
+                onClick={() => {
+                  if (isBrowserFullscreenActive()) {
+                    openFullscreenBleHandoff('pm');
+                  } else {
+                    connectPowerMeterDirect(true);
+                  }
+                }}
+                className="px-2.5 py-1 rounded-lg bg-violet-500/25 hover:bg-violet-500/35 text-violet-200 border border-violet-400/40 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors"
+              >
+                Svi BLE uređaji (Assioma)
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={openBleDiagnosticModal}
+              className="px-2 py-1 rounded-lg bg-zinc-900/80 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors"
+            >
+              BLE Log
+            </button>
+            <button
+              type="button"
+              onClick={() => setBleErrorBanner(null)}
+              className="p-1 rounded hover:bg-rose-500/20 text-rose-300 shrink-0"
+              title="Sakrij obavijest"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
