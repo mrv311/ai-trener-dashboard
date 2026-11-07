@@ -92,18 +92,36 @@ export function calculateCogganMetrics(powerArray, ftp) {
  */
 export function expandStepsToSeconds(steps, ftp) {
   const result = [];
+  if (!Array.isArray(steps)) return result;
   const validFtp = ftp && ftp > 0 ? ftp : 200;
 
-  steps.forEach(step => {
-    let watts = step.power;
-    // Pretpostavka za ZWO i ERG datoteke: power se često izražava u % FTP tako da: 65 = 65% FTP.
-    // Ako je step.power <= 500 nismo sigurni, ali obično je postotak u Parseru.
-    if (step.power <= 300 && step.power >= 0) { // Ako iznosi 0-300 posto. Već smo u workOutParseru stavili % kod ERG
-      watts = (step.power / 100) * validFtp;
-    }
+  const toWatts = (val) => {
+    const num = Number(val) || 0;
+    if (num > 0 && num <= 3) return num * validFtp; // decimalni omjer (npr. 0.85)
+    if (num >= 0 && num <= 300) return (num / 100) * validFtp; // % FTP-a
+    return num; // apsolutni wati (>300)
+  };
 
-    for (let i = 0; i < step.duration; i++) {
-       result.push(watts);
+  steps.forEach(step => {
+    if (!step) return;
+    const durSec = Math.max(0, Math.round(Number(step.duration) || 0));
+    if (durSec <= 0) return;
+
+    const hasRamp = step.powerMin != null && step.powerMax != null && step.powerMin !== step.powerMax;
+    if (hasRamp && durSec > 1) {
+      const startW = toWatts(step.powerMin);
+      const endW = toWatts(step.powerMax);
+      for (let i = 0; i < durSec; i++) {
+        result.push(startW + ((endW - startW) * i) / (durSec - 1));
+      }
+    } else {
+      const rawPwr = typeof step.power === 'object' && step.power !== null
+        ? (step.power.value ?? ((step.power.start != null && step.power.end != null) ? (step.power.start + step.power.end) / 2 : 50))
+        : (step.power ?? 50);
+      const watts = toWatts(rawPwr);
+      for (let i = 0; i < durSec; i++) {
+        result.push(watts);
+      }
     }
   });
 

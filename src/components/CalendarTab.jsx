@@ -21,41 +21,41 @@ const formatDur = (mins) => {
 };
 
 const getCardBg = (sc) => {
-  if (sc === 'green') return "bg-emerald-950/30 border-emerald-500/20 border shadow-[0_4px_10px_rgba(16,185,129,0.05)]";
-  if (sc === 'yellow') return "bg-amber-950/30 border-amber-500/20 border shadow-[0_4px_10px_rgba(245,158,11,0.05)]";
-  if (sc === 'red') return "bg-rose-950/30 border-rose-500/20 border shadow-[0_4px_10px_rgba(244,63,94,0.05)]";
+  if (sc === 'green') return "bg-emerald-950/25 border-emerald-500/25 hover:border-emerald-500/45 border";
+  if (sc === 'yellow') return "bg-amber-950/25 border-amber-500/25 hover:border-amber-500/45 border";
+  if (sc === 'red') return "bg-rose-950/25 border-rose-500/25 hover:border-rose-500/45 border";
   if (sc === 'red-missed') return "bg-rose-950/10 border-rose-500/20 border-dashed border opacity-80";
-  if (sc === 'blue') return "bg-sky-950/30 border-sky-500/20 border shadow-[0_4px_10px_rgba(14,165,233,0.05)]";
-  if (sc === 'grey') return "bg-zinc-800/40 border-zinc-700 border-dashed border";
-  return "bg-zinc-900/50 border-zinc-800 border";
+  if (sc === 'blue') return "bg-sky-950/25 border-sky-500/25 hover:border-sky-500/45 border";
+  if (sc === 'grey') return "bg-zinc-900/90 border-zinc-800 hover:border-zinc-700 border";
+  return "bg-zinc-900/90 border-zinc-800 hover:border-zinc-700 border";
 };
 
 const getTopCol = (sc) => {
-  if (sc === 'green') return "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]";
-  if (sc === 'yellow') return "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]";
-  if (sc === 'red') return "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]";
+  if (sc === 'green') return "bg-emerald-400";
+  if (sc === 'yellow') return "bg-amber-400";
+  if (sc === 'red') return "bg-rose-500";
   if (sc === 'red-missed') return "bg-rose-500/50";
-  if (sc === 'blue') return "bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.5)]";
-  if (sc === 'grey') return "bg-zinc-600";
-  return "bg-zinc-700";
+  if (sc === 'blue') return "bg-sky-400";
+  if (sc === 'grey') return "bg-volt-400/70";
+  return "bg-zinc-600";
 };
 
 const isDraggable = (w) => !w.isCompleted && (w.isLocal || w.id.startsWith('ev-'));
 
 const ZONE_COLORS = {
-  1: 'bg-slate-500',
-  2: 'bg-emerald-500',
-  3: 'bg-amber-400',
+  1: 'bg-zinc-500',
+  2: 'bg-sky-500',
+  3: 'bg-emerald-500',
   4: 'bg-amber-500',
   5: 'bg-rose-500'
 };
 
 const BORDER_COLORS = {
-  1: 'border-slate-500',
-  2: 'border-emerald-500',
-  3: 'border-amber-400',
-  4: 'border-amber-500',
-  5: 'border-rose-500'
+  1: 'border-zinc-400',
+  2: 'border-sky-400',
+  3: 'border-emerald-400',
+  4: 'border-amber-400',
+  5: 'border-rose-400'
 };
 
 // Mapiranje % FTP u zone za graf
@@ -66,6 +66,19 @@ const getZoneFromFtpPercent = (percent) => {
   if (percent <= 90) return 3;
   if (percent <= 105) return 4;
   return 5;
+};
+
+const getSourceBadgeMeta = (src) => {
+  if (!src) return null;
+  if (src === 'calendar') return { label: 'KALENDAR', dot: 'bg-volt-400', cls: 'text-zinc-300 border-zinc-700 bg-zinc-950' };
+  if (src === 'library') return { label: 'KNJIŽNICA', dot: 'bg-volt-400', cls: 'text-zinc-300 border-zinc-700 bg-zinc-950' };
+  if (src === 'free_ride') return { label: 'SLOBODNO', dot: 'bg-sky-400', cls: 'text-sky-300 border-sky-500/25 bg-sky-500/10' };
+  if (src === 'garmin') return { label: 'GARMIN', dot: 'bg-emerald-400', cls: 'text-emerald-300 border-emerald-500/25 bg-emerald-500/10' };
+  if (src === 'strava') return { label: 'STRAVA', dot: 'bg-orange-400', cls: 'text-orange-300 border-orange-500/25 bg-orange-500/10' };
+  if (src === 'wahoo') return { label: 'WAHOO', dot: 'bg-sky-400', cls: 'text-sky-300 border-sky-500/25 bg-sky-500/10' };
+  if (src.startsWith('external_upload')) return { label: 'FIT UVOZ', dot: 'bg-violet-400', cls: 'text-violet-300 border-violet-500/25 bg-violet-500/10' };
+  if (src === 'external') return { label: 'VANJSKI', dot: 'bg-zinc-400', cls: 'text-zinc-300 border-zinc-700 bg-zinc-950' };
+  return { label: String(src).toUpperCase(), dot: 'bg-zinc-400', cls: 'text-zinc-300 border-zinc-700 bg-zinc-950' };
 };
 
 
@@ -95,27 +108,25 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted 
   const displayData = intensityArray;
 
   return (
-    <div className="relative flex items-end h-10 w-full mt-2.5 bg-zinc-950/60 rounded-sm overflow-hidden">
+    <div className="relative flex items-end h-9 w-full mt-2 bg-zinc-950/90 rounded border border-zinc-800/80 overflow-hidden px-[1px] pt-1">
       {displayData.map((val, i) => {
         const zone = getZoneFromFtpPercent(val);
-        // Maksimalna visina je 150% FTP-a
         const heightPercent = Math.min((val / 150) * 100, 100);
 
         return (
           <div
             key={i}
-            // isCompleted određuje hoće li boja biti puna ili izblijedjela (opacity-40)
-            className={`flex-1 transition-all duration-300 ${ZONE_COLORS[zone]} ${isCompleted ? 'opacity-100' : 'opacity-40'}`}
+            className={`flex-1 transition-all duration-300 border-t ${BORDER_COLORS[zone]} ${ZONE_COLORS[zone]} ${isCompleted ? 'opacity-85' : 'opacity-50'}`}
             style={{
               height: `${heightPercent}%`,
-              minWidth: '1px' // Sprječava da stupac potpuno nestane ako ih ima previše
+              minWidth: '1px'
             }}
           />
         );
       })}
 
       {/* 100% FTP Baseline Indikator (Suptilna linija praga) */}
-      <div className="absolute bottom-[66.6%] left-0 w-full border-b border-white/10 pointer-events-none" />
+      <div className="absolute bottom-[66.6%] left-0 w-full border-b border-dashed border-volt-400/25 pointer-events-none" />
     </div>
   );
 });
@@ -136,6 +147,8 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
     touchAction: canDrag ? 'none' : 'auto'
   };
 
+  const sourceMeta = w.isSupabase && w.workout_source ? getSourceBadgeMeta(w.workout_source) : null;
+
   return (
     <div
       ref={setNodeRef}
@@ -150,60 +163,59 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           }
         }
       }}
-      className={`workout-card-element rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : 'min-h-[100px]'} backdrop-blur-sm transition-all duration-150 ${getCardBg(w.statusColor)} ${isDragging ? 'opacity-20 border-dashed border-2 border-orange-500' : 'cursor-pointer'} ${canDrag && !isDragging ? 'hover:shadow-[0_0_15px_rgba(34,211,238,0.15)]' : ''}`}
+      className={`workout-card-element group/wcard rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : 'min-h-[96px]'} transition-all duration-150 ${getCardBg(w.statusColor)} ${isDragging ? 'opacity-20 border-dashed border-2 border-volt-400' : 'cursor-pointer'} ${canDrag && !isDragging ? 'hover:border-volt-400/40' : ''}`}
     >
-      <div className={`h-1.5 w-full shrink-0 ${getTopCol(w.statusColor)}`} />
-      <div className={`${isDesktop ? (compact ? 'p-1.5' : 'p-3') : 'p-3.5'} flex flex-col justify-between flex-1`}>
+      <div className={`h-[2px] w-full shrink-0 ${getTopCol(w.statusColor)}`} />
+      <div className={`${isDesktop ? (compact ? 'p-1.5' : 'p-2.5') : 'p-3.5'} flex flex-col justify-between flex-1`}>
         {compact ? (
           // Compact: just title + duration + status icon
           <div className="flex items-center gap-1.5 w-full">
             <span className="text-[9px] font-bold text-zinc-300 truncate flex-1">{w.title}</span>
-            <span className="text-[9px] text-zinc-400 shrink-0">{formatDur(w.duration)}</span>
+            <span className="text-[9px] font-mono telemetry-num text-zinc-400 shrink-0">{formatDur(w.duration)}</span>
             {w.statusColor === 'green' && <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />}
             {w.statusColor === 'red-missed' && <XCircle className="w-3 h-3 text-rose-500 shrink-0" />}
           </div>
         ) : (
           <div className="flex flex-col gap-1 w-full">
             {/* Header: Sport icon, duration, actions */}
-            <div className="flex justify-between items-start w-full">
-              <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-wide">
-                <Bike className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+            <div className="flex justify-between items-center w-full gap-1">
+              <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-mono font-bold telemetry-num uppercase tracking-wider">
+                <Bike className={`${isDesktop ? 'w-3 h-3 text-zinc-500' : 'w-4 h-4 text-zinc-400'}`} />
                 <span title={w.plannedDuration ? `Plan: ${formatDur(w.plannedDuration)}` : ''}>
                   {formatDur(w.duration)}
                   {!isDesktop && w.plannedDuration && <span className="text-zinc-600 text-[9px] ml-1">/ {formatDur(w.plannedDuration)}</span>}
                 </span>
               </div>
               <div className="flex items-center gap-1 shrink-0 ml-1" onPointerDown={(e) => { }}>
-                {!w.isCompleted && onSelectWorkout && (
+                {w.actId && w.eventId && (
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
-                    className={`text-orange-400 hover:text-zinc-950 bg-orange-500/10 hover:bg-orange-500 ${isDesktop ? 'rounded-md p-1' : 'rounded-lg p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.2)] hover:shadow-[0_0_12px_rgba(34,211,238,0.6)]'} transition-all border border-orange-500/20`}
-                    title="Pošalji na trenažer"
+                    onClick={(e) => { e.stopPropagation(); handleUnpair(w.actId, w.eventId); }}
+                    className="text-zinc-500 hover:text-volt-400 transition-opacity md:opacity-0 md:group-hover/wcard:opacity-100 p-0.5"
+                    title="Razdvoji planirano i odrađeno"
                   >
-                    <Play className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} fill-current`} />
-                  </button>
-                )}
-                {w.actId && w.eventId && (
-                  <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handleUnpair(w.actId, w.eventId); }} className="text-zinc-400 hover:text-orange-500 transition-colors" title="Razdvoji planirano i odrađeno">
-                    <Unlink className="w-3.5 h-3.5" />
+                    <Unlink className="w-3 h-3" />
                   </button>
                 )}
                 {w.actId && w.separatedEventIds && w.separatedEventIds.map(sepId => (
-                  <button key={sepId} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }} className="text-zinc-400 hover:text-emerald-500 transition-colors" title="Spoji s planiranim treningom">
-                    <Link2 className="w-3.5 h-3.5" />
+                  <button
+                    key={sepId}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }}
+                    className="text-zinc-500 hover:text-emerald-400 transition-opacity md:opacity-0 md:group-hover/wcard:opacity-100 p-0.5"
+                    title="Spoji s planiranim treningom"
+                  >
+                    <Link2 className="w-3 h-3" />
                   </button>
                 ))}
-                {w.statusColor === 'green' && <CheckCircle2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-emerald-400 drop-shadow-[0_0_${isDesktop ? '3' : '5'}px_rgba(16,185,129,0.5)]`} />}
-                {w.statusColor === 'red-missed' && <XCircle className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-rose-500`} />}
                 {!w.isCompleted && handleDeleteLocalActivity && (
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
-                    className={`text-zinc-${isDesktop ? '400' : '400'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
+                    className="text-zinc-500 hover:text-rose-400 rounded p-0.5 transition-opacity md:opacity-0 md:group-hover/wcard:opacity-100"
                     title="Obriši planirani trening"
                   >
-                    <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                    <Trash2 className={`${isDesktop ? 'w-3 h-3' : 'w-4 h-4'}`} />
                   </button>
                 )}
                 {w.isCompleted && handleDeleteCompletedActivity && (
@@ -216,51 +228,58 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                         if (!result.success) alert('Greška pri brisanju: ' + (result.error || 'Nepoznata greška'));
                       }
                     }}
-                    className={`text-zinc-${isDesktop ? '400' : '400'} hover:text-red-500 rounded${isDesktop ? ' p-0.5' : '-lg p-1'} transition-colors`}
+                    className="text-zinc-500 hover:text-rose-400 rounded p-0.5 transition-opacity md:opacity-0 md:group-hover/wcard:opacity-100"
                     title="Obriši odrađeni trening"
                   >
-                    <Trash2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
+                    <Trash2 className={`${isDesktop ? 'w-3 h-3' : 'w-4 h-4'}`} />
                   </button>
                 )}
+                {!w.isCompleted && onSelectWorkout && (
+                  <button
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
+                    className={`text-volt-400 hover:text-zinc-950 bg-volt-400/12 hover:bg-volt-400 ${isDesktop ? 'rounded p-1' : 'rounded-lg p-1.5'} transition-all border border-volt-400/30`}
+                    title="Pokreni u trenažeru"
+                  >
+                    <Play className={`${isDesktop ? 'w-3 h-3' : 'w-4 h-4'} fill-current`} />
+                  </button>
+                )}
+                {w.statusColor === 'green' && <CheckCircle2 className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-emerald-400`} />}
+                {w.statusColor === 'red-missed' && <XCircle className={`${isDesktop ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-rose-500`} />}
               </div>
             </div>
             {/* Title */}
-            <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} text-zinc-100 leading-tight line-clamp-3`}>
-              {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-400 align-middle pointer-events-none" />}
+            <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} text-zinc-100 leading-snug line-clamp-2`}>
+              {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-600 group-hover/wcard:text-zinc-400 align-middle pointer-events-none transition-colors" />}
               {w.title}
-              {w.isSupabase && w.workout_source && (
-                <span className="ml-1.5 inline-flex items-center bg-violet-500/10 text-violet-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-violet-500/20">
-                  {w.workout_source === 'calendar' ? '📅 Kalendar' :
-                    w.workout_source === 'library' ? '📚 Knjižnica' :
-                      w.workout_source === 'free_ride' ? '🚴 Slobodno' :
-                        w.workout_source === 'garmin' ? '🟢 Garmin' :
-                          w.workout_source === 'strava' ? '🟠 Strava' :
-                            w.workout_source === 'wahoo' ? '🔵 Wahoo' :
-                              w.workout_source.startsWith('external_upload') ? '📥 Uvezeno' :
-                                w.workout_source === 'external' ? '🌐 Vanjski' :
-                                  w.workout_source}
-                </span>
-              )}
             </div>
+            {sourceMeta && (
+              <div className="flex items-center">
+                <span className={`inline-flex items-center gap-1 text-[8px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${sourceMeta.cls}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${sourceMeta.dot}`} />
+                  {sourceMeta.label}
+                </span>
+              </div>
+            )}
             {/* Metrics */}
-            <div className="flex flex-col gap-1 mt-2">
-              <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex flex-col gap-1 mt-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap font-mono telemetry-num">
                 {w.isCompleted ? (
                   // Odrađeni trening: TSS ostvareni / planirani + postotak u boji kartice
                   <>
                     <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">TSS</span>
-                    <span className="font-mono text-xs font-semibold text-zinc-200">{w.tss > 0 ? w.tss : '-'}</span>
+                    <span className="text-xs font-bold text-zinc-100">{w.tss > 0 ? w.tss : '-'}</span>
                     {w.plannedTss > 0 && (
                       <>
                         <span className="text-[9px] text-zinc-600">/</span>
-                        <span className="font-mono text-xs text-zinc-500">{w.plannedTss}</span>
+                        <span className="text-xs text-zinc-500">{w.plannedTss}</span>
                       </>
                     )}
                     {w.plannedTss > 0 && w.tss > 0 && (
-                      <span className={`text-[9px] font-black ${w.statusColor === 'green' ? 'text-emerald-400' :
-                        w.statusColor === 'yellow' ? 'text-amber-400' :
-                          w.statusColor === 'red' ? 'text-rose-400' :
-                            'text-zinc-400'
+                      <span className={`text-[9px] font-bold ml-auto px-1 rounded ${w.statusColor === 'green' ? 'text-emerald-400 bg-emerald-500/10' :
+                        w.statusColor === 'yellow' ? 'text-amber-400 bg-amber-500/10' :
+                          w.statusColor === 'red' ? 'text-rose-400 bg-rose-500/10' :
+                            'text-zinc-400 bg-zinc-800'
                         }`}>
                         {Math.round((w.tss / w.plannedTss) * 100)}%
                       </span>
@@ -269,18 +288,18 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                 ) : (
                   // Planirani trening: samo planirani TSS
                   <>
-                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">TSS</span>
-                    <span className="font-mono text-xs font-semibold text-zinc-400">{w.plannedTss > 0 ? w.plannedTss : '-'}</span>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">PLAN TSS</span>
+                    <span className="text-xs font-bold text-zinc-300">{w.plannedTss > 0 ? w.plannedTss : '-'}</span>
                   </>
                 )}
               </div>
               {w.intervalDescription && (
-                <span className="text-[10px] text-zinc-400/80 leading-tight line-clamp-1 italic">{w.intervalDescription}</span>
+                <span className="text-[10px] font-mono text-zinc-400/85 leading-tight line-clamp-1">{w.intervalDescription}</span>
               )}
               {w.category && w.difficulty_score && (
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="bg-zinc-800 text-zinc-300 text-[9px] font-bold px-1.5 py-0.5 rounded border border-zinc-700">{w.category}</span>
-                  <span className="text-orange-400 text-[10px] font-black">{w.difficulty_score.toFixed(1)}</span>
+                  <span className="bg-zinc-950 text-zinc-300 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-zinc-800">{w.category}</span>
+                  <span className="text-volt-400 font-mono telemetry-num text-[10px] font-bold">LVL {w.difficulty_score.toFixed(1)}</span>
                 </div>
               )}
             </div>
@@ -306,7 +325,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
     const dayOfWeek = dayNames[(new Date(dObj.dateStr).getDay() + 6) % 7];
     return (
       <div
-        className={`p-4 flex flex-col cursor-pointer bg-zinc-900/60 ${isTdy ? 'border-l-4 border-l-orange-500 shadow-[inset_4px_0_10px_rgba(34,211,238,0.1)]' : ''}`}
+        className={`p-4 flex flex-col cursor-pointer bg-zinc-900/80 ${isTdy ? 'border-l-2 border-l-volt-400 bg-volt-400/[0.03]' : ''}`}
         onClick={(e) => {
           if (e.target.closest('.workout-card-element')) return;
           if (onAddWorkoutClick) {
@@ -316,14 +335,15 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
       >
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-2">
-            <span className={`text-sm font-black ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.6)]' : 'text-zinc-200'}`}>{dObj.day}.</span>
-            <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{dayOfWeek}</span>
+            <span className={`text-sm font-mono telemetry-num font-bold ${isTdy ? 'text-volt-400' : 'text-zinc-200'}`}>{dObj.day}.</span>
+            <span className="text-xs font-mono font-bold text-zinc-500 uppercase tracking-wider">{dayOfWeek}</span>
+            {isTdy && <span className="text-[9px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-volt-400/15 text-volt-400 border border-volt-400/30">DANAS</span>}
           </div>
           {dWell && (
-            <div className="flex gap-3 text-xs font-bold text-zinc-400 bg-zinc-950/50 px-3 py-1 rounded-full border border-zinc-800 shadow-inner">
-              {dWell.restingHR && <span className="flex items-center text-rose-500 drop-shadow-[0_0_4px_rgba(244,63,94,0.5)]"><Heart className="w-3.5 h-3.5 mr-1" fill="currentColor" />{dWell.restingHR}</span>}
-              {dWell.hrv && <span className="flex items-center text-sky-400 drop-shadow-[0_0_4px_rgba(56,189,248,0.5)]" title="HRV"><Activity className="w-3.5 h-3.5 mr-1" />{Math.round(dWell.hrv)}ms</span>}
-              {dWell.sleep && <span className="flex items-center text-indigo-400 drop-shadow-[0_0_4px_rgba(129,140,248,0.5)]"><Moon className="w-3.5 h-3.5 mr-1" fill="currentColor" />{dWell.sleep}</span>}
+            <div className="flex gap-2.5 text-[11px] font-mono telemetry-num font-bold text-zinc-400 bg-zinc-950 px-2.5 py-1 rounded-lg border border-zinc-800">
+              {dWell.restingHR && <span className="flex items-center text-rose-400"><Heart className="w-3 h-3 mr-1" fill="currentColor" />{dWell.restingHR}</span>}
+              {dWell.hrv && <span className="flex items-center text-sky-400" title="HRV"><Activity className="w-3 h-3 mr-1" />{Math.round(dWell.hrv)}ms</span>}
+              {dWell.sleep && <span className="flex items-center text-indigo-400"><Moon className="w-3 h-3 mr-1" fill="currentColor" />{dWell.sleep}</span>}
             </div>
           )}
         </div>
@@ -331,7 +351,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
           {dWorks.length > 0 ? dWorks.map(w => (
             <WorkoutCard key={w.id} w={w} isDesktop={false} isDragging={false} onSelectWorkout={onSelectWorkout} handleUnpair={handleUnpair} handlePair={handlePair} handleDeleteLocalActivity={handleDeleteLocalActivity} handleDeleteCompletedActivity={handleDeleteCompletedActivity} onEditWorkout={onEditWorkout} onViewActivity={onViewActivity} />
           )) : (
-            <div className="text-xs text-zinc-400 italic px-2 py-2 bg-zinc-900/40 rounded-lg border border-zinc-800 border-dashed mr-auto">Odmor</div>
+            <div className="text-[11px] font-mono text-zinc-500 px-2.5 py-1.5 bg-zinc-950/60 rounded border border-zinc-800/80 border-dashed mr-auto uppercase tracking-wider">Dan odmora · + Dodaj</div>
           )}
         </div>
       </div>
@@ -341,11 +361,11 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col group relative transition-all duration-200 cursor-pointer hover:bg-zinc-800/80
-        ${compact ? 'p-1.5' : 'p-3'}
-        ${dObj.isCurrentMonth ? 'bg-zinc-900/60' : 'bg-zinc-950/80'}
-        ${isTdy ? 'ring-inset ring-2 ring-orange-500' : ''}
-        ${isOver ? 'bg-orange-500/10 ring-2 ring-orange-500/50 ring-inset shadow-[inset_0_0_20px_rgba(34,211,238,0.1)]' : ''}
+      className={`flex flex-col group relative transition-all duration-150 cursor-pointer hover:bg-zinc-900/90
+        ${compact ? 'p-1.5' : 'p-2.5'}
+        ${dObj.isCurrentMonth ? 'bg-zinc-950/75' : 'bg-zinc-950'}
+        ${isTdy ? 'border-t-2 border-t-volt-400 bg-volt-400/[0.025]' : ''}
+        ${isOver ? 'bg-volt-400/10 ring-1 ring-volt-400/60 ring-inset' : ''}
       `}
       onClick={(e) => {
         if (e.target.closest('.workout-card-element')) return;
@@ -354,23 +374,30 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
         }
       }}
     >
-      <div className={`flex justify-between items-start ${compact ? 'mb-1' : 'mb-3'}`}>
-        <span className={`font-bold text-xs ${isTdy ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.6)]' : (dObj.isCurrentMonth ? 'text-zinc-200' : 'text-zinc-400')}`}>{dObj.day}</span>
+      <div className={`flex justify-between items-center ${compact ? 'mb-1' : 'mb-2.5'}`}>
+        <div className="flex items-center gap-1.5">
+          <span className={`font-mono telemetry-num font-bold text-xs ${isTdy ? 'text-volt-400' : (dObj.isCurrentMonth ? 'text-zinc-200' : 'text-zinc-600')}`}>{dObj.day}</span>
+          {isTdy && !compact && (
+            <span className="text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-volt-400/15 text-volt-400 border border-volt-400/30">
+              DANAS
+            </span>
+          )}
+        </div>
         {!compact && dWell && (
-          <div className="flex gap-2 text-[10px] font-bold text-zinc-500">
-            {dWell.restingHR && <span className="flex items-center text-rose-500/80"><Heart className="w-3 h-3 mr-0.5" fill="currentColor" />{dWell.restingHR}</span>}
-            {dWell.hrv && <span className="flex items-center text-sky-400/80" title="HRV"><Activity className="w-3 h-3 mr-0.5" />{Math.round(dWell.hrv)}</span>}
-            {dWell.sleep && <span className="flex items-center text-indigo-400/80"><Moon className="w-3 h-3 mr-0.5" fill="currentColor" />{dWell.sleep}</span>}
+          <div className="flex gap-1.5 text-[10px] font-mono telemetry-num font-bold text-zinc-500">
+            {dWell.restingHR && <span className="flex items-center text-rose-400/85"><Heart className="w-2.5 h-2.5 mr-0.5" fill="currentColor" />{dWell.restingHR}</span>}
+            {dWell.hrv && <span className="flex items-center text-sky-400/85" title="HRV"><Activity className="w-2.5 h-2.5 mr-0.5" />{Math.round(dWell.hrv)}</span>}
+            {dWell.sleep && <span className="flex items-center text-indigo-400/85"><Moon className="w-2.5 h-2.5 mr-0.5" fill="currentColor" />{dWell.sleep}</span>}
           </div>
         )}
         {compact && dWell && (
-          <div className="flex gap-1 text-[9px] font-bold text-zinc-600">
+          <div className="flex gap-1 text-[9px] font-mono telemetry-num font-bold text-zinc-600">
             {dWell.restingHR && <span className="flex items-center text-rose-500/60"><Heart className="w-2.5 h-2.5" fill="currentColor" />{dWell.restingHR}</span>}
             {dWell.hrv && <span className="flex items-center text-sky-400/60" title="HRV"><Activity className="w-2.5 h-2.5" />{Math.round(dWell.hrv)}</span>}
           </div>
         )}
       </div>
-      <div className={`flex-1 overflow-y-auto pr-1 custom-scrollbar ${compact ? 'space-y-1' : 'space-y-3'}`}>
+      <div className={`flex-1 overflow-y-auto pr-0.5 custom-scrollbar ${compact ? 'space-y-1' : 'space-y-2'}`}>
         {dWorks.map(w => (
           <WorkoutCard
             key={w.id}
@@ -402,18 +429,18 @@ function DragOverlayCard({ workout, activeWidth }) {
   return (
     <div
       style={{ width: activeWidth ? `${activeWidth}px` : '200px' }}
-      className="rounded-lg overflow-hidden border-2 border-orange-500/80 bg-zinc-900/95 shadow-2xl shadow-orange-500/30 backdrop-blur-xl pointer-events-none cursor-grabbing scale-105 opacity-90 transition-transform flex flex-col"
+      className="rounded-lg overflow-hidden border border-volt-400 bg-zinc-900/95 shadow-volt-glow pointer-events-none cursor-grabbing scale-105 opacity-95 transition-transform flex flex-col"
     >
-      <div className={`h-1.5 w-full ${getTopCol(workout.statusColor)}`} />
-      <div className="p-3 flex flex-col gap-1">
-        <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-bold uppercase tracking-wide">
-          <Bike className="w-3.5 h-3.5" />
+      <div className={`h-[2px] w-full ${getTopCol(workout.statusColor)}`} />
+      <div className="p-2.5 flex flex-col gap-1">
+        <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-mono telemetry-num font-bold uppercase tracking-wide">
+          <Bike className="w-3 h-3" />
           <span>{formatDur(workout.duration)}</span>
         </div>
         <span className="font-bold text-xs text-zinc-100 line-clamp-1 leading-tight">{workout.title}</span>
-        <div className="flex items-baseline gap-1 bg-zinc-950/40 rounded px-1.5 py-0.5 border border-zinc-800/50 w-fit mt-1">
-          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Load</span>
-          <span className="font-mono text-xs font-semibold text-zinc-200">{workout.tss > 0 ? workout.tss : '-'}</span>
+        <div className="flex items-baseline gap-1 bg-zinc-950 rounded px-1.5 py-0.5 border border-zinc-800 w-fit mt-1 font-mono telemetry-num">
+          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">TSS</span>
+          <span className="text-xs font-bold text-volt-400">{workout.tss > 0 ? workout.tss : (workout.plannedTss > 0 ? workout.plannedTss : '-')}</span>
         </div>
         <WorkoutGraph
           workoutDoc={workout.workout_doc || workout.steps}
@@ -572,7 +599,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
   const monthNames = ["Siječanj", "Veljača", "Ožujak", "Travanj", "Svibanj", "Lipanj", "Srpanj", "Kolovoz", "Rujan", "Listopad", "Studeni", "Prosinac"];
   const dayNames = ["PON", "UTO", "SRI", "ČET", "PET", "SUB", "NED"];
-  const todayStr = new Date().toISOString().split('T')[0];
+  const nowLocal = new Date();
+  const todayStr = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
 
   const handleDragStart = useCallback((event) => {
     setActiveId(event.active.id);
@@ -763,7 +791,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   };
 
   return (
-    <div className="w-full bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 flex flex-col h-full min-h-0 animate-in fade-in overflow-hidden">
+    <div className="w-full carbon-panel rounded-xl flex flex-col h-full min-h-0 animate-in fade-in overflow-hidden">
       {/* Modali */}
       <WorkoutEditorModal
         workout={editingWorkout}
@@ -787,36 +815,39 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         onStartWorkoutInTrainer={onSelectWorkout}
       />
       {selectedDateForNew && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setSelectedDateForNew(null)}>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4 relative" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setSelectedDateForNew(null)}>
+          <div className="carbon-panel rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-3.5 relative" onClick={e => e.stopPropagation()}>
             <button onClick={() => setSelectedDateForNew(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition-colors">
               <XCircle className="w-5 h-5" />
             </button>
-            <h2 className="text-xl font-bold text-zinc-100 mb-2">Novi Trening</h2>
+            <div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400">{selectedDateForNew}</span>
+              <h2 className="text-xl font-display font-bold uppercase tracking-wide text-zinc-100">Dodaj u Kalendar</h2>
+            </div>
 
             <button
               onClick={handleManualCreate}
-              className="flex items-center gap-4 w-full p-4 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700 hover:border-orange-500/50 transition-all group"
+              className="flex items-center gap-3.5 w-full p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/50 transition-all group"
             >
-              <div className="bg-orange-500/10 p-3 rounded-lg text-orange-400 group-hover:bg-orange-500 group-hover:text-zinc-950 transition-colors">
-                <PenLine className="w-6 h-6" />
+              <div className="bg-volt-400/10 border border-volt-400/25 p-2.5 rounded-lg text-volt-400 group-hover:bg-volt-400 group-hover:text-zinc-950 transition-colors">
+                <PenLine className="w-5 h-5" />
               </div>
               <div className="flex flex-col text-left">
-                <span className="font-bold text-zinc-200">Ručni unos</span>
+                <span className="font-bold text-sm text-zinc-100">Ručni unos treninga</span>
                 <span className="text-xs text-zinc-500">Kreiraj strukturirani trening (npr. - 10m 65%)</span>
               </div>
             </button>
 
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-4 w-full p-4 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700 hover:border-sky-500/50 transition-all group"
+              className="flex items-center gap-3.5 w-full p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-sky-500/50 transition-all group"
             >
-              <div className="bg-sky-500/10 p-3 rounded-lg text-sky-400 group-hover:bg-sky-500 group-hover:text-zinc-950 transition-colors">
-                <Upload className="w-6 h-6" />
+              <div className="bg-sky-500/10 border border-sky-500/25 p-2.5 rounded-lg text-sky-400 group-hover:bg-sky-500 group-hover:text-zinc-950 transition-colors">
+                <Upload className="w-5 h-5" />
               </div>
               <div className="flex flex-col text-left">
-                <span className="font-bold text-zinc-200">Učitaj datoteku</span>
-                <span className="text-xs text-zinc-500">Podržani formati: .ZWO, .ERG</span>
+                <span className="font-bold text-sm text-zinc-100">Uvezi recept datoteku</span>
+                <span className="text-xs font-mono text-zinc-500">.ZWO · .ERG</span>
               </div>
             </button>
             <input
@@ -829,14 +860,14 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
             <button
               onClick={() => activityFileInputRef.current?.click()}
-              className="flex items-center gap-4 w-full p-4 rounded-xl bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700 hover:border-emerald-500/50 transition-all group mt-2"
+              className="flex items-center gap-3.5 w-full p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 transition-all group"
             >
-              <div className="bg-emerald-500/10 p-3 rounded-lg text-emerald-400 group-hover:bg-emerald-500 group-hover:text-zinc-950 transition-colors">
-                <Activity className="w-6 h-6" />
+              <div className="bg-emerald-500/10 border border-emerald-500/25 p-2.5 rounded-lg text-emerald-400 group-hover:bg-emerald-500 group-hover:text-zinc-950 transition-colors">
+                <Activity className="w-5 h-5" />
               </div>
               <div className="flex flex-col text-left">
-                <span className="font-bold text-zinc-200">Odrađena aktivnost</span>
-                <span className="text-xs text-zinc-500">Učitaj povijesni trening (FIT, TCX)</span>
+                <span className="font-bold text-sm text-zinc-100">Odrađena aktivnost</span>
+                <span className="text-xs font-mono text-zinc-500">.FIT · .TCX telemetrija</span>
               </div>
             </button>
             <input
@@ -851,21 +882,21 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       )}
 
       {/* FIKSNO ZAGLAVLJE KALENDARA */}
-      <div className="flex flex-col shadow-xl z-20 shrink-0 relative">
-        <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-xl relative z-50">
+      <div className="flex flex-col z-20 shrink-0 relative">
+        <div className="flex items-center justify-between px-4 py-3 short:py-1.5 border-b border-zinc-800 bg-zinc-950 relative z-50">
         {/* Month/Year button that opens mini calendar picker */}
         <div className="relative" ref={monthPickerRef}>
           <button
             onClick={() => setShowMonthPicker(v => !v)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors group"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition-colors group"
           >
-            <span className="font-bold text-lg text-zinc-100 drop-shadow-sm">{headerLabel}</span>
-            <ChevronRight className={`w-4 h-4 text-zinc-400 group-hover:text-zinc-200 transition-all duration-200 ${showMonthPicker ? 'rotate-90' : 'rotate-0'}`} />
+            <span className="font-display font-bold uppercase tracking-wide text-base md:text-lg text-zinc-100">{headerLabel}</span>
+            <ChevronRight className={`w-4 h-4 text-zinc-400 group-hover:text-volt-400 transition-all duration-200 ${showMonthPicker ? 'rotate-90 text-volt-400' : 'rotate-0'}`} />
           </button>
 
           {/* Mini calendar dropdown */}
           {showMonthPicker && (
-            <div className="absolute top-full left-0 mt-2 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl p-4 w-72 select-none">
+            <div className="absolute top-full left-0 mt-2 z-50 carbon-panel rounded-xl shadow-2xl p-4 w-72 select-none">
               {/* Picker header */}
               <div className="flex items-center justify-between mb-3">
                 <button
@@ -873,19 +904,18 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     if (pickerMonth === 0) { setPickerMonth(11); setPickerYear(y => y - 1); }
                     else setPickerMonth(m => m - 1);
                   }}
-                  className="p-1.5 hover:bg-zinc-700 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
+                  className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm text-zinc-100">{monthNames[pickerMonth]}</span>
-                  {/* Godina s +/- gumbima */}
-                  <div className="flex items-center gap-1 bg-zinc-800 rounded-lg px-2 py-0.5">
+                  <span className="font-display font-bold uppercase tracking-wide text-sm text-zinc-100">{monthNames[pickerMonth]}</span>
+                  <div className="flex items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-md px-2 py-0.5 font-mono telemetry-num">
                     <button
                       onClick={(e) => { e.stopPropagation(); setPickerYear(y => y - 1); }}
                       className="text-zinc-400 hover:text-zinc-200 transition-colors text-xs font-bold"
                     >‹</button>
-                    <span className="font-bold text-sm text-orange-400 min-w-[36px] text-center">{pickerYear}</span>
+                    <span className="font-bold text-xs text-volt-400 min-w-[36px] text-center">{pickerYear}</span>
                     <button
                       onClick={(e) => { e.stopPropagation(); setPickerYear(y => y + 1); }}
                       className="text-zinc-400 hover:text-zinc-200 transition-colors text-xs font-bold"
@@ -897,7 +927,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     if (pickerMonth === 11) { setPickerMonth(0); setPickerYear(y => y + 1); }
                     else setPickerMonth(m => m + 1);
                   }}
-                  className="p-1.5 hover:bg-zinc-700 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
+                  className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
@@ -906,7 +936,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               {/* Day headers */}
               <div className="grid grid-cols-7 mb-1">
                 {["Po", "Ut", "Sr", "Če", "Pe", "Su", "Ne"].map(d => (
-                  <div key={d} className="text-center text-[10px] font-bold text-zinc-500 uppercase py-1">{d}</div>
+                  <div key={d} className="text-center text-[10px] font-mono font-bold text-zinc-500 uppercase py-1">{d}</div>
                 ))}
               </div>
 
@@ -946,11 +976,11 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                             setShowMonthPicker(false);
                           }}
                           className={`
-                            text-center text-xs py-1.5 rounded-full mx-0.5 my-0.5 transition-colors font-medium
-                            ${isSelected ? 'bg-orange-500 text-zinc-950 font-bold' : ''}
-                            ${isToday && !isSelected ? 'ring-1 ring-orange-500 text-orange-400' : ''}
-                            ${!isSelected && !isToday && cell.current ? 'text-zinc-200 hover:bg-zinc-700' : ''}
-                            ${!isSelected && !isToday && !cell.current ? 'text-zinc-600 hover:bg-zinc-800' : ''}
+                            text-center text-xs font-mono telemetry-num py-1.5 rounded-md mx-0.5 my-0.5 transition-colors font-medium
+                            ${isSelected ? 'bg-volt-400 text-zinc-950 font-bold' : ''}
+                            ${isToday && !isSelected ? 'ring-1 ring-volt-400 text-volt-400 font-bold' : ''}
+                            ${!isSelected && !isToday && cell.current ? 'text-zinc-200 hover:bg-zinc-800' : ''}
+                            ${!isSelected && !isToday && !cell.current ? 'text-zinc-600 hover:bg-zinc-900' : ''}
                           `}
                         >
                           {cell.day}
@@ -965,16 +995,16 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         </div>
 
         {/* Week navigation */}
-        <div className="flex bg-zinc-900/80 rounded-lg p-1 border border-zinc-800 gap-1">
-          <button onClick={goWeekBack} title="Prošli tjedan" className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-          <button onClick={goToday} title="Idi na današnji tjedan" className="px-4 py-1.5 hover:bg-zinc-800 rounded-md text-[11px] font-bold text-zinc-300 uppercase transition-colors">Danas</button>
-          <button onClick={goWeekForward} title="Sljedeći tjedan" className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"><ChevronRight className="w-4 h-4" /></button>
+        <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 gap-1">
+          <button onClick={goWeekBack} title="Prošli tjedan" className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+          <button onClick={goToday} title="Idi na današnji tjedan" className="px-3.5 py-1 hover:bg-zinc-800 rounded text-[11px] font-mono font-bold text-volt-400 uppercase tracking-wider transition-colors">Danas</button>
+          <button onClick={goWeekForward} title="Sljedeći tjedan" className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors"><ChevronRight className="w-4 h-4" /></button>
         </div>
       </div>
 
-        <div className="hidden md:grid grid-cols-8 border-b border-zinc-800/80 bg-zinc-900/95 backdrop-blur-xl font-bold text-xs text-zinc-400 uppercase tracking-widest">
-          {dayNames.map((d, i) => <div key={i} className="py-3 px-3 border-r border-zinc-800/80">{d}</div>)}
-          <div className="py-3 text-center bg-orange-500/10 text-orange-400 border-l border-zinc-800 shadow-[inset_0_0_10px_rgba(34,211,238,0.05)]">Sažetak</div>
+        <div className="hidden md:grid grid-cols-8 border-b border-zinc-800 bg-zinc-900/95 font-mono font-bold text-[11px] text-zinc-400 uppercase tracking-[0.18em]">
+          {dayNames.map((d, i) => <div key={i} className="py-2.5 short:py-1.5 px-3 border-r border-zinc-800/80">{d}</div>)}
+          <div className="py-2.5 short:py-1.5 text-center bg-volt-400/10 text-volt-400 border-l border-zinc-800">Sažetak</div>
         </div>
       </div>
 
@@ -1011,7 +1041,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         <div className="hidden md:flex flex-1 flex-col bg-zinc-800 border-l border-zinc-800 gap-[1px] overflow-y-auto">
           {threeWeeks.map(({ days, isActive }, wi) => {
             let aT_cycle = 0; let pT_cycle = 0; let aD = 0; let pD = 0;
-            let aT_other = 0; let pT_other = 0;
+            let aT_other = 0; let pT_other = 0; let aD_other = 0; let pD_other = 0;
             
             // Week label: date range
             const wStart = days[0];
@@ -1021,91 +1051,97 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               ? `${wStart.day}–${wEnd.day} ${mn[wStart.month]}`
               : `${wStart.day} ${mn[wStart.month]} – ${wEnd.day} ${mn[wEnd.month]}`;
 
-            // CTL/ATL/TSB — Planirano (nedjelja)
+            const weekStartStr = wStart.dateStr;
+            const weekEndStr = wEnd.dateStr;
+            const isPastWeek = weekEndStr < todayStr;
+            const isFutureWeek = weekStartStr > todayStr;
+            const isCurrentCalendarWeek = !isPastWeek && !isFutureWeek;
+
+            // CTL/ATL/TSB — Projekcija na kraju tjedna (nedjelja)
             let endCtl = null, endAtl = null, endTsb = null;
             for (let di = 6; di >= 0; di--) {
-              const wd = wellnessData[days[di].dateStr];
+              const wd = wellnessData?.[days[di].dateStr];
               if (wd && wd.ctl != null) {
-                endCtl = Math.round(wd.ctl);
-                endAtl = Math.round(wd.atl);
+                endCtl = Math.round(Number(wd.ctl));
+                endAtl = Math.round(Number(wd.atl));
                 endTsb = endCtl - endAtl;
                 break;
               }
             }
 
-            // CTL/ATL/TSB — Trenutno (do današnjeg dana)
+            // CTL/ATL/TSB — Trenutno stanje (do današnjeg dana)
             let currentCtl = null, currentAtl = null, currentTsb = null;
-            for (let di = 6; di >= 0; di--) {
-              const dDate = new Date(days[di].year, days[di].month, days[di].day);
-              const todayDate = new Date();
-              todayDate.setHours(0,0,0,0);
-              
-              if (dDate <= todayDate) {
-                 const wd = wellnessData[days[di].dateStr];
-                 if (wd && wd.ctl != null) {
-                   currentCtl = Math.round(wd.ctl);
-                   currentAtl = Math.round(wd.atl);
-                   currentTsb = currentCtl - currentAtl;
-                   break;
-                 }
+            if (!isFutureWeek) {
+              for (let di = 6; di >= 0; di--) {
+                if (days[di].dateStr <= todayStr) {
+                  const wd = wellnessData?.[days[di].dateStr];
+                  if (wd && (wd.actualCtl != null || wd.ctl != null)) {
+                    const cRaw = isPastWeek ? wd.ctl : (wd.actualCtl ?? wd.ctl);
+                    const aRaw = isPastWeek ? wd.atl : (wd.actualAtl ?? wd.atl);
+                    currentCtl = Math.round(Number(cRaw));
+                    currentAtl = Math.round(Number(aRaw));
+                    currentTsb = currentCtl - currentAtl;
+                    break;
+                  }
+                }
               }
             }
 
-            // Ako nemamo current (budući tjedan), ili su isti (prošli tjedan), pripremamo prikaz
+            const todayWell = wellnessData?.[todayStr];
+            const showWeekProjection = isCurrentCalendarWeek && (weekEndStr > todayStr || Boolean(todayWell?.hasUncompletedToday));
+
+            // Prikaz: za tekući tjedan u tijeku uvijek prikaži "trenutno (projekcija u ned)", za budući "(projekcija)", za prošli "konačno"
             const renderMetric = (curr, plan) => {
-               if (curr != null && plan != null && curr !== plan) return `${curr} (${plan})`;
-               if (curr != null) return `${curr}`;
-               if (plan != null) return `(${plan})`;
-               return null;
+              if (curr != null && plan != null && (showWeekProjection || curr !== plan)) {
+                return `${curr} (${plan})`;
+              }
+              if (curr != null) return `${curr}`;
+              if (plan != null) return `(${plan})`;
+              return null;
             };
 
             const displayCtl = renderMetric(currentCtl, endCtl);
             const displayAtl = renderMetric(currentAtl, endAtl);
             
+            const formatSigned = (v) => (v > 0 ? `+${v}` : `${v}`);
             const displayTsb = () => {
-               if (currentTsb != null && endTsb != null && currentTsb !== endTsb) {
-                 const currStr = currentTsb > 0 ? `+${currentTsb}` : currentTsb;
-                 const planStr = endTsb > 0 ? `+${endTsb}` : endTsb;
-                 return `${currStr} (${planStr})`;
-               }
-               if (currentTsb != null) return currentTsb > 0 ? `+${currentTsb}` : currentTsb;
-               if (endTsb != null) return `(${endTsb > 0 ? `+${endTsb}` : endTsb})`;
-               return null;
+              if (currentTsb != null && endTsb != null && (showWeekProjection || currentTsb !== endTsb)) {
+                return `${formatSigned(currentTsb)} (${formatSigned(endTsb)})`;
+              }
+              if (currentTsb != null) return formatSigned(currentTsb);
+              if (endTsb != null) return `(${formatSigned(endTsb)})`;
+              return null;
             };
             const renderedTsb = displayTsb();
-            // Boja TSB-a se određuje po currentTsb ako postoji, inace endTsb
             const colorTsbVal = currentTsb != null ? currentTsb : endTsb;
 
-            // Ramp Rate — CTL prošlog tjedna (7 dana ranije od Monday ovog tjedna) vs current/end
+            // Ramp Rate — CTL na kraju prošlog tjedna (nedjelja prije ovog ponedjeljka) u odnosu na trenutni / projicirani nedjeljni CTL
             let prevWeekCtl = null;
             const mondayDate = new Date(days[0].year, days[0].month, days[0].day);
             for (let di = 6; di >= 0; di--) {
               const prevDate = new Date(mondayDate);
               prevDate.setDate(prevDate.getDate() - 7 + di);
               const prevDateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
-              const pwd = wellnessData[prevDateStr];
+              const pwd = wellnessData?.[prevDateStr];
               if (pwd && pwd.ctl != null) {
-                prevWeekCtl = Math.round(pwd.ctl);
+                prevWeekCtl = Math.round(Number(pwd.ctl));
                 break;
               }
             }
             
-            let rampRate = null;
-            let currentRamp = currentCtl != null && prevWeekCtl != null ? currentCtl - prevWeekCtl : null;
-            let endRamp = endCtl != null && prevWeekCtl != null ? endCtl - prevWeekCtl : null;
+            const currentRamp = currentCtl != null && prevWeekCtl != null ? currentCtl - prevWeekCtl : null;
+            const endRamp = endCtl != null && prevWeekCtl != null ? endCtl - prevWeekCtl : null;
             
             const displayRamp = () => {
-               if (currentRamp != null && endRamp != null && currentRamp !== endRamp) {
-                 const currStr = currentRamp > 0 ? `+${currentRamp}` : currentRamp;
-                 const planStr = endRamp > 0 ? `+${endRamp}` : endRamp;
-                 return `${currStr} (${planStr})`;
-               }
-               if (currentRamp != null) return currentRamp > 0 ? `+${currentRamp}` : currentRamp;
-               if (endRamp != null) return `(${endRamp > 0 ? `+${endRamp}` : endRamp})`;
-               return null;
+              if (currentRamp != null && endRamp != null && (showWeekProjection || currentRamp !== endRamp)) {
+                return `${formatSigned(currentRamp)} (${formatSigned(endRamp)})`;
+              }
+              if (currentRamp != null) return formatSigned(currentRamp);
+              if (endRamp != null) return `(${formatSigned(endRamp)})`;
+              return null;
             };
             const renderedRamp = displayRamp();
-            const colorRampVal = currentRamp != null ? currentRamp : endRamp;
+            const colorRampVal = endRamp != null && isFutureWeek ? endRamp : (currentRamp != null ? currentRamp : endRamp);
 
             const getTsbColor = (tsb) => {
               if (tsb == null) return 'text-zinc-600';
@@ -1128,27 +1164,45 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                 key={wi}
                 className={`grid grid-cols-8 gap-[1px] shrink-0 transition-all
                   ${isActive
-                    ? 'min-h-[160px] ring-1 ring-inset ring-orange-500/50'
-                    : 'min-h-[110px] opacity-60 hover:opacity-80'
+                    ? 'min-h-[168px] ring-1 ring-inset ring-volt-400/35'
+                    : 'min-h-[112px] opacity-65 hover:opacity-90'
                   }`}
               >
                 {days.map((dObj) => {
                   const dWorks = workoutsByDate[dObj.dateStr] || [];
                   dWorks.forEach(w => {
+                    const actTssVal = Math.max(0, Math.round(Number(w.tss) || 0));
+                    const planTssVal = Math.max(0, Math.round(Number(w.plannedTss ?? w.tss) || 0));
+                    const actDurVal = Math.max(0, Math.round(Number(w.duration) || 0));
+                    const planDurVal = Math.max(0, Math.round(Number(w.plannedDuration ?? w.duration) || 0));
+
                     if (w.isCompleted) {
                       if (w.category !== 'OTHER') {
-                        aT_cycle += w.tss; aD += w.duration;
-                        if (w.plannedTss) pT_cycle += w.plannedTss;
-                        if (w.plannedDuration) pD += w.plannedDuration;
+                        aT_cycle += actTssVal;
+                        aD += actDurVal;
+                        if (w.plannedTss != null && Number(w.plannedTss) > 0) {
+                          pT_cycle += Math.round(Number(w.plannedTss));
+                        }
+                        if (w.plannedDuration != null && Number(w.plannedDuration) > 0) {
+                          pD += Math.round(Number(w.plannedDuration));
+                        }
                       } else {
-                        aT_other += w.tss;
-                        if (w.plannedTss) pT_other += w.plannedTss;
+                        aT_other += actTssVal;
+                        aD_other += actDurVal;
+                        if (w.plannedTss != null && Number(w.plannedTss) > 0) {
+                          pT_other += Math.round(Number(w.plannedTss));
+                        }
+                        if (w.plannedDuration != null && Number(w.plannedDuration) > 0) {
+                          pD_other += Math.round(Number(w.plannedDuration));
+                        }
                       }
                     } else {
                       if (w.category !== 'OTHER') {
-                        pT_cycle += w.tss; pD += w.duration;
+                        pT_cycle += planTssVal;
+                        pD += planDurVal;
                       } else {
-                        pT_other += w.tss;
+                        pT_other += planTssVal;
+                        pD_other += planDurVal;
                       }
                     }
                   });
@@ -1158,7 +1212,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       dObj={dObj}
                       dWorks={dWorks}
                       isTdy={dObj.dateStr === todayStr}
-                      dWell={wellnessData[dObj.dateStr]}
+                      dWell={wellnessData?.[dObj.dateStr]}
                       isDesktop={true}
                       todayStr={todayStr}
                       activeId={activeId}
@@ -1176,78 +1230,127 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                 })}
 
                 {/* Week summary column */}
-                <div className={`p-3 flex flex-col justify-between border-l border-zinc-800 text-right
-                  ${isActive ? 'bg-gradient-to-b from-orange-500/8 to-transparent bg-zinc-900/40' : 'bg-zinc-900/20'}`}
-                >
-                  <p className={`text-[11px] font-bold uppercase tracking-wider mb-1 ${isActive ? 'text-orange-400' : 'text-zinc-600'}`}>
-                    {weekRangeLabel}
-                  </p>
-                  <div className="space-y-3">
-                    <div>
-                      <p className={`text-[10px] font-black uppercase tracking-tighter mb-0.5 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`}>Vrijeme</p>
-                      <div className="flex items-center justify-end gap-1 text-xs">
-                        <Clock className={`w-4 h-4 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`} />
-                        <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{formatDur(aD)}</span>
-                        <span className="text-zinc-700">/</span>
-                        <span className="text-zinc-500 font-medium">{formatDur(pD)}</span>
-                      </div>
-                    </div>
-                    <div className={`pt-1.5 border-t ${isActive ? 'border-zinc-700' : 'border-zinc-800'}`}>
-                      <p className={`text-[10px] font-black uppercase tracking-tighter mb-0.5 ${isActive ? 'text-orange-500' : 'text-zinc-600'}`}>TSS</p>
-                      <div className="flex items-center justify-end gap-1 text-xs mb-0.5" title="Biciklizam TSS">
-                        <Bike className={`w-3.5 h-3.5 mr-auto ${isActive ? 'text-zinc-400' : 'text-zinc-600'}`} />
-                        <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{aT_cycle}</span>
-                        <span className="text-zinc-700">/</span>
-                        <span className="text-zinc-500 font-medium">{pT_cycle}</span>
-                      </div>
-                      {(aT_other > 0 || pT_other > 0) && (
-                        <div className="flex items-center justify-end gap-1 text-[11px]" title="Ostali sportovi TSS">
-                          <Activity className={`w-3 h-3 mr-auto ${isActive ? 'text-zinc-500' : 'text-zinc-600'}`} />
-                          <span className={`font-bold ${isActive ? 'text-zinc-300' : 'text-zinc-500'}`}>{aT_other}</span>
-                          <span className="text-zinc-700">/</span>
-                          <span className="text-zinc-500 font-medium">{pT_other}</span>
-                        </div>
-                      )}
-                    </div>
+                {(() => {
+                  const hasCycle = aT_cycle > 0 || pT_cycle > 0 || aD > 0 || pD > 0;
+                  const mainActualDur = hasCycle ? aD : aD_other;
+                  const mainPlannedDur = hasCycle ? pD : pD_other;
+                  const mainActualTss = hasCycle ? aT_cycle : aT_other;
+                  const mainPlannedTss = hasCycle ? pT_cycle : pT_other;
 
-                    {/* CTL / ATL / TSB blok */}
-                    {(displayCtl != null || displayAtl != null) && (
-                      <div className={`pt-1.5 border-t ${isActive ? 'border-zinc-700' : 'border-zinc-800'}`}>
-                        <p className={`text-[10px] font-black uppercase tracking-tighter mb-1 ${isActive ? 'text-sky-500' : 'text-zinc-600'}`}>Forma</p>
-                        <div className="flex flex-col gap-0.5 items-end">
-                          {displayCtl != null && (
-                            <div className="flex items-center gap-1 text-[11px]">
-                              <span className="text-zinc-600 font-bold">CTL</span>
-                              <span className={`font-mono font-bold ${isActive ? 'text-sky-400' : 'text-zinc-500'}`}>{displayCtl}</span>
-                            </div>
-                          )}
-                          {displayAtl != null && (
-                            <div className="flex items-center gap-1 text-[11px]">
-                              <span className="text-zinc-600 font-bold">ATL</span>
-                              <span className={`font-mono font-bold ${isActive ? 'text-purple-400' : 'text-zinc-500'}`}>{displayAtl}</span>
-                            </div>
-                          )}
-                          {renderedTsb != null && (
-                            <div className={`flex items-center gap-1 text-[11px] mt-0.5 px-1 rounded ${isActive ? 'bg-zinc-800/60' : 'bg-zinc-900/60'}`}>
-                              <span className="text-zinc-600 font-bold">TSB</span>
-                              <span className={`font-mono font-bold ${getTsbColor(colorTsbVal)}`}>
-                                {renderedTsb}
-                              </span>
-                            </div>
-                          )}
-                          {renderedRamp != null && (
-                            <div className={`flex items-center gap-1 text-[11px] mt-0.5 px-1 rounded ${isActive ? 'bg-zinc-800/60' : 'bg-zinc-900/60'}`} title="Ramp Rate: tjedna promjena CTL-a. Optimalno: +3 do +8">
-                              <span className="text-zinc-600 font-bold">RR</span>
-                              <span className={`font-mono font-bold ${getRampColor(colorRampVal)}`}>
-                                {renderedRamp}
-                              </span>
+                  const durPctRaw = mainPlannedDur > 0 ? Math.round((mainActualDur / mainPlannedDur) * 100) : (mainActualDur > 0 ? 100 : 0);
+                  const durBarPct = Math.min(100, durPctRaw);
+                  const tssPctRaw = mainPlannedTss > 0 ? Math.round((mainActualTss / mainPlannedTss) * 100) : (mainActualTss > 0 ? 100 : 0);
+                  const tssBarPct = Math.min(100, tssPctRaw);
+
+                  const pmcHeaderLabel = showWeekProjection
+                    ? 'PMC · DANAS (NED)'
+                    : isFutureWeek
+                    ? 'PMC · PROJEKCIJA'
+                    : 'PMC FORMA';
+
+                  return (
+                    <div className={`p-3 flex flex-col justify-between border-l border-zinc-800 text-right font-mono telemetry-num
+                      ${isActive ? 'bg-zinc-900/90' : 'bg-zinc-950/90'}`}
+                    >
+                      <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${isActive ? 'text-volt-400' : 'text-zinc-500'}`}>
+                        {weekRangeLabel}
+                      </p>
+                      <div className="space-y-2.5">
+                        <div>
+                          <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-0.5">
+                            <span className={isActive ? 'text-zinc-400' : 'text-zinc-600'}>VRIJEME</span>
+                            {mainPlannedDur > 0 && <span className={durPctRaw >= 90 ? 'text-volt-400' : 'text-zinc-500'}>{durPctRaw}%</span>}
+                          </div>
+                          <div className="flex items-center justify-end gap-1 text-[11px]" title="Odrađeno / Planirano vrijeme">
+                            <Clock className={`w-3 h-3 mr-auto ${isActive ? 'text-volt-400' : 'text-zinc-600'}`} />
+                            <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{formatDur(mainActualDur)}</span>
+                            <span className="text-zinc-700">/</span>
+                            <span className="text-zinc-500">{formatDur(mainPlannedDur)}</span>
+                          </div>
+                          <div className="h-1 w-full bg-zinc-950 border border-zinc-800/80 rounded-full overflow-hidden mt-1">
+                            <div
+                              className={`h-full transition-all duration-500 ${isActive ? 'bg-volt-400' : 'bg-zinc-500'}`}
+                              style={{ width: `${durBarPct}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className={`pt-2 border-t ${isActive ? 'border-zinc-800' : 'border-zinc-800/60'}`}>
+                          <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-0.5">
+                            <span className={isActive ? 'text-zinc-400' : 'text-zinc-600'}>TSS LOAD</span>
+                            {mainPlannedTss > 0 && <span className={tssPctRaw >= 90 ? 'text-volt-400' : 'text-zinc-500'}>{tssPctRaw}%</span>}
+                          </div>
+                          <div className="flex items-center justify-end gap-1 text-[11px]" title="Odrađeni TSS / Planirani TSS">
+                            {hasCycle ? (
+                              <Bike className={`w-3 h-3 mr-auto ${isActive ? 'text-zinc-400' : 'text-zinc-600'}`} />
+                            ) : (
+                              <Activity className={`w-3 h-3 mr-auto ${isActive ? 'text-zinc-400' : 'text-zinc-600'}`} />
+                            )}
+                            <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{mainActualTss}</span>
+                            <span className="text-zinc-700">/</span>
+                            <span className="text-zinc-500">{mainPlannedTss}</span>
+                          </div>
+                          <div className="h-1 w-full bg-zinc-950 border border-zinc-800/80 rounded-full overflow-hidden mt-1">
+                            <div
+                              className={`h-full transition-all duration-500 ${isActive ? 'bg-volt-400' : 'bg-zinc-500'}`}
+                              style={{ width: `${tssBarPct}%` }}
+                            />
+                          </div>
+                          {hasCycle && (aT_other > 0 || pT_other > 0) && (
+                            <div className="flex items-center justify-end gap-1 text-[10px] mt-1" title="Ostali sportovi TSS (ulazi u PMC projekciju)">
+                              <Activity className="w-2.5 h-2.5 mr-auto text-zinc-500" />
+                              <span className="font-bold text-zinc-300">{aT_other}</span>
+                              <span className="text-zinc-700">/</span>
+                              <span className="text-zinc-500">{pT_other}</span>
                             </div>
                           )}
                         </div>
+
+                        {/* CTL / ATL / TSB blok s projekcijom u zagradama */}
+                        {(displayCtl != null || displayAtl != null) && (
+                          <div
+                            className={`pt-2 border-t ${isActive ? 'border-zinc-800' : 'border-zinc-800/60'}`}
+                            title={showWeekProjection ? 'Prvi broj = trenutno stanje danas · (u zagradi) = projekcija na kraju tjedna u nedjelju prema planu' : 'Projekcija / stanje kondicije na kraju tjedna'}
+                          >
+                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-1 ${isActive ? 'text-sky-400' : 'text-zinc-600'}`}>
+                              {pmcHeaderLabel}
+                            </p>
+                            <div className="flex flex-col gap-0.5 items-end text-[11px]">
+                              {displayCtl != null && (
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="text-zinc-500 text-[10px] font-bold">CTL</span>
+                                  <span className={`font-bold ${isActive ? 'text-sky-400' : 'text-zinc-400'}`}>{displayCtl}</span>
+                                </div>
+                              )}
+                              {displayAtl != null && (
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="text-zinc-500 text-[10px] font-bold">ATL</span>
+                                  <span className={`font-bold ${isActive ? 'text-purple-400' : 'text-zinc-400'}`}>{displayAtl}</span>
+                                </div>
+                              )}
+                              {renderedTsb != null && (
+                                <div className="flex items-center justify-between w-full mt-0.5 px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800/80">
+                                  <span className="text-zinc-500 text-[10px] font-bold">TSB</span>
+                                  <span className={`font-bold ${getTsbColor(colorTsbVal)}`}>
+                                    {renderedTsb}
+                                  </span>
+                                </div>
+                              )}
+                              {renderedRamp != null && (
+                                <div className="flex items-center justify-between w-full mt-0.5 px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800/80" title="Ramp Rate: tjedna promjena CTL-a (optimalno +3 do +8)">
+                                  <span className="text-zinc-500 text-[10px] font-bold">RR</span>
+                                  <span className={`font-bold ${getRampColor(colorRampVal)}`}>
+                                    {renderedRamp}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

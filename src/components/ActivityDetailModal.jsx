@@ -598,16 +598,16 @@ export default function ActivityDetailModal({
   const z6 = Math.min((userFtp * 1.50 / maxPowerStream) * 100, 100);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
       <div
-        className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] transform transition-all"
+        className="carbon-panel rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] transform transition-all"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center p-5 border-b border-zinc-800/80 bg-zinc-950/50">
-          <div>
+        <div className="flex justify-between items-center p-5 border-b border-zinc-800 bg-zinc-950">
+          <div className="min-w-0 flex-1 pr-3">
             {isEditingTitle ? (
               <div className="flex items-center gap-2">
-                <Activity className="w-5 h-5 text-emerald-500 shrink-0" />
+                <Activity className="w-5 h-5 text-volt-400 shrink-0" />
                 <input
                   ref={titleInputRef}
                   type="text"
@@ -615,49 +615,49 @@ export default function ActivityDetailModal({
                   onChange={(e) => setEditTitle(e.target.value)}
                   onKeyDown={handleTitleKeyDown}
                   disabled={isSavingTitle}
-                  className="text-xl font-black text-zinc-100 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-1 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition-all w-full"
+                  className="text-xl font-display font-bold uppercase tracking-wide text-zinc-100 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1 outline-none focus:border-volt-400 transition-all w-full"
                 />
                 <button
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={handleSaveTitle}
                   disabled={isSavingTitle}
-                  className="p-1.5 text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg transition-colors border border-emerald-500/20 shrink-0"
+                  className="p-1.5 text-volt-400 hover:text-volt-300 bg-volt-400/10 hover:bg-volt-400/20 rounded-lg transition-colors border border-volt-400/25 shrink-0"
                 >
                   {isSavingTitle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 </button>
                 <button
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={handleCancelEdit}
-                  className="p-1.5 text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 hover:bg-zinc-700/50 rounded-lg transition-colors border border-zinc-700/30 shrink-0"
+                  className="p-1.5 text-zinc-500 hover:text-zinc-300 bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors border border-zinc-800 shrink-0"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <h2
-                className="text-xl font-black text-zinc-100 leading-tight flex items-center gap-2 group/title cursor-pointer hover:text-orange-400 transition-colors"
+                className="text-xl font-display font-bold uppercase tracking-wide text-zinc-100 leading-tight flex items-center gap-2 group/title cursor-pointer hover:text-volt-400 transition-colors"
                 onClick={handleStartEditTitle}
                 title="Klikni za promjenu naziva"
               >
-                <Activity className="w-5 h-5 text-emerald-500" />
-                {displayTitle || "Detalji aktivnosti"}
-                <Pencil className="w-3.5 h-3.5 text-zinc-600 group-hover/title:text-orange-400 transition-colors" />
+                <Activity className="w-5 h-5 text-volt-400 shrink-0" />
+                <span className="truncate">{displayTitle || "Detalji aktivnosti"}</span>
+                <Pencil className="w-3.5 h-3.5 text-zinc-600 group-hover/title:text-volt-400 transition-colors shrink-0" />
               </h2>
             )}
             <div className="flex items-center gap-2 mt-1">
-              <p className="text-sm font-medium text-zinc-500">{activity.date}</p>
+              <p className="text-xs font-mono text-zinc-400">{activity.date}</p>
               {dataSource && (
-                <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${dataSource === 'supabase' ? 'bg-violet-500/10 text-violet-400 border-violet-500/20' : 'bg-sky-500/10 text-sky-400 border-sky-500/20'}`}>
-                  {dataSource === 'supabase' ? '📊 Lokalni podaci' : '☁️ Intervals.icu'}
+                <span className={`text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${dataSource === 'supabase' ? 'bg-violet-500/10 text-violet-300 border-violet-500/25' : 'bg-sky-500/10 text-sky-300 border-sky-500/25'}`}>
+                  {dataSource === 'supabase' ? 'LOKALNA TELEMETRIJA' : 'INTERVALS.ICU'}
                 </span>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => aiSectionRef.current?.scrollIntoView({ behavior: 'smooth' })}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 transition-all"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-mono font-bold uppercase tracking-wider bg-volt-400/12 hover:bg-volt-400/25 text-volt-400 border border-volt-400/35 transition-all"
               title="Skoči na AI analizu treninga"
             >
               <Sparkles className="w-3.5 h-3.5" />
@@ -665,7 +665,7 @@ export default function ActivityDetailModal({
             </button>
             <button
               onClick={onClose}
-              className="p-2 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-rose-500/20 rounded-lg transition-colors border border-transparent hover:border-rose-500/30"
+              className="p-2 text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors border border-zinc-800"
             >
               <X className="w-5 h-5" />
             </button>
@@ -692,7 +692,7 @@ export default function ActivityDetailModal({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
-                className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm rounded-xl transition-all shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:shadow-[0_0_20px_rgba(245,158,11,0.5)] disabled:opacity-50"
+                className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs uppercase font-mono tracking-wider rounded-lg transition-all disabled:opacity-50"
               >
                 {isUploading ? (
                   <span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
@@ -705,28 +705,28 @@ export default function ActivityDetailModal({
           )}
 
           {/* Glavne Metrike - Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-4 flex flex-col items-center justify-center shadow-inner">
-              <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1"><Zap className="w-3 h-3 text-amber-400" /> Normalized Power</span>
-              <span className="text-3xl font-black text-zinc-100">{actualNp || '-'} <span className="text-sm text-zinc-600 font-medium lowercase">W</span></span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
+              <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><Zap className="w-3 h-3 text-volt-400" /> Normalized Pwr</span>
+              <span className="text-3xl font-display font-bold telemetry-num text-zinc-100">{actualNp || '-'} <span className="text-xs font-mono text-zinc-500">W</span></span>
             </div>
-            <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-4 flex flex-col items-center justify-center shadow-inner">
-              <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1"><BarChart2 className="w-3 h-3 text-sky-400" /> Average Power</span>
-              <span className="text-3xl font-bold text-zinc-200">{actualAvgPower || '-'} <span className="text-sm text-zinc-600 font-medium lowercase">W</span></span>
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
+              <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><BarChart2 className="w-3 h-3 text-sky-400" /> Average Pwr</span>
+              <span className="text-3xl font-display font-bold telemetry-num text-zinc-200">{actualAvgPower || '-'} <span className="text-xs font-mono text-zinc-500">W</span></span>
             </div>
-            <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-4 flex flex-col items-center justify-center shadow-inner">
-              <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1"><TrendingUp className="w-3 h-3 text-orange-400" /> Max Power</span>
-              <span className="text-3xl font-bold text-zinc-200">{actualMaxPower || '-'} <span className="text-sm text-zinc-600 font-medium lowercase">W</span></span>
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
+              <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><TrendingUp className="w-3 h-3 text-amber-400" /> Max Power</span>
+              <span className="text-3xl font-display font-bold telemetry-num text-zinc-200">{actualMaxPower || '-'} <span className="text-xs font-mono text-zinc-500">W</span></span>
             </div>
-            <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-4 flex flex-col items-center justify-center shadow-inner">
-              <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1"><Heart className="w-3 h-3 text-rose-500" /> Average HR</span>
-              <span className="text-3xl font-bold text-zinc-200">{actualAvgHr || '-'} <span className="text-sm text-zinc-600 font-medium lowercase">bpm</span></span>
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
+              <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><Heart className="w-3 h-3 text-rose-500" /> Average HR</span>
+              <span className="text-3xl font-display font-bold telemetry-num text-zinc-200">{actualAvgHr || '-'} <span className="text-xs font-mono text-zinc-500">bpm</span></span>
             </div>
           </div>
 
           {/* Performance Chart */}
-          <div className="bg-zinc-950/30 border border-zinc-800/80 rounded-xl p-5">
-            <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-500" /> Performance Chart</h3>
+          <div className="bg-zinc-950 bg-telemetry-grid border border-zinc-800 rounded-xl p-5">
+            <h3 className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-[0.18em] mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-volt-400" /> Telemetrija Snage</h3>
             <div className="h-64 w-full relative">
               {isLoadingStreams ? (
                 <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm font-medium">Dohvaćanje podataka...</div>
@@ -810,34 +810,34 @@ export default function ActivityDetailModal({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             <div className="flex flex-col gap-3">
-              <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-800 pb-2">Plan vs Realizacija</h3>
-              <div className="overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/30">
-                <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead className="bg-zinc-900/50 border-b border-zinc-800/80 text-zinc-500 text-xs uppercase tracking-wider">
+              <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">Plan vs Realizacija</h3>
+              <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
+                <table className="w-full text-left text-sm whitespace-nowrap font-mono telemetry-num">
+                  <thead className="bg-zinc-900 border-b border-zinc-800 text-zinc-500 text-[10px] uppercase tracking-wider">
                     <tr>
-                      <th className="px-4 py-3 font-semibold">Metrika</th>
-                      <th className="px-4 py-3 font-semibold">Planirano</th>
-                      <th className="px-4 py-3 font-semibold">Ostvareno</th>
-                      <th className="px-4 py-3 font-semibold">Status (Score)</th>
+                      <th className="px-4 py-2.5 font-bold">Metrika</th>
+                      <th className="px-4 py-2.5 font-bold">Planirano</th>
+                      <th className="px-4 py-2.5 font-bold">Ostvareno</th>
+                      <th className="px-4 py-2.5 font-bold">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-800/50">
-                    <tr className="hover:bg-zinc-900/30 transition-colors">
-                      <td className="px-4 py-3 font-medium text-zinc-300 flex items-center gap-2"><Clock className="w-4 h-4 text-zinc-500" /> Trajanje</td>
+                  <tbody className="divide-y divide-zinc-800/70 text-xs">
+                    <tr className="hover:bg-zinc-900/50 transition-colors">
+                      <td className="px-4 py-3 font-sans font-bold text-zinc-300 flex items-center gap-2"><Clock className="w-3.5 h-3.5 text-zinc-500" /> Trajanje</td>
                       <td className="px-4 py-3 text-zinc-400">{plannedDur ? formatDur(plannedDur) : '-'}</td>
-                      <td className="px-4 py-3 font-semibold text-zinc-200">{actualDur ? formatDur(actualDur) : '-'}</td>
+                      <td className="px-4 py-3 font-bold text-zinc-100">{actualDur ? formatDur(actualDur) : '-'}</td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold border ${durBgColor} ${durColor}`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border ${durBgColor} ${durColor}`}>
                           {plannedDur ? `${Math.round((actualDur / plannedDur) * 100)}%` : 'N/A'}
                         </span>
                       </td>
                     </tr>
-                    <tr className="hover:bg-zinc-900/30 transition-colors">
-                      <td className="px-4 py-3 font-medium text-zinc-300 flex items-center gap-2"><Activity className="w-4 h-4 text-zinc-500" /> TSS</td>
+                    <tr className="hover:bg-zinc-900/50 transition-colors">
+                      <td className="px-4 py-3 font-sans font-bold text-zinc-300 flex items-center gap-2"><Activity className="w-3.5 h-3.5 text-zinc-500" /> TSS</td>
                       <td className="px-4 py-3 text-zinc-400">{plannedTss || '-'}</td>
-                      <td className="px-4 py-3 font-semibold text-zinc-200">{actualTss || actualTss === 0 ? actualTss : '-'}</td>
+                      <td className="px-4 py-3 font-bold text-zinc-100">{actualTss || actualTss === 0 ? actualTss : '-'}</td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold border ${tssBgColor} ${tssColor}`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border ${tssBgColor} ${tssColor}`}>
                           {plannedTss ? `${Math.round((actualTss / plannedTss) * 100)}%` : 'N/A'}
                         </span>
                       </td>
@@ -848,58 +848,58 @@ export default function ActivityDetailModal({
             </div>
 
             <div className="flex flex-col gap-3">
-              <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-800 pb-2">Kategorizacija</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center shadow-inner">
-                  <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">Zona fokusa</span>
+              <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">Kategorizacija</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
+                  <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Zona fokusa</span>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-lg font-black text-zinc-100">{activity.category || 'N/A'}</span>
+                    <span className="text-lg font-display font-bold uppercase text-zinc-100">{activity.category || 'N/A'}</span>
                   </div>
                 </div>
-                <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center shadow-inner">
-                  <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">Težina (Score)</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-black text-orange-400">{activity.difficulty_score ? activity.difficulty_score.toFixed(1) : '-'}</span>
-                    <span className="text-xs text-zinc-500 font-medium">/ 10</span>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
+                  <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Težina (LVL)</span>
+                  <div className="flex items-baseline gap-1.5 font-mono telemetry-num">
+                    <span className="text-2xl font-display font-bold text-volt-400">{activity.difficulty_score ? activity.difficulty_score.toFixed(1) : '-'}</span>
+                    <span className="text-xs text-zinc-500">/ 10</span>
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="flex flex-col gap-3 md:col-span-2">
-              <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-800 pb-2">Napredne Metrike</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center shadow-inner">
-                  <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">Variability Index (VI)</span>
+              <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">Napredne Metrike</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
+                  <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Variability Index (VI)</span>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-black text-zinc-100">{vi || '-'}</span>
-                    <span className="text-xs text-zinc-500 font-medium">NP / Avg Pwr</span>
+                    <span className="text-2xl font-display font-bold telemetry-num text-zinc-100">{vi || '-'}</span>
+                    <span className="text-[11px] font-mono text-zinc-500">NP / Avg Pwr</span>
                   </div>
                   <div className="text-[10px] text-zinc-500 mt-1">
                     {vi > 1.1 ? "Neravnomjeran napor (intervali, MTB)" : vi > 1.0 ? "Umjereno ravnomjerno" : "Vrlo glatko (ERG / TT)"}
                   </div>
                 </div>
-                <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center shadow-inner">
-                  <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">Efficiency Factor (EF)</span>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
+                  <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Efficiency Factor (EF)</span>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-black text-zinc-100">{ef || '-'}</span>
-                    <span className="text-xs text-zinc-500 font-medium">NP / Avg HR</span>
+                    <span className="text-2xl font-display font-bold telemetry-num text-sky-400">{ef || '-'}</span>
+                    <span className="text-[11px] font-mono text-zinc-500">NP / Avg HR</span>
                   </div>
                   <div className="text-[10px] text-zinc-500 mt-1">
                     Pokazatelj aerobne efikasnosti pogona
                   </div>
                 </div>
-                <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center shadow-inner">
-                  <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-1">Aerobic Decoupling (Pw:HR)</span>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
+                  <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Aerobic Decoupling (Pw:HR)</span>
                   <div className="flex items-baseline gap-2">
-                    <span className={`text-2xl font-black ${
+                    <span className={`text-2xl font-display font-bold telemetry-num ${
                       decouplingInfo?.decoupling != null
-                        ? decouplingInfo.decoupling <= 5 ? 'text-emerald-400' : 'text-amber-400'
+                        ? decouplingInfo.decoupling <= 5 ? 'text-volt-400' : 'text-amber-400'
                         : 'text-zinc-100'
                     }`}>
                       {decouplingInfo?.decoupling != null ? `${decouplingInfo.decoupling}%` : '-'}
                     </span>
-                    <span className="text-xs text-zinc-500 font-medium">Drift</span>
+                    <span className="text-[11px] font-mono text-zinc-500">Drift</span>
                   </div>
                   <div className="text-[10px] text-zinc-500 mt-1">
                     {decouplingInfo?.decoupling != null
@@ -953,19 +953,19 @@ export default function ActivityDetailModal({
           </div>
         </div>
 
-        <div className="flex justify-between p-5 border-t border-zinc-800/80 bg-zinc-950/50 gap-3">
-          <div className="flex gap-3">
+        <div className="flex flex-wrap justify-between p-4 px-5 border-t border-zinc-800 bg-zinc-950 gap-2.5">
+          <div className="flex gap-2">
             {/* Brisanje (samo za Supabase aktivnosti) */}
             {activity.isSupabase && (
               <button
                 onClick={handleDeleteActivity}
                 disabled={isDeleting}
-                className="px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-red-600 hover:bg-red-500 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(220,38,38,0.3)] hover:shadow-[0_0_20px_rgba(220,38,38,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-lg font-mono font-bold uppercase tracking-wider text-xs text-rose-300 bg-rose-500/15 hover:bg-rose-500 hover:text-white border border-rose-500/35 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isDeleting ? (
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 ) : (
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5" />
                 )}
                 Obriši
               </button>
@@ -975,14 +975,14 @@ export default function ActivityDetailModal({
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-emerald-600 hover:bg-emerald-500 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg font-mono font-bold uppercase tracking-wider text-xs text-zinc-200 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isUploading ? (
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <Upload className="w-4 h-4" />
+                <Upload className="w-3.5 h-3.5 text-volt-400" />
               )}
-              {activity.isSupabase ? 'Zamijeni s .FIT' : 'Importaj .FIT'}
+              {activity.isSupabase ? 'Zamijeni .FIT' : 'Importaj .FIT'}
             </button>
             <input
               ref={fileInputRef}
@@ -993,11 +993,11 @@ export default function ActivityDetailModal({
             />
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-2 ml-auto">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl font-semibold text-sm text-zinc-300 bg-zinc-800/50 hover:bg-zinc-700/50 hover:text-white transition-all border border-zinc-700/50"
+              className="px-4 py-2 rounded-lg font-mono font-bold uppercase tracking-wider text-xs text-zinc-400 bg-zinc-900 hover:bg-zinc-800 hover:text-zinc-100 transition-all border border-zinc-800"
             >
               Zatvori
             </button>
@@ -1005,12 +1005,12 @@ export default function ActivityDetailModal({
             <button
               onClick={handleDownload}
               disabled={isDownloading || (!activity.id && !activity.actId)}
-              className="px-5 py-2.5 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(37,99,235,0.3)] hover:shadow-[0_0_20px_rgba(37,99,235,0.5)] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg font-mono font-bold uppercase tracking-wider text-xs text-zinc-950 bg-volt-400 hover:bg-volt-300 shadow-volt-glow transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isDownloading ? (
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                <span className="w-3.5 h-3.5 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full animate-spin" />
               ) : (
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5" />
               )}
               Preuzmi .FIT
             </button>

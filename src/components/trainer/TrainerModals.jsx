@@ -38,16 +38,16 @@ export default function TrainerModals({
     <>
       {/* MODAL: Upozorenje prije prekida */}
       {showStopPrompt && !isFinished && (
-        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm rounded-[32px] flex items-center justify-center p-4 md:p-6 animate-in zoom-in-95 duration-200">
-          <div className="bg-zinc-900 rounded-3xl p-6 md:p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center border border-zinc-800">
-            <div className="bg-rose-500/10 border border-rose-500/20 shadow-[inset_0_0_15px_rgba(244,63,94,0.1)] p-4 rounded-full mb-4">
-              <Square className="w-8 h-8 md:w-10 md:h-10 text-rose-500 fill-current drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]" />
+        <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 md:p-6 animate-in zoom-in-95 duration-200">
+          <div className="carbon-panel rounded-2xl p-6 md:p-8 short:p-5 max-w-sm w-full shadow-2xl flex flex-col items-center text-center">
+            <div className="bg-rose-500/10 border border-rose-500/25 p-3.5 short:p-2.5 rounded-xl mb-4 short:mb-3">
+              <Square className="w-8 h-8 text-rose-500 fill-current" />
             </div>
-            <h2 className="text-xl md:text-2xl font-black text-zinc-100 uppercase tracking-tight mb-2">Prekinuti trening?</h2>
-            <p className="text-zinc-400 font-medium mb-6 md:mb-8 text-xs md:text-sm">Želiš li ranije završiti trening i spremiti dosadašnje rezultate?</p>
-            <div className="flex flex-col gap-3 w-full">
-              <button onClick={confirmStop} className="w-full py-3.5 bg-rose-500 text-white rounded-xl font-black hover:bg-rose-600 transition-colors shadow-lg shadow-rose-500/20">Da, završi trening</button>
-              <button onClick={cancelStop} className="w-full py-3.5 bg-zinc-800 text-zinc-300 rounded-xl font-black hover:bg-zinc-700 transition-colors border border-zinc-700">Ne, nastavi s vožnjom</button>
+            <h2 className="text-xl md:text-2xl font-display font-bold text-zinc-100 uppercase tracking-wide mb-2">Prekinuti trening?</h2>
+            <p className="text-zinc-400 mb-6 short:mb-4 text-xs md:text-sm">Želiš li ranije završiti sesiju i spremiti dosadašnju telemetriju?</p>
+            <div className="flex flex-col gap-2.5 w-full">
+              <button onClick={confirmStop} className="w-full py-3 short:py-2.5 bg-rose-500 text-white rounded-xl font-bold hover:bg-rose-600 transition-colors">Da, završi i spremi</button>
+              <button onClick={cancelStop} className="w-full py-3 short:py-2.5 bg-zinc-900 text-zinc-300 rounded-xl font-bold hover:bg-zinc-800 transition-colors border border-zinc-800">Ne, nastavi vožnju</button>
             </div>
           </div>
         </div>
@@ -55,92 +55,93 @@ export default function TrainerModals({
 
       {/* MODAL: Završetak treninga */}
       {isFinished && summaryStats && (
-        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm rounded-[32px] flex items-center justify-center p-4 md:p-6 animate-in zoom-in-95 duration-300">
-          <div className="bg-zinc-900 rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl flex flex-col items-center text-center border border-zinc-800 max-h-full overflow-y-auto custom-scrollbar">
-            <div className="bg-orange-500/10 border border-orange-500/20 shadow-[inset_0_0_15px_rgba(34,211,238,0.1)] p-3 md:p-4 rounded-full mb-3 md:mb-4 shrink-0">
-              <Award className="w-10 h-10 md:w-14 md:h-14 text-orange-500 drop-shadow-[0_0_10px_rgba(34,211,238,0.6)]" />
+        <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 md:p-6 animate-in zoom-in-95 duration-300">
+          <div className="carbon-panel rounded-2xl p-5 md:p-7 short:p-4 max-w-2xl w-full shadow-2xl flex flex-col items-center text-center max-h-[94dvh] overflow-y-auto custom-scrollbar">
+            <div className="bg-volt-400/10 border border-volt-400/30 p-3 md:p-3.5 rounded-xl mb-3 shrink-0">
+              <Award className="w-9 h-9 md:w-12 md:h-12 text-volt-400" />
             </div>
-            <h2 className="text-2xl md:text-3xl font-black text-zinc-100 uppercase tracking-tight shrink-0">Trening Završen!</h2>
-            <p className="text-zinc-400 font-bold mt-1 mb-5 text-sm md:text-base shrink-0">
+            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-volt-400 shrink-0">SESIJA ZAVRŠENA</span>
+            <h2 className="text-2xl md:text-3xl font-display font-bold text-zinc-100 uppercase tracking-wide mt-0.5 shrink-0">
               {workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja'}
-            </p>
+            </h2>
+            <div className="h-3 shrink-0" />
 
             {/* Glavne metrike: Vrijeme, Snaga, Puls, Kadenca */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full mb-2.5 shrink-0">
-              <div className="bg-zinc-950/60 p-3 rounded-2xl border border-zinc-800 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-black uppercase text-cyan-400 tracking-widest mb-1 flex items-center gap-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full mb-2.5 shrink-0">
+              <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-mono font-bold uppercase text-volt-400 tracking-widest mb-1 flex items-center gap-1">
                   <Clock className="w-3 h-3" /> Vrijeme
                 </p>
-                <p className="text-lg md:text-xl font-black text-zinc-100 tabular-nums">
+                <p className="text-lg md:text-xl font-display font-bold text-zinc-100 telemetry-num">
                   {formatDurationClock(summaryStats.totalDur)}
                 </p>
               </div>
-              <div className="bg-zinc-950/60 p-3 rounded-2xl border border-zinc-800 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest mb-1">Avg Snaga</p>
-                <p className="text-lg md:text-xl font-black text-zinc-100 tabular-nums">
-                  {summaryStats.avgPower} <span className="text-xs font-bold text-zinc-500">W</span>
+              <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-mono font-bold uppercase text-zinc-400 tracking-widest mb-1">Avg Snaga</p>
+                <p className="text-lg md:text-xl font-display font-bold text-zinc-100 telemetry-num">
+                  {summaryStats.avgPower} <span className="text-xs font-mono text-zinc-500">W</span>
                 </p>
-                {isPmConnected && <p className="text-[8px] text-violet-400 font-bold mt-0.5">PowerMeter</p>}
+                {isPmConnected && <p className="text-[8px] font-mono text-violet-400 font-bold mt-0.5">POWERMETER</p>}
               </div>
-              <div className="bg-zinc-950/60 p-3 rounded-2xl border border-zinc-800 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-black uppercase text-rose-500 tracking-widest mb-1">Avg Puls</p>
-                <p className="text-lg md:text-xl font-black text-zinc-100 tabular-nums">
-                  {summaryStats.avgHr || '-'} <span className="text-xs font-bold text-zinc-500">bpm</span>
+              <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-mono font-bold uppercase text-rose-400 tracking-widest mb-1">Avg Puls</p>
+                <p className="text-lg md:text-xl font-display font-bold text-zinc-100 telemetry-num">
+                  {summaryStats.avgHr || '-'} <span className="text-xs font-mono text-zinc-500">bpm</span>
                 </p>
               </div>
-              <div className="bg-zinc-950/60 p-3 rounded-2xl border border-zinc-800 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-black uppercase text-orange-400 tracking-widest mb-1">Kadenca</p>
-                <p className="text-lg md:text-xl font-black text-zinc-100 tabular-nums">
-                  {summaryStats.avgCadence || '-'} <span className="text-xs font-bold text-zinc-500">rpm</span>
+              <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-mono font-bold uppercase text-sky-400 tracking-widest mb-1">Kadenca</p>
+                <p className="text-lg md:text-xl font-display font-bold text-zinc-100 telemetry-num">
+                  {summaryStats.avgCadence || '-'} <span className="text-xs font-mono text-zinc-500">rpm</span>
                 </p>
               </div>
             </div>
 
             {/* Udaljenost i brzina */}
-            <div className="grid grid-cols-2 gap-2.5 w-full mb-2.5 shrink-0">
-              <div className="bg-emerald-500/5 p-3 rounded-2xl border border-emerald-500/15 flex items-center justify-between px-4">
+            <div className="grid grid-cols-2 gap-2 w-full mb-2.5 shrink-0">
+              <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex items-center justify-between px-4">
                 <div className="flex items-center gap-2 text-left">
-                  <Route className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="text-[10px] font-black uppercase text-emerald-400/80 tracking-wider">Udaljenost</span>
+                  <Route className="w-4 h-4 text-volt-400 shrink-0" />
+                  <span className="text-[10px] font-mono font-bold uppercase text-zinc-400 tracking-wider">Udaljenost</span>
                 </div>
-                <p className="text-lg font-black text-zinc-100 tabular-nums">{summaryStats.distanceKm || '0.0'} <span className="text-[11px] font-bold text-zinc-500">km</span></p>
+                <p className="text-lg font-display font-bold text-zinc-100 telemetry-num">{summaryStats.distanceKm || '0.0'} <span className="text-[11px] font-mono text-zinc-500">km</span></p>
               </div>
-              <div className="bg-sky-500/5 p-3 rounded-2xl border border-sky-500/15 flex items-center justify-between px-4">
+              <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex items-center justify-between px-4">
                 <div className="flex items-center gap-2 text-left">
                   <Gauge className="w-4 h-4 text-sky-400 shrink-0" />
-                  <span className="text-[10px] font-black uppercase text-sky-400/80 tracking-wider">Avg Brzina</span>
+                  <span className="text-[10px] font-mono font-bold uppercase text-zinc-400 tracking-wider">Avg Brzina</span>
                 </div>
-                <p className="text-lg font-black text-zinc-100 tabular-nums">{summaryStats.avgSpeedKmh || '0.0'} <span className="text-[11px] font-bold text-zinc-500">km/h</span></p>
+                <p className="text-lg font-display font-bold text-zinc-100 telemetry-num">{summaryStats.avgSpeedKmh || '0.0'} <span className="text-[11px] font-mono text-zinc-500">km/h</span></p>
               </div>
             </div>
 
             {/* Coggan metrike: NP, IF, TSS, Rad, EF, Decoupling */}
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 w-full mb-4 shrink-0">
-              <div className="bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">NP</p>
-                <p className="text-base font-black text-zinc-200 tabular-nums">{summaryStats.np || 0} <span className="text-[10px] text-zinc-500">W</span></p>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 w-full mb-4 shrink-0 font-mono telemetry-num">
+              <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest mb-0.5">NP</p>
+                <p className="text-sm md:text-base font-bold text-zinc-100">{summaryStats.np || 0} <span className="text-[10px] text-zinc-500">W</span></p>
               </div>
-              <div className="bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">IF</p>
-                <p className="text-base font-black text-zinc-200 tabular-nums">{summaryStats.ifFactor || '0.00'}</p>
+              <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest mb-0.5">IF</p>
+                <p className="text-sm md:text-base font-bold text-zinc-100">{summaryStats.ifFactor || '0.00'}</p>
               </div>
-              <div className="bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">TSS</p>
-                <p className="text-base font-black text-orange-400 tabular-nums">{summaryStats.tss || 0}</p>
+              <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest mb-0.5">TSS</p>
+                <p className="text-sm md:text-base font-bold text-volt-400">{summaryStats.tss || 0}</p>
               </div>
-              <div className="bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">Rad</p>
-                <p className="text-base font-black text-zinc-200 tabular-nums">{summaryStats.workKj || 0} <span className="text-[10px] text-zinc-500">kJ</span></p>
+              <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest mb-0.5">Rad</p>
+                <p className="text-sm md:text-base font-bold text-zinc-100">{summaryStats.workKj || 0} <span className="text-[10px] text-zinc-500">kJ</span></p>
               </div>
-              <div className="bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">EF</p>
-                <p className="text-base font-black text-cyan-400 tabular-nums">{summaryStats.ef || '-'}</p>
+              <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest mb-0.5">EF</p>
+                <p className="text-sm md:text-base font-bold text-sky-400">{summaryStats.ef || '-'}</p>
               </div>
-              <div className="bg-zinc-950/50 p-2.5 rounded-xl border border-zinc-800/60 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-0.5">Pw:HR</p>
-                <p className={`text-base font-black tabular-nums ${
+              <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex flex-col items-center justify-center">
+                <p className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest mb-0.5">Pw:HR</p>
+                <p className={`text-sm md:text-base font-bold ${
                   summaryStats.decoupling != null
-                    ? summaryStats.decoupling <= 5 ? 'text-emerald-400' : 'text-amber-400'
+                    ? summaryStats.decoupling <= 5 ? 'text-volt-400' : 'text-amber-400'
                     : 'text-zinc-400'
                 }`}>
                   {summaryStats.decoupling != null ? `${summaryStats.decoupling}%` : '-'}
@@ -200,7 +201,7 @@ export default function TrainerModals({
 
               {isIntervalsConfigured && intervalsUploadStatus && (
                 <div className={`flex items-center justify-between gap-2 w-full px-4 py-2.5 rounded-xl border text-xs font-bold ${
-                  intervalsUploadStatus === 'uploading' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
+                  intervalsUploadStatus === 'uploading' ? 'bg-volt-400/10 border-volt-400/25 text-volt-400' :
                   intervalsUploadStatus === 'uploaded' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
                   'bg-red-500/10 border-red-500/20 text-red-400'
                 }`}>
@@ -232,27 +233,27 @@ export default function TrainerModals({
             <div className="flex flex-col sm:flex-row gap-2.5 w-full shrink-0">
               <button
                 onClick={handleExportFit}
-                className="flex-[2] flex flex-col items-center justify-center py-3 px-4 rounded-xl font-black transition-all bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 shadow-[0_4px_15px_rgba(34,211,238,0.25)] border border-cyan-400/30"
+                className="flex-[2] flex flex-col items-center justify-center py-3 px-4 rounded-xl font-bold transition-all bg-volt-400 hover:bg-volt-300 text-zinc-950 shadow-volt-glow"
               >
-                <span className="flex items-center gap-2 text-sm md:text-base">
+                <span className="flex items-center gap-2 text-sm md:text-base font-display uppercase tracking-wide font-bold">
                   <Download className="w-4 h-4 md:w-5 md:h-5" />
                   Preuzmi .FIT datoteku
                 </span>
-                <span className="text-[10px] font-bold text-zinc-900/80 mt-0.5">
-                  Garmin Connect • Strava • Wahoo
+                <span className="text-[10px] font-mono font-bold text-zinc-900/80 mt-0.5">
+                  GARMIN CONNECT · STRAVA · WAHOO
                 </span>
               </button>
 
               <button
                 onClick={handleExportTcx}
-                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold transition-all text-xs md:text-sm bg-zinc-800/80 text-zinc-200 hover:bg-zinc-700 border border-zinc-700"
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold transition-all text-xs md:text-sm bg-zinc-950 text-zinc-200 hover:bg-zinc-900 border border-zinc-800"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-4 h-4 text-zinc-400" />
                 Preuzmi .TCX
               </button>
             </div>
 
-            <button onClick={handleReset} className="mt-6 text-zinc-400 font-bold hover:text-zinc-200 text-sm transition-colors">
+            <button onClick={handleReset} className="mt-5 text-zinc-400 font-mono font-bold uppercase tracking-wider hover:text-volt-400 text-xs transition-colors">
               Zatvori i vrati se
             </button>
           </div>

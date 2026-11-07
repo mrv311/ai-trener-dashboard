@@ -113,18 +113,18 @@ export default function WorkoutAIAnalysisPanel({
   const ftp = Number(metrics.ftp || athleteProfile?.ftp || 270);
 
   return (
-    <div className={`w-full text-left bg-gradient-to-br from-cyan-950/25 via-zinc-900/90 to-zinc-950 border border-cyan-500/25 rounded-2xl ${compact ? 'p-4' : 'p-5'} shadow-[0_0_25px_rgba(34,211,238,0.06)]`}>
+    <div className={`w-full text-left carbon-panel border-volt-400/25 rounded-xl ${compact ? 'p-4' : 'p-5'}`}>
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-400">
+          <div className="p-2 rounded-lg bg-volt-400/10 border border-volt-400/30 text-volt-400">
             <Sparkles className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-zinc-100 tracking-tight flex items-center gap-2">
+            <h3 className="text-sm font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2">
               ErgVibe AI Trener Analiza
-              <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                Gemini 3.8 AI Trener
+              <span className="font-mono text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/25">
+                GEMINI 3.8
               </span>
             </h3>
             <p className="text-[11px] text-zinc-400">
@@ -137,7 +137,7 @@ export default function WorkoutAIAnalysisPanel({
           <button
             type="button"
             onClick={handleGenerateAnalysis}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 transition-colors"
             title="Ponovno generiraj AI analizu"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Ponovi analizu
@@ -153,12 +153,12 @@ export default function WorkoutAIAnalysisPanel({
             value={userNote}
             onChange={(e) => setUserNote(e.target.value)}
             placeholder="Opcionalno: kakav je bio subjektivni osjećaj? (npr. RPE 7/10, teške noge, vruće u sobi...)"
-            className="w-full bg-zinc-950/80 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-cyan-500/60 focus:outline-none transition-colors"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-volt-400 focus:outline-none transition-colors"
           />
           <button
             type="button"
             onClick={handleGenerateAnalysis}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-black text-xs md:text-sm bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 shadow-[0_4px_15px_rgba(34,211,238,0.25)] transition-all"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs md:text-sm bg-volt-400 hover:bg-volt-300 text-zinc-950 shadow-volt-glow transition-all"
           >
             <Sparkles className="w-4 h-4" /> Analiziraj trening s AI Trenerom
           </button>
@@ -169,12 +169,12 @@ export default function WorkoutAIAnalysisPanel({
       {isAnalyzing && (
         <div className="py-8 flex flex-col items-center justify-center text-center gap-3">
           <div className="relative">
-            <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
-              <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+            <div className="w-12 h-12 rounded-xl bg-volt-400/10 border border-volt-400/30 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 text-volt-400 animate-spin" />
             </div>
           </div>
           <div>
-            <p className="text-sm font-bold text-zinc-200">AI Trener analizira trening i fiziološke parametre...</p>
+            <p className="text-sm font-display font-bold uppercase tracking-wide text-zinc-200">AI Trener analizira trening i fiziološke parametre...</p>
             <p className="text-xs text-zinc-500 mt-0.5">Analiza snage, Efficiency Factora, Aerobic Decouplinga i oporavka</p>
           </div>
         </div>
@@ -182,7 +182,7 @@ export default function WorkoutAIAnalysisPanel({
 
       {/* Greška */}
       {error && (
-        <div className="mt-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
+        <div className="mt-3 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
           <span>{error}</span>
         </div>
@@ -201,21 +201,21 @@ export default function WorkoutAIAnalysisPanel({
           {/* Povijest potpitanja */}
           {qaHistory.length > 0 && (
             <div className="space-y-3 pt-3 border-t border-zinc-800/80">
-              <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500 flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5 text-cyan-400" /> Razgovor o ovom treningu
+              <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-volt-400" /> Razgovor o ovom treningu
               </div>
               {qaHistory.map((msg, idx) => (
                 <div
                   key={idx}
-                  className={`p-3.5 rounded-xl text-sm ${
+                  className={`p-3.5 rounded-lg text-sm ${
                     msg.role === 'user'
-                      ? 'bg-cyan-500/10 border border-cyan-500/20 text-cyan-100 ml-4 sm:ml-10'
-                      : 'bg-zinc-950/70 border border-zinc-800/80 text-zinc-200 mr-2 sm:mr-6'
+                      ? 'bg-volt-400/10 border border-volt-400/30 text-zinc-100 ml-4 sm:ml-10'
+                      : 'bg-zinc-950 border border-zinc-800/90 text-zinc-200 mr-2 sm:mr-6'
                   }`}
                 >
                   {msg.role === 'model' ? (
                     <div className="flex items-start gap-2.5">
-                      <Bot className="w-4 h-4 text-cyan-400 shrink-0 mt-1" />
+                      <Bot className="w-4 h-4 text-volt-400 shrink-0 mt-1" />
                       <div className="flex-1 min-w-0">
                         <AIMarkdown
                           text={msg.text}
@@ -241,12 +241,12 @@ export default function WorkoutAIAnalysisPanel({
               onChange={(e) => setFollowUpInput(e.target.value)}
               disabled={isAsking}
               placeholder="Postavi potpitanje treneru o ovoj vožnji (npr. zašto je decoupling bio takav, što sutra voziti?)"
-              className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-cyan-500 outline-none disabled:opacity-50"
+              className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-volt-400 outline-none disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={isAsking || !followUpInput.trim()}
-              className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-zinc-950 font-black text-xs flex items-center gap-1.5 transition-colors shrink-0"
+              className="px-4 py-2.5 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-40 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs flex items-center gap-1.5 transition-colors shrink-0 shadow-volt-glow"
             >
               {isAsking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               Pitaj

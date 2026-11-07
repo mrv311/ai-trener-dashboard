@@ -6,51 +6,54 @@ export default {
   ],
   theme: {
     extend: {
+      screens: {
+        short: { raw: '(max-height: 820px)' },
+        vshort: { raw: '(max-height: 680px)' },
+      },
       fontFamily: {
-        sans: ['Montserrat', 'sans-serif'],
+        sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
+        display: ['"Chakra Petch"', '"Rajdhani"', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       colors: {
+        // Dinamički primarni akcent — zadano Acid Volt (#a3e635) s logotipa kazete
+        volt: {
+          DEFAULT: 'rgb(var(--accent-400) / <alpha-value>)',
+          300: 'rgb(var(--accent-300) / <alpha-value>)',
+          400: 'rgb(var(--accent-400) / <alpha-value>)',
+          500: 'rgb(var(--accent-500) / <alpha-value>)',
+          600: 'rgb(var(--accent-600) / <alpha-value>)',
+          950: 'rgb(var(--accent-950) / <alpha-value>)',
+        },
         brand: {
-          DEFAULT: '#22d3ee', // Electric Cyan
-          dark: '#06b6d4',
-          glow: 'rgba(34, 211, 238, 0.15)',
+          DEFAULT: 'rgb(var(--accent-400) / <alpha-value>)',
+          dark: 'rgb(var(--accent-500) / <alpha-value>)',
+          glow: 'rgb(var(--accent-400) / 0.16)',
         },
-        orange: {
-          // Accent — sada cyan/teal tonovi umjesto narančaste
-          400: '#22d3ee',
-          500: '#06b6d4',
-          600: '#0891b2',
-          900: '#0c1929', // Duboka pozadina za akcent kartice
-        },
-        red: {
-          400: '#fb7185',
-          500: '#f43f5e',
-        },
+        // CARBON GRAPHITE paleta — čisti mat karbonski tonovi bez hladne plave magle
         zinc: {
-          // MIDNIGHT OCEAN paleta — tamnoplavi tonovi umjesto čiste sive
-          950: '#0a0e1a', // Najdublja baza (body)
-          900: '#111827', // Kartice, sidebar, modali
-          
-          // Obrubi i hover stanja
-          800: '#1e293b', // Obrubi kartica — vidljivi na tamnoj bazi
-          700: '#243b53', // Hover stanja, istaknuti obrubi
-          
-          600: '#334155', // Prigušeni elementi
-          500: '#64748b', // Sekundarni tekst (i dalje čitljiv!)
-          400: '#94a3b8', // Glavni sekundarni tekst — odličan kontrast
-          300: '#cbd5e1', // Istaknuti tekst
-          200: '#e2e8f0', // Glavni tekst — ice white
-          100: '#f1f5f9', // Naglašeni naslovi
-          50:  '#f8fafc', // Najsvjetliji (rijetko korišten)
-        }
+          950: '#09090b', // Najdublja mat karbonska baza (body)
+          900: '#111215', // Glavni cockpit paneli, sidebar, modali
+          850: '#16181d', // Povišene kartice i telemetrijski podovi
+          800: '#23252c', // Precizni 1px tehnički obrubi
+          700: '#32353f', // Aktivni obrubi i hover stanja
+          600: '#4b505d', // Prigušene oznake i skale
+          500: '#757b8a', // Tehničke labele (visoka čitljivost)
+          400: '#a0a6b5', // Sekundarni tekst
+          300: '#d0d4de', // Primarni tekst kartica
+          200: '#e7e9ef', // Svijetli brojčani prikazi
+          100: '#f4f5f8', // Naglašeni naslovi
+          50:  '#fafafa', // Vršni kontrast
+        },
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'spin-flywheel': 'spin 8s linear infinite',
       },
       boxShadow: {
-        // Cyan glow umjesto narančastog
-        'orange-glow': '0 10px 25px -5px rgba(34, 211, 238, 0.25), 0 8px 10px -6px rgba(34, 211, 238, 0.15)',
-        'soft-card': '0 4px 12px -2px rgba(0, 0, 0, 0.4), 0 2px 6px -2px rgba(0, 0, 0, 0.3)',
+        'volt-glow': '0 8px 24px -6px rgb(var(--accent-400) / 0.28), 0 2px 8px -2px rgb(var(--accent-400) / 0.18)',
+        'hardware': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 4px 14px -2px rgba(0, 0, 0, 0.55)',
+        'soft-card': '0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 2px 6px -2px rgba(0, 0, 0, 0.35)',
       }
     },
   },

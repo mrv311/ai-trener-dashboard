@@ -2,77 +2,117 @@ import { calculateCogganMetrics, expandStepsToSeconds } from './performanceMetri
 
 // Očekivani izlaz: { title, description, duration_seconds, difficulty_score, steps: [{ name, duration, power }] }
 
-export const extractIntensityData = (workoutDoc) => {
-  if (!workoutDoc) return [];
+function normalizeStepPowerPct(power, ftp = 200) {
+  const validFtp = Number(ftp) > 0 ? Number(ftp) : 200;
+  if (power == null) return { avg: 50, min: 50, max: 50 };
 
-  // 1. Ako je to niz objekata (naš lokalni "steps" format tipa [{duration: 600, power: 50}, ...])
-  if (Array.isArray(workoutDoc)) {
-    const arr = [];
-    workoutDoc.forEach(step => {
-      // Želimo stvoriti array vrijednosti proporcijonalan trajanju (npr. svaki element = x minuta)
-      // Ovdje za jednostavnost, ako je duration u sekundama, napravit ćemo array elemenata za svaku minutu.
-      const mins = Math.max(1, Math.round((step.duration || 60) / 60));
-      for (let i = 0; i < mins; i++) {
-        arr.push(step.power || 50);
-      }
-    });
-    return arr;
+  const conv = (val, units = '') => {
+    const num = Number(val);
+    if (!Number.isFinite(num) || num <= 0) return 50;
+    const u = String(units || '').toLowerCase();
+    if (u === 'w' || u === 'watts') return Math.round((num / validFtp) * 100);
+    if (!u && num > 0 && num <= 3) return Math.round(num * 100);
+    return Math.round(num);
+  };
+
+  if (typeof power === 'number') {
+    const p = conv(power);
+    return { avg: p, min: p, max: p };
   }
 
-  // 2. Ako je string koda
-  if (typeof workoutDoc === 'string') {
-    const { allSteps } = parseIntervalsCode(workoutDoc);
-    const arr = [];
-    allSteps.forEach(step => {
-      const mins = Math.max(1, Math.round((step.duration || 60) / 60));
-      for (let i = 0; i < mins; i++) {
-        arr.push(step.power || 50);
-      }
-    });
-    return arr;
-  }
-
-  // 3. Ako je originalni intervals_icu JSON format: { steps: [{...}] }
-  if (workoutDoc.steps && Array.isArray(workoutDoc.steps)) {
-    // Ako nema već pripremljene flattenane verzije, prebacujemo u string pa parsiramo opet radi lakoće
-    try {
-      const codeStr = stepsToTextLines(workoutDoc.steps).join('\n');
-      const { allSteps } = parseIntervalsCode(codeStr);
-      const arr = [];
-      allSteps.forEach(step => {
-        const mins = Math.max(1, Math.round((step.duration || 60) / 60));
-        for (let i = 0; i < mins; i++) {
-          arr.push(step.power || 50);
-        }
-      });
-      return arr;
-    } catch (e) {
-      return [];
+  if (typeof power === 'object') {
+    const units = power.units || '';
+    if (power.start != null && power.end != null) {
+      const pMin = conv(power.start, units);
+      const pMax = conv(power.end, units);
+      return { avg: Math.round((pMin + pMax) / 2), min: pMin, max: pMax };
+    }
+    if (power.value != null) {
+      const p = conv(power.value, units);
+      return { avg: p, min: p, max: p };
     }
   }
 
-  return [];
+  return { avg: 50, min: 50, max: 50 };
+}
+
+function flattenStructuredSteps(stepsArray, ftp = 200) {
+  const flat = [];
+  if (!Array.isArray(stepsArray)) return flat;
+
+  stepsArray.forEach(step => {
+    if (!step) return;
+    if (Array.isArray(step.steps) && step.steps.length > 0) {
+      const reps = Math.max(1, parseInt(step.reps || step.count || 1, 10) || 1);
+      const inner = flattenStructuredSteps(step.steps, ftp);
+      for (let r = 0; r < reps; r++) {
+        inner.forEach(s => flat.push({ ...s }));
+      }
+      return;
+    }
+
+    const dur = Math.max(0, Math.round(Number(step.duration) || 0));
+    if (dur <= 0) return;
+
+    const pwr = normalizeStepPowerPct(step.power, ftp);
+    const pMin = step.powerMin != null ? Math.round(Number(step.powerMin)) : pwr.min;
+    const pMax = step.powerMax != null ? Math.round(Number(step.powerMax)) : pwr.max;
+    const pAvg = typeof step.power === 'number' ? pwr.avg : (pwr.avg || Math.round((pMin + pMax) / 2));
+
+    flat.push({
+      name: step.name || step.text || (pAvg >= 85 ? 'Interval' : 'Oporavak'),
+      text: step.text || step.name || '',
+      duration: dur,
+      power: pAvg,
+      powerMin: pMin,
+      powerMax: pMax
+    });
+  });
+
+  return flat;
+}
+
+export const extractIntensityData = (workoutDoc) => {
+  if (!workoutDoc) return [];
+
+  let allSteps = [];
+  if (Array.isArray(workoutDoc)) {
+    allSteps = flattenStructuredSteps(workoutDoc);
+  } else if (typeof workoutDoc === 'string') {
+    allSteps = parseIntervalsCode(workoutDoc).allSteps;
+  } else if (workoutDoc.steps && Array.isArray(workoutDoc.steps)) {
+    allSteps = flattenStructuredSteps(workoutDoc.steps);
+  }
+
+  const arr = [];
+  allSteps.forEach(step => {
+    const mins = Math.max(1, Math.round((step.duration || 60) / 60));
+    for (let i = 0; i < mins; i++) {
+      arr.push(step.power || 50);
+    }
+  });
+  return arr;
 };
 
-function stepsToTextLines(steps, indent = '') {
+function stepsToTextLines(steps, indent = '', ftp = 200) {
   const lines = [];
   if (!steps || !Array.isArray(steps)) return lines;
 
   steps.forEach(step => {
-    // Grupni korak (ima pod-steps i/ili reps)
     if (step.steps && Array.isArray(step.steps)) {
       const reps = step.reps || step.count || 1;
-      // Ako ima tekst/naziv, to je naziv sekcije
       if (step.text) {
         lines.push(`${indent}${step.text}`);
       }
       if (reps > 1) {
         lines.push(`${indent}${reps}x`);
       }
-      const subLines = stepsToTextLines(step.steps, indent);
+      const subLines = stepsToTextLines(step.steps, indent, ftp);
       lines.push(...subLines);
+      if (reps > 1) {
+        lines.push('');
+      }
     } else {
-      // Pojedinačni korak
       const formatDuration = (secs) => {
         if (!secs || secs <= 0) return '0m';
         const h = Math.floor(secs / 3600);
@@ -85,18 +125,14 @@ function stepsToTextLines(steps, indent = '') {
         return parts.join('') || '0m';
       };
       const formatPower = (power) => {
-        if (!power) return '50%';
-        if (typeof power === 'number') return `${Math.round(power)}%`;
-        if (power.value != null) return `${Math.round(power.value)}%`;
-        if (power.start != null && power.end != null) {
-          return `${Math.round(power.start)}-${Math.round(power.end)}%`;
-        }
-        return '50%';
+        const norm = normalizeStepPowerPct(power, ftp);
+        if (norm.min !== norm.max) return `${norm.min}-${norm.max}%`;
+        return `${norm.avg}%`;
       };
 
       const dur = formatDuration(step.duration || 0);
       const pwr = formatPower(step.power);
-      const text = step.text ? ` ${step.text}` : '';
+      const text = (step.text || step.name) ? ` ${step.text || step.name}` : '';
       lines.push(`${indent}- ${dur} ${pwr}${text}`);
     }
   });
@@ -104,130 +140,174 @@ function stepsToTextLines(steps, indent = '') {
   return lines;
 }
 
-export const parseWorkoutDoc = (workoutDoc, ftp = 200) => {
-  if (!workoutDoc) return null;
-  if (Array.isArray(workoutDoc)) {
-    const codeStr = stepsToTextLines(workoutDoc).join('\n');
-    return parseIntervalsCode(codeStr, ftp);
-  }
-  if (typeof workoutDoc === 'string') {
-    return parseIntervalsCode(workoutDoc, ftp);
-  }
-  if (workoutDoc.steps && Array.isArray(workoutDoc.steps)) {
-    const codeStr = stepsToTextLines(workoutDoc.steps).join('\n');
-    return parseIntervalsCode(codeStr, ftp);
-  }
-  return null;
-};
+function buildMetricsFromSteps(allSteps, ftp = 200, blocks = null) {
+  const validFtp = Number(ftp) > 0 ? Number(ftp) : 200;
+  const totalSecs = allSteps.reduce((acc, s) => acc + (Number(s.duration) || 0), 0);
+  const powerArray = expandStepsToSeconds(allSteps, validFtp);
+  const metrics = calculateCogganMetrics(powerArray, validFtp);
 
-export const parseIntervalsCode = (code, ftp = 200) => {
-  if (!code) return { duration: 0, tss: 0, np: 0, blocks: [], allSteps: [], zones: { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, z7: 0 } };
-
-  let blocks = [];
-  let currentBlock = { name: 'Main', steps: [] };
-  let allSteps = [];
-  let totalDurMins = 0;
-
-  let tempMultiplier = 1;
-
-  const lines = code.split('\n');
-  lines.forEach(line => {
-    let cleanLine = line.trim();
-    if (!cleanLine) return;
-
-    // Detekcija strelice ili crtice kao korak
-    const isStep = cleanLine.startsWith('-') || /^\d+[hms]/.test(cleanLine);
-    // Detekcija multiplikatora (npr 4x)
-    const xMatch = cleanLine.match(/^(\d+)x/i);
-
-    if (xMatch && !cleanLine.includes('%')) {
-      tempMultiplier = parseInt(xMatch[1]);
-      return;
-    }
-
-    if (!isStep && !xMatch) {
-      if (currentBlock.steps.length > 0) blocks.push(currentBlock);
-      currentBlock = { name: cleanLine, steps: [] };
-      return;
-    }
-
-    // Parsiranje koraka
-    let mins = 0;
-    const hMatch = cleanLine.match(/(\d+)\s*h/i);
-    const mMatch = cleanLine.match(/(\d+)\s*m/i);
-    const sMatch = cleanLine.match(/(\d+)\s*s/i);
-
-    if (hMatch) mins += parseInt(hMatch[1]) * 60;
-    if (mMatch) mins += parseInt(mMatch[1]);
-    if (sMatch) mins += parseInt(sMatch[1]) / 60;
-
-    let powerMin = 0, powerMax = 0, powerAvg = 0;
-    // Trazimo range npr 50-70%
-    const pRangeMatch = cleanLine.match(/(\d+)-(\d+)%/);
-    // Trazimo single npr 100%
-    const pMatch = cleanLine.match(/(\d+)%\s*(?:FTP)?/i);
-
-    if (pRangeMatch) {
-      powerMin = parseInt(pRangeMatch[1]);
-      powerMax = parseInt(pRangeMatch[2]);
-      powerAvg = Math.round((powerMin + powerMax) / 2);
-    } else if (pMatch) {
-      powerMin = parseInt(pMatch[1]);
-      powerMax = powerMin;
-      powerAvg = powerMin;
-    }
-
-    if (mins > 0) {
-      const stepObj = {
-        text: cleanLine,
-        duration: mins * 60,
-        powerMin: powerMin > 0 ? powerMin : 50,
-        powerMax: powerMax > 0 ? powerMax : 50,
-        power: powerAvg > 0 ? powerAvg : 50
-      };
-
-      for (let i = 0; i < tempMultiplier; i++) {
-        currentBlock.steps.push({ ...stepObj });
-        allSteps.push({ ...stepObj });
-        totalDurMins += mins;
-      }
-      tempMultiplier = 1; // reset after applying
-    }
-  });
-
-  if (currentBlock.steps.length > 0 || blocks.length === 0) {
-    blocks.push(currentBlock);
-  }
-
-  // Računanje NP i TSS
-  const powerArray = expandStepsToSeconds(allSteps, ftp);
-  const metrics = calculateCogganMetrics(powerArray, ftp);
-
-  // Izračun zona (Zone 1 - Zone 7/SS)
   const zoneStats = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, ss: 0 };
-  let secArray = expandStepsToSeconds(allSteps, 100); // in percent
+  const secArray = expandStepsToSeconds(allSteps, 100);
   secArray.forEach(p => {
     if (p < 55) zoneStats.z1++;
     else if (p < 76) zoneStats.z2++;
     else if (p < 88) zoneStats.z3++;
-    else if (p < 95) zoneStats.ss++; // Sweet Spot
+    else if (p < 95) zoneStats.ss++;
     else if (p < 106) zoneStats.z4++;
     else if (p < 121) zoneStats.z5++;
     else zoneStats.z6++;
   });
 
   return {
-    duration: totalDurMins * 60,
+    duration: totalSecs,
     tss: metrics.tss,
     np: metrics.np,
     workKj: metrics.workKj,
     ifFactor: metrics.ifFactor,
     avgPower: metrics.avgPower,
     variability: metrics.avgPower > 0 ? (metrics.np / metrics.avgPower).toFixed(2) : 1,
-    blocks,
+    blocks: blocks || [{ name: 'Main', steps: allSteps }],
     allSteps,
     zones: zoneStats
   };
+}
+
+export const parseWorkoutDoc = (workoutDoc, ftp = 200) => {
+  if (!workoutDoc) return null;
+  if (Array.isArray(workoutDoc)) {
+    const flat = flattenStructuredSteps(workoutDoc, ftp);
+    return buildMetricsFromSteps(flat, ftp);
+  }
+  if (typeof workoutDoc === 'string') {
+    return parseIntervalsCode(workoutDoc, ftp);
+  }
+  if (workoutDoc.steps && Array.isArray(workoutDoc.steps)) {
+    const flat = flattenStructuredSteps(workoutDoc.steps, ftp);
+    return buildMetricsFromSteps(flat, ftp);
+  }
+  return null;
+};
+
+export const parseIntervalsCode = (code, ftp = 200) => {
+  if (!code || typeof code !== 'string') {
+    return { duration: 0, tss: 0, np: 0, blocks: [], allSteps: [], zones: { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, ss: 0 } };
+  }
+
+  const validFtp = Number(ftp) > 0 ? Number(ftp) : 200;
+  let blocks = [];
+  let currentBlock = { name: 'Main', steps: [] };
+  let allSteps = [];
+
+  let activeRepeatCount = 1;
+  let pendingRepeatSteps = [];
+
+  const flushRepeatBuffer = () => {
+    if (pendingRepeatSteps.length === 0) {
+      activeRepeatCount = 1;
+      return;
+    }
+    const reps = Math.max(1, activeRepeatCount);
+    for (let r = 0; r < reps; r++) {
+      pendingRepeatSteps.forEach(st => {
+        currentBlock.steps.push({ ...st });
+        allSteps.push({ ...st });
+      });
+    }
+    pendingRepeatSteps = [];
+    activeRepeatCount = 1;
+  };
+
+  const lines = code.split(/\r?\n/);
+  lines.forEach(line => {
+    const cleanLine = line.trim();
+
+    // Prazan red zatvara aktivni Nx blok ponavljanja (Intervals.icu konvencija)
+    if (!cleanLine) {
+      if (activeRepeatCount > 1 && pendingRepeatSteps.length > 0) {
+        flushRepeatBuffer();
+      }
+      return;
+    }
+
+    const isStep = cleanLine.startsWith('-') || /^\d+\s*(?:h|hr|hrs|m|min|mins|s|sec|secs)\b/i.test(cleanLine);
+    const pureMultiplierMatch = cleanLine.match(/^(\d+)\s*x\s*:?$/i);
+    const headerMultiplierMatch = !isStep && !cleanLine.includes('%') ? cleanLine.match(/\b(\d+)\s*x\b/i) : null;
+
+    if (pureMultiplierMatch) {
+      flushRepeatBuffer();
+      activeRepeatCount = Math.min(50, Math.max(1, parseInt(pureMultiplierMatch[1], 10)));
+      return;
+    }
+
+    if (!isStep) {
+      flushRepeatBuffer();
+      if (currentBlock.steps.length > 0) blocks.push(currentBlock);
+      currentBlock = { name: cleanLine, steps: [] };
+      if (headerMultiplierMatch) {
+        activeRepeatCount = Math.min(50, Math.max(1, parseInt(headerMultiplierMatch[1], 10)));
+      }
+      return;
+    }
+
+    // Parsiranje trajanja koraka
+    let secs = 0;
+    const hMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)\b/i);
+    const mMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins)\b/i);
+    const sMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:s|sec|secs)\b/i);
+
+    if (hMatch) secs += Math.round(parseFloat(hMatch[1]) * 3600);
+    if (mMatch) secs += Math.round(parseFloat(mMatch[1]) * 60);
+    if (sMatch) secs += Math.round(parseFloat(sMatch[1]));
+
+    let powerMin = 0, powerMax = 0, powerAvg = 0;
+    const pRangeMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*%/);
+    const pMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*%\s*(?:FTP)?/i);
+    const wRangeMatch = !pRangeMatch && !pMatch ? cleanLine.match(/(\d+)\s*-\s*(\d+)\s*w\b/i) : null;
+    const wMatch = !pRangeMatch && !pMatch && !wRangeMatch ? cleanLine.match(/(\d+)\s*w\b/i) : null;
+
+    if (pRangeMatch) {
+      powerMin = Math.round(parseFloat(pRangeMatch[1]));
+      powerMax = Math.round(parseFloat(pRangeMatch[2]));
+      powerAvg = Math.round((powerMin + powerMax) / 2);
+    } else if (pMatch) {
+      powerMin = Math.round(parseFloat(pMatch[1]));
+      powerMax = powerMin;
+      powerAvg = powerMin;
+    } else if (wRangeMatch) {
+      powerMin = Math.round((parseInt(wRangeMatch[1], 10) / validFtp) * 100);
+      powerMax = Math.round((parseInt(wRangeMatch[2], 10) / validFtp) * 100);
+      powerAvg = Math.round((powerMin + powerMax) / 2);
+    } else if (wMatch) {
+      powerMin = Math.round((parseInt(wMatch[1], 10) / validFtp) * 100);
+      powerMax = powerMin;
+      powerAvg = powerMin;
+    }
+
+    if (secs > 0) {
+      const stepObj = {
+        text: cleanLine,
+        duration: secs,
+        powerMin: powerMin > 0 ? powerMin : 55,
+        powerMax: powerMax > 0 ? powerMax : 55,
+        power: powerAvg > 0 ? powerAvg : 55
+      };
+
+      if (activeRepeatCount > 1) {
+        pendingRepeatSteps.push(stepObj);
+      } else {
+        currentBlock.steps.push({ ...stepObj });
+        allSteps.push({ ...stepObj });
+      }
+    }
+  });
+
+  flushRepeatBuffer();
+
+  if (currentBlock.steps.length > 0 || blocks.length === 0) {
+    blocks.push(currentBlock);
+  }
+
+  return buildMetricsFromSteps(allSteps, validFtp, blocks);
 };
 
 export async function parseWorkoutFile(fileText, fileName) {

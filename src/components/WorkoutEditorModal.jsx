@@ -210,16 +210,16 @@ function MiniWorkoutGraph({ allSteps, ftp, totalSecs }) {
 
   return (
     <div 
-      className="relative w-full h-24 bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden cursor-crosshair"
+      className="relative w-full h-24 bg-zinc-950 bg-telemetry-grid rounded-lg border border-zinc-800 overflow-hidden cursor-crosshair"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
       {/* FTP Line */}
       <div
-        className="absolute left-0 right-0 border-t border-dashed border-zinc-600 z-10 pointer-events-none"
+        className="absolute left-0 right-0 border-t border-dashed border-volt-400/35 z-10 pointer-events-none"
         style={{ bottom: `${Math.min(ftpLine, 95)}%` }}
       >
-        <span className="absolute right-1 -top-3 text-[9px] font-bold text-zinc-500">FTP</span>
+        <span className="absolute right-1.5 -top-3.5 text-[8px] font-mono font-bold text-volt-400/75 bg-zinc-950/90 px-1 rounded">FTP</span>
       </div>
 
       <div className="absolute inset-0 flex items-end pointer-events-none">
@@ -234,16 +234,18 @@ function MiniWorkoutGraph({ allSteps, ftp, totalSecs }) {
               style={{
                 width: `${widthPct}%`,
                 height: `${heightPct}%`,
-                backgroundColor: color,
               }}
-              className="border-r border-zinc-950/40 opacity-80"
-            />
+              className="border-r border-zinc-950/60 relative overflow-hidden"
+            >
+              <div className="absolute inset-0 opacity-65" style={{ backgroundColor: color }} />
+              <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ backgroundColor: color }} />
+            </div>
           );
         })}
       </div>
 
       {/* Skala vremena */}
-      <div className="absolute bottom-0 left-0 right-0 flex justify-between px-2 py-0.5 text-[8px] text-zinc-600 font-mono pointer-events-none">
+      <div className="absolute bottom-0 left-0 right-0 flex justify-between px-2 py-0.5 text-[8px] text-zinc-500 font-mono telemetry-num pointer-events-none">
         <span>0:00</span>
         <span>{formatDurSec(Math.round(totalSecs / 4))}</span>
         <span>{formatDurSec(Math.round(totalSecs / 2))}</span>
@@ -255,22 +257,22 @@ function MiniWorkoutGraph({ allSteps, ftp, totalSecs }) {
       {hoverInfo && (
         <>
           <div 
-            className="absolute top-0 bottom-0 w-px bg-white/80 pointer-events-none z-20 shadow-[0_0_8px_rgba(255,255,255,0.5)]"
+            className="absolute top-0 bottom-0 w-px bg-volt-400 pointer-events-none z-20"
             style={{ left: hoverInfo.x }}
           />
           <div 
-            className="absolute top-1 pointer-events-none z-30 transition-none"
+            className="absolute top-1.5 pointer-events-none z-30 transition-none"
             style={{ 
               left: hoverInfo.x,
-              transform: hoverInfo.x < 40 ? 'translateX(4px)' : hoverInfo.x > hoverInfo.rectWidth - 40 ? 'translateX(calc(-100% - 4px))' : 'translateX(-50%)'
+              transform: hoverInfo.x < 45 ? 'translateX(4px)' : hoverInfo.x > hoverInfo.rectWidth - 45 ? 'translateX(calc(-100% - 4px))' : 'translateX(-50%)'
             }}
           >
-            <div className="bg-zinc-800 border border-zinc-600 rounded-md px-2 py-1 shadow-xl flex flex-col items-center whitespace-nowrap backdrop-blur-md">
-              <span className="text-white font-black text-[11px] leading-none">
-                {hoverInfo.powerW}W
+            <div className="bg-zinc-950/95 border border-zinc-700 rounded-md px-2 py-1 shadow-xl flex flex-col items-center whitespace-nowrap font-mono telemetry-num">
+              <span className="text-volt-400 font-bold text-[11px] leading-none">
+                {hoverInfo.powerW} W
               </span>
-              <span className="text-zinc-400 font-bold text-[9px] leading-none mt-1">
-                {hoverInfo.powerPct}% • {hoverInfo.timeStr}
+              <span className="text-zinc-400 text-[9px] leading-none mt-1">
+                {hoverInfo.powerPct}% · {hoverInfo.timeStr}
               </span>
             </div>
           </div>
@@ -425,66 +427,68 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
 
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={onClose}>
       <div
-        className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="carbon-panel rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* ============ HEADER ============ */}
-        <div className="flex justify-between items-start px-5 py-4 border-b border-zinc-800 bg-zinc-950/60" onKeyDown={e => e.stopPropagation()}>
-          <div className="flex flex-col gap-0.5">
+        <div className="flex justify-between items-start px-5 py-4 border-b border-zinc-800 bg-zinc-950" onKeyDown={e => e.stopPropagation()}>
+          <div className="flex flex-col gap-0.5 min-w-0 flex-1 pr-3">
             {mode === 'edit' ? (
               <input
                 type="text"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                className="bg-transparent border-none outline-none w-full text-xl font-bold text-zinc-100 focus:ring-0 p-0"
+                className="bg-zinc-900 border border-zinc-700 focus:border-volt-400 rounded-lg px-2.5 py-1 outline-none w-full max-w-md text-lg md:text-xl font-display font-bold uppercase tracking-wide text-zinc-100"
                 placeholder="Naziv treninga..."
               />
             ) : (
-              <h1 className="text-xl font-bold text-zinc-100">{title || workout.name || 'Bez naziva'}</h1>
+              <h1 className="text-lg md:text-xl font-display font-bold uppercase tracking-wide text-zinc-100 truncate">
+                {title || workout.name || 'Bez naziva'}
+              </h1>
             )}
-            <div className="text-sm text-zinc-400 font-medium">
-              {dayName}, {dateStr} • {timeStr}
+            <div className="text-xs font-mono text-zinc-400">
+              {dayName}{dateStr ? `, ${dateStr}` : ''} · {timeStr}
             </div>
           </div>
 
           {/* Header statistike */}
-          <div className="hidden sm:flex items-center gap-6 mx-auto shrink-0">
+          <div className="hidden sm:flex items-center gap-6 mx-4 shrink-0 font-mono telemetry-num">
             <div className="text-center">
-              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-wider">Duration</div>
-              <div className="text-zinc-200 font-black text-sm leading-tight">{formatDurSec(totalSecs)}</div>
+              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">Trajanje</div>
+              <div className="text-zinc-100 font-bold text-sm leading-tight">{formatDurSec(totalSecs)}</div>
             </div>
             <div className="text-center">
-              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-wider">Load</div>
-              <div className="text-zinc-200 font-black text-sm leading-tight">{stats.tss || '-'}</div>
+              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">TSS Load</div>
+              <div className="text-volt-400 font-bold text-sm leading-tight">{stats.tss || '-'}</div>
             </div>
             <div className="text-center">
-              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-wider">Intensity</div>
-              <div className="text-zinc-200 font-black text-sm leading-tight">{intensityPct > 0 ? `${intensityPct}%` : '-'}</div>
+              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">Intenzitet</div>
+              <div className="text-zinc-100 font-bold text-sm leading-tight">{intensityPct > 0 ? `${intensityPct}%` : '-'}</div>
             </div>
           </div>
 
-          <button onClick={onClose} className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-full transition-colors shrink-0">
+          <button onClick={onClose} className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 rounded-lg transition-colors shrink-0">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* ============ BODY ============ */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="flex flex-col lg:flex-row gap-0 lg:gap-0">
+          <div className="flex flex-col lg:flex-row">
 
-                        {/* LIJEVI STUPAC: Steps / Editor */}
+            {/* LIJEVI STUPAC: Steps / Editor */}
             <div className="flex-1 p-5 border-b lg:border-b-0 lg:border-r border-zinc-800 min-w-0" onKeyDown={e => e.stopPropagation()}>
               {mode === 'edit' ? (
                 <div className="flex flex-col gap-3">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                  <label className="text-[10px] font-mono font-bold text-volt-400 uppercase tracking-[0.18em]">
                     Struktura treninga (npr. - 10m 65%)
                   </label>
                   <textarea
                     value={code}
                     onChange={e => setCode(e.target.value)}
-                    className="w-full h-[320px] bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-[12px] text-zinc-300 font-mono leading-relaxed focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50 outline-none resize-none transition-all custom-scrollbar placeholder-zinc-700"
+                    className="w-full h-[320px] bg-zinc-950 border border-zinc-800 rounded-xl p-3.5 text-[12px] text-zinc-200 font-mono leading-relaxed focus:border-volt-400 focus:ring-1 focus:ring-volt-400/30 outline-none resize-none transition-all custom-scrollbar placeholder-zinc-700"
                     placeholder={`Warmup\n- 15m 50-70%\n- 1m 100%\n- 1m 50%\n\nMain Set (Over-Unders)\n4x\n- 2m 88-92%\n- 1m 110-115%\n\nCooldown\n- 5m 50%`}
                     spellCheck={false}
                   />
@@ -493,11 +497,11 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                 stats.blocks.length > 0 && stats.allSteps.length > 0 ? (
                   <StepList blocks={stats.blocks} ftp={ftp} />
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-40 text-zinc-600 text-sm">
+                  <div className="flex flex-col items-center justify-center h-40 text-zinc-500 text-sm">
                     <Pencil className="w-8 h-8 mb-3 text-zinc-700" />
                     <p>Nema koraka za prikaz.</p>
-                    <button onClick={() => setMode('edit')} className="mt-2 text-orange-500 hover:text-orange-400 font-bold text-sm transition-colors">
-                      Uredi kod treninga
+                    <button onClick={() => setMode('edit')} className="mt-2 text-volt-400 hover:text-volt-300 font-mono font-bold uppercase tracking-wider text-xs transition-colors">
+                      + Uredi kod treninga
                     </button>
                   </div>
                 )
@@ -506,26 +510,23 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
 
             {/* DESNI STUPAC: Zone statistike */}
             <div className="w-full lg:w-[280px] shrink-0 p-5 flex flex-col gap-4">
-              {/* Zone Bar */}
               <ZoneBar zones={stats.zones} totalSecs={totalSecs} />
 
-              {/* PI Score */}
               {stats.np > 0 && (
-                <div className="flex items-center gap-2 text-[11px] text-zinc-500 pt-2 border-t border-zinc-800/60">
-                  <span className="font-bold">PI</span>
-                  <span className="text-zinc-300 font-black">{stats.variability}</span>
+                <div className="flex items-center justify-between text-[11px] font-mono telemetry-num text-zinc-500 pt-2 border-t border-zinc-800/80">
+                  <span className="font-bold">VI (VARIABILITY)</span>
+                  <span className="text-zinc-200 font-bold">{stats.variability}</span>
                 </div>
               )}
 
-              {/* Statistike */}
-              <div className="space-y-2 pt-2 border-t border-zinc-800/60">
-                <StatBox label="Normalized" value={stats.np > 0 ? `${stats.np}w` : '-'} />
-                <StatBox label="Average" value={stats.avgPower > 0 ? `${stats.avgPower}w` : '-'} />
+              <div className="space-y-2 pt-2 border-t border-zinc-800/80 font-mono telemetry-num">
+                <StatBox label="Normalized" value={stats.np > 0 ? `${stats.np} W` : '-'} />
+                <StatBox label="Average" value={stats.avgPower > 0 ? `${stats.avgPower} W` : '-'} />
                 <StatBox label="Variability" value={stats.variability || '-'} />
                 <StatBox label="Work" value={stats.workKj > 0 ? `${stats.workKj} kJ` : '-'} />
                 {ftp > 0 && (
                   <StatBox
-                    label="Work>FTP"
+                    label="Work > FTP"
                     value={
                       stats.zones.z4 + stats.zones.z5 + stats.zones.z6 > 0
                         ? `${Math.round(((stats.zones.z4 + stats.zones.z5 + stats.zones.z6) / totalSecs) * (stats.workKj || 0))} kJ`
@@ -535,15 +536,14 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                 )}
               </div>
 
-              {/* SS / IF Score */}
               {stats.tss > 0 && (
-                <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/60">
-                  <span className="text-[10px] font-bold text-zinc-500">SS</span>
-                  <span className="text-sm font-black text-zinc-100">{stats.tss}</span>
+                <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80 font-mono telemetry-num">
+                  <span className="text-[10px] font-bold text-zinc-500">TSS</span>
+                  <span className="text-sm font-bold text-volt-400">{stats.tss}</span>
                   <div className="ml-auto flex gap-1">
-                    <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-black px-1.5 py-0.5 rounded">{stats.tss}</span>
-                    <span className="bg-amber-500/20 text-amber-400 text-[10px] font-black px-1.5 py-0.5 rounded">{stats.ifFactor}</span>
-                    <span className="bg-rose-500/20 text-rose-400 text-[10px] font-black px-1.5 py-0.5 rounded">{stats.variability}</span>
+                    <span className="bg-volt-400/15 text-volt-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-volt-400/25">{stats.tss}</span>
+                    <span className="bg-amber-500/15 text-amber-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-500/25">{stats.ifFactor}</span>
+                    <span className="bg-sky-500/15 text-sky-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-sky-500/25">{stats.variability}</span>
                   </div>
                 </div>
               )}
@@ -557,31 +557,30 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
         </div>
 
         {/* ============ FOOTER ============ */}
-        <div className="p-3 px-5 border-t border-zinc-800 bg-zinc-950/60 flex items-center justify-between gap-3">
-          {/* Lijeva strana: Mode toggleovi */}
+        <div className="p-3 px-5 border-t border-zinc-800 bg-zinc-950 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setMode(mode === 'edit' ? 'view' : 'edit')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all border ${mode === 'edit'
-                  ? 'bg-orange-500/10 text-orange-400 border-orange-500/30 shadow-[0_0_10px_rgba(34,211,238,0.1)]'
-                  : 'bg-zinc-800/50 text-zinc-400 border-zinc-700 hover:bg-zinc-800 hover:text-zinc-200'
-                }`}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-mono font-bold uppercase tracking-wider transition-all border ${
+                mode === 'edit'
+                  ? 'bg-volt-400/15 text-volt-400 border-volt-400/35'
+                  : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800 hover:text-zinc-100'
+              }`}
             >
               {mode === 'edit' ? <Eye className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-              {mode === 'edit' ? 'View' : 'Edit'}
+              {mode === 'edit' ? 'Pregled' : 'Uredi kod'}
             </button>
           </div>
 
-          {/* Desna strana: Akcije */}
           <div className="flex items-center gap-2">
             <button
               onClick={handleSaveToLibrary}
               disabled={isSavingToLibrary || isLoading}
               title="Spremi ovaj trening u zajedničku knjižnicu"
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-colors ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-mono font-bold uppercase tracking-wider transition-colors border ${
                 librarySaveSuccess
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                  : 'text-zinc-400 hover:text-zinc-100 bg-zinc-900 hover:bg-zinc-800 border-zinc-800'
               }`}
             >
               {isSavingToLibrary ? (
@@ -595,14 +594,14 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
             </button>
             <button
               onClick={onClose}
-              className="px-4 py-1.5 rounded-lg text-[11px] font-bold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors uppercase tracking-wider"
+              className="px-3.5 py-1.5 rounded-lg text-[11px] font-mono font-bold text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors uppercase tracking-wider"
             >
-              Close
+              Zatvori
             </button>
             <button
               onClick={handleSave}
               disabled={isLoading}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-orange-500 hover:bg-orange-400 text-zinc-950 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(34,211,238,0.3)]"
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-volt-400 hover:bg-volt-300 text-zinc-950 rounded-lg text-[11px] font-mono font-bold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-volt-glow"
             >
               {isLoading ? (
                 <span className="animate-spin w-3.5 h-3.5 border-2 border-zinc-950/30 border-t-zinc-950 rounded-full" />

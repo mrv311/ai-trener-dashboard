@@ -2,9 +2,33 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   User, Zap, Save, CheckCircle2, Activity, CalendarDays, 
   Clock, Heart, Cloud, LogIn, HelpCircle, ChevronRight, RefreshCw,
-  Lock, Gauge, Award, ShieldCheck
+  Lock, Gauge, Award, ShieldCheck, Palette
 } from 'lucide-react';
 import ActivityDetailModal from './ActivityDetailModal';
+
+const UI_THEMES = [
+  {
+    id: 'volt',
+    name: 'Carbon & Acid Volt',
+    tag: 'ZADANO',
+    desc: 'Fluorescentna trkaća zelena maksimalnog kontrasta na karbonskoj podlozi.',
+    swatch: '#a3e635'
+  },
+  {
+    id: 'corsa',
+    name: 'Atelier Corsa',
+    tag: 'UTRKA',
+    desc: 'Talijanska natjecateljska crveno-narančasta za agresivan trkaći kokpit.',
+    swatch: '#ff4d1c'
+  },
+  {
+    id: 'aero',
+    name: 'Stealth Aero',
+    tag: 'AERO',
+    desc: 'Hladna ledeno-plava telemetrija inspirirana zračnim tunelom.',
+    swatch: '#38bdf8'
+  }
+];
 
 export default function ProfileTab({ 
   profile, 
@@ -18,7 +42,9 @@ export default function ProfileTab({
   athleteInfo,
   onOpenAuthModal,
   onOpenOnboarding,
-  onNavigateToCalendar
+  onNavigateToCalendar,
+  uiTheme = 'volt',
+  setUiTheme
 }) {
   const [formData, setFormData] = useState({
     username: profile?.username || 'Odvažni Vozač',
@@ -143,20 +169,34 @@ export default function ProfileTab({
     return `${m}min`;
   };
 
+  const getZoneColorDot = (zoneId) => {
+    switch (zoneId) {
+      case 'Z1': return 'bg-zinc-500';
+      case 'Z2': return 'bg-sky-500';
+      case 'Z3': return 'bg-emerald-500';
+      case 'SS': return 'bg-volt-400';
+      case 'Z4': return 'bg-amber-400';
+      case 'Z5': return 'bg-rose-500';
+      case 'Z6': return 'bg-purple-500';
+      case 'Z7': return 'bg-fuchsia-500';
+      default: return 'bg-zinc-400';
+    }
+  };
+
   return (
-    <div className="max-w-5xl mx-auto flex flex-col gap-6 animate-in fade-in h-full pb-8">
+    <div className="max-w-5xl mx-auto flex flex-col gap-5 animate-in fade-in h-full pb-8">
 
       {/* RAČUN I SINKRONIZACIJA OBLAKA BANNER */}
       {userId === 'guest' ? (
-        <div className="bg-gradient-to-r from-cyan-950/40 via-zinc-900/80 to-zinc-900/80 border border-cyan-500/30 rounded-3xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-[0_0_20px_rgba(34,211,238,0.06)]">
+        <div className="carbon-panel border-volt-400/30 rounded-xl p-5 md:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shrink-0">
+            <div className="p-3 rounded-lg bg-volt-400/10 border border-volt-400/30 text-volt-400 shrink-0">
               <Cloud className="w-6 h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-zinc-100 text-base">Način rada: Gost</h3>
-                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">Lokalno u pregledniku</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">Način rada: Gost</h3>
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-950 text-zinc-400 border border-zinc-800">LOKALNA MEMORIJA</span>
               </div>
               <p className="text-xs text-zinc-400 mt-1 max-w-xl">
                 Tvoji treninzi i profil spremaju se lokalno u ovom pregledniku. Prijavi se ili registriraj mailom za trajno čuvanje i sinkronizaciju među uređajima (svi trenutni lokalni podaci bit će automatski preneseni).
@@ -166,25 +206,25 @@ export default function ProfileTab({
           {onOpenAuthModal && (
             <button
               onClick={onOpenAuthModal}
-              className="shrink-0 flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 px-5 py-2.5 rounded-xl font-bold text-xs shadow-[0_0_15px_rgba(34,211,238,0.25)] transition-all"
+              className="shrink-0 flex items-center gap-2 bg-volt-400 hover:bg-volt-300 text-zinc-950 px-5 py-2.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs shadow-volt-glow transition-all"
             >
               <LogIn className="w-4 h-4" /> Prijavi se / Registriraj
             </button>
           )}
         </div>
       ) : (
-        <div className="bg-zinc-900/40 border border-emerald-500/20 rounded-3xl p-5 flex items-center justify-between gap-4">
+        <div className="carbon-panel border-emerald-500/25 rounded-xl p-5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
+            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 shrink-0">
               <Cloud className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-zinc-100 text-sm">ErgVibe Oblak Račun</h3>
-                <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Sinkronizacija aktivna</span>
+                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-sm">ErgVibe Oblak Račun</h3>
+                <span className="font-mono text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">SYNC AKTIVAN</span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Prijavljen: <span className="text-zinc-200 font-bold">{userEmail || 'Korisnik'}</span>. Podaci i treninzi automatski se čuvaju u bazi.
+                Prijavljen: <span className="text-zinc-200 font-mono font-bold">{userEmail || 'Korisnik'}</span>. Podaci i treninzi automatski se čuvaju u bazi.
               </p>
             </div>
           </div>
@@ -193,16 +233,16 @@ export default function ProfileTab({
 
       {/* STATUS INTERVALS.ICU POVEZANOSTI */}
       {intervalsConnected && (
-        <div className="bg-gradient-to-r from-cyan-950/30 to-zinc-900/60 border border-cyan-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+        <div className="carbon-panel border-volt-400/20 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+            <div className="w-2.5 h-2.5 rounded-full bg-volt-400 animate-pulse shrink-0" />
             <div>
               <span className="font-bold text-zinc-200">
                 Intervals.icu je povezan
               </span>
               {athleteInfo?.name && (
                 <span className="text-zinc-400 ml-1.5 font-medium">
-                  (Sportaš: <strong className="text-cyan-300">{athleteInfo.name}</strong>)
+                  (Sportaš: <strong className="text-volt-400 font-mono">{athleteInfo.name}</strong>)
                 </span>
               )}
               <span className="text-zinc-500 block text-[11px] mt-0.5">
@@ -213,7 +253,7 @@ export default function ProfileTab({
           {athleteInfo && (
             <button
               onClick={handleRefreshFromIntervals}
-              className="shrink-0 flex items-center gap-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-3 py-1.5 rounded-xl font-bold text-xs transition-all shadow-sm"
+              className="shrink-0 flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-volt-400 border border-volt-400/35 px-3 py-1.5 rounded-lg font-bold text-xs transition-all"
               title="Povuci svježi FTP, težinu i puls s Intervals.icu profila"
             >
               <RefreshCw className="w-3.5 h-3.5" /> Osvježi profil s Intervals.icu
@@ -223,35 +263,35 @@ export default function ProfileTab({
       )}
 
       {/* ZAGLAVLJE */}
-      <div className="bg-zinc-950/50 rounded-3xl shadow-2xl border border-zinc-800/80 p-6 md:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between shrink-0 gap-6 relative overflow-hidden backdrop-blur-md">
+      <div className="carbon-panel rounded-xl p-6 md:p-7 flex flex-col sm:flex-row items-start sm:items-center justify-between shrink-0 gap-5 relative overflow-hidden">
         <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-gradient-to-br from-cyan-500 to-emerald-500 p-2 rounded-xl shadow-[0_0_10px_rgba(34,211,238,0.4)]"><User className="w-6 h-6 text-zinc-950" /></div>
-            <h2 className="text-2xl font-black text-zinc-100 tracking-tight">Profil i Postavke</h2>
+          <div className="flex items-center gap-3 mb-1.5">
+            <div className="bg-volt-400/15 border border-volt-400/40 p-2 rounded-lg text-volt-400"><User className="w-6 h-6" /></div>
+            <h2 className="text-2xl font-display font-bold uppercase tracking-wide text-zinc-100">Profil i Postavke</h2>
           </div>
           <p className="text-zinc-400 font-medium max-w-xl text-sm leading-relaxed">
-            Fiziološki parametri za upravljanje trenažerom, izračun zona snage i analitiku treninga.
+            Fiziološki parametri za upravljanje trenažerom, izračun zona snage, analitiku treninga i izgled telemetrije.
           </p>
         </div>
 
-        <div className="relative z-10 flex items-center gap-3 flex-wrap sm:flex-nowrap">
+        <div className="relative z-10 flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
           {onOpenOnboarding && (
             <button
               onClick={onOpenOnboarding}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 text-zinc-300 transition-all text-xs"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-bold bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 transition-all text-xs"
               title="Pokreni vodič za početnike ponovno"
             >
-              <HelpCircle className="w-4 h-4 text-cyan-400" />
+              <HelpCircle className="w-4 h-4 text-volt-400" />
               Vodič za početnike
             </button>
           )}
 
           <button
             onClick={handleSave}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg text-xs md:text-sm ${
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-display font-bold uppercase tracking-wider transition-all text-xs md:text-sm ${
               isSaved 
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]' 
-                : 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 shadow-[0_4px_15px_rgba(34,211,238,0.3)] border border-cyan-500/30'
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/35' 
+                : 'bg-volt-400 hover:bg-volt-300 text-zinc-950 shadow-volt-glow'
             }`}
           >
             {isSaved ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
@@ -260,22 +300,77 @@ export default function ProfileTab({
         </div>
       </div>
 
+      {/* VIZUALNI IDENTITET / TEMA TELEMETRIJE */}
+      {setUiTheme && (
+        <div className="carbon-panel rounded-xl p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-zinc-100 font-display font-bold uppercase tracking-wide">
+              <Palette className="w-5 h-5 text-volt-400" />
+              <span>Boja Telemetrije (Vizualni Identitet)</span>
+            </div>
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-zinc-950 text-zinc-400 border border-zinc-800">
+              AKTIVNO: {UI_THEMES.find(t => t.id === uiTheme)?.name || 'Carbon & Acid Volt'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {UI_THEMES.map((themeItem) => {
+              const active = uiTheme === themeItem.id;
+              return (
+                <button
+                  key={themeItem.id}
+                  type="button"
+                  onClick={() => setUiTheme(themeItem.id)}
+                  className={`text-left p-4 rounded-lg border transition-all flex flex-col gap-2 ${
+                    active
+                      ? 'bg-zinc-950 border-volt-400 shadow-volt-glow'
+                      : 'bg-zinc-950/60 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/70'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className="w-4 h-4 rounded-sm border border-white/20 shrink-0"
+                        style={{ backgroundColor: themeItem.swatch, boxShadow: `0 0 10px ${themeItem.swatch}66` }}
+                      />
+                      <span className="font-display font-bold uppercase tracking-wide text-sm text-zinc-100">
+                        {themeItem.name}
+                      </span>
+                    </div>
+                    <span className={`font-mono text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                      active
+                        ? 'bg-volt-400/15 text-volt-400 border-volt-400/40'
+                        : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                    }`}>
+                      {active ? 'AKTIVNA' : themeItem.tag}
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 leading-relaxed">
+                    {themeItem.desc}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 1. OSNOVNI PARAMETRI I W/KG METRIKA */}
-      <div className="bg-zinc-900/40 backdrop-blur-md rounded-3xl shadow-xl border border-zinc-800/80 p-6 flex flex-col gap-5 relative overflow-hidden">
+      <div className="carbon-panel rounded-xl p-6 flex flex-col gap-5 relative overflow-hidden">
         <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 flex-wrap gap-2">
-          <div className="flex items-center gap-2 text-zinc-100 font-bold">
-            <Zap className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]" /> 
+          <div className="flex items-center gap-2 text-zinc-100 font-display font-bold uppercase tracking-wide">
+            <Zap className="w-5 h-5 text-volt-400" /> 
             <span>Fiziološki Podaci</span>
           </div>
           
           {/* Status izvora FTP-a */}
           {profile?.isManualFtp ? (
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg">
+            <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2.5 py-1 rounded">
               <Lock className="w-3.5 h-3.5" />
               <span>Ručni unos zaključan (prioritet nad Intervals.icu)</span>
             </div>
           ) : intervalsConnected ? (
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-1 rounded-lg">
+            <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-volt-400 bg-volt-400/10 border border-volt-400/25 px-2.5 py-1 rounded">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Sinkronizirano s Intervals.icu</span>
             </div>
@@ -285,56 +380,56 @@ export default function ProfileTab({
         {/* Polja unosa */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
           <div className="md:col-span-1">
-            <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Korisničko Ime</label>
-            <input type="text" name="username" value={formData.username} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all" />
+            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Korisničko Ime</label>
+            <input type="text" name="username" value={formData.username} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-zinc-100 font-bold focus:border-volt-400 focus:outline-none transition-all" />
           </div>
           <div>
-            <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Težina (kg)</label>
-            <input type="number" step="0.1" name="weight" value={formData.weight} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all" />
+            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Težina (kg)</label>
+            <input type="number" step="0.1" name="weight" value={formData.weight} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 font-mono telemetry-num text-zinc-100 font-bold focus:border-volt-400 focus:outline-none transition-all" />
           </div>
           <div>
-            <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Trenutni FTP (W)</label>
-            <input type="number" name="ftp" value={formData.ftp} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all" />
+            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Trenutni FTP (W)</label>
+            <input type="number" name="ftp" value={formData.ftp} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 font-mono telemetry-num text-volt-400 font-bold focus:border-volt-400 focus:outline-none transition-all" />
           </div>
           <div>
-            <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Max Puls (bpm)</label>
-            <input type="number" name="maxHr" value={formData.maxHr} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all" />
+            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Max Puls (bpm)</label>
+            <input type="number" name="maxHr" value={formData.maxHr} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 font-mono telemetry-num text-zinc-100 font-bold focus:border-volt-400 focus:outline-none transition-all" />
           </div>
           <div>
-            <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5">Threshold Puls</label>
-            <input type="number" name="thresholdHr" value={formData.thresholdHr} onChange={handleChange} className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-xl px-4 py-2.5 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all" />
+            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Threshold Puls</label>
+            <input type="number" name="thresholdHr" value={formData.thresholdHr} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 font-mono telemetry-num text-zinc-100 font-bold focus:border-volt-400 focus:outline-none transition-all" />
           </div>
         </div>
 
         {/* W/KG INTERAKTIVNA KARTICA */}
-        <div className="bg-gradient-to-r from-zinc-950/80 via-zinc-900/60 to-zinc-950/80 border border-zinc-800/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400">
+            <div className="p-3 rounded-lg bg-volt-400/10 border border-volt-400/25 text-volt-400">
               <Gauge className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400 font-medium">Relativna snaga (W/kg):</span>
-                <span className="text-lg font-black text-zinc-100">{wKg} W/kg</span>
-                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${wKgCat.color}`}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-zinc-400 font-medium">Relativna snaga:</span>
+                <span className="text-xl font-display font-bold telemetry-num text-volt-400">{wKg} W/kg</span>
+                <span className={`font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${wKgCat.color}`}>
                   {wKgCat.label}
                 </span>
               </div>
               <p className="text-[11px] text-zinc-500 mt-0.5">
-                Izračunato na temelju: <strong className="text-zinc-300">{formData.ftp} W</strong> / <strong className="text-zinc-300">{formData.weight} kg</strong>. Promjenom brojeva gore omjer se odmah osvježava.
+                Izračunato na temelju: <strong className="font-mono text-zinc-300">{formData.ftp} W</strong> / <strong className="font-mono text-zinc-300">{formData.weight} kg</strong>. Promjenom brojeva gore omjer se odmah osvježava.
               </p>
             </div>
           </div>
           <div className="text-[11px] text-zinc-400 sm:text-right">
-            Klikom na <strong className="text-cyan-400">"Spremi Promjene"</strong> zaključavaš ove parametre za trenažer i zonu snage.
+            Klikom na <strong className="text-volt-400">"Spremi Promjene"</strong> zaključavaš ove parametre za trenažer i zone snage.
           </div>
         </div>
       </div>
 
       {/* 2. ZONE */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-zinc-900/40 backdrop-blur-md rounded-3xl shadow-xl border border-zinc-800/80 p-6">
-          <h3 className="text-sm font-bold text-zinc-200 mb-4 flex items-center bg-purple-500/10 text-purple-400 border border-purple-500/20 px-3 py-1.5 rounded-lg w-fit shadow-[0_0_10px_rgba(168,85,247,0.1)]">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="carbon-panel rounded-xl p-6">
+          <h3 className="text-xs font-display font-bold uppercase tracking-wider text-volt-400 mb-4 flex items-center bg-volt-400/10 border border-volt-400/25 px-3 py-1.5 rounded-md w-fit">
             <Activity className="w-4 h-4 mr-2" /> Zone Snage (Power)
           </h3>
           <div className="text-xs text-zinc-400 space-y-1">
@@ -342,19 +437,22 @@ export default function ProfileTab({
               const minW = Math.round((formData.ftp * z.min) / 100);
               const maxW = z.max ? Math.round((formData.ftp * z.max) / 100) : null;
               return (
-                <div key={z.id} className={`flex items-center justify-between py-2 border-b border-zinc-800/50 ${z.isSubZone ? 'mt-4 border-t border-zinc-700/50 pt-3 text-purple-400 font-bold' : ''}`}>
-                  <div className="w-8 font-bold text-zinc-300">{z.id}</div>
+                <div key={z.id} className={`flex items-center justify-between py-2 border-b border-zinc-800/60 ${z.isSubZone ? 'mt-4 border-t border-zinc-700/60 pt-3 text-volt-400 font-bold' : ''}`}>
+                  <div className="w-11 font-mono font-bold text-zinc-200 flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-sm ${getZoneColorDot(z.id)}`} />
+                    {z.id}
+                  </div>
                   <div className="flex-1">{z.name}</div>
-                  <div className="w-20 text-right text-zinc-500">{z.min}% {z.max ? `- ${z.max}%` : '+'}</div>
-                  <div className="w-24 text-right font-bold text-zinc-200">{minW}W - {maxW ? `${maxW}W` : '+'}</div>
+                  <div className="w-20 text-right font-mono telemetry-num text-zinc-500">{z.min}%{z.max ? `–${z.max}%` : '+'}</div>
+                  <div className="w-28 text-right font-mono telemetry-num font-bold text-zinc-100">{minW}W – {maxW ? `${maxW}W` : '+'}</div>
                 </div>
               );
             })}
           </div>
         </div>
         
-        <div className="bg-zinc-900/40 backdrop-blur-md rounded-3xl shadow-xl border border-zinc-800/80 p-6">
-          <h3 className="text-sm font-bold text-zinc-200 mb-4 flex items-center bg-rose-500/10 text-rose-400 border border-rose-500/20 px-3 py-1.5 rounded-lg w-fit shadow-[0_0_10px_rgba(244,63,94,0.1)]">
+        <div className="carbon-panel rounded-xl p-6">
+          <h3 className="text-xs font-display font-bold uppercase tracking-wider text-rose-400 mb-4 flex items-center bg-rose-500/10 border border-rose-500/25 px-3 py-1.5 rounded-md w-fit">
             <Heart className="w-4 h-4 mr-2" /> Zone Pulsa (HR)
           </h3>
           <div className="text-xs text-zinc-400 space-y-1">
@@ -362,11 +460,14 @@ export default function ProfileTab({
               const minBpm = Math.round((formData.thresholdHr * z.min) / 100);
               const maxBpm = z.max ? Math.round((formData.thresholdHr * z.max) / 100) : null;
               return (
-                <div key={z.id} className="flex items-center justify-between py-2 border-b border-zinc-800/50">
-                  <div className="w-8 font-bold text-zinc-300">{z.id}</div>
+                <div key={z.id} className="flex items-center justify-between py-2 border-b border-zinc-800/60">
+                  <div className="w-11 font-mono font-bold text-zinc-200 flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-sm ${getZoneColorDot(z.id)}`} />
+                    {z.id}
+                  </div>
                   <div className="flex-1">{z.name}</div>
-                  <div className="w-20 text-right text-zinc-500">{z.min}% {z.max ? `- ${z.max}%` : '+'}</div>
-                  <div className="w-24 text-right font-bold text-zinc-200">{minBpm}bpm - {maxBpm ? `${maxBpm}bpm` : `${formData.maxHr}bpm`}</div>
+                  <div className="w-20 text-right font-mono telemetry-num text-zinc-500">{z.min}%{z.max ? `–${z.max}%` : '+'}</div>
+                  <div className="w-28 text-right font-mono telemetry-num font-bold text-zinc-100">{minBpm}–{maxBpm ? `${maxBpm}` : `${formData.maxHr}`} bpm</div>
                 </div>
               );
             })}
@@ -376,13 +477,13 @@ export default function ProfileTab({
 
       {/* 3. ZADNJI TRENINGZI (POVIJEST) - OPTIMIZIRANO NA ZADNJIH 5 S LINKOM NA KALENDAR */}
       {allCompletedWorkouts.length > 0 && (
-        <div className="bg-zinc-900/40 backdrop-blur-md rounded-3xl shadow-xl border border-zinc-800/80 p-6 flex flex-col gap-5 relative overflow-hidden">
+        <div className="carbon-panel rounded-xl p-6 flex flex-col gap-5 relative overflow-hidden">
           <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 flex-wrap gap-2">
-            <div className="flex items-center gap-2 text-zinc-100 font-bold">
-              <Activity className="w-5 h-5 text-orange-500 drop-shadow-[0_0_5px_rgba(249,115,22,0.5)]" />
+            <div className="flex items-center gap-2 text-zinc-100 font-display font-bold uppercase tracking-wide">
+              <Activity className="w-5 h-5 text-volt-400" />
               <span>Zadnjih 5 Odrađenih Treninga</span>
-              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
-                Ukupno u bazi: {allCompletedWorkouts.length}
+              <span className="font-mono telemetry-num text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-950 text-zinc-400 border border-zinc-800">
+                UKUPNO: {allCompletedWorkouts.length}
               </span>
             </div>
             <span className="text-[11px] text-zinc-400 font-medium hidden sm:inline">
@@ -403,40 +504,40 @@ export default function ProfileTab({
                 <div 
                   key={workout.id || index} 
                   onClick={() => setSelectedActivity(workout)}
-                  className="flex items-center justify-between p-4 rounded-xl bg-zinc-900/60 border border-zinc-800/60 hover:border-cyan-500/40 hover:bg-zinc-800/50 transition-all cursor-pointer group shadow-sm"
+                  className="flex items-center justify-between p-4 rounded-lg bg-zinc-950 border border-zinc-800/80 hover:border-volt-400/40 hover:bg-zinc-900/70 transition-all cursor-pointer group"
                   title="Otvori detalje treninga"
                 >
                   <div className="flex flex-col">
-                    <span className="font-bold text-zinc-100 group-hover:text-cyan-400 transition-colors flex items-center gap-2">
+                    <span className="font-bold text-zinc-100 group-hover:text-volt-400 transition-colors flex items-center gap-2">
                       {title}
                       {workout.isSupabase && (
-                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
-                          ErgVibe
+                        <span className="font-mono text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/25">
+                          ERGVIBE
                         </span>
                       )}
                     </span>
-                    <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                      <span className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium">
+                    <div className="flex items-center gap-3 mt-1.5 flex-wrap font-mono telemetry-num text-[11px] text-zinc-400">
+                      <span className="flex items-center gap-1">
                         <CalendarDays className="w-3 h-3 text-zinc-500" /> {displayDate}
                       </span>
-                      <span className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium">
+                      <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3 text-zinc-500" /> {formatDuration(durationSecs)}
                       </span>
                       {avgPwr > 0 && (
-                        <span className="flex items-center gap-1 text-[11px] text-zinc-400 font-medium">
-                          <Zap className="w-3 h-3 text-orange-400" /> {Math.round(avgPwr)}W
+                        <span className="flex items-center gap-1 text-volt-400 font-bold">
+                          <Zap className="w-3 h-3" /> {Math.round(avgPwr)}W
                         </span>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 sm:gap-5 text-right">
                     {tss > 0 && (
-                      <div className="flex flex-col">
-                        <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-black">TSS</span>
-                        <span className="font-bold text-orange-400">{Math.round(tss)}</span>
+                      <div className="flex flex-col font-mono telemetry-num">
+                        <span className="text-[9px] text-zinc-500 uppercase tracking-widest font-bold">TSS</span>
+                        <span className="font-bold text-amber-400">{Math.round(tss)}</span>
                       </div>
                     )}
-                    <ChevronRight className="w-4 h-4 text-zinc-600 group-hover:text-cyan-400 group-hover:translate-x-0.5 transition-all" />
+                    <ChevronRight className="w-4 h-4 text-zinc-600 group-hover:text-volt-400 group-hover:translate-x-0.5 transition-all" />
                   </div>
                 </div>
               );
@@ -450,7 +551,7 @@ export default function ProfileTab({
             {onNavigateToCalendar && (
               <button
                 onClick={onNavigateToCalendar}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-all shadow-[0_0_10px_rgba(34,211,238,0.1)]"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-display font-bold uppercase tracking-wider bg-zinc-900 hover:bg-zinc-800 text-volt-400 border border-volt-400/35 transition-all"
               >
                 <CalendarDays className="w-4 h-4" />
                 Pogledaj cijelu povijest u Kalendaru

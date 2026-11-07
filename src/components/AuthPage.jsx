@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Activity, Mail, Lock, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, Loader2, AlertCircle, CheckCircle2, Bluetooth, Cpu, Sparkles, Download, ArrowRight } from 'lucide-react';
+import BrandLogo from './BrandLogo';
 
 export default function AuthPage({ onGuestLogin }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -29,12 +30,11 @@ export default function AuthPage({ onGuestLogin }) {
           password,
         });
         if (error) throw error;
-        
+
         if (data?.user?.identities?.length === 0) {
           setErrorMsg('Korisnik s ovom email adresom već postoji.');
         } else {
           setSuccessMsg('Registracija uspješna! Provjerite email za potvrdu (ako je uključeno), ili se jednostavno prijavite.');
-          // Automatski prebaci na login
           setIsLogin(true);
         }
       }
@@ -46,98 +46,194 @@ export default function AuthPage({ onGuestLogin }) {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 selection:bg-cyan-500/30">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-900/15 via-zinc-950 to-zinc-950 pointer-events-none"></div>
-      
-      <div className="w-full max-w-md bg-zinc-900/70 backdrop-blur-xl border border-zinc-800/80 rounded-3xl shadow-2xl p-8 relative z-10 animate-in fade-in slide-in-from-bottom-8">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-cyan-400 to-emerald-500 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(34,211,238,0.3)] mb-4">
-            <Activity className="w-8 h-8 text-zinc-950" />
-          </div>
-          <h1 className="text-3xl font-black text-zinc-100 tracking-tight">ErgVibe</h1>
-          <p className="text-zinc-400 font-medium text-sm mt-1">
-            {isLogin ? 'Prijavi se za nastavak' : 'Kreiraj novi račun'}
-          </p>
-        </div>
+    <div className="min-h-screen bg-zinc-950 bg-telemetry-grid text-zinc-200 flex items-center justify-center p-4 md:p-8 selection:bg-volt-400 selection:text-zinc-950">
+      <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in">
 
-        <form onSubmit={handleAuth} className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Email adresa</label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-              <input 
-                type="email" 
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="tvoj@email.com"
-                className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all placeholder:text-zinc-600 placeholder:font-normal"
-              />
-            </div>
-          </div>
+        {/* Lijeva telemetrijska showcase sekcija (Desktop & Tablet) */}
+        <div className="lg:col-span-7 p-7 md:p-10 bg-zinc-950/70 bg-carbon-weave border-b lg:border-b-0 lg:border-r border-zinc-800 flex flex-col justify-between relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-volt-400 via-volt-500/50 to-transparent" />
 
           <div>
-            <label className="block text-[11px] font-black text-zinc-500 uppercase tracking-widest mb-1.5 ml-1">Lozinka</label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-              <input 
-                type="password" 
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-3 pl-12 pr-4 text-zinc-100 font-bold focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all placeholder:text-zinc-600"
-              />
-            </div>
-          </div>
-
-          {errorMsg && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold p-3 rounded-xl flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <p>{errorMsg}</p>
-            </div>
-          )}
-
-          {successMsg && (
-            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold p-3 rounded-xl flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-              <p>{successMsg}</p>
-            </div>
-          )}
-
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="w-full bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 font-bold py-3.5 rounded-xl shadow-[0_4px_15px_rgba(34,211,238,0.25)] transition-all flex justify-center items-center gap-2 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isLogin ? 'Prijavi se' : 'Registriraj se')}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center space-y-3">
-          <button 
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-sm font-medium text-zinc-400 hover:text-cyan-400 transition-colors block w-full"
-          >
-            {isLogin ? 'Nemaš račun? Registriraj se ovdje.' : 'Već imaš račun? Prijavi se ovdje.'}
-          </button>
-          
-          {onGuestLogin && (
-            <>
-              <div className="flex items-center gap-2 justify-center my-2">
-                <div className="h-px bg-zinc-800 flex-1"></div>
-                <span className="text-xs text-zinc-600 font-bold uppercase tracking-widest">ili</span>
-                <div className="h-px bg-zinc-800 flex-1"></div>
+            <div className="flex items-center gap-3.5 mb-8">
+              <BrandLogo size={48} spinning />
+              <div>
+                <div className="font-display font-bold text-2xl tracking-wider uppercase text-zinc-100 leading-none">
+                  ERG<span className="text-volt-400">VIBE</span>
+                </div>
+                <div className="font-mono text-[11px] uppercase tracking-widest text-zinc-500 mt-1">
+                  Indoor Cycling Telemetry · FTMS Cockpit
+                </div>
               </div>
-              <button 
-                onClick={onGuestLogin}
-                className="text-sm font-bold text-zinc-300 hover:text-white bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700/50 rounded-xl py-2.5 px-4 w-full transition-all"
-              >
-                Nastavi kao Gost
-              </button>
-            </>
-          )}
+            </div>
+
+            <h1 className="font-display font-bold text-3xl md:text-4xl uppercase tracking-wide text-zinc-100 leading-[1.12] max-w-lg">
+              Precizna kontrola watta. <span className="text-volt-400">Bez suvišne magle.</span>
+            </h1>
+            <p className="text-zinc-400 text-sm md:text-base mt-3.5 max-w-md leading-relaxed">
+              Izravno BLE upravljanje pametnim trenažerom, Power Match PID korekcija pedala, virtualni mjenjač u 24 brzine i AI fiziološka analitika.
+            </p>
+
+            {/* Tehničke kartice mogućnosti */}
+            <div className="grid grid-cols-2 gap-2.5 mt-7">
+              <div className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 flex items-start gap-2.5">
+                <Bluetooth className="w-4 h-4 text-volt-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-mono text-xs font-bold text-zinc-200">FTMS ERG &amp; 24G SIM</div>
+                  <div className="text-[11px] text-zinc-500">Direto, Kickr, Neo + Zwift Click</div>
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 flex items-start gap-2.5">
+                <Cpu className="w-4 h-4 text-volt-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-mono text-xs font-bold text-zinc-200">Power Match PID</div>
+                  <div className="text-[11px] text-zinc-500">Automatski lock na vanjski PM</div>
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-volt-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-mono text-xs font-bold text-zinc-200">AI Fiziolog</div>
+                  <div className="text-[11px] text-zinc-500">Coggan EF, Pw:HR &amp; planovi</div>
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 flex items-start gap-2.5">
+                <Download className="w-4 h-4 text-volt-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-mono text-xs font-bold text-zinc-200">Nativni .FIT + ICU</div>
+                  <div className="text-[11px] text-zinc-500">Garmin, Strava &amp; Intervals.icu</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Mini vizualni prikaz Coggan zona na dnu */}
+          <div className="mt-8 pt-5 border-t border-zinc-800/80 hidden sm:block">
+            <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
+              <span>Coggan Power Zones</span>
+              <span className="text-volt-400">Z1 · Z2 · Z3 · SS · Z4 · Z5 · Z6</span>
+            </div>
+            <div className="h-7 flex items-end gap-1">
+              <div className="flex-1 h-[32%] bg-zinc-600/40 border-t-2 border-zinc-400" />
+              <div className="flex-1 h-[50%] bg-sky-500/25 border-t-2 border-sky-400" />
+              <div className="flex-1 h-[64%] bg-emerald-500/25 border-t-2 border-emerald-400" />
+              <div className="flex-[1.5] h-[80%] bg-volt-400/25 border-t-2 border-volt-400" />
+              <div className="flex-1 h-[45%] bg-sky-500/25 border-t-2 border-sky-400" />
+              <div className="flex-[1.5] h-[94%] bg-amber-500/25 border-t-2 border-amber-400" />
+              <div className="flex-1 h-[100%] bg-rose-500/25 border-t-2 border-rose-500" />
+              <div className="flex-1 h-[35%] bg-zinc-600/40 border-t-2 border-zinc-400" />
+            </div>
+          </div>
         </div>
+
+        {/* Desna kolona: Prijava / Registracija */}
+        <div className="lg:col-span-5 p-7 md:p-10 flex flex-col justify-center bg-zinc-900">
+          <div className="mb-6">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/25">
+              {isLogin ? 'Autentifikacija' : 'Novi Vozač'}
+            </span>
+            <h2 className="font-display font-bold text-2xl uppercase tracking-wide text-zinc-100 mt-2">
+              {isLogin ? 'Prijava u Cockpit' : 'Kreiraj ErgVibe Račun'}
+            </h2>
+            <p className="text-zinc-400 text-xs mt-1">
+              {isLogin
+                ? 'Sinkroniziraj profil, FTP i povijest treninga u oblaku.'
+                : 'Besplatna registracija za trajnu pohranu vožnji na svim uređajima.'}
+            </p>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-4">
+            <div>
+              <label className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                Email adresa
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="vozac@primjer.hr"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 pl-10 pr-4 text-sm text-zinc-100 font-medium focus:border-volt-400 focus:outline-none transition-colors placeholder:text-zinc-600"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                Lozinka
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 pl-10 pr-4 text-sm text-zinc-100 font-medium focus:border-volt-400 focus:outline-none transition-colors placeholder:text-zinc-600"
+                />
+              </div>
+            </div>
+
+            {errorMsg && (
+              <div className="bg-rose-500/10 border border-rose-500/25 text-rose-400 text-xs font-semibold p-3 rounded-lg flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p>{errorMsg}</p>
+              </div>
+            )}
+
+            {successMsg && (
+              <div className="bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-semibold p-3 rounded-lg flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                <p>{successMsg}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider py-3 rounded-lg shadow-volt-glow transition-all flex justify-center items-center gap-2 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>
+                  <span>{isLogin ? 'Prijavi se' : 'Registriraj se'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-5 text-center space-y-3">
+            <button
+              type="button"
+              onClick={() => setIsLogin(!isLogin)}
+              className="text-xs font-semibold text-zinc-400 hover:text-volt-400 transition-colors block w-full"
+            >
+              {isLogin ? 'Nemaš račun? Kreiraj ga ovdje.' : 'Već imaš račun? Prijavi se ovdje.'}
+            </button>
+
+            {onGuestLogin && (
+              <>
+                <div className="flex items-center gap-2 justify-center py-1">
+                  <div className="h-px bg-zinc-800 flex-1" />
+                  <span className="font-mono text-[10px] text-zinc-600 uppercase tracking-widest">ili bez prijave</span>
+                  <div className="h-px bg-zinc-800 flex-1" />
+                </div>
+                <button
+                  type="button"
+                  onClick={onGuestLogin}
+                  className="text-xs font-display font-bold uppercase tracking-wider text-zinc-200 hover:text-white bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 rounded-lg py-2.5 px-4 w-full transition-all shadow-hardware"
+                >
+                  Nastavi odmah kao Gost
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
       </div>
     </div>
   );

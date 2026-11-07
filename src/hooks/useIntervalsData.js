@@ -3,6 +3,35 @@ import { fetchIntervalsData, updateEventDate, updateEventDetails } from '../serv
 import { supabase } from '../services/supabaseClient';
 import { parseWorkoutDoc, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
 
+const formatLocalDate = (d = new Date()) => {
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const da = String(d.getDate()).padStart(2, '0');
+  return `${yr}-${mo}-${da}`;
+};
+
+const PLANNED_EVENT_CATEGORIES = new Set(['WORKOUT', 'RACE_A', 'RACE_B', 'RACE_C']);
+
+const isIntervalsCyclingType = (typeStr) => {
+  if (!typeStr) return true; // default je biciklizam kad tip nije specificiran na treningu
+  const norm = String(typeStr).toLowerCase().replace(/[\s_-]/g, '');
+  return [
+    'ride',
+    'virtualride',
+    'mountainbikeride',
+    'gravelride',
+    'ebikeride',
+    'emountainbikeride',
+    'handcycle',
+    'velomobile',
+    'trackride',
+    'cycling',
+    'biking',
+    'indoorcycling',
+    'spin'
+  ].includes(norm);
+};
+
 // Helper: određuje je li aktivnost cycling tipa na temelju workout_source
 const isCyclingActivity = (sbAct) => {
   if (!sbAct.workout_source) return true; // default je cycling
@@ -10,7 +39,7 @@ const isCyclingActivity = (sbAct) => {
   if (src === 'free_ride' || src === 'calendar' || src === 'library' || src === 'local') return true;
   if (src.startsWith('external_upload_')) {
     const sport = src.replace('external_upload_', '');
-    return ['cycling', 'virtual_ride', 'biking', 'ride'].includes(sport);
+    return isIntervalsCyclingType(sport);
   }
   if (src === 'external_upload') {
     return sbAct.avg_power > 0; // pretpostavljamo cycling ako ima wate
@@ -18,11 +47,116 @@ const isCyclingActivity = (sbAct) => {
   return true;
 };
 
+const extractEventPlannedMetrics = (ev, userFtp = 250) => {
+  if (!ev) return { tss: 0, durationMin: 0, category: null, diffScore: null, targetNp: null, workoutDoc: null };
+  const isEvCycling = isIntervalsCyclingType(ev.type);
+  const docToParse = ev.workout_doc || ev.description;
+  let parsed = null;
+  let actCategory = isEvCycling ? null : 'OTHER';
+  let diffScore = null;
+  let targetNp = null;
+
+  if (docToParse) {
+    try {
+      parsed = parseWorkoutDoc(docToParse, userFtp);
+      if (isEvCycling && parsed && Array.isArray(parsed.allSteps) && parsed.allSteps.length > 0) {
+        actCategory = categorizeWorkout(parsed.allSteps);
+        diffScore = calculateCategoryDifficulty(parsed.allSteps, actCategory);
+        targetNp = parsed.np || null;
+      }
+    } catch (e) {
+      console.warn('[useIntervalsData] Greška pri parsiranju planiranog eventa:', e);
+    }
+  }
+
+  const candidatesTss = [
+    ev.icu_training_load,
+    ev.load,
+    ev.tss,
+    ev.workout_doc?.tss,
+    parsed?.tss
+  ];
+  let resolvedTss = 0;
+  for (const val of candidatesTss) {
+    const num = Number(val);
+    if (Number.isFinite(num) && num > 0) {
+      resolvedTss = Math.round(num);
+      break;
+    }
+  }
+
+  const candidatesSec = [
+    ev.moving_time,
+    ev.workout_doc?.duration,
+    ev.elapsed_time,
+    parsed?.duration
+  ];
+  let resolvedMin = 0;
+  for (const sec of candidatesSec) {
+    const num = Number(sec);
+    if (Number.isFinite(num) && num > 0) {
+      let mins = Math.round(num / 60);
+      if (mins > 1440) mins = Math.round(mins / 60);
+      resolvedMin = Math.max(1, mins);
+      break;
+    }
+  }
+
+  return {
+    tss: resolvedTss,
+    durationMin: resolvedMin,
+    category: actCategory,
+    diffScore,
+    targetNp,
+    workoutDoc: ev.workout_doc || (parsed?.allSteps?.length > 0 ? ev.description : null)
+  };
+};
+
+const extractActivityCompletedMetrics = (act, userFtp = 250) => {
+  if (!act) return { tss: 0, durationMin: 0, np: 0 };
+  const durSec = Number(act.moving_time || act.elapsed_time || 0) || 0;
+  const np = Number(
+    act.icu_weighted_avg_watts ||
+    act.icu_normalized_power ||
+    act.normalized_power ||
+    act.icu_average_watts ||
+    act.average_watts ||
+    act.icu_average_power ||
+    act.average_power ||
+    0
+  ) || 0;
+
+  const candidatesTss = [
+    act.icu_training_load,
+    act.training_load,
+    act.tss,
+    act.hr_load
+  ];
+  let resolvedTss = 0;
+  for (const val of candidatesTss) {
+    const num = Number(val);
+    if (Number.isFinite(num) && num > 0) {
+      resolvedTss = Math.round(num);
+      break;
+    }
+  }
+
+  if (resolvedTss <= 0 && durSec > 0 && np > 0 && userFtp > 0) {
+    resolvedTss = Math.round((durSec / 3600) * Math.pow(np / userFtp, 2) * 100);
+  }
+
+  return {
+    tss: resolvedTss,
+    durationMin: Math.round(durSec / 60),
+    np: Math.round(np)
+  };
+};
+
 // localStorage ključevi za persistenciju parova
 const STORAGE_KEY_UNPAIRED = 'ergvibe_unpaired_list';
 const STORAGE_KEY_EXPLICIT_PAIRS = 'ergvibe_explicit_pairs';
 
-export function useIntervalsData(intervalsId, intervalsKey, userId, { onRescheduleError } = {}) {
+export function useIntervalsData(intervalsId, intervalsKey, userId, { onRescheduleError, ftp: profileFtp } = {}) {
   const [rawActivities, setRawActivities] = useState([]);
   const [rawEvents, setRawEvents] = useState([]);
   const [wellnessData, setWellnessData] = useState({});
@@ -206,14 +340,18 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
   }, [fetchWorkouts]);
 
   const workouts = useMemo(() => {
-    console.log('[useIntervalsData] Računam workouts. Supabase aktivnosti:', supabaseActivities.length, 'Intervals aktivnosti:', rawActivities.length);
-
     const finalWorkouts = [];
     const consumedEvents = new Set();
     const consumedLocalIds = new Set();
     const consumedSupabaseIds = new Set();
-    const supabaseDateMap = new Map(); // Mapa za brzu provjeru Supabase aktivnosti po datumu
-    const todayStr = new Date().toISOString().split('T')[0];
+    const consumedIntervalsActIds = new Set();
+    const supabaseDateMap = new Map();
+    const todayStr = formatLocalDate(new Date());
+    const effectiveFtp =
+      Number(profileFtp) ||
+      Number(athleteInfo?.icu_ftp || athleteInfo?.ftp) ||
+      Number(localStorage.getItem('ai_trener_user_ftp')) ||
+      250;
 
     const rawLocalScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
     let needsLocalFix = false;
@@ -221,11 +359,11 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       let d = item.duration;
       let s = item.duration_seconds;
       let fixed = false;
-      if (s && s > 21600 && s % 60 === 0) {
+      if (s && s > 43200 && s % 60 === 0) {
         s = Math.round(s / 60);
         fixed = true;
       }
-      if (d && d >= 360 && d % 60 === 0) {
+      if (d && d >= 600 && (!s || d === s) && d % 60 === 0) {
         d = Math.round(d / 60);
         fixed = true;
       } else if (!d && s) {
@@ -246,10 +384,12 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       }
     }
 
-    // Kreiraj Map objekte za O(1) lookup - OPTIMIZACIJA
+    const rawActivityIdSet = new Set(rawActivities.map(a => String(a.id)));
+
+    // Kreiraj Map objekte za O(1) lookup (uključuje WORKOUT i planirane utrke RACE_A/B/C)
     const eventsByDate = new Map();
     rawEvents.forEach(e => {
-      if (e.category !== 'WORKOUT') return;
+      if (!PLANNED_EVENT_CATEGORIES.has(e.category)) return;
       const date = e.start_date_local?.split('T')[0];
       if (!date) return;
       if (!eventsByDate.has(date)) eventsByDate.set(date, []);
@@ -262,33 +402,58 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       localByDate.get(lw.date).push(lw);
     });
 
-    // 0. PRIORITET: Prvo dodaj Supabase lokalne aktivnosti (najsvježije, upravo završene)
-    supabaseActivities.forEach(sbAct => {
-      let actDate = '';
-      if (sbAct.started_at) {
-        // Parse date in local timezone to avoid UTC boundary issues
-        const d = new Date(sbAct.started_at);
-        actDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const getLocalPlannedMetrics = (lw) => {
+      if (!lw) return { tss: 0, durationMin: 0, category: null, diffScore: null, workoutDoc: null };
+      const isLocCycling = !lw.type || isIntervalsCyclingType(lw.type);
+      let parsed = null;
+      const docSource = lw.steps || lw.workout_doc;
+      if ((!lw.tss || Number(lw.tss) <= 0 || !lw.category) && docSource) {
+        try {
+          parsed = parseWorkoutDoc(docSource, effectiveFtp);
+        } catch {
+          parsed = null;
+        }
+      }
+      const rawTss = Number(lw.tss ?? lw.plannedTss) || Number(parsed?.tss) || 0;
+      let durMin = lw.duration_seconds
+        ? Math.round(Number(lw.duration_seconds) / 60)
+        : (Number(lw.duration || lw.plannedDuration) || (parsed?.duration ? Math.round(parsed.duration / 60) : 0));
+      if (durMin > 1440) durMin = Math.round(durMin / 60);
+
+      let cat = isLocCycling ? (lw.category || null) : 'OTHER';
+      let diff = lw.difficulty_score ?? null;
+      if (isLocCycling && (!cat || cat === 'WORKOUT') && parsed?.allSteps?.length > 0) {
+        cat = categorizeWorkout(parsed.allSteps);
+        if (diff == null) diff = calculateCategoryDifficulty(parsed.allSteps, cat);
       }
 
-      // Debug logging za provjeru duplikata
-      if (supabaseDateMap.has(actDate)) {
-        console.warn('[useIntervalsData] DUPLIKAT DETEKTIRAN: Već postoji Supabase aktivnost za datum', actDate, 'ID:', supabaseDateMap.get(actDate), 'Nova ID:', sbAct.id);
-      }
+      return {
+        tss: Math.max(0, Math.round(rawTss)),
+        durationMin: Math.max(0, Math.round(durMin)),
+        category: cat,
+        diffScore: diff,
+        workoutDoc: lw.workout_doc || lw.steps
+      };
+    };
 
-      supabaseDateMap.set(actDate, sbAct.id); // Označi da ovaj datum ima Supabase aktivnost
-
-      const actKey = `supabase-${sbAct.id}`;
-      const isCycling = isCyclingActivity(sbAct);
-
-      // Pokušaj spariti s Intervals.icu eventom PRVO (viši prioritet) - O(k) gdje je k broj evenata za datum
+    const matchEventForActivity = ({
+      eventsForDate,
+      primaryUnpairPrefix,
+      secondaryUnpairPrefix,
+      explicitEventId,
+      nativeIntervalsAct,
+      isSportCycling,
+      actualTss,
+      actualDurMin
+    }) => {
       let pairedEvent = null;
-      let separatedEventIds = [];
+      const separatedEventIds = [];
 
-      const eventsForDate = eventsByDate.get(actDate) || [];
+      const isManuallyUnpaired = (evId) =>
+        unpairedList.includes(`${primaryUnpairPrefix}-${evId}`) ||
+        (secondaryUnpairPrefix ? unpairedList.includes(`${secondaryUnpairPrefix}-${evId}`) : false);
 
-      // 1. PROVJERA: Ima li eksplicitno sparen event (korisnik je ručno spojio)?
-      const explicitEventId = explicitPairings[actKey];
+      // 1. Eksplicitno ručno sparivanje
       if (explicitEventId && !String(explicitEventId).startsWith('local-')) {
         const explicitEvent = eventsForDate.find(e => String(e.id) === String(explicitEventId));
         if (explicitEvent && !consumedEvents.has(explicitEvent.id)) {
@@ -297,32 +462,166 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         }
       }
 
-      // 2. Ako nema eksplicitnog para, traži po tipu/sportu
-      if (!pairedEvent) {
-        for (let e of eventsForDate) {
-          if (unpairedList.includes(`supabase-${sbAct.id}-${e.id}`)) {
-            separatedEventIds.push(e.id);
-          } else if (!consumedEvents.has(e.id) && !pairedEvent) {
-            // SMART MATCHING: Cycling eventi (WORKOUT) se sparuju samo s cycling aktivnostima
-            if (!isCycling) {
-              // Non-cycling aktivnost ne bi trebala automatski hvatati cycling event
-              separatedEventIds.push(e.id);
-              continue;
-            }
-            pairedEvent = e;
-            consumedEvents.add(e.id);
+      // 2. Izvorno Intervals.icu sparivanje (paired_event_id / paired_activity_id / activity_id)
+      if (!pairedEvent && nativeIntervalsAct) {
+        const nativeActIdStr = String(nativeIntervalsAct.id);
+        const nativeEvIdStr = nativeIntervalsAct.paired_event_id != null ? String(nativeIntervalsAct.paired_event_id) : null;
+        const nativeMatch = eventsForDate.find(e => {
+          if (consumedEvents.has(e.id)) return false;
+          return (
+            (nativeEvIdStr && String(e.id) === nativeEvIdStr) ||
+            (e.paired_activity_id != null && String(e.paired_activity_id) === nativeActIdStr) ||
+            (e.activity_id != null && String(e.activity_id) === nativeActIdStr)
+          );
+        });
+
+        if (nativeMatch) {
+          if (isManuallyUnpaired(nativeMatch.id)) {
+            separatedEventIds.push(nativeMatch.id);
+          } else {
+            pairedEvent = nativeMatch;
+            consumedEvents.add(nativeMatch.id);
           }
         }
       }
 
-      // 3. Ako nema Intervals eventa, pokušaj spariti s lokalnim planiranim treningom
+      // 3. Pametno automatsko sparivanje po istom danu i sportu
+      if (!pairedEvent) {
+        const candidates = [];
+        for (const e of eventsForDate) {
+          if (consumedEvents.has(e.id)) continue;
+          if (isManuallyUnpaired(e.id)) {
+            if (!separatedEventIds.includes(e.id)) separatedEventIds.push(e.id);
+            continue;
+          }
+          const isEvCycling = isIntervalsCyclingType(e.type);
+          if (isEvCycling !== isSportCycling) {
+            separatedEventIds.push(e.id);
+            continue;
+          }
+          // Ne kradi event koji je na Intervals.icu već eksplicitno vezan za drugu aktivnost
+          const boundOtherActId = e.paired_activity_id || e.activity_id;
+          if (
+            boundOtherActId &&
+            (!nativeIntervalsAct || String(boundOtherActId) !== String(nativeIntervalsAct.id)) &&
+            rawActivityIdSet.has(String(boundOtherActId)) &&
+            !consumedIntervalsActIds.has(String(boundOtherActId))
+          ) {
+            continue;
+          }
+          candidates.push(e);
+        }
+
+        if (candidates.length === 1) {
+          pairedEvent = candidates[0];
+          consumedEvents.add(pairedEvent.id);
+        } else if (candidates.length > 1) {
+          // Odaberi event najbliži po TSS-u ili trajanju
+          let best = candidates[0];
+          let bestDiff = Infinity;
+          candidates.forEach(c => {
+            const cMetrics = extractEventPlannedMetrics(c, effectiveFtp);
+            const score = cMetrics.tss > 0 && actualTss > 0
+              ? Math.abs(cMetrics.tss - actualTss)
+              : Math.abs((cMetrics.durationMin || 60) - (actualDurMin || 60));
+            if (score < bestDiff) {
+              bestDiff = score;
+              best = c;
+            }
+          });
+          pairedEvent = best;
+          consumedEvents.add(pairedEvent.id);
+        }
+      } else {
+        // Zabilježi ostale ručno odspojene evente za gumb ponovnog spajanja
+        for (const e of eventsForDate) {
+          if (!consumedEvents.has(e.id) && isManuallyUnpaired(e.id) && !separatedEventIds.includes(e.id)) {
+            separatedEventIds.push(e.id);
+          }
+        }
+      }
+
+      return { pairedEvent, separatedEventIds };
+    };
+
+    // 0. PRIORITET: Prvo dodaj ErgVibe / Supabase aktivnosti
+    supabaseActivities.forEach(sbAct => {
+      let actDate = '';
+      const sbStartMs = sbAct.started_at ? new Date(sbAct.started_at).getTime() : NaN;
+      if (!isNaN(sbStartMs)) {
+        actDate = formatLocalDate(new Date(sbStartMs));
+      }
+
+      supabaseDateMap.set(actDate, sbAct.id);
+
+      const actKey = `supabase-${sbAct.id}`;
+      const isCycling = isCyclingActivity(sbAct);
+      const sbDurSec = Math.max(0, Number(sbAct.duration_seconds) || 0);
+      const sbDurMs = Math.max(60, sbDurSec) * 1000;
+      const sbEndMs = !isNaN(sbStartMs) ? sbStartMs + sbDurMs : NaN;
+
+      // Pronađi eventualni duplikat iste vožnje na Intervals.icu (preklapanje vremenskog prozora >= 40% ili start unutar 5 min)
+      let matchedIntervalsAct = null;
+      if (!isNaN(sbStartMs)) {
+        for (const act of rawActivities) {
+          if (consumedIntervalsActIds.has(String(act.id))) continue;
+          const isActCyc = isIntervalsCyclingType(act.type);
+          if (isActCyc !== isCycling) continue;
+
+          const actStartMs = act.start_date
+            ? new Date(act.start_date).getTime()
+            : (act.start_date_local ? new Date(act.start_date_local).getTime() : NaN);
+          if (isNaN(actStartMs)) continue;
+
+          const actDurSec = Math.max(60, Number(act.elapsed_time || act.moving_time || 0));
+          const actEndMs = actStartMs + actDurSec * 1000;
+          const overlapMs = Math.max(0, Math.min(sbEndMs, actEndMs) - Math.max(sbStartMs, actStartMs));
+          const minDurMs = Math.min(sbDurMs, actDurSec * 1000);
+
+          if (overlapMs >= 0.4 * minDurMs || Math.abs(sbStartMs - actStartMs) <= 5 * 60 * 1000) {
+            matchedIntervalsAct = act;
+            consumedIntervalsActIds.add(String(act.id));
+            break;
+          }
+        }
+      }
+
+      const fallbackIcuMetrics = matchedIntervalsAct
+        ? extractActivityCompletedMetrics(matchedIntervalsAct, effectiveFtp)
+        : null;
+
+      let actualTss = Math.round(Number(sbAct.tss) || 0);
+      if (actualTss <= 0 && fallbackIcuMetrics?.tss > 0) {
+        actualTss = fallbackIcuMetrics.tss;
+      } else if (actualTss <= 0 && sbDurSec > 0 && (sbAct.np || sbAct.avg_power) > 0 && effectiveFtp > 0) {
+        const effPwr = Number(sbAct.np || sbAct.avg_power);
+        actualTss = Math.round((sbDurSec / 3600) * Math.pow(effPwr / effectiveFtp, 2) * 100);
+      }
+      const actualDur = Math.round(sbDurSec / 60) || fallbackIcuMetrics?.durationMin || 0;
+
+      const eventsForDate = eventsByDate.get(actDate) || [];
+      const explicitEventId =
+        explicitPairings[actKey] ||
+        (matchedIntervalsAct ? explicitPairings[`act-${matchedIntervalsAct.id}`] : undefined);
+
+      const { pairedEvent, separatedEventIds } = matchEventForActivity({
+        eventsForDate,
+        primaryUnpairPrefix: `supabase-${sbAct.id}`,
+        secondaryUnpairPrefix: matchedIntervalsAct ? String(matchedIntervalsAct.id) : null,
+        explicitEventId,
+        nativeIntervalsAct: matchedIntervalsAct,
+        isSportCycling: isCycling,
+        actualTss,
+        actualDurMin: actualDur
+      });
+
+      // Ako nema Intervals eventa, pokušaj spariti s lokalnim planiranim treningom
       let pairedLocal = null;
       if (!pairedEvent) {
-        // Provjeri eksplicitni lokalni par
         if (explicitEventId && String(explicitEventId).startsWith('local-')) {
-          const localId = explicitEventId.replace('local-', '');
+          const localId = String(explicitEventId).replace('local-', '');
           const localForDate = localByDate.get(actDate) || [];
-          const explicitLocal = localForDate.find(lw => lw.id === localId);
+          const explicitLocal = localForDate.find(lw => String(lw.id) === localId);
           if (explicitLocal && !consumedLocalIds.has(explicitLocal.id)) {
             pairedLocal = explicitLocal;
             consumedLocalIds.add(explicitLocal.id);
@@ -331,14 +630,16 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
 
         if (!pairedLocal) {
           const localForDate = localByDate.get(actDate) || [];
-          for (let lw of localForDate) {
+          for (const lw of localForDate) {
             if (unpairedList.includes(`supabase-${sbAct.id}-local-${lw.id}`)) {
               separatedEventIds.push(`local-${lw.id}`);
-            } else if (!consumedLocalIds.has(lw.id) && isCycling) {
-              // Samo cycling aktivnosti automatski sparuju s lokalnim treninzima
-              pairedLocal = lw;
-              consumedLocalIds.add(lw.id);
-              break;
+            } else if (!consumedLocalIds.has(lw.id)) {
+              const isLocCycling = !lw.type || isIntervalsCyclingType(lw.type);
+              if (isLocCycling === isCycling) {
+                pairedLocal = lw;
+                consumedLocalIds.add(lw.id);
+                break;
+              }
             }
           }
         }
@@ -350,28 +651,29 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       let diffScore = null;
       let actCategory = null;
       let workoutDoc = null;
+      let targetNpVal = null;
       let complianceColor = 'blue';
 
-      // Postavi podatke ovisno o tome što je spareno
       if (pairedEvent) {
+        const evMetrics = extractEventPlannedMetrics(pairedEvent, effectiveFtp);
         eventIdObj = pairedEvent.id;
-        plannedTssDisplay = Math.round(pairedEvent.icu_training_load || 0);
-        plannedDurDisplay = Math.round((pairedEvent.moving_time || 0) / 60);
-        workoutDoc = pairedEvent.workout_doc;
+        plannedTssDisplay = evMetrics.tss;
+        plannedDurDisplay = evMetrics.durationMin;
+        diffScore = evMetrics.diffScore;
+        actCategory = evMetrics.category;
+        targetNpVal = evMetrics.targetNp;
+        workoutDoc = evMetrics.workoutDoc;
       } else if (pairedLocal) {
+        const locMetrics = getLocalPlannedMetrics(pairedLocal);
         eventIdObj = `local-${pairedLocal.id}`;
-        plannedTssDisplay = Math.round(pairedLocal.tss || 0);
-        plannedDurDisplay = pairedLocal.duration_seconds ? Math.round(pairedLocal.duration_seconds / 60) : pairedLocal.duration;
-        diffScore = pairedLocal.difficulty_score;
-        actCategory = pairedLocal.category;
-        workoutDoc = pairedLocal.steps;
+        plannedTssDisplay = locMetrics.tss;
+        plannedDurDisplay = locMetrics.durationMin;
+        diffScore = locMetrics.diffScore;
+        actCategory = locMetrics.category;
+        workoutDoc = locMetrics.workoutDoc;
       }
 
-      // Izračunaj compliance ako je spareno
       if (pairedEvent || pairedLocal) {
-        const actualTss = Math.round(sbAct.tss || 0);
-        const actualDur = Math.round((sbAct.duration_seconds || 0) / 60);
-
         let ratio = 1;
         if (plannedTssDisplay > 0 && actualTss > 0) ratio = actualTss / plannedTssDisplay;
         else if (plannedDurDisplay > 0 && actualDur > 0) ratio = actualDur / plannedDurDisplay;
@@ -379,55 +681,35 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         if (ratio >= 0.8 && ratio <= 1.2) complianceColor = 'green';
         else if ((ratio >= 0.5 && ratio < 0.8) || (ratio > 1.2 && ratio <= 1.5)) complianceColor = 'yellow';
         else complianceColor = 'red';
-      } else {
-        // Fallback ako nije spareno s planiranim treningom (free ride ili garmin sync)
-        if (sbAct.tss > 0 || sbAct.duration_seconds > 0) {
-          complianceColor = 'blue'; // Plavi ako je odrađen ali neplaniran
-        }
+      } else if (actualTss > 0 || sbDurSec > 0) {
+        complianceColor = 'blue';
       }
 
-      // Ako je spojen event s intervalima, procesiraj za difficulty
-      let targetNpVal = null;
-      if (pairedEvent && !diffScore && pairedEvent.workout_doc) {
-        try {
-          // parse intervals code to extract difficulty
-          const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
-          const parsed = parseWorkoutDoc(pairedEvent.workout_doc, ftp);
-          if (parsed && parsed.allSteps && parsed.allSteps.length > 0) {
-            actCategory = categorizeWorkout(parsed.allSteps);
-            diffScore = calculateCategoryDifficulty(parsed.allSteps, actCategory);
-            targetNpVal = parsed.np;
-          }
-        } catch (e) {
-          console.error("Error parsing intervals code for supabase activity:", e);
-        }
-      }
-
-      // Koristi isCycling iz gornjeg smart matching bloka
-      let defaultCategory = isCycling ? 'WORKOUT' : 'OTHER';
+      const defaultCategory = isCycling ? 'WORKOUT' : 'OTHER';
 
       finalWorkouts.push({
         id: `supabase-${sbAct.id}`,
         actId: `supabase-${sbAct.id}`,
         supabaseId: sbAct.id,
+        matchedIntervalsActId: matchedIntervalsAct ? String(matchedIntervalsAct.id) : null,
         eventId: eventIdObj,
         separatedEventIds,
         date: actDate,
         started_at: sbAct.started_at,
-        title: sbAct.title || 'Lokalni Trening',
-        duration: Math.round((sbAct.duration_seconds || 0) / 60),
+        title: sbAct.title || matchedIntervalsAct?.name || 'Lokalni Trening',
+        duration: actualDur,
         plannedDuration: plannedDurDisplay,
-        tss: Math.round(sbAct.tss || 0),
+        tss: actualTss,
         plannedTss: plannedTssDisplay,
         statusColor: complianceColor,
         isCompleted: true,
-        isSupabase: true, // Oznaka da je iz Supabase-a (prioritet!)
-        workout_source: sbAct.workout_source || 'local', // Izvor aktivnosti (calendar, library, free_ride, garmin, strava, etc.)
+        isSupabase: true,
+        workout_source: sbAct.workout_source || 'local',
         difficulty_score: diffScore,
-        category: actCategory || defaultCategory,
+        category: isCycling ? (actCategory && actCategory !== 'OTHER' ? actCategory : defaultCategory) : 'OTHER',
         workout_doc: workoutDoc || sbAct.workout_doc,
         targetNP: targetNpVal ? Math.round(targetNpVal) : null,
-        np: Math.round(sbAct.np || 0),
+        np: Math.round(sbAct.np || fallbackIcuMetrics?.np || 0),
         average_power: Math.round(sbAct.avg_power || 0),
         average_heartrate: Math.round(sbAct.avg_hr || 0)
       });
@@ -435,70 +717,42 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       consumedSupabaseIds.add(sbAct.id);
     });
 
-    // 1. Dodaj Intervals.icu aktivnosti (samo ako NE postoji Supabase aktivnost za taj datum)
+    // 1. Dodaj Intervals.icu aktivnosti (koje nisu već spojene kao duplikat ErgVibe vožnje)
     rawActivities.forEach(act => {
-      const actDate = act.start_date_local ? act.start_date_local.split('T')[0] : '';
+      if (consumedIntervalsActIds.has(String(act.id))) return;
 
-      // PROVJERA: Preskoči ako već postoji Supabase aktivnost s istim ili sličnim vremenom početka (±15 min)
-      // Ovo sprječava dupliciranje istog treninga koji je poslan na Intervals pa se sad vraća
-      const actTimeUtc = act.start_date ? new Date(act.start_date).getTime() : NaN;
-      const actTimeLocal = act.start_date_local ? new Date(act.start_date_local).getTime() : NaN;
-      const isDuplicate = supabaseActivities.some(sbAct => {
-        const sbTime = new Date(sbAct.started_at).getTime();
-        if (isNaN(sbTime)) return false;
-        return (!isNaN(actTimeUtc) && Math.abs(sbTime - actTimeUtc) < 15 * 60 * 1000) ||
-               (!isNaN(actTimeLocal) && Math.abs(sbTime - actTimeLocal) < 15 * 60 * 1000);
-      });
-
-      if (isDuplicate) {
-        console.log('[useIntervalsData] ✓ Preskačem Intervals.icu aktivnost', act.id, 'jer je duplikat Supabase aktivnosti (slično vrijeme početka)');
-        return;
-      }
-
-      let pairedEvent = null;
-      let separatedEventIds = [];
+      const actDate = act.start_date_local
+        ? act.start_date_local.split('T')[0]
+        : (act.start_date ? formatLocalDate(new Date(act.start_date)) : '');
+      if (!actDate) return;
 
       const actKey = `act-${act.id}`;
-      const isActCycling = ['Ride', 'VirtualRide', 'EBikeRide', 'Handcycle'].includes(act.type);
-      let defaultCategory = isActCycling ? 'WORKOUT' : 'OTHER';
+      const isActCycling = isIntervalsCyclingType(act.type);
+      const defaultCategory = isActCycling ? 'WORKOUT' : 'OTHER';
+      const completedMetrics = extractActivityCompletedMetrics(act, effectiveFtp);
+      const actualTss = completedMetrics.tss;
+      const actualDur = completedMetrics.durationMin;
 
-      // O(k) lookup umjesto O(n)
       const eventsForDate = eventsByDate.get(actDate) || [];
-
-      // 1. Provjeri eksplicitni par
       const explicitEventId = explicitPairings[actKey];
-      if (explicitEventId && !String(explicitEventId).startsWith('local-')) {
-        const explicitEvent = eventsForDate.find(e => String(e.id) === String(explicitEventId));
-        if (explicitEvent && !consumedEvents.has(explicitEvent.id)) {
-          pairedEvent = explicitEvent;
-          consumedEvents.add(explicitEvent.id);
-        }
-      }
 
-      // 2. Auto-matching ako nema eksplicitnog para
-      if (!pairedEvent) {
-        for (let e of eventsForDate) {
-          if (unpairedList.includes(`${act.id}-${e.id}`)) {
-            separatedEventIds.push(e.id);
-          } else if (!consumedEvents.has(e.id) && !pairedEvent) {
-            // SMART MATCHING: Cycling eventi se sparuju samo s cycling aktivnostima
-            if (!isActCycling) {
-              separatedEventIds.push(e.id);
-              continue;
-            }
-            pairedEvent = e;
-            consumedEvents.add(e.id);
-          }
-        }
-      }
+      const { pairedEvent, separatedEventIds } = matchEventForActivity({
+        eventsForDate,
+        primaryUnpairPrefix: String(act.id),
+        secondaryUnpairPrefix: actKey,
+        explicitEventId,
+        nativeIntervalsAct: act,
+        isSportCycling: isActCycling,
+        actualTss,
+        actualDurMin: actualDur
+      });
 
       let pairedLocal = null;
       if (!pairedEvent) {
-        // Provjeri eksplicitni lokalni par
         if (explicitEventId && String(explicitEventId).startsWith('local-')) {
-          const localId = explicitEventId.replace('local-', '');
+          const localId = String(explicitEventId).replace('local-', '');
           const localForDate = localByDate.get(actDate) || [];
-          const explicitLocal = localForDate.find(lw => lw.id === localId);
+          const explicitLocal = localForDate.find(lw => String(lw.id) === localId);
           if (explicitLocal && !consumedLocalIds.has(explicitLocal.id)) {
             pairedLocal = explicitLocal;
             consumedLocalIds.add(explicitLocal.id);
@@ -507,12 +761,16 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
 
         if (!pairedLocal) {
           const localForDate = localByDate.get(actDate) || [];
-          for (let lw of localForDate) {
+          for (const lw of localForDate) {
             if (unpairedList.includes(`${act.id}-local-${lw.id}`)) {
               separatedEventIds.push(`local-${lw.id}`);
-            } else if (!pairedEvent && !pairedLocal && !consumedLocalIds.has(lw.id)) {
-              pairedLocal = lw;
-              consumedLocalIds.add(lw.id);
+            } else if (!consumedLocalIds.has(lw.id)) {
+              const isLocCycling = !lw.type || isIntervalsCyclingType(lw.type);
+              if (isLocCycling === isActCycling) {
+                pairedLocal = lw;
+                consumedLocalIds.add(lw.id);
+                break;
+              }
             }
           }
         }
@@ -529,21 +787,23 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
 
       if (pairedEvent || pairedLocal) {
         if (pairedEvent) {
+          const evMetrics = extractEventPlannedMetrics(pairedEvent, effectiveFtp);
           eventIdObj = pairedEvent.id;
-          plannedTssDisplay = Math.round(pairedEvent.icu_training_load || 0);
-          plannedDurDisplay = Math.round((pairedEvent.moving_time || 0) / 60);
-          workoutDoc = pairedEvent.workout_doc;
+          plannedTssDisplay = evMetrics.tss;
+          plannedDurDisplay = evMetrics.durationMin;
+          diffScore = evMetrics.diffScore;
+          actCategory = evMetrics.category;
+          targetNpVal = evMetrics.targetNp;
+          workoutDoc = evMetrics.workoutDoc;
         } else {
+          const locMetrics = getLocalPlannedMetrics(pairedLocal);
           eventIdObj = `local-${pairedLocal.id}`;
-          plannedTssDisplay = Math.round(pairedLocal.tss || 0);
-          plannedDurDisplay = pairedLocal.duration_seconds ? Math.round(pairedLocal.duration_seconds / 60) : pairedLocal.duration;
-          diffScore = pairedLocal.difficulty_score;
-          actCategory = pairedLocal.category;
-          workoutDoc = pairedLocal.steps;
+          plannedTssDisplay = locMetrics.tss;
+          plannedDurDisplay = locMetrics.durationMin;
+          diffScore = locMetrics.diffScore;
+          actCategory = locMetrics.category;
+          workoutDoc = locMetrics.workoutDoc;
         }
-
-        const actualTss = Math.round(act.icu_training_load || 0);
-        const actualDur = Math.round((act.moving_time || 0) / 60);
 
         let ratio = 1;
         if (plannedTssDisplay > 0 && actualTss > 0) ratio = actualTss / plannedTssDisplay;
@@ -552,193 +812,332 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         if (ratio >= 0.8 && ratio <= 1.2) complianceColor = 'green';
         else if ((ratio >= 0.5 && ratio < 0.8) || (ratio > 1.2 && ratio <= 1.5)) complianceColor = 'yellow';
         else complianceColor = 'red';
-      } else {
-        // Fallback ako nije spareno s planiranim treningom (free ride ili garmin sync)
-        if (act.icu_training_load > 0 || act.moving_time > 0) {
-          complianceColor = 'blue';
-        }
+      } else if (actualTss > 0 || actualDur > 0) {
+        complianceColor = 'blue';
       }
 
-      // Ako je to Intervals aktivnost, pokušaj parsati opis (koji bi trebao sadržavati workout_doc)
-      if (!diffScore && (workoutDoc || act.description)) {
+      if (isActCycling && !diffScore && (workoutDoc || act.description)) {
         try {
-          const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
           const docToParse = workoutDoc || act.description;
-          const parsed = parseWorkoutDoc(docToParse, ftp);
+          const parsed = parseWorkoutDoc(docToParse, effectiveFtp);
           if (parsed && parsed.allSteps && parsed.allSteps.length > 0) {
             actCategory = categorizeWorkout(parsed.allSteps);
             diffScore = calculateCategoryDifficulty(parsed.allSteps, actCategory);
             targetNpVal = parsed.np;
           }
         } catch (e) {
-          console.error("Error parsing intervals code for activity:", e);
+          console.error('Error parsing intervals code for activity:', e);
         }
       }
 
       finalWorkouts.push({
-        id: `act-${act.id}`, actId: act.id, eventId: eventIdObj, separatedEventIds,
-        date: actDate, started_at: act.start_date_local || act.start_date, title: act.name || 'Trening',
-        duration: Math.round((act.moving_time || 0) / 60), plannedDuration: plannedDurDisplay,
-        tss: Math.round(act.icu_training_load || 0), plannedTss: plannedTssDisplay,
-        statusColor: complianceColor, isCompleted: true,
+        id: `act-${act.id}`,
+        actId: act.id,
+        eventId: eventIdObj,
+        separatedEventIds,
+        date: actDate,
+        started_at: act.start_date_local || act.start_date,
+        title: act.name || 'Trening',
+        duration: actualDur,
+        plannedDuration: plannedDurDisplay,
+        tss: actualTss,
+        plannedTss: plannedTssDisplay,
+        statusColor: complianceColor,
+        isCompleted: true,
         difficulty_score: diffScore,
-        category: actCategory || defaultCategory,
+        category: isActCycling ? (actCategory && actCategory !== 'OTHER' ? actCategory : defaultCategory) : 'OTHER',
         workout_doc: workoutDoc,
         targetNP: targetNpVal ? Math.round(targetNpVal) : null,
-        np: Math.round(act.icu_normalized_power || act.normalized_power || 0),
-        average_power: Math.round(act.icu_average_power || act.average_watts || act.average_power || 0),
+        np: completedMetrics.np,
+        average_power: Math.round(act.icu_average_watts || act.icu_average_power || act.average_watts || act.average_power || 0),
         max_power: Math.round(act.icu_max_power || act.max_watts || act.max_power || 0),
         average_heartrate: Math.round(act.icu_average_hr || act.average_heartrate || act.average_hr || 0)
       });
     });
 
-    // 2. Dodaj planirane evente iz Intervals.icu
+    // 2. Dodaj preostale planirane evente iz Intervals.icu (WORKOUT i RACE_A/B/C)
     rawEvents.forEach(ev => {
-      if (ev.category !== 'WORKOUT' || consumedEvents.has(ev.id)) return;
-      if (ev.activity_id && !unpairedList.some(pair => pair.endsWith(`-${ev.id}`))) return;
+      if (!PLANNED_EVENT_CATEGORIES.has(ev.category) || consumedEvents.has(ev.id)) return;
 
       const evDate = ev.start_date_local ? ev.start_date_local.split('T')[0] : '';
+      if (!evDate) return;
+
       let complianceColor = 'grey';
       if (evDate < todayStr) complianceColor = 'red-missed';
 
-      let diffScore = null;
-      let actCategory = null;
-
-      if (ev.workout_doc || ev.description) {
-        try {
-          const ftp = Number(localStorage.getItem('ai_trener_user_ftp')) || 250;
-          const docToParse = ev.workout_doc || ev.description;
-          const parsed = parseWorkoutDoc(docToParse, ftp);
-          if (parsed && parsed.allSteps && parsed.allSteps.length > 0) {
-            actCategory = categorizeWorkout(parsed.allSteps);
-            diffScore = calculateCategoryDifficulty(parsed.allSteps, actCategory);
-          }
-        } catch (e) {
-          console.error("Error parsing intervals code for event:", e);
-        }
-      }
-
-      let evDur = Math.round((ev.moving_time || 0) / 60);
-      if (evDur >= 360 && evDur % 60 === 0) evDur = Math.round(evDur / 60);
-      else if (evDur > 1440) evDur = Math.round(evDur / 60);
-      evDur = Math.max(1, evDur);
+      const evMetrics = extractEventPlannedMetrics(ev, effectiveFtp);
+      const isEvCycling = isIntervalsCyclingType(ev.type);
 
       finalWorkouts.push({
-        id: `ev-${ev.id}`, eventId: ev.id, date: evDate, title: ev.name || 'Planirano',
-        duration: evDur, plannedDuration: evDur,
-        tss: Math.round(ev.icu_training_load || 0), plannedTss: Math.round(ev.icu_training_load || 0),
-        statusColor: complianceColor, isCompleted: false,
-        workout_doc: ev.workout_doc,
-        difficulty_score: diffScore,
-        category: actCategory
+        id: `ev-${ev.id}`,
+        eventId: ev.id,
+        date: evDate,
+        title: ev.name || (ev.category?.startsWith('RACE') ? 'Utrka' : 'Planirano'),
+        duration: evMetrics.durationMin,
+        plannedDuration: evMetrics.durationMin,
+        tss: evMetrics.tss,
+        plannedTss: evMetrics.tss,
+        statusColor: complianceColor,
+        isCompleted: false,
+        workout_doc: evMetrics.workoutDoc,
+        difficulty_score: evMetrics.diffScore,
+        category: isEvCycling ? evMetrics.category : 'OTHER'
       });
     });
 
-    // 3. Dodaj lokalne planirane treninze (koji nisu spareni)
+    // 3. Dodaj lokalne planirane treninge (koji nisu spareni)
     localScheduled.forEach(sched => {
       if (consumedLocalIds.has(sched.id)) return;
+      if (!sched.date) return;
+
       let complianceColor = 'grey';
       if (sched.date < todayStr) complianceColor = 'red-missed';
 
-      let rawDur = sched.duration || sched.plannedDuration;
-      let rawSec = sched.duration_seconds;
-      if (rawSec && rawSec > 21600 && rawSec % 60 === 0) {
-        rawSec = Math.round(rawSec / 60);
-      }
-      if (rawDur && rawDur >= 360 && rawDur % 60 === 0) {
-        rawDur = Math.round(rawDur / 60);
-      } else if (!rawDur && rawSec) {
-        rawDur = Math.round(rawSec / 60);
-      } else if (rawDur > 1440) {
-        rawDur = Math.round(rawDur / 60);
-      }
-      const cleanDuration = Math.max(10, Math.round(rawDur || 60));
+      const locMetrics = getLocalPlannedMetrics(sched);
+      const cleanDuration = locMetrics.durationMin > 0 ? locMetrics.durationMin : 60;
 
       finalWorkouts.push({
         id: `local-${sched.id}`,
         date: sched.date,
-        title: sched.title,
+        title: sched.title || 'Planirani trening',
         duration: cleanDuration,
         plannedDuration: cleanDuration,
-        tss: sched.tss,
-        plannedTss: sched.tss,
+        tss: locMetrics.tss,
+        plannedTss: locMetrics.tss,
         statusColor: complianceColor,
         isCompleted: false,
         isLocal: true,
         steps: sched.steps,
-        workout_doc: sched.workout_doc || sched.steps,
-        category: sched.category,
-        difficulty_score: sched.difficulty_score
+        workout_doc: locMetrics.workoutDoc,
+        category: locMetrics.category,
+        difficulty_score: locMetrics.diffScore
       });
     });
 
-    console.log('[useIntervalsData] Završeno računanje. Ukupno workouts:', finalWorkouts.length, 'Supabase datumi u mapi:', Array.from(supabaseDateMap.keys()).sort());
-
     return finalWorkouts;
-  }, [rawActivities, rawEvents, supabaseActivities, unpairedList, explicitPairings, localRefreshTrigger, userId]);
+  }, [rawActivities, rawEvents, supabaseActivities, unpairedList, explicitPairings, localRefreshTrigger, userId, profileFtp, athleteInfo]);
 
-  // Samostalni izračun kondicije (PMC: CTL / ATL / TSB) kada Intervals.icu nije spojen
+  // Unificirani PMC engine (CTL / ATL / TSB): spaja stvarnu povijest s budućom projekcijom planiranih treninga
   const effectiveWellnessData = useMemo(() => {
-    if (wellnessData && Object.keys(wellnessData).length > 0) {
-      return wellnessData;
+    const today = new Date();
+    const todayStr = formatLocalDate(today);
+
+    const completedLoadByDate = new Map();
+    const uncompletedPlannedLoadByDate = new Map();
+    let minWorkoutDateStr = todayStr;
+    let maxWorkoutDateStr = todayStr;
+    let earliestUnsyncedLocalDate = null;
+
+    (workouts || []).forEach(w => {
+      if (!w?.date) return;
+      if (w.date < minWorkoutDateStr) minWorkoutDateStr = w.date;
+      if (w.date > maxWorkoutDateStr) maxWorkoutDateStr = w.date;
+
+      if (w.isCompleted) {
+        const load = Math.max(0, Number(w.tss) || 0);
+        if (load > 0) {
+          completedLoadByDate.set(w.date, (completedLoadByDate.get(w.date) || 0) + load);
+        }
+        if (w.isSupabase && !w.matchedIntervalsActId && w.date < todayStr) {
+          if (!earliestUnsyncedLocalDate || w.date < earliestUnsyncedLocalDate) {
+            earliestUnsyncedLocalDate = w.date;
+          }
+        }
+      } else {
+        const planned = Math.max(0, Number(w.plannedTss ?? w.tss) || 0);
+        if (planned > 0) {
+          uncompletedPlannedLoadByDate.set(w.date, (uncompletedPlannedLoadByDate.get(w.date) || 0) + planned);
+        }
+      }
+    });
+
+    const hasIntervalsWellness = wellnessData && Object.keys(wellnessData).length > 0;
+
+    // U samostalnom načinu uključi i eventualno uvezenu CSV povijest za točniju CTL bazu
+    if (!hasIntervalsWellness) {
+      try {
+        const extraCsv = JSON.parse(localStorage.getItem(`ergvibe_extra_historical_workouts_${userId || 'guest'}`) || '[]');
+        extraCsv.forEach(item => {
+          const dStr = String(item.date || '').split('T')[0];
+          const load = Number(item.tss) || 0;
+          if (dStr && dStr < todayStr && load > 0 && !completedLoadByDate.has(dStr)) {
+            completedLoadByDate.set(dStr, load);
+            if (dStr < minWorkoutDateStr) minWorkoutDateStr = dStr;
+          }
+        });
+      } catch {
+        // ignore
+      }
     }
-    if (!workouts || workouts.length === 0) {
+
+    if (!hasIntervalsWellness && completedLoadByDate.size === 0 && uncompletedPlannedLoadByDate.size === 0) {
       return {};
     }
 
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const computed = {};
+    const kCtl = 1 - Math.exp(-1 / 42);
+    const kAtl = 1 - Math.exp(-1 / 7);
 
-    const tssByDate = new Map();
-    let minDateStr = todayStr;
-    let maxDateStr = todayStr;
+    // Projekcija barem 60 dana unaprijed (pokriva sve tjedne u Kalendaru i graf Kondicije)
+    const futureHorizon = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() + 60));
+    const futureHorizonStr = futureHorizon.toISOString().split('T')[0];
+    let endProjStr = futureHorizonStr;
+    if (maxWorkoutDateStr >= endProjStr) {
+      const [my, mm, md] = maxWorkoutDateStr.split('-').map(Number);
+      const ext = new Date(Date.UTC(my, mm - 1, md + 14));
+      endProjStr = ext.toISOString().split('T')[0];
+    }
 
-    workouts.forEach(w => {
-      if (!w.date) return;
-      let dayLoad = 0;
-      if (w.isCompleted) {
-        dayLoad = Number(w.tss) || 0;
-      } else if (w.date >= todayStr) {
-        dayLoad = Number(w.plannedTss ?? w.tss) || 0;
+    // Pronađi najkasnije pouzdano povijesno sidro iz Intervals.icu (< todayStr i prije eventualnih nesinkroniziranih lokalnih vožnji)
+    let anchorDateStr = null;
+    if (hasIntervalsWellness) {
+      const anchorLimit = earliestUnsyncedLocalDate && earliestUnsyncedLocalDate < todayStr
+        ? earliestUnsyncedLocalDate
+        : todayStr;
+
+      const validPastDates = Object.keys(wellnessData)
+        .filter(d => d < anchorLimit && wellnessData[d]?.ctl != null && wellnessData[d]?.atl != null)
+        .sort();
+
+      if (validPastDates.length > 0) {
+        anchorDateStr = validPastDates[validPastDates.length - 1];
       }
-      if (dayLoad > 0) {
-        tssByDate.set(w.date, (tssByDate.get(w.date) || 0) + dayLoad);
-      }
-      if (w.date < minDateStr) minDateStr = w.date;
-      if (w.date > maxDateStr) maxDateStr = w.date;
-    });
 
-    if (tssByDate.size === 0) return {};
+      // Kopiraj sve izvorne wellness podatke (HRV, puls u mirovanju, san, te povijesni CTL/ATL do sidra)
+      Object.entries(wellnessData).forEach(([dStr, wVal]) => {
+        if (!wVal) return;
+        if (anchorDateStr && dStr <= anchorDateStr) {
+          const c = Number(wVal.ctl) || 0;
+          const a = Number(wVal.atl) || 0;
+          const t = wVal.tsb != null ? Number(wVal.tsb) : c - a;
+          computed[dStr] = {
+            ...wVal,
+            ctl: c,
+            atl: a,
+            tsb: t,
+            actualCtl: c,
+            actualAtl: a,
+            actualTsb: t,
+            isProjected: false
+          };
+        } else {
+          // Zadrži biometriju (HRV, restingHR, sleep) za danas/budućnost dok se CTL/ATL preračunaju dolje
+          computed[dStr] = { ...wVal };
+        }
+      });
+    }
 
-    // Osiguraj barem 45 dana povijesti za zagrijavanje krivulje
-    const fortyFiveDaysAgo = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() - 45));
-    const minBaselineStr = fortyFiveDaysAgo.toISOString().split('T')[0];
-    if (minBaselineStr < minDateStr) minDateStr = minBaselineStr;
-
-    const [sy, sm, sd] = minDateStr.split('-').map(Number);
-    const [ey, em, ed] = maxDateStr.split('-').map(Number);
-    const cur = new Date(Date.UTC(sy, sm - 1, sd));
-    const end = new Date(Date.UTC(ey, em - 1, ed));
-
+    let startCalcDateUTC;
     let ctl = 0;
     let atl = 0;
-    const computed = {};
 
-    while (cur <= end) {
+    if (anchorDateStr) {
+      ctl = Number(wellnessData[anchorDateStr].ctl) || 0;
+      atl = Number(wellnessData[anchorDateStr].atl) || 0;
+      const [ay, am, ad] = anchorDateStr.split('-').map(Number);
+      startCalcDateUTC = new Date(Date.UTC(ay, am - 1, ad + 1));
+    } else {
+      // Samostalni izračun od barem 90 dana unatrag radi stabilizacije CTL (42d) krivulje
+      const ninetyDaysAgo = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() - 90));
+      const minBaselineStr = ninetyDaysAgo.toISOString().split('T')[0];
+      const effStartStr = minBaselineStr < minWorkoutDateStr ? minBaselineStr : minWorkoutDateStr;
+      const [sy, sm, sd] = effStartStr.split('-').map(Number);
+      startCalcDateUTC = new Date(Date.UTC(sy, sm - 1, sd));
+
+      // Ako na samom današnjem danu postoji jedini Intervals zapis bez prošlosti, preuzmi ga kao početnu bazu
+      if (hasIntervalsWellness && wellnessData[todayStr]?.ctl != null && completedLoadByDate.size === 0) {
+        ctl = Number(wellnessData[todayStr].ctl) || 0;
+        atl = Number(wellnessData[todayStr].atl) || 0;
+        const [ty, tm, td] = todayStr.split('-').map(Number);
+        startCalcDateUTC = new Date(Date.UTC(ty, tm - 1, td));
+      }
+    }
+
+    const [ey, em, ed] = endProjStr.split('-').map(Number);
+    const endDateUTC = new Date(Date.UTC(ey, em - 1, ed));
+    const cur = new Date(startCalcDateUTC);
+
+    while (cur <= endDateUTC) {
       const dStr = cur.toISOString().split('T')[0];
-      const load = tssByDate.get(dStr) || 0;
-      ctl = ctl + (load - ctl) / 42;
-      atl = atl + (load - atl) / 7;
-      computed[dStr] = {
-        ctl,
-        atl,
-        tsb: ctl - atl
-      };
+      const existingBio = computed[dStr] || {};
+
+      if (dStr < todayStr) {
+        // Prošli dani: u PMC ulaze isključivo stvarno odrađeni treninzi (propušteni treninzi nose 0 TSS)
+        const actualLoad = completedLoadByDate.get(dStr) || 0;
+        ctl = ctl + (actualLoad - ctl) * kCtl;
+        atl = atl + (actualLoad - atl) * kAtl;
+        const tsb = ctl - atl;
+        computed[dStr] = {
+          ...existingBio,
+          ctl,
+          atl,
+          tsb,
+          actualCtl: ctl,
+          actualAtl: atl,
+          actualTsb: tsb,
+          isProjected: false
+        };
+      } else if (dStr === todayStr) {
+        // Današnji dan: actualCtl odražava stanje UPRAVO SADA, a ctl projicira kraj dana (s preostalim planom za danas)
+        const actualLoadToday = completedLoadByDate.get(dStr) || 0;
+        const remainingPlannedToday = uncompletedPlannedLoadByDate.get(dStr) || 0;
+
+        let actualCtlToday;
+        let actualAtlToday;
+
+        // Ako postoji svjež Intervals.icu zapis za danas i nema lokalnih nesinkroniziranih vožnji danas, drži 100% paritet s Intervalsom za trenutno stanje
+        if (
+          hasIntervalsWellness &&
+          wellnessData[todayStr]?.ctl != null &&
+          wellnessData[todayStr]?.atl != null &&
+          !(workouts || []).some(w => w.date === todayStr && w.isCompleted && w.isSupabase && !w.matchedIntervalsActId)
+        ) {
+          actualCtlToday = Number(wellnessData[todayStr].ctl);
+          actualAtlToday = Number(wellnessData[todayStr].atl);
+        } else {
+          actualCtlToday = ctl + (actualLoadToday - ctl) * kCtl;
+          actualAtlToday = atl + (actualLoadToday - atl) * kAtl;
+        }
+
+        const totalProjectedLoadToday = actualLoadToday + remainingPlannedToday;
+        if (remainingPlannedToday > 0) {
+          ctl = ctl + (totalProjectedLoadToday - ctl) * kCtl;
+          atl = atl + (totalProjectedLoadToday - atl) * kAtl;
+        } else {
+          ctl = actualCtlToday;
+          atl = actualAtlToday;
+        }
+
+        computed[dStr] = {
+          ...existingBio,
+          ctl,
+          atl,
+          tsb: ctl - atl,
+          actualCtl: actualCtlToday,
+          actualAtl: actualAtlToday,
+          actualTsb: actualCtlToday - actualAtlToday,
+          hasUncompletedToday: remainingPlannedToday > 0,
+          isProjected: remainingPlannedToday > 0
+        };
+      } else {
+        // Budući dani: projekcija na temelju planiranog TSS-a (i prirodnog opadanja u danima odmora)
+        const futureLoad = (completedLoadByDate.get(dStr) || 0) + (uncompletedPlannedLoadByDate.get(dStr) || 0);
+        ctl = ctl + (futureLoad - ctl) * kCtl;
+        atl = atl + (futureLoad - atl) * kAtl;
+        computed[dStr] = {
+          ...existingBio,
+          ctl,
+          atl,
+          tsb: ctl - atl,
+          isProjected: true
+        };
+      }
+
       cur.setUTCDate(cur.getUTCDate() + 1);
     }
 
     return computed;
-  }, [wellnessData, workouts]);
+  }, [wellnessData, workouts, userId]);
 
   const handleUnpair = useCallback((actId, eventId) => {
     if (!actId || !eventId) return;
@@ -925,7 +1324,9 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       try {
         await updateEventDetails(intervalsId, intervalsKey, eventId, {
           name: title,
-          workout_doc: workout_doc
+          workout_doc: workout_doc,
+          icu_training_load: calculatedTss,
+          moving_time: (calculatedDuration || 0) * 60
         });
       } catch (err) {
         console.error('Update Workout API error:', err);

@@ -45,11 +45,10 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
   };
 
   return (
-    <div className="max-w-5xl mx-auto bg-zinc-900/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-zinc-800/80 animate-in fade-in flex flex-col p-6 md:p-8 mb-8 relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 blur-[100px] rounded-full pointer-events-none"></div>
+    <div className="max-w-5xl mx-auto carbon-panel rounded-xl animate-in fade-in flex flex-col p-6 md:p-8 mb-8 relative overflow-hidden">
 
       <div className="mb-8 border-b border-zinc-800/80 pb-6 relative z-10">
-        <h2 className="text-xl md:text-2xl font-black text-zinc-100 flex items-center gap-2.5 tracking-tight">
+        <h2 className="text-xl md:text-2xl font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2.5">
           Način rada i vanjske veze
         </h2>
         <p className="text-zinc-400 text-sm mt-2 leading-relaxed max-w-2xl">
@@ -57,76 +56,76 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 relative z-10 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 relative z-10 items-start">
 
         {/* 1. Samostalni način rada & .FIT Izvoz */}
-        <div className="bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
-          <div className="flex items-center justify-between">
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-6 flex flex-col gap-4 relative overflow-hidden">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+              <div className="p-2.5 rounded-lg bg-volt-400/10 border border-volt-400/25 text-volt-400">
                 <HardDriveDownload className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-zinc-100 text-base">Samostalan način rada</h3>
+                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">Samostalan način rada</h3>
                 <span className="text-[11px] text-zinc-500">Direktan izvoz treninga</span>
               </div>
             </div>
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3" /> Uvijek aktivan
+            <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1 shrink-0">
+              <ShieldCheck className="w-3 h-3" /> UVIJEK AKTIVAN
             </span>
           </div>
 
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Svaki odrađeni trening automatski se sprema u memoriju aplikacije. Po završetku vožnje u tabu <strong className="text-zinc-200">Trenažer</strong> jednim klikom preuzimaš industrijski standardnu <strong className="text-cyan-400">.FIT datoteku</strong> kompatibilnu s:
+            Svaki odrađeni trening automatski se sprema u memoriju aplikacije. Po završetku vožnje u tabu <strong className="text-zinc-200">Trenažer</strong> jednim klikom preuzimaš industrijski standardnu <strong className="text-volt-400 font-mono">.FIT datoteku</strong> kompatibilnu s:
           </p>
 
           <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-zinc-300">
-            <div className="bg-zinc-900/80 border border-zinc-800 p-2.5 rounded-xl flex items-center gap-2">
-              <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" /> Garmin Connect
+            <div className="bg-zinc-900 border border-zinc-800 p-2.5 rounded-lg flex items-center gap-2">
+              <Check className="w-3.5 h-3.5 text-volt-400 shrink-0" /> Garmin Connect
             </div>
-            <div className="bg-zinc-900/80 border border-zinc-800 p-2.5 rounded-xl flex items-center gap-2">
-              <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" /> Strava
+            <div className="bg-zinc-900 border border-zinc-800 p-2.5 rounded-lg flex items-center gap-2">
+              <Check className="w-3.5 h-3.5 text-volt-400 shrink-0" /> Strava
             </div>
-            <div className="bg-zinc-900/80 border border-zinc-800 p-2.5 rounded-xl flex items-center gap-2">
-              <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" /> TrainingPeaks
+            <div className="bg-zinc-900 border border-zinc-800 p-2.5 rounded-lg flex items-center gap-2">
+              <Check className="w-3.5 h-3.5 text-volt-400 shrink-0" /> TrainingPeaks
             </div>
-            <div className="bg-zinc-900/80 border border-zinc-800 p-2.5 rounded-xl flex items-center gap-2">
-              <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" /> Bilo koji analizator
+            <div className="bg-zinc-900 border border-zinc-800 p-2.5 rounded-lg flex items-center gap-2">
+              <Check className="w-3.5 h-3.5 text-volt-400 shrink-0" /> Bilo koji analizator
             </div>
           </div>
         </div>
 
         {/* 2. Intervals.icu sinkronizacija */}
-        <form onSubmit={saveSettings} className="bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
-          <div className="flex items-center justify-between">
+        <form onSubmit={saveSettings} className="bg-zinc-950 border border-zinc-800 rounded-xl p-6 flex flex-col gap-4 relative overflow-hidden">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400">
+              <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-400">
                 <LinkIcon className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-zinc-100 text-base">Intervals.icu</h3>
+                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">Intervals.icu</h3>
                 <span className="text-[11px] text-zinc-500">Automatski kalendar i upload</span>
               </div>
             </div>
 
             {connectionStatus === 'connected' && (
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" /> Povezano
+              <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1 shrink-0">
+                <CheckCircle className="w-3 h-3" /> POVEZANO
               </span>
             )}
             {connectionStatus === 'connecting' && (
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
-                <Clock className="w-3 h-3 animate-spin" /> Spajanje...
+              <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/25 flex items-center gap-1 shrink-0">
+                <Clock className="w-3 h-3 animate-spin" /> SPAJANJE...
               </span>
             )}
             {connectionStatus === 'error' && (
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center gap-1" title={connectionError}>
-                <XCircle className="w-3 h-3" /> Greška
+              <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-rose-500/10 text-rose-400 border border-rose-500/25 flex items-center gap-1 shrink-0" title={connectionError}>
+                <XCircle className="w-3 h-3" /> GREŠKA
               </span>
             )}
             {connectionStatus === 'idle' && (
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700">
-                Nije spojeno
+              <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-zinc-900 text-zinc-400 border border-zinc-800 shrink-0">
+                NIJE SPOJENO
               </span>
             )}
           </div>
@@ -137,7 +136,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
 
           <div className="space-y-3 mt-1">
             <div>
-              <label className="block text-[11px] font-black uppercase tracking-wider text-zinc-400 mb-1.5">
+              <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                 Korisnički ID (Athlete ID)
               </label>
               <input
@@ -145,12 +144,12 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                 value={draftId}
                 onChange={(e) => setDraftId(e.target.value)}
                 placeholder="npr. i12345 ili brojčani ID"
-                className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-3.5 py-2.5 text-zinc-100 font-mono text-xs focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all placeholder:text-zinc-600"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-zinc-100 font-mono text-xs focus:border-volt-400 focus:outline-none transition-all placeholder:text-zinc-600"
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-black uppercase tracking-wider text-zinc-400 mb-1.5">
+              <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                 API Ključ (Settings &gt; Developer &gt; API Keys)
               </label>
               <div className="relative">
@@ -159,7 +158,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                   value={draftKey}
                   onChange={(e) => setDraftKey(e.target.value)}
                   placeholder="Unesi svoj privatni API ključ"
-                  className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-3.5 py-2.5 pr-10 text-zinc-100 font-mono text-xs focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all placeholder:text-zinc-600"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2.5 pr-10 text-zinc-100 font-mono text-xs focus:border-volt-400 focus:outline-none transition-all placeholder:text-zinc-600"
                 />
                 <button
                   type="button"
@@ -182,7 +181,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
               <button
                 type="submit"
                 disabled={!String(draftId ?? '').trim() || !String(draftKey ?? '').trim()}
-                className="flex-1 bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-950 py-3 px-4 rounded-xl font-bold shadow-[0_4px_15px_rgba(34,211,238,0.25)] transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-cyan-400/30"
+                className="flex-1 bg-volt-400 hover:bg-volt-300 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-950 py-2.5 px-4 rounded-lg font-display font-bold shadow-volt-glow transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
               >
                 <LinkIcon className="w-4 h-4" /> Spremi i Poveži
               </button>
@@ -191,7 +190,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                 <button
                   type="button"
                   onClick={handleDisconnect}
-                  className="px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider bg-zinc-800/80 hover:bg-red-500/15 text-zinc-300 hover:text-red-400 border border-zinc-700 hover:border-red-500/30 transition-all flex items-center justify-center gap-2 shrink-0"
+                  className="px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider bg-zinc-900 hover:bg-rose-500/15 text-zinc-300 hover:text-rose-400 border border-zinc-800 hover:border-rose-500/30 transition-all flex items-center justify-center gap-2 shrink-0"
                 >
                   <Unlink className="w-4 h-4" /> Odspoji
                 </button>
@@ -201,31 +200,31 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
         </form>
 
         {/* 3. Google Gemini AI Trener integracija */}
-        <div className="lg:col-span-2 bg-zinc-950/60 border border-cyan-500/20 rounded-2xl p-6 flex flex-col gap-4 relative overflow-hidden">
+        <div className="lg:col-span-2 bg-zinc-950 border border-volt-400/25 rounded-xl p-6 flex flex-col gap-4 relative overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+              <div className="p-2.5 rounded-lg bg-volt-400/10 border border-volt-400/30 text-volt-400">
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-zinc-100 text-base">Google Gemini AI Trener</h3>
+                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">Google Gemini AI Trener</h3>
                 <span className="text-[11px] text-zinc-500">Post-workout analiza, povijest treninga i generator planova</span>
               </div>
             </div>
 
             {geminiStatus.configured ? (
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" /> {geminiStatus.source === 'custom' ? 'Aktivan (Prilagođeni ključ)' : 'Aktivan (Sigurni Vercel Proxy - Flash)'}
+              <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" /> {geminiStatus.source === 'custom' ? 'AKTIVAN · VLASTITI KLJUČ' : 'AKTIVAN · SIGURNI VERCEL PROXY'}
               </span>
             ) : (
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                Ključ nije unesen
+              <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/25">
+                KLJUČ NIJE UNESEN
               </span>
             )}
           </div>
 
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Aplikacija koristi sigurni backend proxy (<code className="text-cyan-300 bg-zinc-900 px-1.5 py-0.5 rounded">/api/gemini</code>). Tvoj Gemini API ključ je pohranjen na poslužitelju kao tajna (<code className="text-zinc-300">GEMINI_API_KEY</code>) i <strong className="text-zinc-200">fizički se ne šalje u preglednik</strong>, čime je 100% zaštićen od kopiranja. Za dubinske analize s Pro modelom ovdje se može postaviti i vlastiti ključ:
+            Aplikacija koristi sigurni backend proxy (<code className="text-volt-300 font-mono bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">/api/gemini</code>). Tvoj Gemini API ključ je pohranjen na poslužitelju kao tajna (<code className="text-zinc-300 font-mono">GEMINI_API_KEY</code>) i <strong className="text-zinc-200">fizički se ne šalje u preglednik</strong>, čime je 100% zaštićen od kopiranja. Za dubinske analize s Pro modelom ovdje se može postaviti i vlastiti ključ:
           </p>
 
           <div className="flex flex-col sm:flex-row gap-2.5">
@@ -235,7 +234,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                 value={customGeminiDraft}
                 onChange={(e) => setCustomGeminiDraft(e.target.value)}
                 placeholder={geminiStatus.source === 'custom' ? 'Unesi Gemini API ključ (AIzaSy...)' : 'Koristi se sigurni Vercel proxy (opcionalna zamjena za Pro model)'}
-                className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl px-3.5 py-2.5 pr-10 text-zinc-100 font-mono text-xs focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 focus:outline-none transition-all placeholder:text-zinc-500"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2.5 pr-10 text-zinc-100 font-mono text-xs focus:border-volt-400 focus:outline-none transition-all placeholder:text-zinc-500"
               />
               <button
                 type="button"
@@ -253,7 +252,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                 setCustomGeminiDraft('');
                 setGeminiStatus(getGeminiConfigStatus());
               }}
-              className="px-5 py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 disabled:opacity-40 text-cyan-300 border border-cyan-500/30 font-bold text-xs uppercase tracking-wider transition-all shrink-0"
+              className="px-5 py-2.5 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-40 text-zinc-950 font-display font-bold text-xs uppercase tracking-wider transition-all shrink-0 shadow-volt-glow"
             >
               Spremi ključ
             </button>
@@ -264,7 +263,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                   setCustomGeminiApiKey('');
                   setGeminiStatus(getGeminiConfigStatus());
                 }}
-                className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-rose-500/15 text-zinc-300 hover:text-rose-400 border border-zinc-700 text-xs font-bold transition-all shrink-0"
+                className="px-4 py-2.5 rounded-lg bg-zinc-900 hover:bg-rose-500/15 text-zinc-300 hover:text-rose-400 border border-zinc-800 text-xs font-bold transition-all shrink-0"
               >
                 Vrati na .env
               </button>

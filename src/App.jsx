@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Activity, Calendar as CalendarIcon, BarChart2, Settings, LineChart,
+  Activity, Calendar as CalendarIcon,
   User, Loader2, Monitor, LogOut, Link as LinkIcon,
-  MoreHorizontal, X, Database, TrendingUp, ClipboardList, PanelLeftClose, PanelLeftOpen,
-  LogIn, HelpCircle, Sparkles
+  MoreHorizontal, X, Database, ClipboardList, PanelLeftClose, PanelLeftOpen,
+  LogIn, Sparkles, RefreshCw
 } from 'lucide-react';
 
 import CalendarTab from './components/CalendarTab';
@@ -16,14 +16,13 @@ import AICoachTab from './components/AICoachTab';
 import AuthPage from './components/AuthPage';
 import AuthModal from './components/AuthModal';
 import OnboardingModal from './components/OnboardingModal';
+import BrandLogo from './components/BrandLogo';
 import { supabase } from './services/supabaseClient';
 
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useProfileSync } from './hooks/useProfileSync';
 import { useIntervalsData } from './hooks/useIntervalsData';
-// Force Vite HMR to pick up the new logo
 import { version as pkgVersion } from '../package.json';
-import appLogo from './assets/logo.png';
 
 const APP_VERSION = `v${pkgVersion}`;
 
@@ -36,19 +35,22 @@ const DEFAULT_GUEST_PROFILE = {
 
 // 1. Centralizirana konfiguracija tabova za lakše održavanje
 const TABS = {
-  calendar: { label: 'Kalendar', icon: <CalendarIcon />, component: CalendarTab },
-  library: { label: 'Knjižnica', icon: <Database />, component: LibraryTab },
-  trainer: { label: 'Trenažer', icon: <Monitor />, component: TrainerTab },
-  aiCoach: { label: 'AI Trener', shortLabel: 'AI Trener', icon: <Sparkles />, component: AICoachTab },
-  fitness: { label: 'Kondicija', icon: <Activity />, component: FitnessTab },
-  profile: { label: 'Profil', icon: <User />, component: ProfileTab },
-  connections: { label: 'Veze', icon: <LinkIcon />, component: ConnectionsTab }
+  calendar: { label: 'Kalendar Treninga', shortLabel: 'Kalendar', code: 'CAL', icon: <CalendarIcon />, component: CalendarTab },
+  library: { label: 'Knjižnica Treninga', shortLabel: 'Knjižnica', code: 'LIB', icon: <Database />, component: LibraryTab },
+  trainer: { label: 'Trenažer · Cockpit', shortLabel: 'Trenažer', code: 'ERG', icon: <Monitor />, component: TrainerTab },
+  aiCoach: { label: 'AI Fiziolog & Planer', shortLabel: 'AI Trener', code: 'LAB', icon: <Sparkles />, component: AICoachTab },
+  fitness: { label: 'Kondicija & Forma (PMC)', shortLabel: 'Kondicija', code: 'PMC', icon: <Activity />, component: FitnessTab },
+  profile: { label: 'Profil & Zone Vozača', shortLabel: 'Profil', code: 'ATH', icon: <User />, component: ProfileTab },
+  connections: { label: 'Senzori & API Veze', shortLabel: 'API Veze', code: 'SYS', icon: <LinkIcon />, component: ConnectionsTab }
 };
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('calendar');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useLocalStorage('sidebarCollapsed', false);
+  const [uiTheme, setUiTheme] = useLocalStorage('ergvibe_ui_theme', 'volt');
+  const [isTrainerPlaying, setIsTrainerPlaying] = useState(false);
+
   const [session, setSession] = useState(null);
   const [isSessionLoading, setIsSessionLoading] = useState(true);
   const [isGuest, setIsGuest] = useLocalStorage('ergvibe_is_guest', false);
@@ -57,7 +59,9 @@ export default function App() {
   const [intervalsId, setIntervalsId] = useLocalStorage(currentUserId ? `intervalsId_${currentUserId}` : 'intervalsId', '');
   const [intervalsKey, setIntervalsKey] = useLocalStorage(currentUserId ? `intervalsKey_${currentUserId}` : 'intervalsKey', '');
 
-  const { workouts, wellnessData, intervalsConnected, athleteInfo, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey, currentUserId);
+  const [athleteProfile, setAthleteProfile] = useProfileSync(DEFAULT_GUEST_PROFILE, currentUserId);
+
+  const { workouts, wellnessData, intervalsConnected, athleteInfo, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey, currentUserId, { ftp: athleteProfile?.ftp });
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
 
@@ -67,6 +71,13 @@ export default function App() {
 
   const onboardingKey = currentUserId ? `ergvibe_onboarding_done_${currentUserId}` : 'ergvibe_onboarding_done_guest';
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useLocalStorage(onboardingKey, false);
+
+  // Primijeni odabranu temu akcenta na <html>
+  useEffect(() => {
+    const validThemes = ['volt', 'corsa', 'aero'];
+    const active = validThemes.includes(uiTheme) ? uiTheme : 'volt';
+    document.documentElement.setAttribute('data-theme', active);
+  }, [uiTheme]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session }, error }) => {
@@ -94,21 +105,16 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const [athleteProfile, setAthleteProfile] = useProfileSync(DEFAULT_GUEST_PROFILE, currentUserId);
-
   const [currentDate, setCurrentDate] = useState(new Date());
 
   // Sinkronizacija imena i parametara s Intervals.icu profila kad je povezan
   useEffect(() => {
     if (athleteInfo && intervalsConnected) {
-      // Prioritet dajemo samo imenu (firstname) kako ne bi sjeklo prezime u uskom bočnom izborniku
       const athleteFirstName = athleteInfo.firstname || (athleteInfo.name ? athleteInfo.name.trim().split(' ')[0] : '');
       setAthleteProfile(prev => {
         const isGenericName = !prev?.username || ['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(prev.username);
-        // Ako je ime generičko ili ako je ranije bilo pohranjeno puno ime s prezimenom iz Intervals.icu
         const hasFullLastName = prev?.username && athleteInfo.name && prev.username.trim() === athleteInfo.name.trim();
         const nextUsername = (isGenericName || hasFullLastName) && athleteFirstName ? athleteFirstName : (prev?.username || athleteFirstName || 'Vozač');
-        // Zadrži ručni ili postojeći FTP korisnika ako je već definiran i različit od početnog gosta
         const hasCustomFtp = prev?.isManualFtp || (prev?.ftp && prev?.ftp !== 200);
         const nextFtp = hasCustomFtp ? prev.ftp : (Number(athleteInfo.icu_ftp || athleteInfo.ftp) || prev?.ftp || 200);
 
@@ -183,7 +189,6 @@ export default function App() {
     setSession(null);
     setIsGuest(false);
 
-    // Potpuno čišćenje lokalnih podataka gosta i Intervals veze pri odjavi
     setIntervalsId('');
     setIntervalsKey('');
     try {
@@ -221,12 +226,17 @@ export default function App() {
     setShowOnboardingModal(false);
   };
 
-  // Provjera je li vozač sa zadanim imenom (Gost) ili stvarnim imenom
   const isDefaultGuestName = !athleteProfile?.username || ['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(athleteProfile.username);
   const displayName = isDefaultGuestName ? 'Gost Vozač' : athleteProfile.username.trim().split(' ')[0];
+  const athleteWkg = ((Number(athleteProfile?.ftp) || 200) / (Number(athleteProfile?.weight) || 75)).toFixed(2);
 
   if (isSessionLoading) {
-    return <div className="h-screen bg-zinc-950 flex items-center justify-center"><Loader2 className="w-8 h-8 text-cyan-400 animate-spin" /></div>;
+    return (
+      <div className="h-screen bg-zinc-950 flex flex-col items-center justify-center gap-3">
+        <BrandLogo size={52} spinning />
+        <span className="font-mono text-xs uppercase tracking-widest text-zinc-500">Inicijalizacija sustava...</span>
+      </div>
+    );
   }
 
   if (!session && !isGuest) {
@@ -234,138 +244,214 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-zinc-950 text-zinc-200 font-sans selection:bg-cyan-500/30">
+    <div className="flex h-screen supports-[height:100dvh]:h-dvh overflow-hidden bg-zinc-950 text-zinc-200 font-sans selection:bg-volt-400 selection:text-zinc-950">
 
-      {/* SIDEBAR (Desktop) */}
-      <div className={`hidden md:flex bg-zinc-900/80 backdrop-blur-xl border-r border-zinc-800/80 flex-col shadow-2xl z-10 shrink-0 transition-all duration-300 ease-in-out relative ${isSidebarCollapsed ? 'w-[72px]' : 'w-56'}`}>
-        <div className={`h-16 md:h-20 flex items-center border-b border-zinc-800/80 ${isSidebarCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
+      {/* SIDEBAR (Desktop Hardware Rail) */}
+      <aside className={`hidden md:flex bg-zinc-900 border-r border-zinc-800 flex-col z-20 shrink-0 transition-all duration-300 ease-in-out relative ${isSidebarCollapsed ? 'w-[68px]' : 'w-52 lg:w-56 xl:w-60'}`}>
+        {/* Brand Header */}
+        <div className={`h-14 md:h-16 short:h-12 flex items-center border-b border-zinc-800 bg-zinc-950/40 shrink-0 ${isSidebarCollapsed ? 'justify-center px-2' : 'justify-between px-3.5'}`}>
           {!isSidebarCollapsed ? (
             <>
-              <img src={appLogo} alt="ErgVibe Logo" className="w-14 h-14 rounded-2xl shadow-[0_0_15px_rgba(34,211,238,0.3)] object-cover shrink-0" />
-              <div className="flex-1 flex flex-col items-center justify-center overflow-hidden">
-                <span className="font-black text-2xl tracking-tight text-white drop-shadow-[0_0_8px_rgba(34,211,238,0.4)] whitespace-nowrap">ErgVibe</span>
-                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest leading-none mt-[-1px]">{APP_VERSION}</span>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <BrandLogo size={34} spinning={isTrainerPlaying} />
+                <div className="flex flex-col leading-none">
+                  <div className="font-display font-bold text-lg xl:text-xl tracking-wider uppercase text-zinc-100 whitespace-nowrap">
+                    ERG<span className="text-volt-400">VIBE</span>
+                  </div>
+                  <span className="font-mono text-[10px] text-zinc-500 tracking-wider mt-0.5 short:hidden">
+                    {APP_VERSION} · FTMS
+                  </span>
+                </div>
               </div>
               <button
                 onClick={() => setIsSidebarCollapsed(true)}
-                className="text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
+                className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors shrink-0"
                 title="Sažmi izbornik"
               >
-                <PanelLeftClose className="w-5 h-5" />
+                <PanelLeftClose className="w-4 h-4" />
               </button>
             </>
           ) : (
             <button
               onClick={() => setIsSidebarCollapsed(false)}
-              className="text-zinc-400 hover:text-zinc-200 transition-colors flex items-center justify-center w-full h-full"
+              className="group flex flex-col items-center justify-center w-full h-full gap-0.5 text-zinc-400 hover:text-zinc-100 transition-colors"
               title="Proširi izbornik"
             >
-              <PanelLeftOpen className="w-6 h-6" />
+              <BrandLogo size={32} spinning={isTrainerPlaying} className="group-hover:scale-105 transition-transform" />
             </button>
           )}
         </div>
 
-        <nav className="mt-6 flex-1 px-3 space-y-2 overflow-y-auto hide-scrollbar">
+        {/* Navigation */}
+        <nav className="mt-3 short:mt-1.5 flex-1 px-2 space-y-1 short:space-y-0.5 overflow-y-auto hide-scrollbar">
+          {!isSidebarCollapsed && (
+            <div className="px-2.5 pb-1 text-[10px] font-mono font-semibold uppercase tracking-widest text-zinc-600 short:hidden">
+              Telemetrija &amp; Plan
+            </div>
+          )}
           {['calendar', 'library', 'trainer', 'aiCoach', 'fitness', 'profile'].map(tabId => (
             <NavItem
               key={tabId}
               icon={TABS[tabId].icon}
-              label={TABS[tabId].shortLabel || TABS[tabId].label.split(' ')[0]} // Kraći labeli za sidebar
+              label={TABS[tabId].shortLabel}
+              code={TABS[tabId].code}
               active={activeTab === tabId}
+              liveBadge={tabId === 'trainer' && isTrainerPlaying}
               onClick={() => handleTabChange(tabId)}
               collapsed={isSidebarCollapsed}
             />
           ))}
+
+          {isSidebarCollapsed && (
+            <button
+              onClick={() => setIsSidebarCollapsed(false)}
+              className="w-full flex items-center justify-center py-2 short:py-1.5 mt-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors"
+              title="Proširi bočnu traku"
+            >
+              <PanelLeftOpen className="w-4 h-4" />
+            </button>
+          )}
         </nav>
 
-        <div className="p-3 border-t border-zinc-800/80 mt-auto flex flex-col gap-2">
-
-          {/* User Profile Banner */}
+        {/* Athlete Telemetry Pod & System Controls */}
+        <div className="p-2.5 short:p-2 border-t border-zinc-800 mt-auto flex flex-col gap-1.5 short:gap-1 bg-zinc-950/30 shrink-0">
           {!isSidebarCollapsed ? (
-            <div className="flex items-center gap-3 px-4 py-2 mb-1 bg-zinc-800/40 rounded-xl border border-zinc-700/40">
-              <div className="bg-gradient-to-br from-cyan-400 to-emerald-500 text-zinc-950 rounded-full w-9 h-9 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(34,211,238,0.3)] shrink-0">
+            <div
+              onClick={() => handleTabChange('profile')}
+              className="flex items-center gap-2.5 px-2.5 py-2 short:py-1.5 mb-0.5 bg-zinc-950/80 hover:bg-zinc-850 rounded-lg border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors"
+            >
+              <div className="bg-volt-400 text-zinc-950 rounded-md w-7 h-7 flex items-center justify-center font-display font-bold text-xs shrink-0">
                 {(isDefaultGuestName ? 'G' : displayName.charAt(0)).toUpperCase()}
               </div>
-              <div className="flex flex-col truncate">
-                <div className="flex items-center gap-1.5 truncate">
-                  <span className="text-sm font-bold text-zinc-100 truncate" title={athleteProfile.username || 'Korisnik'}>{displayName}</span>
-                  {currentUserId === 'guest' ? (
-                    intervalsConnected ? (
-                      <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800 shrink-0">ICU</span>
-                    ) : (
-                      !isDefaultGuestName ? (
-                        <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-700/80 text-zinc-300 shrink-0">Gost</span>
-                      ) : null
-                    )
-                  ) : (
-                    intervalsConnected ? (
-                      <span className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800 shrink-0">+ ICU</span>
-                    ) : null
-                  )}
+              <div className="flex flex-col min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-xs font-bold text-zinc-100 truncate" title={athleteProfile.username || 'Korisnik'}>
+                    {displayName}
+                  </span>
+                  {intervalsConnected ? (
+                    <span className="font-mono text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/30 shrink-0">
+                      ICU
+                    </span>
+                  ) : currentUserId === 'guest' && !isDefaultGuestName ? (
+                    <span className="font-mono text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 shrink-0">
+                      GOST
+                    </span>
+                  ) : null}
                 </div>
-                <span className="text-[10px] text-zinc-500 truncate">FTP: <span className="font-bold text-cyan-400">{athleteProfile.ftp}W</span> | {athleteProfile.weight}kg</span>
+                <div className="font-mono text-[10px] text-zinc-500 telemetry-num truncate">
+                  <span className="text-volt-400 font-bold">{athleteProfile.ftp}W</span> · {athleteWkg} W/kg
+                </div>
               </div>
             </div>
           ) : (
-            <div className="flex justify-center mb-1">
-              <div className="bg-gradient-to-br from-cyan-400 to-emerald-500 text-zinc-950 rounded-full w-9 h-9 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(34,211,238,0.3)] shrink-0 cursor-pointer" title={athleteProfile.username} onClick={() => handleTabChange('profile')}>
+            <div className="flex justify-center mb-0.5">
+              <button
+                onClick={() => handleTabChange('profile')}
+                title={`${athleteProfile.username} · ${athleteProfile.ftp}W`}
+                className="bg-volt-400 text-zinc-950 rounded-md w-8 h-8 flex items-center justify-center font-display font-bold text-xs shrink-0 hover:bg-volt-300 transition-colors"
+              >
                 {(isDefaultGuestName ? 'G' : displayName.charAt(0)).toUpperCase()}
-              </div>
+              </button>
             </div>
           )}
 
-          {/* Gost gumb za prijavu / sinkronizaciju */}
           {currentUserId === 'guest' && (
             <button
               onClick={() => setShowAuthModal(true)}
               title="Prijava ili Registracija mailom"
-              className={`w-full flex items-center justify-center md:justify-start px-0 md:px-4 py-3 rounded-xl transition-all text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 shadow-[0_0_12px_rgba(34,211,238,0.15)]`}
+              className="w-full flex items-center justify-center md:justify-start px-0 md:px-3 py-2 short:py-1.5 rounded-lg transition-all text-volt-400 bg-volt-400/10 hover:bg-volt-400/15 border border-volt-400/30"
             >
-              <LogIn className="w-5 h-5 shrink-0" />
-              {!isSidebarCollapsed && <span className="ml-3 text-sm font-bold">Prijava / Račun</span>}
+              <LogIn className="w-4 h-4 shrink-0" />
+              {!isSidebarCollapsed && <span className="ml-2.5 text-xs font-bold uppercase tracking-wider font-display">Prijava / Oblak</span>}
             </button>
           )}
 
           <button
             onClick={() => handleTabChange('connections')}
-            title="API Veze"
-            className={`w-full flex items-center justify-center md:justify-start px-0 md:px-4 py-3 rounded-xl transition-all ${activeTab === 'connections' ? 'bg-cyan-500/10 text-cyan-400 font-semibold border border-cyan-500/20 shadow-[0_0_10px_rgba(34,211,238,0.1)]' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'}`}
+            title="API Veze & Integracije"
+            className={`w-full flex items-center justify-center md:justify-start px-0 md:px-3 py-2 short:py-1.5 rounded-lg transition-all ${
+              activeTab === 'connections'
+                ? 'bg-volt-400/10 text-volt-400 font-semibold border border-volt-400/25'
+                : 'text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-200 border border-transparent'
+            }`}
           >
-            <LinkIcon className={`w-5 h-5 ${activeTab === 'connections' ? 'text-cyan-400' : 'text-zinc-500'}`} />
-            {!isSidebarCollapsed && <span className="ml-3 text-sm font-medium">API Veze</span>}
+            <LinkIcon className={`w-4 h-4 shrink-0 ${activeTab === 'connections' ? 'text-volt-400' : 'text-zinc-500'}`} />
+            {!isSidebarCollapsed && (
+              <span className="ml-2.5 text-xs font-medium flex-1 text-left flex items-center justify-between">
+                <span>API Veze</span>
+                <span className={`w-2 h-2 rounded-full ${intervalsConnected ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+              </span>
+            )}
           </button>
 
           <button
             onClick={handleLogout}
             title={currentUserId === 'guest' ? 'Izađi' : 'Odjava'}
-            className="w-full flex items-center justify-center md:justify-start px-0 md:px-4 py-3 rounded-xl transition-all text-zinc-500 hover:bg-red-500/10 hover:text-red-400"
+            className="w-full flex items-center justify-center md:justify-start px-0 md:px-3 py-1.5 short:py-1 rounded-lg transition-all text-zinc-500 hover:bg-rose-500/10 hover:text-rose-400"
           >
-            <LogOut className="w-5 h-5" />
-            {!isSidebarCollapsed && <span className="ml-3 text-sm font-medium">{currentUserId === 'guest' ? 'Izađi' : 'Odjava'}</span>}
+            <LogOut className="w-4 h-4 shrink-0" />
+            {!isSidebarCollapsed && <span className="ml-2.5 text-xs font-medium">{currentUserId === 'guest' ? 'Izađi iz sesije' : 'Odjava'}</span>}
           </button>
         </div>
-      </div>
+      </aside>
 
       {/* MAIN CONTENT */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-        <header className="h-14 md:h-20 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 flex items-center justify-between px-4 md:px-8 shrink-0 z-20">
-          <div className="flex items-center gap-3 md:gap-4">
-            <h1 className="text-lg md:text-xl font-bold text-zinc-100 truncate tracking-tight">
-              {TABS[activeTab]?.label || 'Dashboard'}
-            </h1>
-            {isLoading && <Loader2 className="w-4 h-4 md:w-5 md:h-5 text-cyan-400 animate-spin shrink-0 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]" />}
-            {intervalsId && intervalsKey && error && <span className="text-[10px] md:text-xs font-bold bg-red-500/10 text-red-400 px-2 md:px-3 py-1 rounded-full border border-red-500/20 truncate max-w-[140px] md:max-w-xs" title={error}>Intervals: {error}</span>}
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
+        <header className={`h-12 md:h-14 short:h-11 bg-zinc-950/95 border-b border-zinc-800 flex items-center justify-between px-3.5 md:px-6 shrink-0 z-20 ${activeTab === 'trainer' ? 'md:short:hidden' : ''}`}>
+          <div className="flex items-center gap-2.5 md:gap-3.5 min-w-0">
+            <div className="md:hidden">
+              <BrandLogo size={28} spinning={isTrainerPlaying} />
+            </div>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="hidden sm:inline-flex font-mono text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-volt-400">
+                {TABS[activeTab]?.code || 'ERG'}
+              </span>
+              <h1 className="font-display font-bold text-lg md:text-xl uppercase tracking-wider text-zinc-100 truncate">
+                {TABS[activeTab]?.label || 'Dashboard'}
+              </h1>
+            </div>
+            {isLoading && <Loader2 className="w-4 h-4 text-volt-400 animate-spin shrink-0" />}
+            {intervalsId && intervalsKey && error && (
+              <span className="font-mono text-[10px] md:text-xs font-semibold bg-rose-500/10 text-rose-400 px-2.5 py-0.5 rounded border border-rose-500/25 truncate max-w-[140px] md:max-w-xs" title={error}>
+                ICU: {error}
+              </span>
+            )}
           </div>
-          {(activeTab === 'calendar' || activeTab === 'fitness') && (
-            <button onClick={fetchWorkouts} className="flex items-center gap-1.5 md:gap-2 bg-zinc-800/50 hover:bg-zinc-700 text-zinc-300 px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[10px] md:text-xs font-bold transition-all border border-zinc-700 hover:shadow-lg">
-              Osvježi
-            </button>
-          )}
+
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* Brzi telemetrijski čip na većim ekranima */}
+            <div
+              onClick={() => handleTabChange('profile')}
+              title="Fiziološki parametri vozača (klikni za uređenje)"
+              className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors font-mono text-xs telemetry-num"
+            >
+              <span className="text-zinc-500">FTP</span>
+              <span className="font-bold text-volt-400">{athleteProfile.ftp}W</span>
+              <span className="text-zinc-700">|</span>
+              <span className="text-zinc-300 font-semibold">{athleteWkg} W/kg</span>
+              {intervalsConnected && (
+                <>
+                  <span className="text-zinc-700">|</span>
+                  <span className="inline-flex items-center gap-1 text-emerald-400 text-[11px]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> ICU
+                  </span>
+                </>
+              )}
+            </div>
+
+            {(activeTab === 'calendar' || activeTab === 'fitness') && (
+              <button
+                onClick={fetchWorkouts}
+                className="flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border border-zinc-800 hover:border-zinc-700 shadow-hardware"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-volt-400 ${isLoading ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Sinkroniziraj</span>
+              </button>
+            )}
+          </div>
         </header>
 
-        <main className={`flex-1 ${['trainer', 'calendar'].includes(activeTab) ? 'overflow-hidden p-1 md:p-2 pb-20 md:pb-2' : 'overflow-auto p-3 md:p-8 pb-20 md:pb-8'} bg-zinc-950 relative flex flex-col`}>
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-cyan-900/10 via-zinc-950 to-zinc-950 pointer-events-none"></div>
-
+        <main className={`flex-1 min-h-0 ${['trainer', 'calendar'].includes(activeTab) ? 'overflow-hidden p-1 md:p-2 short:p-1.5 pb-16 md:pb-2 short:md:pb-1.5' : 'overflow-auto p-3 md:p-6 short:p-3 pb-20 md:pb-6 short:md:pb-3'} bg-zinc-950 bg-telemetry-grid relative flex flex-col`}>
           <div className={`relative z-10 w-full ${['trainer', 'calendar'].includes(activeTab) ? 'flex-1 flex flex-col min-h-0 h-full' : ''}`}>
             {activeTab === 'calendar' && (
               <CalendarTab
@@ -386,7 +472,7 @@ export default function App() {
             )}
 
             {/* Persistence-critical tab */}
-            <div className={activeTab === 'trainer' ? 'flex-1 flex flex-col min-h-0 w-full overflow-y-auto pb-1 md:pb-2 hide-scrollbar' : 'hidden'}>
+            <div className={activeTab === 'trainer' ? 'flex-1 flex flex-col min-h-0 h-full w-full overflow-y-auto hide-scrollbar' : 'hidden'}>
               <TrainerTab
                 profile={athleteProfile}
                 userId={currentUserId}
@@ -396,6 +482,7 @@ export default function App() {
                 workouts={workouts}
                 wellnessData={wellnessData}
                 onAddWorkoutToCalendar={handleCreateWorkout}
+                onPlayingChange={setIsTrainerPlaying}
                 onClose={() => { setSelectedWorkout(null); handleTabChange('calendar'); }}
               />
             </div>
@@ -417,13 +504,14 @@ export default function App() {
               <LibraryTab
                 ftp={athleteProfile.ftp}
                 onSelectWorkout={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
+                onScheduleWorkout={handleCreateWorkout}
                 userId={currentUserId}
               />
             )}
             {activeTab === 'profile' && (
-              <ProfileTab 
-                profile={athleteProfile} 
-                setProfile={setAthleteProfile} 
+              <ProfileTab
+                profile={athleteProfile}
+                setProfile={setAthleteProfile}
                 workouts={workouts}
                 userId={currentUserId}
                 userEmail={session?.user?.email}
@@ -431,75 +519,85 @@ export default function App() {
                 intervalsKey={intervalsKey}
                 intervalsConnected={intervalsConnected}
                 athleteInfo={athleteInfo}
+                uiTheme={uiTheme}
+                setUiTheme={setUiTheme}
                 onOpenAuthModal={() => setShowAuthModal(true)}
                 onOpenOnboarding={() => setShowOnboardingModal(true)}
                 onNavigateToCalendar={() => handleTabChange('calendar')}
               />
             )}
             {activeTab === 'connections' && (
-              <ConnectionsTab 
-                connectionStatus={connectionStatus} 
-                connectionError={error} 
-                intervalsId={intervalsId} 
-                setId={setIntervalsId} 
-                intervalsKey={intervalsKey} 
-                setKey={setIntervalsKey} 
-                onSave={fetchWorkouts} 
-                onDisconnect={handleIntervalsDisconnect} 
-                userId={currentUserId} 
+              <ConnectionsTab
+                connectionStatus={connectionStatus}
+                connectionError={error}
+                intervalsId={intervalsId}
+                setId={setIntervalsId}
+                intervalsKey={intervalsKey}
+                setKey={setIntervalsKey}
+                onSave={fetchWorkouts}
+                onDisconnect={handleIntervalsDisconnect}
+                userId={currentUserId}
               />
             )}
           </div>
         </main>
 
         {/* MOBILE NAVIGATION */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-800/80 z-40 px-2 pt-1 pb-safe-bottom">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-950/95 border-t border-zinc-800 z-40 px-2 pb-safe-bottom">
           <div className="flex justify-around items-center h-14">
             <MobileTab icon={<CalendarIcon />} label="Kalendar" active={activeTab === 'calendar'} onClick={() => handleTabChange('calendar')} />
-            <MobileTab icon={<Monitor />} label="Trenažer" active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
+            <MobileTab icon={<Monitor />} label="Trenažer" live={isTrainerPlaying} active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
             <MobileTab icon={<Sparkles />} label="AI Trener" active={activeTab === 'aiCoach'} onClick={() => handleTabChange('aiCoach')} />
             <MobileTab icon={<ClipboardList />} label="Kondicija" active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
             <MobileTab icon={<MoreHorizontal />} label="Više" active={['library', 'profile', 'connections'].includes(activeTab) || isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
           </div>
         </div>
 
-        {/* MOBILE MENU OVERLAY (Simplified grid render) */}
+        {/* MOBILE MENU OVERLAY */}
         {isMobileMenuOpen && (
-          <div className="md:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={() => setIsMobileMenuOpen(false)}>
-            <div className="absolute bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom" onClick={e => e.stopPropagation()}>
-              <div className="flex justify-between items-center mb-6">
+          <div className="md:hidden fixed inset-0 z-50 bg-black/75 animate-in fade-in" onClick={() => setIsMobileMenuOpen(false)}>
+            <div className="absolute bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 rounded-t-2xl p-5 shadow-2xl animate-in slide-in-from-bottom" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-5 pb-4 border-b border-zinc-800">
                 <div className="flex items-center gap-3">
-                  <div className="bg-gradient-to-br from-cyan-400 to-emerald-500 text-zinc-950 rounded-full w-10 h-10 flex items-center justify-center font-bold shadow-[0_0_10px_rgba(34,211,238,0.3)]">
+                  <div className="bg-volt-400 text-zinc-950 rounded-md w-10 h-10 flex items-center justify-center font-display font-bold text-lg">
                     {(isDefaultGuestName ? 'G' : displayName.charAt(0)).toUpperCase()}
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-zinc-100 tracking-tight">Bok, {displayName}</h3>
-                    {intervalsConnected ? (
-                      <span className="text-[10px] font-bold text-cyan-400">Intervals.icu povezan</span>
-                    ) : (
-                      currentUserId === 'guest' && <span className="text-[10px] font-bold text-zinc-400">Način rada: Gost</span>
-                    )}
+                    <h3 className="font-display font-bold text-lg uppercase tracking-wide text-zinc-100">{displayName}</h3>
+                    <div className="font-mono text-xs text-zinc-400 telemetry-num">
+                      <span className="text-volt-400 font-bold">{athleteProfile.ftp}W</span> · {athleteWkg} W/kg
+                      {intervalsConnected && <span className="text-emerald-400 ml-2">● ICU</span>}
+                    </div>
                   </div>
                 </div>
-                <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-zinc-800 rounded-full text-zinc-400"><X className="w-5 h-5" /></button>
+                <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-100">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
               {currentUserId === 'guest' && (
-                <div className="mb-5">
+                <div className="mb-4">
                   <button
                     onClick={() => { setIsMobileMenuOpen(false); setShowAuthModal(true); }}
-                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 font-bold text-sm shadow-[0_0_12px_rgba(34,211,238,0.15)]"
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm transition-colors"
                   >
-                    <LogIn className="w-4 h-4" /> Prijavi se / Registriraj mailom
+                    <LogIn className="w-4 h-4" /> Prijavi se / Sinkroniziraj Oblak
                   </button>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="grid grid-cols-3 gap-2.5 mb-3">
                 {['library', 'profile', 'connections'].map(tabId => (
-                  <MobileMenuGridBtn key={tabId} icon={TABS[tabId].icon} label={TABS[tabId].label} active={activeTab === tabId} onClick={() => handleTabChange(tabId)} />
+                  <MobileMenuGridBtn key={tabId} icon={TABS[tabId].icon} label={TABS[tabId].shortLabel} active={activeTab === tabId} onClick={() => handleTabChange(tabId)} />
                 ))}
               </div>
+
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); handleLogout(); }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-rose-400 text-xs font-semibold mt-1"
+              >
+                <LogOut className="w-4 h-4" /> {currentUserId === 'guest' ? 'Izađi iz sesije' : 'Odjavi se'}
+              </button>
             </div>
           </div>
         )}
@@ -531,35 +629,66 @@ export default function App() {
   );
 }
 
-// 3. Sub-komponente s React.memo bi bile idealne ovdje ako postanu kompleksnije
-function NavItem({ icon, label, active, onClick, collapsed }) {
+function NavItem({ icon, label, code, active, liveBadge, onClick, collapsed }) {
   return (
     <button
       onClick={onClick}
       title={collapsed ? label : undefined}
-      className={`w-full flex items-center justify-center md:justify-start px-0 md:px-4 py-3 rounded-xl transition-all relative ${active ? 'bg-gradient-to-r from-cyan-500/15 to-transparent text-cyan-400 font-bold border border-cyan-500/20' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'}`}
+      className={`w-full flex items-center justify-center md:justify-start px-0 md:px-2.5 py-2.5 short:py-1.5 rounded-lg transition-all relative group ${
+        active
+          ? 'bg-volt-400/10 text-volt-400 font-semibold border border-volt-400/25 shadow-hardware'
+          : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100 border border-transparent'
+      }`}
     >
-      {active && <div className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-cyan-400 rounded-r-md shadow-[0_0_10px_rgba(34,211,238,0.6)]" />}
-      {React.cloneElement(icon, { className: `w-5 h-5 ${active ? 'text-cyan-400' : 'text-zinc-500'}` })}
-      {!collapsed && <span className="ml-3 text-sm">{label}</span>}
+      {active && <div className="absolute left-0 top-2 bottom-2 w-[3px] bg-volt-400 rounded-r" />}
+      <div className="relative shrink-0">
+        {React.cloneElement(icon, { className: `w-[18px] h-[18px] ${active ? 'text-volt-400' : 'text-zinc-500 group-hover:text-zinc-300'}` })}
+        {liveBadge && (
+          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-volt-400 animate-ping" />
+        )}
+      </div>
+      {!collapsed && (
+        <div className="ml-3 flex items-center justify-between flex-1 min-w-0">
+          <span className="text-[13px] truncate">{label}</span>
+          <span className={`font-mono text-[9px] tracking-wider uppercase ${active ? 'text-volt-400/80' : 'text-zinc-600 group-hover:text-zinc-500'}`}>
+            {liveBadge ? 'LIVE' : code}
+          </span>
+        </div>
+      )}
     </button>
   );
 }
 
-function MobileTab({ icon, label, active, onClick }) {
+function MobileTab({ icon, label, active, live, onClick }) {
   return (
-    <button onClick={onClick} className={`flex flex-col items-center justify-center w-16 h-full gap-1 transition-all ${active ? 'text-cyan-400' : 'text-zinc-500'}`}>
-      {React.cloneElement(icon, { className: 'w-[22px] h-[22px]' })}
-      <span className="text-[10px] font-medium">{label}</span>
+    <button
+      onClick={onClick}
+      className={`relative flex flex-col items-center justify-center w-16 h-full gap-1 transition-all ${
+        active ? 'text-volt-400' : 'text-zinc-500'
+      }`}
+    >
+      {active && <span className="absolute top-0 left-3 right-3 h-[2px] bg-volt-400 rounded-b" />}
+      <div className="relative">
+        {React.cloneElement(icon, { className: 'w-5 h-5' })}
+        {live && <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-volt-400 animate-pulse" />}
+      </div>
+      <span className="text-[10px] font-semibold tracking-tight">{label}</span>
     </button>
   );
 }
 
 function MobileMenuGridBtn({ icon, label, active, onClick }) {
   return (
-    <button onClick={onClick} className={`flex flex-col items-center gap-3 p-4 rounded-2xl border transition-all ${active ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400' : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-300'}`}>
-      {React.cloneElement(icon, { className: 'w-7 h-7' })}
-      <span className="text-[11px] font-bold uppercase tracking-wider">{label}</span>
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center gap-2 p-3.5 rounded-lg border transition-all ${
+        active
+          ? 'bg-volt-400/10 border-volt-400/35 text-volt-400'
+          : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+      }`}
+    >
+      {React.cloneElement(icon, { className: 'w-5 h-5' })}
+      <span className="font-display text-xs font-bold uppercase tracking-wider">{label}</span>
     </button>
   );
 }

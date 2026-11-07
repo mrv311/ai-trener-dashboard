@@ -160,7 +160,8 @@ export default function AICoachTab({
     if (!content || isSendingChat) return;
 
     setChatError(null);
-    const nextMessages = [...messages, { role: 'user', text: content }];
+    const prevMessages = [...messages];
+    const nextMessages = [...prevMessages, { role: 'user', text: content }];
     setMessages(nextMessages);
     if (!textOverride) setChatInput('');
     setIsSendingChat(true);
@@ -177,6 +178,8 @@ export default function AICoachTab({
       setMessages([...nextMessages, { role: 'model', text: reply }]);
     } catch (err) {
       setChatError(err.message || 'Greška u komunikaciji s Gemini AI.');
+      setMessages(prevMessages);
+      if (!textOverride) setChatInput(content);
     } finally {
       setIsSendingChat(false);
     }
@@ -407,26 +410,30 @@ export default function AICoachTab({
   };
 
   return (
-    <div className="max-w-6xl mx-auto flex flex-col gap-5 animate-in fade-in pb-8">
+    <div className="max-w-6xl mx-auto flex flex-col gap-5 short:gap-3 animate-in fade-in pb-8 short:pb-3">
       {/* GORNJI HEADER + SUB-NAVIGATION */}
-      <div className="bg-zinc-900/60 backdrop-blur-xl border border-zinc-800/80 rounded-2xl p-4 md:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-xl">
+      <div className="carbon-panel rounded-xl p-4 md:p-5 short:p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-4 short:gap-2.5">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-cyan-400 to-emerald-500 text-zinc-950 flex items-center justify-center shadow-[0_0_20px_rgba(34,211,238,0.3)] shrink-0">
+          <div className="w-11 h-11 rounded-lg bg-volt-400/15 border border-volt-400/40 text-volt-400 flex items-center justify-center shrink-0">
             <Bot className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg md:text-xl font-black text-zinc-100 tracking-tight">ErgVibe AI Trener</h2>
-              <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+              <h2 className="text-lg md:text-xl font-display font-bold uppercase tracking-wide text-zinc-100">ErgVibe AI Trener</h2>
+              <span className={`font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border flex items-center gap-1.5 ${
                 geminiStatus.configured
                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
                   : 'bg-amber-500/10 text-amber-400 border-amber-500/25'
               }`}>
-                {geminiStatus.configured ? '● Gemini Spojen' : '○ Ključ nedostaje'}
+                <span className={`w-1.5 h-1.5 rounded-full ${geminiStatus.configured ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                {geminiStatus.configured ? 'GEMINI ONLINE' : 'KLJUČ NEDOSTAJE'}
+              </span>
+              <span className="font-mono telemetry-num text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-950 text-volt-400 border border-zinc-800">
+                FTP {ftp}W{Number(profile?.weight) > 0 ? ` · ${(ftp / Number(profile.weight)).toFixed(2)} W/kg` : ''}
               </span>
               {histStats && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                  {histStats.totalWorkouts} treninga u memoriji
+                <span className="font-mono telemetry-num text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-950 text-zinc-300 border border-zinc-800">
+                  {histStats.totalWorkouts} VOŽNJI U MEMORIJI
                 </span>
               )}
             </div>
@@ -437,39 +444,39 @@ export default function AICoachTab({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex bg-zinc-950/80 p-1 rounded-xl border border-zinc-800">
+          <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-800">
             <button
               type="button"
               onClick={() => setSubTab('chat')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-display font-bold uppercase tracking-wider transition-all ${
                 subTab === 'chat'
-                  ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm'
+                  ? 'bg-volt-400 text-zinc-950 shadow-volt-glow'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              <MessageSquare className="w-3.5 h-3.5" /> AI Konzultacije
+              <MessageSquare className="w-3.5 h-3.5" /> Konzultacije
             </button>
             <button
               type="button"
               onClick={() => setSubTab('planner')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-display font-bold uppercase tracking-wider transition-all ${
                 subTab === 'planner'
-                  ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm'
+                  ? 'bg-volt-400 text-zinc-950 shadow-volt-glow'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              <ClipboardList className="w-3.5 h-3.5" /> Planer Treninga
+              <ClipboardList className="w-3.5 h-3.5" /> Planer
             </button>
             <button
               type="button"
               onClick={() => setSubTab('knowledge')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-display font-bold uppercase tracking-wider transition-all ${
                 subTab === 'knowledge'
-                  ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm'
+                  ? 'bg-volt-400 text-zinc-950 shadow-volt-glow'
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              <BookOpen className="w-3.5 h-3.5" /> Baza Znanja & Povijest
+              <BookOpen className="w-3.5 h-3.5" /> Baza & Povijest
             </button>
           </div>
 
@@ -477,14 +484,14 @@ export default function AICoachTab({
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
             title="Odaberi Gemini model"
-            className="bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs font-bold text-zinc-300 focus:border-cyan-500 outline-none"
+            className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 font-mono text-xs font-bold text-zinc-300 focus:border-volt-400 outline-none"
           >
-            <option value="gemini-3.8-flash">⚡ Gemini Flash (Ekonomičan & Brzi)</option>
+            <option value="gemini-3.8-flash">GEMINI FLASH · BRZI</option>
             {geminiStatus.source === 'custom' ? (
-              <option value="gemini-3.1-pro-preview">🧠 Gemini Pro (Dubinska analiza - tvoj ključ)</option>
+              <option value="gemini-3.1-pro-preview">GEMINI PRO · DUBINSKA ANALIZA</option>
             ) : (
               <option value="gemini-3.8-flash" disabled className="text-zinc-600">
-                🔒 Gemini Pro (Dostupan uz vlastiti ključ u tabu Veze)
+                GEMINI PRO (Vlastiti ključ u tabu Veze)
               </option>
             )}
           </select>
@@ -495,10 +502,10 @@ export default function AICoachTab({
           1. SUB-TAB: AI KONZULTACIJE (CHAT)
          ===================================================================== */}
       {subTab === 'chat' && (
-        <div className="bg-zinc-900/50 backdrop-blur-xl border border-zinc-800/80 rounded-2xl shadow-2xl flex flex-col min-h-[560px] max-h-[75vh] overflow-hidden">
-          <div className="px-5 py-3 border-b border-zinc-800/80 bg-zinc-950/40 flex items-center justify-between">
-            <span className="text-xs font-bold text-zinc-400">
-              Pitaj bilo što o svojim treninzima, zonama, napretku ili zatraži gotov trening za trenažer
+        <div className="carbon-panel rounded-xl flex flex-col h-[calc(100dvh-195px)] short:h-[calc(100dvh-145px)] min-h-[360px] max-h-[780px] overflow-hidden">
+          <div className="px-5 py-3 border-b border-zinc-800/80 bg-zinc-950/60 flex items-center justify-between">
+            <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-zinc-400">
+              TELEMETRIJSKA KONZOLA · PITAJ O TRENINZIMA, ZONAMA ILI ZATRAŽI INTERVALNI TRENING
             </span>
             {messages.length > 0 && (
               <button
@@ -514,14 +521,14 @@ export default function AICoachTab({
           <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 custom-scrollbar">
             {messages.length === 0 && !isSendingChat && (
               <div className="h-full flex flex-col items-center justify-center py-8 text-center max-w-2xl mx-auto">
-                <div className="p-4 rounded-3xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 mb-4">
+                <div className="p-4 rounded-xl bg-volt-400/10 border border-volt-400/30 text-volt-400 mb-4">
                   <Sparkles className="w-8 h-8" />
                 </div>
-                <h3 className="text-lg font-black text-zinc-100 mb-1">
-                  Spreman za analizu, {profile?.username || 'Vozač'}!
+                <h3 className="text-lg font-display font-bold uppercase tracking-wide text-zinc-100 mb-1">
+                  Spreman za analizu, {profile?.username || 'Vozač'}
                 </h3>
                 <p className="text-xs md:text-sm text-zinc-400 mb-6">
-                  Učitao sam vaše dostupne treninge, trenutni FTP ({ftp} W) i kalendar. Odaberite jedno od brzih pitanja ili upišite vlastiti upit:
+                  Učitao sam vaše dostupne treninge, trenutni FTP (<span className="font-mono font-bold text-volt-400">{ftp} W</span>) i kalendar. Odaberite jedno od brzih pitanja ili upišite vlastiti upit:
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
@@ -530,9 +537,9 @@ export default function AICoachTab({
                       key={idx}
                       type="button"
                       onClick={() => sendMessage(qp)}
-                      className="p-3.5 rounded-xl bg-zinc-950/70 hover:bg-zinc-800/80 border border-zinc-800 hover:border-cyan-500/40 text-xs text-zinc-300 hover:text-zinc-100 font-medium transition-all flex items-start gap-2.5 group"
+                      className="p-3.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/40 text-xs text-zinc-300 hover:text-zinc-100 font-medium transition-all flex items-start gap-2.5 group"
                     >
-                      <Zap className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                      <Zap className="w-4 h-4 text-volt-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
                       <span>{qp}</span>
                     </button>
                   ))}
@@ -546,10 +553,10 @@ export default function AICoachTab({
                 className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-3xl rounded-2xl p-4 ${
+                  className={`max-w-3xl rounded-xl p-4 ${
                     m.role === 'user'
-                      ? 'bg-gradient-to-br from-cyan-500/20 to-emerald-500/15 border border-cyan-500/30 text-zinc-100'
-                      : 'bg-zinc-950/80 border border-zinc-800/90 text-zinc-200 w-full'
+                      ? 'bg-volt-400/12 border border-volt-400/35 text-zinc-100'
+                      : 'bg-zinc-950 border border-zinc-800/90 text-zinc-200 w-full'
                   }`}
                 >
                   {m.role === 'model' ? (
@@ -568,15 +575,15 @@ export default function AICoachTab({
 
             {isSendingChat && (
               <div className="flex justify-start">
-                <div className="bg-zinc-950/80 border border-zinc-800 rounded-2xl p-4 flex items-center gap-3 text-xs font-bold text-cyan-300">
-                  <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
-                  AI Trener analizira podatke i priprema odgovor...
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex items-center gap-3 text-xs font-mono font-bold text-volt-300">
+                  <Loader2 className="w-4 h-4 animate-spin text-volt-400" />
+                  AI TRENER ANALIZIRA TELEMETRIJU I PRIPREMA ODGOVOR...
                 </div>
               </div>
             )}
 
             {chatError && (
-              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+              <div className="p-3.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
                 <span>{chatError}</span>
               </div>
@@ -590,7 +597,7 @@ export default function AICoachTab({
               e.preventDefault();
               sendMessage();
             }}
-            className="p-3 md:p-4 bg-zinc-950/80 border-t border-zinc-800/80 flex items-center gap-2.5"
+            className="p-3 md:p-4 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center gap-2.5"
           >
             <input
               type="text"
@@ -598,12 +605,12 @@ export default function AICoachTab({
               onChange={(e) => setChatInput(e.target.value)}
               disabled={isSendingChat}
               placeholder="Npr. 'Usporedi moj jučerašnji trening s prošlim mjesecom' ili 'Složi mi Sweet Spot od 75 min'..."
-              className="flex-1 bg-zinc-900 border border-zinc-700/80 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-500 outline-none disabled:opacity-50"
+              className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-volt-400 outline-none disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={isSendingChat || !chatInput.trim()}
-              className="px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 disabled:opacity-40 text-zinc-950 font-black text-sm flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(34,211,238,0.25)] shrink-0"
+              className="px-5 py-3 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-40 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm flex items-center gap-2 transition-all shadow-volt-glow shrink-0"
             >
               {isSendingChat ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               <span className="hidden sm:inline">Pošalji</span>
@@ -620,26 +627,26 @@ export default function AICoachTab({
           {/* Lijeva kolona: Postavke plana */}
           <form
             onSubmit={handleGeneratePlan}
-            className="lg:col-span-5 bg-zinc-900/50 backdrop-blur-xl border border-zinc-800/80 rounded-2xl p-5 md:p-6 space-y-4 shadow-xl"
+            className="lg:col-span-5 carbon-panel rounded-xl p-5 md:p-6 space-y-4"
           >
             <div className="border-b border-zinc-800 pb-3">
-              <h3 className="text-base font-black text-zinc-100 flex items-center gap-2">
-                <ClipboardList className="w-4 h-4 text-cyan-400" /> Generator Strukturiranog Plana
+              <h3 className="text-base font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2">
+                <ClipboardList className="w-4 h-4 text-volt-400" /> Generator Strukturiranog Plana
               </h3>
               <p className="text-xs text-zinc-400 mt-0.5">
-                AI kreira plan prema tvom FTP-u ({ftp} W), trenutnom zamoru i zabilježenim treninzima
+                AI kreira plan prema tvom FTP-u (<span className="font-mono font-bold text-volt-400">{ftp} W</span>), trenutnom zamoru i zabilježenim treninzima
               </p>
             </div>
 
             <div>
-              <label className="block text-[11px] font-black uppercase tracking-wider text-zinc-400 mb-1.5">
+              <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                 Glavni cilj ciklusa
               </label>
               <input
                 type="text"
                 value={planGoal}
                 onChange={(e) => setPlanGoal(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs md:text-sm text-zinc-100 focus:border-cyan-500 outline-none"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-xs md:text-sm text-zinc-100 focus:border-volt-400 outline-none"
               />
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {[
@@ -652,7 +659,7 @@ export default function AICoachTab({
                     key={preset}
                     type="button"
                     onClick={() => setPlanGoal(preset)}
-                    className="text-[10px] font-bold px-2 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/60 transition-colors"
+                    className="text-[10px] font-bold px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-volt-300 border border-zinc-800 transition-colors"
                   >
                     {preset}
                   </button>
@@ -662,13 +669,13 @@ export default function AICoachTab({
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                   Trajanje
                 </label>
                 <select
                   value={planWeeks}
                   onChange={(e) => setPlanWeeks(Number(e.target.value))}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-zinc-200 outline-none focus:border-cyan-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs font-bold text-zinc-200 outline-none focus:border-volt-400"
                 >
                   <option value={1}>1 tjedan</option>
                   <option value={2}>2 tjedna</option>
@@ -677,13 +684,13 @@ export default function AICoachTab({
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                   Treninga / tj.
                 </label>
                 <select
                   value={planWorkoutsPerWeek}
                   onChange={(e) => setPlanWorkoutsPerWeek(Number(e.target.value))}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-zinc-200 outline-none focus:border-cyan-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs font-bold text-zinc-200 outline-none focus:border-volt-400"
                 >
                   {[2, 3, 4, 5, 6].map(n => (
                     <option key={n} value={n}>{n}x tjedno</option>
@@ -691,7 +698,7 @@ export default function AICoachTab({
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                   Sati / tjedno
                 </label>
                 <input
@@ -701,20 +708,20 @@ export default function AICoachTab({
                   step={0.5}
                   value={planHours}
                   onChange={(e) => setPlanHours(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-zinc-200 outline-none focus:border-cyan-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 font-mono telemetry-num text-xs font-bold text-zinc-200 outline-none focus:border-volt-400"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                   Trenerska metodologija
                 </label>
                 <select
                   value={planMethodology}
                   onChange={(e) => setPlanMethodology(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-zinc-200 outline-none focus:border-cyan-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs font-bold text-zinc-200 outline-none focus:border-volt-400"
                 >
                   <option value="Polarizirani 80/20 (Seiler)">Polarizirani 80/20 (Seiler)</option>
                   <option value="Piramidalni / Sweet Spot">Piramidalni / Sweet Spot</option>
@@ -723,20 +730,20 @@ export default function AICoachTab({
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                   Početni datum plana
                 </label>
                 <input
                   type="date"
                   value={planStartDate}
                   onChange={(e) => setPlanStartDate(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-zinc-200 outline-none focus:border-cyan-500"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 font-mono text-xs font-bold text-zinc-200 outline-none focus:border-volt-400"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+              <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                 Posebne želje ili raspored dana (opcionalno)
               </label>
               <textarea
@@ -744,12 +751,12 @@ export default function AICoachTab({
                 value={planNotes}
                 onChange={(e) => setPlanNotes(e.target.value)}
                 placeholder="Npr. Utorkom i četvrtkom max 60 min na trenažeru, vikendom duža Z2 vožnja do 2h..."
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-cyan-500 resize-none"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-xs text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-volt-400 resize-none"
               />
             </div>
 
             {planError && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
                 {planError}
               </div>
             )}
@@ -757,7 +764,7 @@ export default function AICoachTab({
             <button
               type="submit"
               disabled={isGeneratingPlan}
-              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 disabled:opacity-50 text-zinc-950 font-black text-sm flex items-center justify-center gap-2 shadow-[0_4px_15px_rgba(34,211,238,0.25)] transition-all"
+              className="w-full py-3 px-4 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-50 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 shadow-volt-glow transition-all"
             >
               {isGeneratingPlan ? (
                 <>
@@ -774,9 +781,9 @@ export default function AICoachTab({
           {/* Desna kolona: Prikaz generiranog plana */}
           <div className="lg:col-span-7 space-y-4">
             {isGeneratingPlan && (
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-10 flex flex-col items-center justify-center text-center gap-3">
-                <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-                <p className="text-sm font-bold text-zinc-200">
+              <div className="carbon-panel rounded-xl p-10 flex flex-col items-center justify-center text-center gap-3">
+                <Loader2 className="w-8 h-8 text-volt-400 animate-spin" />
+                <p className="text-sm font-display font-bold uppercase tracking-wide text-zinc-200">
                   Kreiram strukturirane treninge s intervalima u % FTP-a...
                 </p>
                 <p className="text-xs text-zinc-500">
@@ -786,9 +793,9 @@ export default function AICoachTab({
             )}
 
             {!isGeneratingPlan && !generatedPlan && (
-              <div className="bg-zinc-900/30 border border-dashed border-zinc-800 rounded-2xl p-10 text-center">
+              <div className="carbon-panel border-dashed rounded-xl p-10 text-center">
                 <ClipboardList className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-                <h4 className="text-sm font-bold text-zinc-300">Još nema generiranog plana</h4>
+                <h4 className="text-sm font-display font-bold uppercase tracking-wide text-zinc-300">Još nema generiranog plana</h4>
                 <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto">
                   Odaberi cilj i broj sati s lijeve strane. Svaki generirani trening moći ćeš jednim klikom dodati izravno u ErgVibe i Intervals.icu kalendar!
                 </p>
@@ -796,19 +803,19 @@ export default function AICoachTab({
             )}
 
             {!isGeneratingPlan && generatedPlan && (
-              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-5 md:p-6 space-y-5 shadow-xl">
+              <div className="carbon-panel rounded-xl p-5 md:p-6 space-y-5">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-zinc-800 pb-4">
                   <div>
-                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/30">
                       AI Strukturirani Plan
                     </span>
-                    <h3 className="text-lg md:text-xl font-black text-zinc-100 mt-2">
+                    <h3 className="text-lg md:text-xl font-display font-bold uppercase tracking-wide text-zinc-100 mt-2">
                       {generatedPlan.planTitle || 'Personalizirani Plan'}
                     </h3>
                     <p className="text-xs text-zinc-300 mt-1 leading-relaxed">{generatedPlan.summary}</p>
                     {generatedPlan.physiologicalRationale && (
-                      <p className="text-xs text-zinc-400 mt-2 bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-3">
-                        <strong className="text-cyan-400">Fiziološko obrazloženje: </strong>
+                      <p className="text-xs text-zinc-400 mt-2 bg-zinc-950 border border-zinc-800 rounded-lg p-3">
+                        <strong className="text-volt-400">Fiziološko obrazloženje: </strong>
                         {generatedPlan.physiologicalRationale}
                       </p>
                     )}
@@ -818,10 +825,10 @@ export default function AICoachTab({
                     <button
                       type="button"
                       onClick={handleAddEntirePlanToCalendar}
-                      className={`shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all border ${
+                      className={`shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs transition-all border ${
                         allPlanAdded
                           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 border-cyan-400/30 shadow-[0_0_15px_rgba(34,211,238,0.25)]'
+                          : 'bg-volt-400 hover:bg-volt-300 text-zinc-950 border-volt-400 shadow-volt-glow'
                       }`}
                     >
                       {allPlanAdded ? <Check className="w-4 h-4" /> : <CalendarPlus className="w-4 h-4" />}
@@ -832,15 +839,15 @@ export default function AICoachTab({
 
                 {(generatedPlan.weeks || []).map((wk, wIdx) => (
                   <div key={wIdx} className="space-y-2">
-                    <div className="flex items-center justify-between bg-zinc-950/70 px-4 py-2.5 rounded-xl border border-zinc-800">
+                    <div className="flex items-center justify-between bg-zinc-950 px-4 py-2.5 rounded-lg border border-zinc-800">
                       <div>
-                        <span className="text-xs font-black uppercase tracking-wider text-cyan-400">
+                        <span className="font-mono text-xs font-bold uppercase tracking-wider text-volt-400">
                           Tjedan {wk.weekNumber || wIdx + 1}
                         </span>
-                        {wk.theme && <span className="text-xs font-bold text-zinc-300 ml-2">— {wk.theme}</span>}
+                        {(wk.theme || wk.focus) && <span className="text-xs font-bold text-zinc-300 ml-2">— {wk.theme || wk.focus}</span>}
                       </div>
                       {wk.targetTss && (
-                        <span className="text-xs font-bold text-orange-400">Cilj: ~{wk.targetTss} TSS</span>
+                        <span className="font-mono telemetry-num text-xs font-bold text-amber-400">Cilj: ~{wk.targetTss} TSS</span>
                       )}
                     </div>
 
@@ -882,11 +889,11 @@ export default function AICoachTab({
       {subTab === 'knowledge' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Lijeva strana: Povijest treninga */}
-          <div className="lg:col-span-7 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-5 md:p-6 space-y-5 shadow-xl">
+          <div className="lg:col-span-7 carbon-panel rounded-xl p-5 md:p-6 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-4">
               <div>
-                <h3 className="text-base font-black text-zinc-100 flex items-center gap-2">
-                  <History className="w-4 h-4 text-cyan-400" /> Povijest Treninga
+                <h3 className="text-base font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2">
+                  <History className="w-4 h-4 text-volt-400" /> Povijest Treninga
                 </h3>
                 <p className="text-xs text-zinc-400 mt-0.5">
                   Pregled zabilježenih vožnji, opterećenja i uvezenih CSV treninga
@@ -897,7 +904,7 @@ export default function AICoachTab({
                 <button
                   type="button"
                   onClick={() => csvInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all shadow-sm"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-volt-400 border border-volt-400/35 text-xs font-bold transition-all"
                 >
                   <Upload className="w-3.5 h-3.5" /> Učitaj CSV
                 </button>
@@ -914,7 +921,7 @@ export default function AICoachTab({
                     type="button"
                     onClick={handleClearCsv}
                     title="Ukloni sve uvezene CSV treninge iz lokalne memorije"
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all shadow-sm"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all"
                   >
                     <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Obriši CSV ({extraCsvCount})
                   </button>
@@ -923,7 +930,7 @@ export default function AICoachTab({
             </div>
 
             {csvImportStatus && (
-              <div className={`p-3 rounded-xl text-xs font-bold border ${
+              <div className={`p-3 rounded-lg text-xs font-bold border ${
                 csvImportStatus.type === 'success'
                   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                   : csvImportStatus.type === 'info'
@@ -937,44 +944,44 @@ export default function AICoachTab({
             {histStats && histStats.totalWorkouts > 0 ? (
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="bg-zinc-950/70 border border-zinc-800 rounded-xl p-3.5">
-                    <span className="text-[10px] font-black uppercase text-zinc-500">Ukupno vožnji</span>
-                    <p className="text-2xl font-black text-zinc-100 mt-0.5">{histStats.totalWorkouts}</p>
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3.5">
+                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">Ukupno vožnji</span>
+                    <p className="text-2xl font-display font-bold telemetry-num text-zinc-100 mt-0.5">{histStats.totalWorkouts}</p>
                   </div>
-                  <div className="bg-zinc-950/70 border border-zinc-800 rounded-xl p-3.5">
-                    <span className="text-[10px] font-black uppercase text-zinc-500">Ukupni TSS</span>
-                    <p className="text-2xl font-black text-orange-400 mt-0.5">{histStats.totalTss.toLocaleString('hr-HR')}</p>
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3.5">
+                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">Ukupni TSS</span>
+                    <p className="text-2xl font-display font-bold telemetry-num text-amber-400 mt-0.5">{histStats.totalTss.toLocaleString('hr-HR')}</p>
                   </div>
-                  <div className="bg-zinc-950/70 border border-zinc-800 rounded-xl p-3.5">
-                    <span className="text-[10px] font-black uppercase text-zinc-500">Rekordni FTP</span>
-                    <p className="text-2xl font-black text-cyan-400 mt-0.5">{histStats.peakFtp} W</p>
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3.5">
+                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">Rekordni FTP</span>
+                    <p className="text-2xl font-display font-bold telemetry-num text-volt-400 mt-0.5">{histStats.peakFtp} W</p>
                   </div>
-                  <div className="bg-zinc-950/70 border border-zinc-800 rounded-xl p-3.5">
-                    <span className="text-[10px] font-black uppercase text-zinc-500">Z2 Prosj. EF</span>
-                    <p className="text-2xl font-black text-emerald-400 mt-0.5">{histStats.benchmarks.z2AvgEfAllTime ?? '-'}</p>
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3.5">
+                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">Z2 Prosj. EF</span>
+                    <p className="text-2xl font-display font-bold telemetry-num text-emerald-400 mt-0.5">{histStats.benchmarks.z2AvgEfAllTime ?? '-'}</p>
                   </div>
                 </div>
 
-                <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950/40">
-                  <table className="w-full text-left text-xs whitespace-nowrap">
-                    <thead className="bg-zinc-900/80 text-zinc-400 uppercase text-[10px] border-b border-zinc-800">
+                <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950">
+                  <table className="w-full text-left text-xs font-mono telemetry-num whitespace-nowrap">
+                    <thead className="bg-zinc-900/90 text-zinc-400 uppercase text-[10px] border-b border-zinc-800">
                       <tr>
-                        <th className="px-3.5 py-2.5 font-black">Sezona</th>
-                        <th className="px-3.5 py-2.5 font-black">Treninzi</th>
-                        <th className="px-3.5 py-2.5 font-black">Sati</th>
-                        <th className="px-3.5 py-2.5 font-black">Load (TSS)</th>
-                        <th className="px-3.5 py-2.5 font-black">FTP raspon</th>
-                        <th className="px-3.5 py-2.5 font-black">Z2 EF</th>
+                        <th className="px-3.5 py-2.5 font-bold">Sezona</th>
+                        <th className="px-3.5 py-2.5 font-bold">Treninzi</th>
+                        <th className="px-3.5 py-2.5 font-bold">Sati</th>
+                        <th className="px-3.5 py-2.5 font-bold">Load (TSS)</th>
+                        <th className="px-3.5 py-2.5 font-bold">FTP raspon</th>
+                        <th className="px-3.5 py-2.5 font-bold">Z2 EF</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800/60">
                       {histStats.yearlyStats.slice().reverse().map(yr => (
-                        <tr key={yr.year} className="hover:bg-zinc-900/40">
-                          <td className="px-3.5 py-2.5 font-black text-zinc-100">{yr.year}</td>
+                        <tr key={yr.year} className="hover:bg-zinc-900/50">
+                          <td className="px-3.5 py-2.5 font-bold text-zinc-100">{yr.year}</td>
                           <td className="px-3.5 py-2.5 text-zinc-300">{yr.count}</td>
                           <td className="px-3.5 py-2.5 text-zinc-300">{yr.hours} h</td>
-                          <td className="px-3.5 py-2.5 font-bold text-orange-400">{yr.tss}</td>
-                          <td className="px-3.5 py-2.5 text-cyan-300 font-semibold">
+                          <td className="px-3.5 py-2.5 font-bold text-amber-400">{yr.tss}</td>
+                          <td className="px-3.5 py-2.5 text-volt-400 font-semibold">
                             {yr.minFtp ? `${yr.minFtp}–${yr.maxFtp} W` : '-'}
                           </td>
                           <td className="px-3.5 py-2.5 text-emerald-400 font-bold">{yr.avgZ2Ef ?? '-'}</td>
@@ -985,9 +992,9 @@ export default function AICoachTab({
                 </div>
               </>
             ) : (
-              <div className="p-6 bg-zinc-950/40 rounded-xl border border-zinc-800/80 text-center space-y-2">
+              <div className="p-6 bg-zinc-950 rounded-lg border border-zinc-800 text-center space-y-2">
                 <History className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
-                <h4 className="text-sm font-bold text-zinc-200">Nema učitanih povijesnih treninga za ovaj profil</h4>
+                <h4 className="text-sm font-display font-bold uppercase tracking-wide text-zinc-200">Nema učitanih povijesnih treninga za ovaj profil</h4>
                 <p className="text-xs text-zinc-400 max-w-md mx-auto">
                   AI vaše treninge i planove korigira prema vašem zadanom FTP-u, težini, raspoloživom vremenu i odrađenim vožnjama na trenažeru.
                   Možete učitati svoj Intervals.icu CSV izvoz klikom na "Učitaj CSV" iznad ili bilježiti vožnje kroz trenažer.
@@ -997,11 +1004,11 @@ export default function AICoachTab({
           </div>
 
           {/* Desna strana: Trenerska literatura i vlastiti izvori */}
-          <div className="lg:col-span-5 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-5 md:p-6 space-y-4 shadow-xl">
+          <div className="lg:col-span-5 carbon-panel rounded-xl p-5 md:p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
               <div>
-                <h3 className="text-base font-black text-zinc-100 flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-emerald-400" /> Baza Znanja (Literatura)
+                <h3 className="text-base font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-volt-400" /> Baza Znanja (Literatura)
                 </h3>
                 <p className="text-xs text-zinc-400 mt-0.5">
                   Izvori na kojima Gemini temelji analizu i periodizaciju
@@ -1012,7 +1019,7 @@ export default function AICoachTab({
                   <button
                     type="button"
                     onClick={handleClearAllCustomSources}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all"
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all"
                     title="Obriši sve vlastite izvore"
                   >
                     <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Obriši sve ({customSources.length})
@@ -1021,7 +1028,7 @@ export default function AICoachTab({
                 <button
                   type="button"
                   onClick={() => setShowAddSourceForm(v => !v)}
-                  className="flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all"
+                  className="flex items-center gap-1 px-3 py-2 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs transition-all shadow-volt-glow"
                 >
                   <Plus className="w-3.5 h-3.5" /> Dodaj izvor
                 </button>
@@ -1029,11 +1036,11 @@ export default function AICoachTab({
             </div>
 
             {showAddSourceForm && (
-              <div className="bg-zinc-950/90 border border-emerald-500/30 rounded-2xl p-4 md:p-5 space-y-4 shadow-2xl animate-in fade-in">
+              <div className="bg-zinc-950 border border-volt-400/30 rounded-xl p-4 md:p-5 space-y-4 animate-in fade-in">
                 {/* Zaglavlje i odabir načina unosa */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
                   <div>
-                    <span className="text-xs font-black text-emerald-400 uppercase tracking-wider block">
+                    <span className="font-mono text-xs font-bold text-volt-400 uppercase tracking-wider block">
                       Novi izvor znanja za AI Trenera
                     </span>
                     <span className="text-[11px] text-zinc-400">
@@ -1041,13 +1048,13 @@ export default function AICoachTab({
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-xl border border-zinc-800 self-start sm:self-auto">
+                  <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-lg border border-zinc-800 self-start sm:self-auto">
                     <button
                       type="button"
                       onClick={() => setSourceImportMode('upload')}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-bold transition-all ${
                         sourceImportMode === 'upload'
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm'
+                          ? 'bg-volt-400 text-zinc-950'
                           : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
@@ -1056,9 +1063,9 @@ export default function AICoachTab({
                     <button
                       type="button"
                       onClick={() => setSourceImportMode('youtube')}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-bold transition-all ${
                         sourceImportMode === 'youtube'
-                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 shadow-sm'
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                           : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
@@ -1067,9 +1074,9 @@ export default function AICoachTab({
                     <button
                       type="button"
                       onClick={() => setSourceImportMode('manual')}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-bold transition-all ${
                         sourceImportMode === 'manual'
-                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
+                          ? 'bg-volt-400 text-zinc-950'
                           : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
@@ -1083,9 +1090,9 @@ export default function AICoachTab({
                   <div className="space-y-3">
                     <div
                       onClick={() => docFileInputRef.current?.click()}
-                      className="border-2 border-dashed border-zinc-700 hover:border-emerald-500/60 bg-zinc-900/50 hover:bg-zinc-900/80 rounded-2xl p-6 text-center cursor-pointer transition-all group"
+                      className="border-2 border-dashed border-zinc-800 hover:border-volt-400/60 bg-zinc-900/50 hover:bg-zinc-900 rounded-xl p-6 text-center cursor-pointer transition-all group"
                     >
-                      <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                      <div className="w-12 h-12 rounded-xl bg-volt-400/10 border border-volt-400/25 text-volt-400 flex items-center justify-center mx-auto mb-3 group-hover:scale-105 transition-transform">
                         <Upload className="w-6 h-6" />
                       </div>
                       <h4 className="text-sm font-bold text-zinc-100 mb-1">
@@ -1094,18 +1101,18 @@ export default function AICoachTab({
                       <p className="text-xs text-zinc-400 max-w-sm mx-auto mb-3">
                         Aplikacija u pregledniku automatski čita stranice ili poglavlja i priprema tekst za bazu.
                       </p>
-                      <div className="flex items-center justify-center gap-2 flex-wrap">
-                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                          .PDF dokument
+                      <div className="flex items-center justify-center gap-2 flex-wrap font-mono">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                          .PDF
                         </span>
-                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                          .EPUB e-knjiga
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                          .EPUB
                         </span>
-                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                          .MD bilješke
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-volt-400/10 text-volt-400 border border-volt-400/25">
+                          .MD
                         </span>
-                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700">
-                          .TXT tekst
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+                          .TXT
                         </span>
                       </div>
                     </div>
@@ -1122,9 +1129,9 @@ export default function AICoachTab({
                 {/* 2. YOUTUBE VIDEO IMPORT */}
                 {sourceImportMode === 'youtube' && (
                   <form onSubmit={handleAnalyzeYouTube} className="space-y-3">
-                    <div className="p-3 bg-zinc-900/60 rounded-xl border border-zinc-800 space-y-1">
+                    <div className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800 space-y-1">
                       <p className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" /> Automatska AI analiza YouTube videa
+                        <Sparkles className="w-3.5 h-3.5 text-volt-400" /> Automatska AI analiza YouTube videa
                       </p>
                       <p className="text-[11px] text-zinc-400 leading-relaxed">
                         Zalijepite poveznicu na biciklistički podcast, studiju ili predavanje (npr. Dylan Johnson, Empirical Cycling, TrainerRoad). 
@@ -1141,13 +1148,13 @@ export default function AICoachTab({
                           value={youtubeInputUrl}
                           onChange={(e) => setYoutubeInputUrl(e.target.value)}
                           placeholder="https://www.youtube.com/watch?v=..."
-                          className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-100 outline-none focus:border-rose-500 transition-colors"
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-2 text-xs text-zinc-100 outline-none focus:border-rose-500 transition-colors"
                         />
                       </div>
                       <button
                         type="submit"
                         disabled={isProcessingSource || !youtubeInputUrl.trim()}
-                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-400 hover:to-amber-400 disabled:opacity-50 text-zinc-950 font-black text-xs flex items-center justify-center gap-1.5 shrink-0 transition-all shadow-md"
+                        className="px-4 py-2 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-50 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-1.5 shrink-0 transition-all shadow-volt-glow"
                       >
                         {isProcessingSource ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                         Analiziraj video
@@ -1158,15 +1165,15 @@ export default function AICoachTab({
 
                 {/* Status obrade */}
                 {isProcessingSource && (
-                  <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center gap-3 text-xs font-bold text-cyan-300">
-                    <Loader2 className="w-4 h-4 animate-spin text-cyan-400 shrink-0" />
+                  <div className="p-4 rounded-lg bg-volt-400/10 border border-volt-400/30 flex items-center gap-3 text-xs font-mono font-bold text-volt-300">
+                    <Loader2 className="w-4 h-4 animate-spin text-volt-400 shrink-0" />
                     <span>{sourceProcessingStatus || 'Obrada izvora u tijeku...'}</span>
                   </div>
                 )}
 
                 {/* Greška obrade */}
                 {sourceProcessError && (
-                  <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
+                  <div className="p-3.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
                     <span className="flex-1">{sourceProcessError}</span>
                   </div>
@@ -1176,7 +1183,7 @@ export default function AICoachTab({
                 <form onSubmit={handleSaveCustomSource} className="space-y-3 pt-2 border-t border-zinc-800">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <div className="sm:col-span-2">
-                      <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                      <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                         Naslov izvora / knjige / videa *
                       </label>
                       <input
@@ -1185,11 +1192,11 @@ export default function AICoachTab({
                         value={newSourceTitle}
                         onChange={(e) => setNewSourceTitle(e.target.value)}
                         placeholder="npr. Fast After 50 ili Z2 Mitochondria Study"
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-emerald-500"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-volt-400"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                      <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                         Autor / Kanal / Izvor
                       </label>
                       <input
@@ -1197,20 +1204,20 @@ export default function AICoachTab({
                         value={newSourceAuthor}
                         onChange={(e) => setNewSourceAuthor(e.target.value)}
                         placeholder="npr. Joe Friel ili Dylan Johnson"
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-emerald-500"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-volt-400"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                      <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                         Kategorija izvora
                       </label>
                       <select
                         value={newSourceCategory}
                         onChange={(e) => setNewSourceCategory(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-emerald-500"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-volt-400"
                       >
                         <option value="PDF literatura">PDF literatura</option>
                         <option value="EPUB knjiga">EPUB e-knjiga</option>
@@ -1221,7 +1228,7 @@ export default function AICoachTab({
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400 mb-1">
+                      <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
                         Poveznica / URL (opcionalno)
                       </label>
                       <input
@@ -1229,17 +1236,17 @@ export default function AICoachTab({
                         value={newSourceUrl}
                         onChange={(e) => setNewSourceUrl(e.target.value)}
                         placeholder="https://..."
-                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-emerald-500"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-volt-400"
                       />
                     </div>
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                      <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400">
                         Sadržaj izvora i trenerska pravila *
                       </label>
-                      <span className="text-[10px] text-zinc-500 font-mono">
+                      <span className="text-[10px] text-zinc-500 font-mono telemetry-num">
                         {newSourceContent.length.toLocaleString('hr-HR')} / 55.000 znakova
                       </span>
                     </div>
@@ -1249,7 +1256,7 @@ export default function AICoachTab({
                       value={newSourceContent}
                       onChange={(e) => setNewSourceContent(e.target.value)}
                       placeholder="Zalijepite ključne principe, pravila, zone ili bilješke koje želite da AI Trener uvijek uvažava..."
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 outline-none focus:border-emerald-500 resize-y font-mono leading-relaxed"
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 outline-none focus:border-volt-400 resize-y font-mono leading-relaxed"
                     />
                   </div>
 
@@ -1268,7 +1275,7 @@ export default function AICoachTab({
                       <button
                         type="submit"
                         disabled={isProcessingSource || !newSourceTitle.trim() || !newSourceContent.trim()}
-                        className="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-zinc-950 font-black text-xs flex items-center gap-1.5 shadow-md"
+                        className="px-4 py-1.5 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-50 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-volt-glow"
                       >
                         <Check className="w-3.5 h-3.5" /> Spremi u Bazu Znanja
                       </button>
@@ -1282,8 +1289,8 @@ export default function AICoachTab({
             {customSources.length > 0 && (
               <div className="space-y-3 pb-3 border-b border-zinc-800">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Vlastita literatura i izvori ({customSources.length})
+                  <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-volt-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-volt-400" /> Vlastita literatura i izvori ({customSources.length})
                   </span>
                   <span className="text-[10px] text-zinc-500">
                     Spremljeno u pregledniku
@@ -1292,11 +1299,11 @@ export default function AICoachTab({
                 {customSources.map(src => {
                   const isExpanded = expandedModuleId === src.id;
                   return (
-                    <div key={src.id} className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3.5 space-y-2.5 transition-all">
+                    <div key={src.id} className="rounded-lg border border-volt-400/25 bg-zinc-950 p-3.5 space-y-2.5 transition-all">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[9px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                            <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-volt-400 bg-volt-400/10 px-2 py-0.5 rounded border border-volt-400/25">
                               {src.category || 'Vlastiti izvor'}
                             </span>
                             {src.sourceUrl && (
@@ -1304,7 +1311,7 @@ export default function AICoachTab({
                                 href={src.sourceUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
+                                className="text-[10px] text-volt-400 hover:underline flex items-center gap-1 font-semibold"
                               >
                                 <ExternalLink className="w-3 h-3" /> Poveznica
                               </a>
@@ -1331,7 +1338,7 @@ export default function AICoachTab({
                         {isExpanded ? 'Sakrij sadržaj' : 'Prikaži sadržaj bilješke / sažetka'}
                       </button>
                       {isExpanded ? (
-                        <pre className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-60 overflow-y-auto custom-scrollbar">
+                        <pre className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-60 overflow-y-auto custom-scrollbar">
                           {src.content}
                         </pre>
                       ) : (
@@ -1346,7 +1353,7 @@ export default function AICoachTab({
             {/* Ugrađeni moduli */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between pt-1">
-                <span className="text-[11px] font-black uppercase tracking-wider text-cyan-400">
+                <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-volt-400">
                   Ugrađeni trenerski moduli ({BUILT_IN_KNOWLEDGE_MODULES.length})
                 </span>
                 <span className="text-[10px] text-zinc-500">
@@ -1359,15 +1366,15 @@ export default function AICoachTab({
                 return (
                   <div
                     key={mod.id}
-                    className={`rounded-xl border p-3.5 transition-all ${
+                    className={`rounded-lg border p-3.5 transition-all ${
                       isEnabled
-                        ? 'bg-zinc-950/70 border-zinc-800'
+                        ? 'bg-zinc-950 border-zinc-800'
                         : 'bg-zinc-950/30 border-zinc-800/40 opacity-60'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <span className="text-[9px] font-black uppercase tracking-wider text-cyan-400">
+                        <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-volt-400">
                           {mod.category}
                         </span>
                         <h4 className="text-xs md:text-sm font-bold text-zinc-100">{mod.title}</h4>
@@ -1376,7 +1383,7 @@ export default function AICoachTab({
                       <button
                         type="button"
                         onClick={() => setDisabledModules(toggleBuiltInModule(mod.id))}
-                        className="text-cyan-400 hover:text-cyan-300 shrink-0"
+                        className="text-volt-400 hover:text-volt-300 shrink-0"
                         title={isEnabled ? 'Isključi modul' : 'Uključi modul'}
                       >
                         {isEnabled ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6 text-zinc-600" />}
@@ -1392,7 +1399,7 @@ export default function AICoachTab({
                       {isExpanded ? 'Sakrij sažetak pravila' : 'Prikaži ugrađena pravila'}
                     </button>
                     {isExpanded && (
-                      <pre className="mt-2 p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-56 overflow-y-auto custom-scrollbar">
+                      <pre className="mt-2 p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-56 overflow-y-auto custom-scrollbar">
                         {mod.content}
                       </pre>
                     )}

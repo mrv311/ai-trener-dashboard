@@ -314,13 +314,19 @@ ${knowledgeBasePrompt}`;
   ];
 
   qaHistory.forEach(msg => {
+    const msgText = String(msg?.text ?? msg?.content ?? '').trim();
+    if (!msgText) return;
     contents.push({
       role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.text }]
+      parts: [{ text: msgText }]
     });
   });
 
-  contents.push({ role: 'user', parts: [{ text: question }] });
+  const cleanQuestion = String(question || '').trim();
+  if (!cleanQuestion) {
+    throw new Error('Pitanje ne može biti prazno.');
+  }
+  contents.push({ role: 'user', parts: [{ text: cleanQuestion }] });
 
   return callGeminiApi({
     systemInstruction,
@@ -334,8 +340,9 @@ ${knowledgeBasePrompt}`;
  * Interaktivni chat s AI Trenerom.
  */
 export async function chatWithAICoach({
+  messages = null,
   chatHistory = [],
-  userMessage,
+  userMessage = '',
   athleteProfile,
   liveWorkouts = [],
   wellnessData = {},
@@ -388,15 +395,42 @@ ili u JSON formatu:
 \`\`\`
 VAŽNO: DURATION i durationMinutes su U MINUTAMA (npr. 60 ili 75, NIKAKO u sekundama poput 3600). U steps nizu, pojedinačni "duration" je u sekundama, a "power" je u % FTP.`;
 
-  const formattedContents = chatHistory.map(m => ({
-    role: m.role === 'user' ? 'user' : 'model',
-    parts: [{ text: m.text }]
-  }));
+  const rawList = Array.isArray(messages) && messages.length > 0
+    ? messages
+    : [
+        ...(Array.isArray(chatHistory) ? chatHistory : []),
+        ...(String(userMessage || '').trim() ? [{ role: 'user', text: String(userMessage).trim() }] : [])
+      ];
 
-  formattedContents.push({
-    role: 'user',
-    parts: [{ text: userMessage }]
-  });
+  const normalizedTurns = rawList
+    .map(m => {
+      const txt = String(m?.text ?? m?.content ?? '').trim();
+      if (!txt) return null;
+      return {
+        role: m?.role === 'user' ? 'user' : 'model',
+        parts: [{ text: txt }]
+      };
+    })
+    .filter(Boolean);
+
+  // Osiguraj da razgovor počinje s 'user' ulogom i spaja uzastopne poruke iste uloge
+  while (normalizedTurns.length > 0 && normalizedTurns[0].role !== 'user') {
+    normalizedTurns.shift();
+  }
+
+  const formattedContents = [];
+  for (const turn of normalizedTurns) {
+    const prev = formattedContents[formattedContents.length - 1];
+    if (prev && prev.role === turn.role) {
+      prev.parts[0].text = `${prev.parts[0].text}\n\n${turn.parts[0].text}`;
+    } else {
+      formattedContents.push(turn);
+    }
+  }
+
+  if (formattedContents.length === 0) {
+    throw new Error('Poruka za AI Trenera je prazna. Upiši pitanje i pokušaj ponovno.');
+  }
 
   return callGeminiApi({
     systemInstruction,
@@ -419,10 +453,12 @@ export async function generateStructuredTrainingPlan({
   athleteProfile,
   liveWorkouts = [],
   wellnessData = {},
+  notes = '',
   userNotes = '',
   model = 'gemini-3.8-flash',
   userId = null
 }) {
+  const resolvedNotes = String(userNotes || notes || '').trim();
   const athleteContextPrompt = await buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
@@ -438,7 +474,7 @@ export async function generateStructuredTrainingPlan({
 Generiraj detaljan, periodizirani trenažni plan od ${weeks} tjedna (${workoutsPerWeek} treninga tjedno, ukupno ~${hoursPerWeek} sati tjedno) počevši od datuma ${startDate}.
 Metodologija: ${methodology}.
 Glavni cilj sportaša: "${goal}".
-${userNotes ? `Dodatne želje vozača: "${userNotes}"` : ''}
+${resolvedNotes ? `Dodatne želje vozača: "${resolvedNotes}"` : ''}
 
 VAŽNO: Odgovor MORA biti ISKLJUČIVO valjani JSON objekt (bez ikakvog uvodnog ili zaključnog teksta, bez markdown backtick oznaka \`\`\`json).
 Format JSON-a:

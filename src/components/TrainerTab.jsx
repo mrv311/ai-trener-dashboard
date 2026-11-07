@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X, Gamepad2, ArrowUpDown, RotateCcw, Battery } from 'lucide-react';
+import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X, Gamepad2, ArrowUpDown, RotateCcw, Battery, Maximize2, Minimize2 } from 'lucide-react';
 import TrainerModals from './trainer/TrainerModals';
 import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer, calculateCogganMetrics, calculateEF, calculateVI, calculateAerobicDecoupling } from '../utils/performanceMetrics';
@@ -125,8 +125,12 @@ const FTMS_SUPPORTED_RESISTANCE_RANGE_UUID = '00002ad6-0000-1000-8000-00805f9b34
 const FTMS_CONTROL_POINT_UUID = '00002ad9-0000-1000-8000-00805f9b34fb';
 const sleepMs = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-export default function TrainerTab({ profile, userId, workoutFromCalendar, onClose, intervalsId, intervalsKey, workouts = [], wellnessData = {}, onAddWorkoutToCalendar }) {
+export default function TrainerTab({ profile, userId, workoutFromCalendar, onClose, intervalsId, intervalsKey, workouts = [], wellnessData = {}, onAddWorkoutToCalendar, onPlayingChange }) {
   const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    if (onPlayingChange) onPlayingChange(isPlaying);
+  }, [isPlaying, onPlayingChange]);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [sessionStartTime, setSessionStartTime] = useState(null);
 
@@ -678,21 +682,21 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   const displayCadence = currentCadence;
 
   const getPowerColor = () => {
-    if (!isPlaying && displayPower === 0) return "text-zinc-500";
+    if (!isPlaying && displayPower === 0) return "text-zinc-600";
     const diff = Math.abs(displayPower - activeTargetPower);
-    if (diff <= 10) return "text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]";
-    if (diff <= 25) return "text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]";
-    return "text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]";
+    if (diff <= 8) return "text-volt-400 drop-shadow-[0_0_18px_rgba(var(--accent-400),0.32)]";
+    if (diff <= 22) return "text-amber-400 drop-shadow-[0_0_14px_rgba(251,191,36,0.28)]";
+    return "text-rose-500 drop-shadow-[0_0_14px_rgba(244,63,94,0.32)]";
   };
 
   const getZoneTextColor = (pwr) => {
-    if (pwr < 55) return 'text-gray-400 drop-shadow-[0_0_8px_rgba(156,163,175,0.5)]';
-    if (pwr < 76) return 'text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]';
-    if (pwr < 88) return 'text-green-400 drop-shadow-[0_0_8px_rgba(74,222,128,0.5)]';
-    if (pwr < 95) return 'text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]';
-    if (pwr < 106) return 'text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]';
-    if (pwr < 121) return 'text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]';
-    return 'text-purple-400 drop-shadow-[0_0_8px_rgba(192,132,252,0.5)]';
+    if (pwr < 55) return 'text-zinc-400';
+    if (pwr < 76) return 'text-sky-400';
+    if (pwr < 88) return 'text-emerald-400';
+    if (pwr < 95) return 'text-volt-400';
+    if (pwr < 106) return 'text-amber-400';
+    if (pwr < 121) return 'text-rose-400';
+    return 'text-purple-400';
   };
 
   const formatTime = (secs) => {
@@ -1632,10 +1636,36 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     };
   }, []);
 
+  const [isFullscreen, setIsFullscreen] = useState(() => Boolean(typeof document !== 'undefined' && document.fullscreenElement));
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.warn('[Fullscreen] Nije moguće prebaciti puni zaslon:', err);
+    }
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Allow default behavior inside text inputs or textareas
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) {
+        return;
+      }
+
+      if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        toggleFullscreen();
         return;
       }
 
@@ -1670,10 +1700,10 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showStopPrompt, isFinished, controlMode, handleSkip, shiftVirtualGear]);
+  }, [showStopPrompt, isFinished, controlMode, handleSkip, shiftVirtualGear, toggleFullscreen]);
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto flex flex-col flex-1 gap-1 md:gap-2 xl:gap-4 animate-in fade-in relative px-1 md:px-2 min-h-0">
+    <div className="w-full max-w-[1800px] mx-auto flex flex-col flex-1 md:h-full gap-1.5 md:gap-2 xl:gap-2.5 short:gap-1.5 vshort:gap-1 animate-in fade-in relative px-1 md:px-2 min-h-0">
 
       <TrainerModals
         showStopPrompt={showStopPrompt}
@@ -1697,40 +1727,87 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         onAddWorkoutToCalendar={onAddWorkoutToCalendar}
       />
 
-      {/* GORNJA TRAKA: Bluetooth gumbi */}
-      <div className="flex gap-1.5 md:gap-3 flex-wrap overflow-x-auto pb-0 md:pb-0 shrink-0">
+      {/* GORNJA TRAKA: Hardware Sensor Dock */}
+      <div className="carbon-panel rounded-xl p-1.5 md:p-2 short:p-1 flex gap-1.5 md:gap-2 short:gap-1.5 flex-wrap md:flex-nowrap overflow-x-auto hide-scrollbar items-center shrink-0">
         <button
           onClick={connectTrainer}
           title={trainerDeviceName ? `Spojen: ${trainerDeviceName}` : 'Spoji pametni trenažer (FTMS / Cycling Power)'}
-          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-sm shrink-0 ${
+          className={`flex items-center gap-2 px-2.5 md:px-3 short:px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg font-bold transition-all border text-xs shrink-0 ${
             isPowerConnected
               ? (ftmsStatus === 'ready'
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30')
-              : 'bg-zinc-900/50 hover:bg-zinc-800 text-sky-400 border-zinc-800/80'
+                  ? 'bg-volt-400/10 text-volt-400 border-volt-400/35'
+                  : 'bg-amber-500/10 text-amber-400 border-amber-500/35')
+              : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-700'
           }`}
         >
-          {isPowerConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <Bluetooth className="w-3.5 h-3.5 md:w-4 md:h-4" />}
-          {isPowerConnected
-            ? `${trainerDeviceName || 'Trenažer'} ${ftmsStatus === 'ready' ? '(ERG)' : '(Bez ERG)'}`
-            : 'Spoji Trenažer'}
+          <span className={`w-2 h-2 rounded-full shrink-0 ${
+            isPowerConnected
+              ? (ftmsStatus === 'ready' ? 'bg-volt-400 shadow-[0_0_8px_rgba(var(--accent-400),0.9)]' : 'bg-amber-400')
+              : 'bg-zinc-600'
+          }`} />
+          {isPowerConnected ? <BluetoothConnected className="w-3.5 h-3.5 shrink-0" /> : <Bluetooth className="w-3.5 h-3.5 text-sky-400 shrink-0" />}
+          <span className="tracking-tight whitespace-nowrap">
+            {isPowerConnected
+              ? `${trainerDeviceName || 'Trenažer'} ${ftmsStatus === 'ready' ? '· ERG' : '· NO-ERG'}`
+              : 'FTMS Trenažer'}
+          </span>
         </button>
 
-        <button
-          onClick={connectPowerMeter}
-          title={pmDeviceName ? `Spojen: ${pmDeviceName}` : 'Spoji vanjski PowerMeter (npr. Favero Assioma)'}
-          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-sm shrink-0 ${isPmConnected ? 'bg-violet-500/10 text-violet-400 border-violet-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-violet-400 border-zinc-800/80'}`}
-        >
-          {isPmConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <Activity className="w-3.5 h-3.5 md:w-4 md:h-4" />}
-          {isPmConnected ? (pmDeviceName || 'PowerMeter Spojen') : 'Spoji PowerMeter'}
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={connectPowerMeter}
+            title={pmDeviceName ? `Spojen: ${pmDeviceName}` : 'Spoji vanjski PowerMeter (npr. Favero Assioma)'}
+            className={`flex items-center gap-2 px-2.5 md:px-3 short:px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg font-bold transition-all border text-xs shrink-0 ${
+              isPmConnected
+                ? 'bg-violet-500/12 text-violet-300 border-violet-500/35'
+                : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-700'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full shrink-0 ${isPmConnected ? 'bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.9)]' : 'bg-zinc-600'}`} />
+            <Activity className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+            <span className="tracking-tight whitespace-nowrap">{isPmConnected ? (pmDeviceName || 'PowerMeter') : 'PowerMeter'}</span>
+          </button>
+
+          {isPmConnected && (
+            <>
+              <button
+                onClick={() => { setPowerMatchEnabled(prev => !prev); pidController.reset(); }}
+                title="Uskladi otpor trenažera prema očitanju PowerMetra"
+                className={`px-2 py-1.5 md:py-2 short:py-1 rounded-lg font-mono font-bold transition-all border text-[11px] shrink-0 ${
+                  powerMatchEnabled
+                    ? 'bg-violet-500 text-zinc-950 border-violet-400 shadow-[0_0_12px_rgba(139,92,246,0.3)]'
+                    : 'bg-zinc-950 text-violet-300 border-zinc-800 hover:bg-zinc-900'
+                }`}
+              >
+                P.MATCH {powerMatchEnabled ? 'ON' : 'OFF'}
+              </button>
+
+              <button
+                onClick={togglePmDoublePower}
+                title="Udvostruči snagu jednostrane pedale (npr. Assioma UNO kada u Favero aplikaciji nije uključen Unified Channel L). Isključi ako Favero aplikacija već udvostručuje snagu!"
+                className={`px-2 py-1.5 md:py-2 short:py-1 rounded-lg font-mono font-bold transition-all border text-[11px] shrink-0 ${
+                  pmDoublePower
+                    ? 'bg-amber-400 text-zinc-950 border-amber-300'
+                    : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:bg-zinc-900 hover:text-zinc-200'
+                }`}
+              >
+                ×2 UNO {pmDoublePower ? 'ON' : 'OFF'}
+              </button>
+            </>
+          )}
+        </div>
 
         <button
           onClick={connectHR}
-          className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-sm shrink-0 ${isHrConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-zinc-900/50 hover:bg-zinc-800 text-rose-500 border-zinc-800/80'}`}
+          className={`flex items-center gap-2 px-2.5 md:px-3 short:px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg font-bold transition-all border text-xs shrink-0 ${
+            isHrConnected
+              ? 'bg-rose-500/12 text-rose-300 border-rose-500/35'
+              : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-700'
+          }`}
         >
-          {isHrConnected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <Heart className="w-3.5 h-3.5 md:w-4 md:h-4" />}
-          {isHrConnected ? 'Pulsmetar Spojen' : 'Spoji Pulsmetar'}
+          <span className={`w-2 h-2 rounded-full shrink-0 ${isHrConnected ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.9)]' : 'bg-zinc-600'}`} />
+          <Heart className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+          <span className="tracking-tight whitespace-nowrap">Pulsmetar</span>
         </button>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -1741,16 +1818,17 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                 ? `Spojen: ${zwiftClickState.deviceName} (klikni za odspajanje)`
                 : 'Probudi Zwift Click pritiskom na tipku (plava LED pulsira) i klikni za spajanje'
             }
-            className={`flex items-center gap-1 md:gap-2 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-xl font-bold transition-colors border shadow-sm text-xs md:text-sm shrink-0 ${
+            className={`flex items-center gap-2 px-2.5 md:px-3 short:px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg font-bold transition-all border text-xs shrink-0 ${
               zwiftClickState.connected
-                ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/35 shadow-[0_0_10px_rgba(34,211,238,0.18)]'
-                : 'bg-zinc-900/50 hover:bg-zinc-800 text-cyan-400 border-zinc-800/80'
+                ? 'bg-sky-500/12 text-sky-300 border-sky-500/35'
+                : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-700'
             }`}
           >
-            {zwiftClickState.connected ? <BluetoothConnected className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <Gamepad2 className="w-3.5 h-3.5 md:w-4 md:h-4" />}
-            <span>{zwiftClickState.connected ? (zwiftClickState.deviceName || 'Zwift Click') : 'Zwift Click'}</span>
+            <span className={`w-2 h-2 rounded-full shrink-0 ${zwiftClickState.connected ? 'bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)]' : 'bg-zinc-600'}`} />
+            <Gamepad2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            <span className="tracking-tight whitespace-nowrap">{zwiftClickState.connected ? (zwiftClickState.deviceName || 'Zwift Click') : 'Zwift Click'}</span>
             {zwiftClickState.connected && zwiftClickState.batteryLevel != null && (
-              <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/15 px-1.5 py-0.5 rounded-md border border-emerald-500/25 flex items-center gap-0.5">
+              <span className="text-[10px] font-mono telemetry-num text-volt-300 bg-volt-400/10 px-1.5 py-0.5 rounded border border-volt-400/25 flex items-center gap-0.5">
                 <Battery className="w-3 h-3" /> {zwiftClickState.batteryLevel}%
               </span>
             )}
@@ -1758,76 +1836,70 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           <button
             onClick={() => setShowClickSettings(v => !v)}
             title="Postavke virtualnog mjenjača i kalibracija Zwift Click tipki"
-            className={`px-2 py-1.5 md:py-2.5 rounded-xl border text-xs font-bold transition-colors shrink-0 ${
+            className={`p-1.5 md:p-2 short:p-1.5 rounded-lg border text-xs font-bold transition-colors shrink-0 ${
               showClickSettings
-                ? 'bg-cyan-500 text-zinc-950 border-cyan-400'
-                : 'bg-zinc-900/50 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border-zinc-800/80'
+                ? 'bg-volt-400 text-zinc-950 border-volt-400'
+                : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 border-zinc-800'
             }`}
           >
             <Settings2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
           </button>
         </div>
 
-        {isPmConnected && (
-          <>
-            <button
-              onClick={() => { setPowerMatchEnabled(prev => !prev); pidController.reset(); }}
-              title="Uskladi otpor trenažera prema očitanju PowerMetra"
-              className={`flex items-center gap-1 md:gap-1.5 px-2.5 md:px-4 py-1.5 md:py-2.5 rounded-xl font-bold transition-all border shadow-sm text-xs md:text-sm shrink-0 ${powerMatchEnabled ? 'bg-violet-600 text-white border-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.3)]' : 'bg-zinc-900/50 text-violet-400 border-zinc-800 hover:bg-zinc-800'}`}
-            >
-              <Activity className="w-3.5 h-3.5 md:w-4 md:h-4" />
-              P.Match {powerMatchEnabled ? 'ON' : 'OFF'}
-            </button>
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? 'Izađi iz punog zaslona (tipka F)' : 'Puni zaslon za TV / garažu (tipka F)'}
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg border font-mono text-[11px] font-bold uppercase tracking-wider transition-all ${
+              isFullscreen
+                ? 'bg-volt-400/15 text-volt-400 border-volt-400/40'
+                : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-300 hover:text-volt-400 border-zinc-800'
+            }`}
+          >
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            <span className="hidden xl:inline">{isFullscreen ? 'Izlaz' : 'TV Puni zaslon'}</span>
+          </button>
 
-            <button
-              onClick={togglePmDoublePower}
-              title="Udvostruči snagu jednostrane pedale (npr. Assioma UNO kada u Favero aplikaciji nije uključen Unified Channel L). Isključi ako Favero aplikacija već udvostručuje snagu!"
-              className={`flex items-center gap-1 px-2.5 md:px-3.5 py-1.5 md:py-2.5 rounded-xl font-black transition-all border shadow-sm text-xs md:text-sm shrink-0 ${
-                pmDoublePower
-                  ? 'bg-amber-500 text-zinc-950 border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.35)]'
-                  : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:bg-zinc-800 hover:text-zinc-200'
-              }`}
-            >
-              ×2 Uno {pmDoublePower ? 'ON' : 'OFF'}
-            </button>
-          </>
-        )}
-
-        <div className="ml-auto flex items-center justify-end bg-zinc-900/40 backdrop-blur-md rounded-xl border border-zinc-800/80 shadow-sm overflow-hidden shrink-0">
-          <div className="px-3 py-1.5 md:px-4 md:py-2.5 text-zinc-500 font-medium text-xs md:text-sm truncate max-w-[140px] sm:max-w-none">
-            <span className="hidden sm:inline">Trening: </span><span className="text-zinc-100 font-bold uppercase">{workoutFromCalendar ? workoutFromCalendar.title : "Slobodna Vožnja"}</span>
+          <div className="flex items-center bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden shrink-0">
+            <div className="px-2.5 md:px-3 py-1.5 md:py-2 short:py-1 text-zinc-500 font-mono text-[11px] md:text-xs truncate max-w-[135px] lg:max-w-[220px]">
+              <span className="hidden lg:inline text-zinc-600">SESIJA // </span>
+              <span className="text-zinc-100 font-sans font-bold uppercase tracking-tight">
+                {workoutFromCalendar ? workoutFromCalendar.title : "Slobodna Vožnja"}
+              </span>
+            </div>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="px-2.5 md:px-3 py-1.5 md:py-2 short:py-1 bg-zinc-900 hover:bg-zinc-800 hover:text-white transition-colors text-zinc-400 font-bold text-xs border-l border-zinc-800 flex items-center gap-1.5"
+              >
+                <X className="w-3.5 h-3.5 md:w-4 md:h-4" /> <span className="hidden lg:inline">Zatvori</span>
+              </button>
+            )}
           </div>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="px-3 py-1.5 md:px-4 md:py-2.5 bg-zinc-800 hover:bg-zinc-700 hover:text-white transition-colors text-zinc-400 font-bold border-l border-zinc-700/50 flex items-center gap-2"
-            >
-              <X className="w-4 h-4 md:w-5 md:h-5" /> <span className="hidden md:inline">Zatvori</span>
-            </button>
-          )}
         </div>
       </div>
 
       {/* ZWIFT CLICK POSTAVKE, DIJAGNOSTIKA I KALIBRACIJA TIPKI */}
       {showClickSettings && (
-        <div className="bg-zinc-950/95 border border-cyan-500/35 rounded-2xl p-3 md:p-4 space-y-2.5 shadow-2xl shrink-0 animate-in fade-in">
+        <div className="carbon-panel border-volt-400/35 rounded-xl p-3 md:p-4 space-y-2.5 shrink-0 animate-in fade-in">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <Gamepad2 className="w-4 h-4 text-cyan-400 shrink-0" />
-              <span className="text-xs md:text-sm font-black text-zinc-100">
-                Virtualni Mjenjač (Zwift Click / Play / Ride)
+              <Gamepad2 className="w-4 h-4 text-volt-400 shrink-0" />
+              <span className="text-xs md:text-sm font-display font-bold uppercase tracking-wider text-zinc-100">
+                Virtualni Mjenjač · Zwift Click / Play / Ride
               </span>
               {zwiftClickState.connected ? (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                  Spojen · Klikova: {zwiftClickState.clickCount}
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-volt-400/15 text-volt-300 border border-volt-400/30">
+                  SPOJEN · KLIKOVA: {zwiftClickState.clickCount}
                 </span>
               ) : (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
                   Nije spojen — pritisni tipku na Clicku (plava LED pulsira) i klikni &quot;Zwift Click&quot;
                 </span>
               )}
               {zwiftClickState.connected && zwiftClickState.lastPacketHex && (
-                <span className="text-[10px] font-mono text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
+                <span className="text-[10px] font-mono text-zinc-400 bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800">
                   BLE: {zwiftClickState.lastPacketHex}
                 </span>
               )}
@@ -1840,7 +1912,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-colors ${
                   zwiftClickState.swapButtons
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                    : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-700'
+                    : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-300 border-zinc-800'
                 }`}
                 title="Zamijeni ulogu gornje i donje tipke ako je Zwift Click montiran naopako na volanu"
               >
@@ -1851,10 +1923,10 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
               <button
                 type="button"
                 onClick={toggleResPhysicsMode}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-colors ${
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-mono font-bold transition-colors ${
                   resPhysicsMode === 'SIM'
-                    ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
-                    : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
+                    ? 'bg-sky-500/15 text-sky-300 border-sky-500/35'
+                    : 'bg-volt-400/15 text-volt-300 border-volt-400/35'
                 }`}
                 title="Odaberi šalje li virtualni mjenjač u RES modu linearni otpor kočnice (FTMS 0x04) ili simulirani nagib ceste (FTMS 0x11)"
               >
@@ -1865,7 +1937,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                 <button
                   type="button"
                   onClick={() => zwiftClickRef.current?.startCalibration()}
-                  className="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-colors"
+                  className="px-2.5 py-1 rounded-lg bg-volt-400/15 hover:bg-volt-400/25 text-volt-300 border border-volt-400/35 text-xs font-bold transition-colors"
                   title="Ručno nauči + i - tipku ako tvoj firmware koristi nestandardni kod"
                 >
                   Kalibriraj +/-
@@ -1876,7 +1948,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                 <button
                   type="button"
                   onClick={() => zwiftClickRef.current?.clearCustomMap()}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-700 text-xs font-bold"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-900 text-zinc-400 border border-zinc-800 text-xs font-bold"
                   title="Vrati na tvorničko dekodiranje protokola"
                 >
                   <RotateCcw className="w-3 h-3" /> Reset mape
@@ -1895,16 +1967,16 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           </div>
 
           {zwiftClickState.calibrationStep !== 'idle' && (
-            <div className="flex items-center justify-between gap-2 bg-cyan-950/50 border border-cyan-500/40 rounded-xl px-3 py-2 text-xs font-bold text-cyan-200">
+            <div className="flex items-center justify-between gap-2 bg-volt-400/10 border border-volt-400/40 rounded-lg px-3 py-2 text-xs font-bold text-volt-300">
               <span>
-                {zwiftClickState.calibrationStep === 'wait_plus' && '1/2 👉 Pritisni na Zwift Clicku tipku koju želiš za VIŠU brzinu (+)...'}
-                {zwiftClickState.calibrationStep === 'wait_release' && '👍 Super! Pusti tipku...'}
-                {zwiftClickState.calibrationStep === 'wait_minus' && '2/2 👉 Sada pritisni tipku koju želiš za NIŽU brzinu (-)...'}
+                {zwiftClickState.calibrationStep === 'wait_plus' && '1/2 — Pritisni na Zwift Clicku tipku koju želiš za VIŠU brzinu (+)...'}
+                {zwiftClickState.calibrationStep === 'wait_release' && 'Odlično! Pusti tipku...'}
+                {zwiftClickState.calibrationStep === 'wait_minus' && '2/2 — Sada pritisni tipku koju želiš za NIŽU brzinu (-)...'}
               </span>
               <button
                 type="button"
                 onClick={() => zwiftClickRef.current?.cancelCalibration()}
-                className="px-2.5 py-1 rounded-lg bg-zinc-900 text-zinc-300 border border-zinc-700 text-xs"
+                className="px-2.5 py-1 rounded bg-zinc-950 text-zinc-300 border border-zinc-800 text-xs"
               >
                 Odustani
               </button>
@@ -1913,10 +1985,10 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
           <div className="text-[11px] text-zinc-400 flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800/80 pt-2">
             <span>
-              <strong className="text-indigo-300">RES mod (Slobodna vožnja):</strong> kratki <code className="text-zinc-200">+/-</code> = brzine 1–24, držanje = brzi Multi-Shift.
+              <strong className="text-sky-300">RES mod (Slobodna vožnja):</strong> kratki <code className="font-mono text-zinc-200">+/-</code> = brzine 1–24, držanje = brzi Multi-Shift.
             </span>
             <span>
-              <strong className="text-cyan-300">ERG mod (Trening):</strong> kratki <code className="text-zinc-200">+/-</code> = ±2% intenzitet · dugi <code className="text-zinc-200">+</code> = preskoči interval · dugi <code className="text-zinc-200">-</code> = Start/Pauza.
+              <strong className="text-volt-300">ERG mod (Trening):</strong> kratki <code className="font-mono text-zinc-200">+/-</code> = ±2% intenzitet · dugi <code className="font-mono text-zinc-200">+</code> = preskoči interval · dugi <code className="font-mono text-zinc-200">-</code> = Start/Pauza.
             </span>
           </div>
         </div>
@@ -1945,149 +2017,222 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         </div>
       )}
 
-      {/* GLAVNI GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3 shrink-[2] min-h-0" style={{minHeight: 0}}>
-        <div className="md:col-span-2 lg:col-span-2 bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-2 md:p-4 flex flex-col relative overflow-hidden min-h-0">
-          <div className={`absolute top-0 left-0 w-full h-2 ${getZoneColorForTrainer(currentStep.power)} transition-colors duration-500 shadow-[0_0_10px_rgba(255,255,255,0.2)]`}></div>
+      {/* GLAVNI TELEMETRIJSKI GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-2 md:short:grid-cols-3 lg:grid-cols-3 gap-2 md:gap-3 short:gap-1.5 flex-[1.15] min-h-0" style={{ minHeight: 0 }}>
+        <div className="md:col-span-2 md:short:col-span-2 lg:col-span-2 carbon-panel bg-telemetry-grid rounded-xl p-2.5 md:p-4 short:p-2.5 vshort:p-2 flex flex-col relative overflow-hidden min-h-0">
+          <div className={`absolute top-0 left-0 w-full h-[3px] ${getZoneColorForTrainer(currentStep.power)} transition-colors duration-500`} />
 
           {/* PLUTAJUĆI HUD ZA PROMJENU VIRTUALNE BRZINE / ZWIFT CLICK */}
           {shiftToast && (
             <div
               key={shiftToast.id}
-              className={`absolute top-12 md:top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-4 py-1.5 rounded-2xl border backdrop-blur-md shadow-2xl flex items-center gap-2 animate-in fade-in zoom-in-95 ${
+              className={`absolute top-10 md:top-12 left-1/2 -translate-x-1/2 z-30 pointer-events-none px-4 py-1.5 rounded-lg border shadow-2xl flex items-center gap-2 font-mono animate-in fade-in zoom-in-95 ${
                 shiftToast.tone === 'emerald'
-                  ? 'bg-emerald-950/90 border-emerald-400/50 text-emerald-200'
+                  ? 'bg-zinc-950/95 border-volt-400/60 text-volt-300'
                   : shiftToast.tone === 'amber'
-                  ? 'bg-amber-950/90 border-amber-400/50 text-amber-200'
+                  ? 'bg-zinc-950/95 border-amber-400/60 text-amber-200'
                   : shiftToast.tone === 'cyan'
-                  ? 'bg-cyan-950/90 border-cyan-400/50 text-cyan-200'
-                  : 'bg-indigo-950/90 border-indigo-400/50 text-indigo-100'
+                  ? 'bg-zinc-950/95 border-sky-400/60 text-sky-200'
+                  : 'bg-zinc-950/95 border-volt-400/50 text-zinc-100'
               }`}
             >
-              <span className="text-sm md:text-base font-black tracking-tight">{shiftToast.text}</span>
+              <span className="text-sm md:text-base font-bold tracking-tight">{shiftToast.text}</span>
               {shiftToast.subtext && (
-                <span className="text-[11px] md:text-xs font-semibold opacity-80 border-l border-white/20 pl-2">
+                <span className="text-[11px] md:text-xs font-medium opacity-80 border-l border-zinc-700 pl-2">
                   {shiftToast.subtext}
                 </span>
               )}
             </div>
           )}
-          
-          <div className="flex justify-between items-start w-full z-10 shrink-0">
-            <div className="flex items-center gap-2 mt-1 md:mt-0 flex-wrap">
-              <span className="text-zinc-500 font-black uppercase tracking-widest text-[9px] md:text-xs">
-                {usePmAsPrimary ? `PM Snaga${pmDoublePower ? ' (×2)' : ''}` : (isPowerConnected ? 'Snaga Trenažera' : 'Trenutna Snaga')}
+
+          <div className="flex justify-between items-start w-full z-10 shrink-0 gap-2">
+            <div className="flex items-center gap-1.5 md:gap-2 mt-0.5 flex-wrap">
+              <span className="text-zinc-400 font-mono font-bold uppercase tracking-[0.18em] text-[10px] md:text-xs short:text-[10px]">
+                {usePmAsPrimary ? `PM SNAGA${pmDoublePower ? ' (×2)' : ''}` : (isPowerConnected ? 'SNAGA TRENAŽERA' : 'SNAGA // WATTS')}
               </span>
               {powerMatchEnabled && isPmConnected && !(halfPowerDetected && !pmDoublePower) && (
-                <span className="bg-violet-500/10 text-violet-400 text-[8px] md:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-violet-500/20">
-                  Power Match Active
+                <span className="bg-violet-500/15 text-violet-300 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-violet-500/30">
+                  PID MATCH
                 </span>
               )}
               {!powerMatchEnabled && isPmConnected && isPowerConnected && (
-                <span className="bg-sky-500/10 text-sky-400 text-[8px] md:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-sky-500/20">
-                  Izvor: Trenažer (P.Match OFF)
+                <span className="bg-sky-500/10 text-sky-300 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-sky-500/25">
+                  TRENAŽER RAW
                 </span>
               )}
               {zwiftClickState.connected && (
-                <span className="bg-cyan-500/10 text-cyan-300 text-[8px] md:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-cyan-500/25">
-                  Zwift Click ON
+                <span className="bg-volt-400/10 text-volt-300 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-volt-400/25">
+                  CLICK READY
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-1 md:gap-2 bg-zinc-950/50 p-1 md:p-2 rounded-2xl border border-zinc-800 shadow-lg">
-              <button onClick={toggleMode} title="Prebaci između ERG i RES (Virtual Shifting) moda (tipka M)" className="flex items-center gap-1 md:gap-1.5 px-2 py-1 md:px-4 md:py-2 bg-zinc-800 shadow-sm border border-zinc-700 rounded-xl text-[9px] md:text-xs font-bold text-zinc-300 uppercase tracking-wider hover:bg-zinc-700 hover:text-white transition-colors active:scale-95">
-                <Settings2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">{controlMode} Mode</span><span className="sm:hidden">{controlMode}</span>
+            <div className="flex items-center gap-1 md:gap-1.5 bg-zinc-950 p-1 short:p-0.5 rounded-lg border border-zinc-800 shrink-0">
+              <button
+                onClick={toggleMode}
+                title="Prebaci između ERG i RES (Virtual Shifting) moda (tipka M)"
+                className={`flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 short:px-2 short:py-0.5 rounded-md text-[10px] md:text-xs font-mono font-bold uppercase tracking-wider transition-all active:scale-95 ${
+                  controlMode === 'ERG'
+                    ? 'bg-volt-400/15 text-volt-300 border border-volt-400/35'
+                    : 'bg-sky-500/15 text-sky-300 border border-sky-500/35'
+                }`}
+              >
+                <Settings2 className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                <span>{controlMode}</span>
               </button>
-              <div className="w-px h-5 md:h-8 bg-zinc-800 mx-0.5 md:mx-1"></div>
+              <div className="w-px h-5 md:h-6 short:h-4 bg-zinc-800 mx-0.5" />
               {controlMode === 'ERG' ? (
-                <div className="flex items-center gap-0.5 md:gap-2">
-                  <button onClick={decreaseErg} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
-                  <span className="w-10 md:w-16 text-center font-black text-zinc-100 text-sm md:text-lg">{ergIntensity}%</span>
-                  <button onClick={increaseErg} className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                <div className="flex items-center gap-0.5 md:gap-1">
+                  <button onClick={decreaseErg} className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
+                    <Minus className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                  </button>
+                  <span className="w-11 md:w-14 short:w-11 text-center font-mono font-bold telemetry-num text-zinc-100 text-xs md:text-sm short:text-xs">{ergIntensity}%</span>
+                  <button onClick={increaseErg} className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
+                    <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                  </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-0.5 md:gap-2">
-                  <button onClick={decreaseRes} title="Niža brzina (-)" className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Minus className="w-4 h-4 md:w-5 md:h-5" /></button>
-                  <div className="min-w-[64px] md:min-w-[88px] text-center leading-tight">
-                    <div className="font-black text-indigo-300 text-xs md:text-base">G {virtualGear}/{VIRTUAL_GEAR_MAX}</div>
-                    <div className="text-[9px] md:text-[10px] font-bold text-zinc-500">
+                <div className="flex items-center gap-0.5 md:gap-1">
+                  <button onClick={decreaseRes} title="Niža brzina (-)" className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
+                    <Minus className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                  </button>
+                  <div className="min-w-[60px] md:min-w-[78px] short:min-w-[64px] text-center leading-none">
+                    <div className="font-mono font-bold telemetry-num text-sky-300 text-xs md:text-sm short:text-xs">G{virtualGear}/{VIRTUAL_GEAR_MAX}</div>
+                    <div className="text-[9px] font-mono telemetry-num text-zinc-500 mt-0.5 vshort:hidden">
                       {resPhysicsMode === 'SIM' ? `${simulatedGrade > 0 ? '+' : ''}${simulatedGrade.toFixed(1)}%` : `${resistanceLevel}%`}
                     </div>
                   </div>
-                  <button onClick={increaseRes} title="Viša brzina (+)" className="p-1.5 md:p-2.5 hover:bg-zinc-800 rounded-xl text-zinc-400 hover:text-zinc-100 transition-all active:scale-95 active:bg-zinc-700"><Plus className="w-4 h-4 md:w-5 md:h-5" /></button>
+                  <button onClick={increaseRes} title="Viša brzina (+)" className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
+                    <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                  </button>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="flex flex-col flex-1 items-center justify-center min-h-0 w-full z-10 py-2">
-            <div className="flex items-baseline gap-1 md:gap-2 shrink-1 min-h-0">
-              <div className={`text-[clamp(40px,8vh,120px)] md:text-[clamp(60px,12vh,150px)] font-black leading-none tracking-tighter transition-colors ${controlMode === 'RES' && isPlaying ? 'text-indigo-400 drop-shadow-[0_0_10px_rgba(129,140,248,0.5)]' : getPowerColor()}`}>
+          <div className="flex flex-col flex-1 items-center justify-center min-h-0 w-full z-10 py-1 short:py-0.5">
+            <div className="flex items-baseline gap-2 md:gap-3 shrink-1 min-h-0">
+              <div className={`text-[clamp(48px,11.5vh,152px)] short:text-[clamp(42px,9.8vh,98px)] vshort:text-[clamp(36px,8.6vh,72px)] font-display font-bold telemetry-num leading-[0.9] tracking-tight transition-colors ${controlMode === 'RES' && isPlaying ? 'text-sky-400 drop-shadow-[0_0_16px_rgba(56,189,248,0.35)]' : getPowerColor()}`}>
                 {displayPower}
               </div>
-              <span className="text-lg md:text-2xl lg:text-3xl font-bold text-zinc-600 pb-1 md:pb-2">W</span>
+              <div className="flex flex-col items-start pb-1">
+                <span className="text-lg md:text-2xl lg:text-3xl short:text-xl font-mono font-bold text-zinc-500 leading-none">W</span>
+                {profile?.weight > 0 && (
+                  <span className="text-[10px] md:text-xs short:text-[10px] font-mono telemetry-num text-zinc-400 mt-1 bg-zinc-950/90 px-1.5 py-0.5 rounded border border-zinc-800">
+                    {(displayPower / profile.weight).toFixed(2)} W/kg
+                  </span>
+                )}
+              </div>
             </div>
 
             {isPmConnected && isPowerConnected && (
-              <div className="text-xs font-bold text-zinc-500 mb-0.5 flex items-center gap-1.5 flex-wrap justify-center">
-                <span>Trenažer: <span className="text-zinc-300">{currentPower} W</span></span>
-                <span className="text-zinc-700">·</span>
-                <span>Pedale{pmDoublePower ? ' (×2)' : ''}: <span className="text-violet-300">{effectivePmPower} W</span></span>
-                <span className="text-zinc-700">·</span>
+              <div className="text-[11px] short:text-[10px] font-mono telemetry-num text-zinc-400 mb-0.5 flex items-center gap-2 flex-wrap justify-center">
+                <span>TRENAŽER: <strong className="text-zinc-200">{currentPower}W</strong></span>
+                <span className="text-zinc-700">|</span>
+                <span>PEDALE{pmDoublePower ? '(×2)' : ''}: <strong className="text-violet-300">{effectivePmPower}W</strong></span>
+                <span className="text-zinc-700">|</span>
                 <span>
-                  Razlika:{' '}
-                  <span className={Math.abs(effectivePmPower - currentPower) > 15 ? 'text-amber-400' : 'text-emerald-400'}>
-                    {effectivePmPower - currentPower > 0 ? '+' : ''}{effectivePmPower - currentPower} W
-                  </span>
+                  Δ{' '}
+                  <strong className={Math.abs(effectivePmPower - currentPower) > 15 ? 'text-amber-400' : 'text-volt-400'}>
+                    {effectivePmPower - currentPower > 0 ? '+' : ''}{effectivePmPower - currentPower}W
+                  </strong>
                 </span>
               </div>
             )}
 
-            <div className="text-sm md:text-lg lg:text-xl font-bold text-zinc-400 mt-1 md:mt-2 bg-zinc-950/40 px-3 md:px-5 py-1 md:py-1.5 rounded-xl border border-zinc-800/60 text-center shadow-[inset_0_2px_10px_rgba(0,0,0,0.2)]">
+            <div className="w-full max-w-lg mt-1 md:mt-2 short:mt-1 bg-zinc-950/90 px-3.5 md:px-5 short:px-3 py-2 md:py-2.5 short:py-1.5 vshort:py-1 rounded-lg border border-zinc-800 shrink-0">
               {controlMode === 'ERG' ? (
                 !hasValidFtp ? (
-                  <span className="text-rose-500 font-bold text-sm md:text-base flex items-center justify-center gap-2">
-                    ⚠️ <span className="hidden sm:inline">Upozorenje: Nije unesen FTP! Koristi se zadanih 200W.</span><span className="sm:hidden">Unesi FTP!</span>
+                  <span className="text-rose-400 font-mono font-bold text-xs md:text-sm flex items-center justify-center gap-2">
+                    ⚠️ <span className="hidden sm:inline">Nije unesen FTP — koristi se zadanih 200 W.</span><span className="sm:hidden">Unesi FTP!</span>
                   </span>
-                ) : (
-                  <div className="flex flex-col items-center justify-center leading-tight">
-                    <div>
-                      Cilj: <span className="text-zinc-100">{activeTargetPower} W</span>
-                      {powerMatchEnabled && isPmConnected && !(halfPowerDetected && !pmDoublePower) && (
-                        <span className="text-violet-400 ml-1 md:ml-2 text-xs md:text-sm font-black drop-shadow-[0_0_5px_rgba(167,139,250,0.5)]">⟳ PM</span>
-                      )}
-                    </div>
-                    {currentStepIndex < workoutRecipe.length - 1 && (
-                      <div className="text-xs md:text-sm lg:text-base text-zinc-500 font-medium">
-                        (sljedeći: <span className="text-zinc-400">{Math.round((workoutRecipe[currentStepIndex + 1].power / 100) * ftpValue * (ergIntensity / 100))} W</span>)
+                ) : (() => {
+                  const powerDelta = displayPower - activeTargetPower;
+                  const absDelta = Math.abs(powerDelta);
+                  const clampedDelta = Math.max(-35, Math.min(35, powerDelta));
+                  const needlePct = (isPlaying || displayPower > 0) ? ((clampedDelta + 35) / 70) * 100 : 50;
+                  const nextWatts = currentStepIndex < workoutRecipe.length - 1
+                    ? Math.round((workoutRecipe[currentStepIndex + 1].power / 100) * ftpValue * (ergIntensity / 100))
+                    : null;
+
+                  return (
+                    <div className="flex flex-col gap-1.5 short:gap-1">
+                      <div className="flex items-center justify-between gap-2 text-xs md:text-sm short:text-xs font-mono telemetry-num">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-zinc-500 text-[10px] md:text-xs short:text-[10px] uppercase">CILJ</span>
+                          <span className="text-zinc-100 font-bold text-sm md:text-base short:text-sm">{activeTargetPower} W</span>
+                          {powerMatchEnabled && isPmConnected && !(halfPowerDetected && !pmDoublePower) && (
+                            <span className="text-violet-400 text-[10px] font-bold">⟳PM</span>
+                          )}
+                        </div>
+
+                        <span className={`text-[10px] md:text-xs short:text-[10px] font-bold px-2 py-0.5 rounded border ${
+                          !isPlaying && displayPower === 0
+                            ? 'text-zinc-500 border-zinc-800 bg-zinc-900'
+                            : absDelta <= 8
+                            ? 'text-volt-400 border-volt-400/35 bg-volt-400/10'
+                            : absDelta <= 22
+                            ? 'text-amber-300 border-amber-500/35 bg-amber-500/10'
+                            : 'text-rose-400 border-rose-500/35 bg-rose-500/10'
+                        }`}>
+                          {!isPlaying && displayPower === 0
+                            ? 'READY'
+                            : absDelta <= 8
+                            ? `LOCKED (${powerDelta > 0 ? '+' : ''}${powerDelta}W)`
+                            : `Δ ${powerDelta > 0 ? '+' : ''}${powerDelta}W`}
+                        </span>
+
+                        <div className="flex items-center gap-1 text-right">
+                          <span className="text-zinc-500 text-[10px] md:text-xs short:text-[10px] uppercase">SLJEDEĆI</span>
+                          <span className="text-zinc-300 font-bold text-xs md:text-sm short:text-xs">
+                            {nextWatts !== null ? `${nextWatts} W` : 'KRAJ'}
+                          </span>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                )
+
+                      {/* Horizontalni Target Lock indikator (±35 W raspon) */}
+                      <div className="relative h-2 short:h-1.5 w-full rounded-full bg-zinc-900 border border-zinc-800 overflow-hidden">
+                        <div className="absolute inset-y-0 left-[38.5%] right-[38.5%] bg-volt-400/15 border-x border-volt-400/30" />
+                        <div className="absolute inset-y-0 left-1/2 w-px bg-zinc-500/70 -translate-x-1/2" />
+                        <div
+                          className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 short:w-2.5 short:h-2.5 rounded-full transition-all duration-300 ${
+                            !isPlaying && displayPower === 0
+                              ? 'bg-zinc-600'
+                              : absDelta <= 8
+                              ? 'bg-volt-400 shadow-[0_0_10px_rgba(var(--accent-400),0.9)]'
+                              : absDelta <= 22
+                              ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]'
+                              : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]'
+                          }`}
+                          style={{ left: `${needlePct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
-                <div className="flex flex-col items-center gap-1 py-0.5">
-                  <div className="flex items-center gap-2 flex-wrap justify-center leading-tight">
-                    <span className="text-zinc-200 font-black">
-                      Brzina <span className="text-indigo-400">{virtualGear}</span>
-                      <span className="text-zinc-500 text-xs md:text-sm"> / {VIRTUAL_GEAR_MAX}</span>
+                <div className="flex flex-col items-center gap-1.5 short:gap-1 py-0.5">
+                  <div className="flex items-center gap-2.5 flex-wrap justify-center leading-tight font-mono telemetry-num">
+                    <span className="text-zinc-200 font-bold text-xs md:text-sm short:text-xs">
+                      BRZINA <span className="text-volt-400 text-sm md:text-base short:text-sm">{virtualGear}</span>
+                      <span className="text-zinc-500 text-xs">/{VIRTUAL_GEAR_MAX}</span>
                     </span>
-                    <span className="text-zinc-600">·</span>
-                    <span className="text-indigo-300 text-xs md:text-base font-bold">
+                    <span className="text-zinc-700">|</span>
+                    <span className="text-sky-300 text-xs md:text-sm short:text-xs font-bold">
                       {resPhysicsMode === 'SIM'
-                        ? `Nagib ${simulatedGrade > 0 ? '+' : ''}${simulatedGrade.toFixed(1)}%`
-                        : `Otpor ${resistanceLevel}%`}
+                        ? `NAGIB ${simulatedGrade > 0 ? '+' : ''}${simulatedGrade.toFixed(1)}%`
+                        : `OTPOR ${resistanceLevel}%`}
                     </span>
                     <button
                       type="button"
                       onClick={toggleResPhysicsMode}
                       title="Prebaci način otpora između linearne kočnice (0x04) i simulacije nagiba (0x11)"
-                      className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
+                      className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 transition-colors"
                     >
-                      {resPhysicsMode === 'SIM' ? 'SIM' : 'RES'}
+                      {resPhysicsMode === 'SIM' ? 'SIM 0x11' : 'RES 0x04'}
                     </button>
                   </div>
-                  <div className="flex items-center gap-0.5" aria-hidden="true">
+                  <div className="flex items-center gap-0.5 w-full justify-center" aria-hidden="true">
                     {Array.from({ length: VIRTUAL_GEAR_MAX }, (_, idx) => {
                       const g = idx + 1;
                       const active = g <= virtualGear;
@@ -2095,11 +2240,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                       return (
                         <span
                           key={g}
-                          className={`h-1.5 rounded-full transition-all ${
+                          className={`h-1.5 short:h-1 rounded-sm transition-all ${
                             isCurrent
-                              ? 'w-2.5 bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]'
+                              ? 'w-3 bg-volt-400 shadow-[0_0_8px_rgba(var(--accent-400),0.85)]'
                               : active
-                              ? 'w-1.5 bg-indigo-500/80'
+                              ? 'w-1.5 bg-sky-400/70'
                               : 'w-1 bg-zinc-800'
                           }`}
                         />
@@ -2112,56 +2257,123 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           </div>
         </div>
 
-        <div className="flex sm:flex-col md:flex-row lg:flex-col gap-2 md:gap-3 shrink-1 min-h-0">
-          <div className="bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-2 flex-1 flex flex-col justify-center items-center relative group hover:border-rose-500/30 transition-colors min-h-0">
-            <span className="absolute top-2 left-2 md:top-3 md:left-3 text-rose-500/80 font-black uppercase tracking-widest text-[8px] md:text-[10px] flex items-center gap-1"><Heart className="w-3 h-3 group-hover:text-rose-500 transition-colors" /> <span className="hidden xl:inline">Puls</span></span>
-            <div className="flex items-baseline gap-1 mt-1 md:mt-0 shrink-1 min-h-0">
-              <div className={`text-[clamp(30px,6vh,70px)] md:text-[clamp(40px,8vh,90px)] font-black leading-none ${isHrConnected ? 'text-zinc-100 drop-shadow-[0_0_8px_rgba(244,63,94,0.3)]' : 'text-zinc-700'}`}>{displayHR}</div>
-              <span className="text-[10px] md:text-sm font-bold text-zinc-600 pb-0.5">bpm</span>
+        <div className="flex sm:flex-col md:flex-row md:short:flex-col lg:flex-col gap-2 md:gap-3 short:gap-1.5 shrink-1 min-h-0">
+          <div className="carbon-panel rounded-xl p-2.5 md:p-3.5 short:p-2 vshort:py-1.5 vshort:px-2.5 flex-1 flex flex-col justify-between relative group hover:border-rose-500/40 transition-colors min-h-0">
+            <div className="flex items-center justify-between w-full">
+              <span className="text-rose-400 font-mono font-bold uppercase tracking-[0.16em] text-[10px] flex items-center gap-1.5">
+                <Heart className="w-3.5 h-3.5 text-rose-500" /> PULS
+              </span>
+              {isHrConnected && profile?.maxHr > 0 && displayHR > 0 && (
+                <span className="text-[10px] font-mono telemetry-num text-rose-300 bg-rose-500/10 border border-rose-500/25 px-1.5 py-0.5 rounded">
+                  {Math.round((displayHR / profile.maxHr) * 100)}% MAX
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline justify-center gap-1.5 my-auto shrink-1 min-h-0">
+              <div className={`text-[clamp(34px,7.5vh,90px)] short:text-[clamp(28px,6.2vh,60px)] vshort:text-[clamp(26px,5.5vh,48px)] font-display font-bold telemetry-num leading-none ${isHrConnected ? 'text-zinc-100' : 'text-zinc-700'}`}>
+                {displayHR}
+              </div>
+              <span className="text-xs md:text-sm short:text-xs font-mono font-bold text-zinc-500 pb-0.5">BPM</span>
             </div>
           </div>
-          <div className="bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-2 flex-1 flex flex-col justify-center items-center relative group hover:border-orange-500/30 transition-colors min-h-0">
-            <span className="absolute top-2 left-2 md:top-3 md:left-3 text-orange-500/80 font-black uppercase tracking-widest text-[8px] md:text-[10px] flex items-center gap-1"><Zap className="w-3 h-3 group-hover:text-orange-500 transition-colors" /> <span className="hidden xl:inline">Kadenca</span></span>
-            <div className="flex items-baseline gap-1 mt-1 md:mt-0 shrink-1 min-h-0">
-              <div className={`text-[clamp(30px,6vh,70px)] md:text-[clamp(40px,8vh,90px)] font-black leading-none ${(isPmConnected || isPowerConnected) ? 'text-zinc-100 drop-shadow-[0_0_8px_rgba(34,211,238,0.3)]' : 'text-zinc-700'}`}>{displayCadence}</div>
-              <span className="text-[10px] md:text-sm font-bold text-zinc-600 pb-0.5">rpm</span>
+
+          <div className="carbon-panel rounded-xl p-2.5 md:p-3.5 short:p-2 vshort:py-1.5 vshort:px-2.5 flex-1 flex flex-col justify-between relative group hover:border-volt-400/40 transition-colors min-h-0">
+            <div className="flex items-center justify-between w-full">
+              <span className="text-volt-400 font-mono font-bold uppercase tracking-[0.16em] text-[10px] flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-volt-400" /> KADENCA
+              </span>
+              {(isPmConnected || isPowerConnected) && displayCadence > 0 && (
+                <span className="text-[10px] font-mono telemetry-num text-zinc-400 bg-zinc-950 border border-zinc-800 px-1.5 py-0.5 rounded">
+                  {displayCadence >= 85 && displayCadence <= 98 ? 'OPTIMAL' : displayCadence < 85 ? 'GRIND' : 'SPIN'}
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline justify-center gap-1.5 my-auto shrink-1 min-h-0">
+              <div className={`text-[clamp(34px,7.5vh,90px)] short:text-[clamp(28px,6.2vh,60px)] vshort:text-[clamp(26px,5.5vh,48px)] font-display font-bold telemetry-num leading-none ${(isPmConnected || isPowerConnected) ? 'text-zinc-100' : 'text-zinc-700'}`}>
+                {displayCadence}
+              </div>
+              <span className="text-xs md:text-sm short:text-xs font-mono font-bold text-zinc-500 pb-0.5">RPM</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* SESSION PROGRESS BAR */}
-      <div className="bg-zinc-900/40 backdrop-blur-xl rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] border border-zinc-800/80 px-2 md:px-4 py-1.5 md:py-2.5 flex items-center justify-between overflow-x-auto shrink-0 hide-scrollbar gap-2 md:col-span-3">
-        <div className={`flex items-center gap-4 md:gap-8 mx-auto ${getZoneTextColor(currentStep.power)} font-mono tabular-nums text-[11px] sm:text-xs md:text-sm lg:text-base font-black uppercase tracking-widest`}>
-          <div className="flex items-center gap-1"><span className="text-zinc-500 font-bold opacity-70 drop-shadow-none">NP</span> <span>{liveMetrics.np}W</span></div>
-          <div className="flex items-center gap-1"><span className="text-zinc-500 font-bold opacity-70 drop-shadow-none">IF</span> <span>{liveMetrics.ifFactor}</span></div>
-          <div className="flex items-center gap-1"><span className="text-zinc-500 font-bold opacity-70 drop-shadow-none">TSS</span> <span>{liveMetrics.tss}</span></div>
-          <div className="flex items-center gap-1"><span className="text-zinc-500 font-bold opacity-70 drop-shadow-none">Work</span> <span>{liveMetrics.workKj}kJ</span></div>
+      {/* COGGAN TELEMETRIJSKA TRAKA */}
+      <div className="carbon-panel rounded-xl px-2 md:px-4 py-1.5 md:py-2 short:py-1 shrink-0 overflow-x-auto hide-scrollbar">
+        <div className={`grid grid-cols-4 divide-x divide-zinc-800/90 min-w-[300px] text-center font-mono telemetry-num ${getZoneTextColor(currentStep.power)}`}>
+          <div className="px-2 flex flex-col sm:flex-row items-center justify-center sm:gap-2">
+            <span className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase">NP</span>
+            <span className="text-xs md:text-base short:text-sm font-bold">{liveMetrics.np} W</span>
+          </div>
+          <div className="px-2 flex flex-col sm:flex-row items-center justify-center sm:gap-2">
+            <span className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase">IF</span>
+            <span className="text-xs md:text-base short:text-sm font-bold">{liveMetrics.ifFactor}</span>
+          </div>
+          <div className="px-2 flex flex-col sm:flex-row items-center justify-center sm:gap-2">
+            <span className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase">TSS</span>
+            <span className="text-xs md:text-base short:text-sm font-bold">{liveMetrics.tss}</span>
+          </div>
+          <div className="px-2 flex flex-col sm:flex-row items-center justify-center sm:gap-2">
+            <span className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase">WORK</span>
+            <span className="text-xs md:text-base short:text-sm font-bold">{liveMetrics.workKj} kJ</span>
+          </div>
         </div>
       </div>
 
-      {/* DONJI PANEL: Trening grafikon i kontrole */}
-      <div className="bg-zinc-900/40 backdrop-blur-xl rounded-2xl md:rounded-3xl shadow-xl border border-zinc-800/80 p-2 md:p-3 flex flex-col flex-1 min-h-0 mb-1">
-        <div className="flex flex-col md:flex-row md:items-end justify-between px-1 mb-1 md:mb-2 gap-1 md:gap-0 shrink-0">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start md:items-center gap-1.5 md:gap-2">
-            <div className="flex items-center bg-zinc-950/50 rounded-full p-0.5 border border-zinc-800 mx-auto sm:mx-0">
-              <button onClick={handleStopClick} className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-colors hover:bg-zinc-800 text-zinc-400 hover:text-white" title="Prekini trening"><Square className="w-3 h-3 md:w-4 md:h-4" fill="currentColor" /></button>
-              <button onClick={() => setIsPlaying(!isPlaying)} className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all shadow-lg shrink-0 ${isPlaying ? 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-white' : 'bg-cyan-500 hover:bg-cyan-400 text-zinc-950 shadow-cyan-500/30'}`}>
-                {isPlaying ? <Pause className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" /> : <Play className="w-4 h-4 md:w-5 md:h-5 ml-0.5" fill="currentColor" />}
+      {/* DONJI PANEL: Trening grafikon i transport kontrole */}
+      <div className="carbon-panel rounded-xl p-2 md:p-3 short:p-2 vshort:p-1.5 flex flex-col flex-1 min-h-[155px] short:min-h-[138px] vshort:min-h-[124px]">
+        <div className="flex flex-col md:flex-row md:items-center justify-between px-1 mb-1.5 md:mb-2 short:mb-1 gap-1.5 md:gap-2 shrink-0">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start md:items-center gap-2 md:gap-3 short:gap-2">
+            <div className="flex items-center bg-zinc-950 rounded-xl p-1 short:p-0.5 border border-zinc-800 mx-auto sm:mx-0 gap-1">
+              <button
+                onClick={handleStopClick}
+                className="w-8 h-8 md:w-10 md:h-10 short:w-8 short:h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-rose-500/15 text-zinc-400 hover:text-rose-400"
+                title="Prekini trening"
+              >
+                <Square className="w-3.5 h-3.5 md:w-4 md:h-4 short:w-3.5 short:h-3.5" fill="currentColor" />
               </button>
-              <button onClick={handleSkip} className="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center transition-colors hover:bg-zinc-800 text-zinc-400 hover:text-white" title="Preskoči na idući interval"><FastForward className="w-3 h-3 md:w-4 md:h-4" fill="currentColor" /></button>
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                className={`w-10 h-10 md:w-12 md:h-11 short:w-10 short:h-8 rounded-lg flex items-center justify-center transition-all shrink-0 ${
+                  isPlaying
+                    ? 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-volt-400'
+                    : 'bg-volt-400 hover:bg-volt-300 text-zinc-950 shadow-volt-glow'
+                }`}
+                title="Pokreni / Pauziraj (Space)"
+              >
+                {isPlaying ? <Pause className="w-4 h-4 md:w-5 md:h-5 short:w-4 short:h-4" fill="currentColor" /> : <Play className="w-4 h-4 md:w-5 md:h-5 short:w-4 short:h-4 ml-0.5" fill="currentColor" />}
+              </button>
+              <button
+                onClick={handleSkip}
+                className="w-8 h-8 md:w-10 md:h-10 short:w-8 short:h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-zinc-900 text-zinc-400 hover:text-zinc-100"
+                title="Preskoči na idući interval (S)"
+              >
+                <FastForward className="w-3.5 h-3.5 md:w-4 md:h-4 short:w-3.5 short:h-3.5" fill="currentColor" />
+              </button>
             </div>
             <div className="text-center sm:text-left">
-              <div className="text-[8px] md:text-[9px] lg:text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-0.5">Trenutni Interval</div>
-              <div className="text-sm md:text-lg lg:text-xl xl:text-2xl font-bold text-zinc-100 flex flex-wrap items-center justify-center sm:justify-start gap-1 md:gap-2 leading-none">
-                {currentStep.name} <span className="text-zinc-500 font-medium text-[9px] md:text-xs lg:text-sm">@ {Math.round(currentStep.power * (ergIntensity / 100))}% FTP</span>
-                <button onClick={handleExtend} className="md:ml-1 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 text-[7px] md:text-[8px] lg:text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-md transition-colors flex items-center gap-0.5 shrink-0"><Plus className="w-2.5 h-2.5" /> 5 Min</button>
+              <div className="text-[9px] md:text-[10px] short:text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-[0.18em] mb-0.5 short:mb-0">
+                AKTIVNI BLOK · {currentStepIndex + 1}/{workoutRecipe.length}
+              </div>
+              <div className="text-sm md:text-lg lg:text-xl short:text-base font-display font-bold text-zinc-100 flex flex-wrap items-center justify-center sm:justify-start gap-1.5 md:gap-2 leading-none">
+                <span className="uppercase tracking-wide">{currentStep.name}</span>
+                <span className="text-volt-400 font-mono text-xs md:text-sm short:text-xs font-bold">
+                  @{Math.round(currentStep.power * (ergIntensity / 100))}% FTP
+                </span>
+                <button
+                  onClick={handleExtend}
+                  className="bg-zinc-950 text-zinc-300 hover:text-volt-300 hover:border-volt-400/40 border border-zinc-800 text-[9px] font-mono uppercase tracking-wider font-bold px-2 py-0.5 rounded transition-colors flex items-center gap-0.5 shrink-0"
+                >
+                  <Plus className="w-2.5 h-2.5" /> 5m
+                </button>
               </div>
             </div>
           </div>
-          <div className="text-center md:text-right border-t border-zinc-800/50 md:border-t-0 pt-0.5 md:pt-0 shrink-0">
-            <div className="text-[8px] md:text-[9px] lg:text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-0.5">Preostalo u intervalu</div>
-            <div className={`text-xl md:text-3xl lg:text-4xl xl:text-5xl font-black font-mono tracking-tight leading-none ${isPlaying ? 'text-orange-500 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]' : 'text-zinc-600'}`}>{formatTime(stepRemaining)}</div>
+          <div className="text-center md:text-right border-t border-zinc-800/60 md:border-t-0 pt-1 md:pt-0 shrink-0 flex md:flex-col items-center md:items-end justify-between md:justify-end gap-2 md:gap-0">
+            <div className="text-[9px] md:text-[10px] short:text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-[0.18em] md:mb-0.5 short:mb-0">PREOSTALO U BLOKU</div>
+            <div className={`text-xl md:text-3xl lg:text-4xl short:text-2xl vshort:text-xl font-display font-bold telemetry-num tracking-tight leading-none ${isPlaying ? 'text-volt-400 drop-shadow-[0_0_12px_rgba(var(--accent-400),0.3)]' : 'text-zinc-500'}`}>
+              {formatTime(stepRemaining)}
+            </div>
           </div>
         </div>
 
@@ -2172,14 +2384,23 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           progressPercent={progressPercent}
           profile={profile}
           ergIntensity={ergIntensity}
+          currentStepIndex={currentStepIndex}
         />
 
-        <div className="flex justify-between items-center px-2 md:px-4 py-1.5 md:py-2 bg-zinc-950/50 rounded-b-xl md:rounded-b-2xl border-x border-b border-zinc-800/80 shrink-0">
-          <div className="text-[10px] md:text-sm lg:text-base font-black uppercase tracking-widest text-zinc-500 flex flex-col md:flex-row items-start md:items-baseline">
-            <span>UKUPNO PROTEKLO VRIJEME:</span> <span className="text-zinc-300 text-sm md:text-xl lg:text-2xl mt-0.5 md:mt-0 md:ml-2 font-mono tracking-tight">{formatTime(elapsedTime)}</span>
+        <div className="flex justify-between items-center px-3 md:px-4 py-1.5 md:py-2 short:py-1 bg-zinc-950 rounded-b-lg border-x border-b border-zinc-800 shrink-0">
+          <div className="text-[10px] md:text-xs short:text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-500 flex items-baseline gap-2">
+            <span>PROTEKLO:</span>
+            <span className="text-zinc-100 text-sm md:text-lg lg:text-xl short:text-base font-display font-bold telemetry-num tracking-tight leading-none">{formatTime(elapsedTime)}</span>
           </div>
-          <div className="text-[10px] md:text-sm lg:text-base font-black uppercase tracking-widest text-zinc-500 flex flex-col md:flex-row items-end md:items-baseline text-right md:text-left">
-            <span>DO KRAJA TRENINGA:</span> <span className="text-zinc-300 text-sm md:text-xl lg:text-2xl mt-0.5 md:mt-0 md:ml-2 font-mono tracking-tight">{formatTime(totalDuration - elapsedTime)}</span>
+
+          <div className="hidden sm:flex items-center gap-2 font-mono telemetry-num text-[10px] text-zinc-500">
+            <span>NAPREDAK</span>
+            <span className="text-zinc-300 font-bold">{Math.min(100, Math.round(progressPercent))}%</span>
+          </div>
+
+          <div className="text-[10px] md:text-xs short:text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-400 flex items-baseline gap-2 text-right">
+            <span>PREOSTALO UKUPNO:</span>
+            <span className="text-volt-400 text-sm md:text-lg lg:text-xl short:text-base font-display font-bold telemetry-num tracking-tight leading-none">{formatTime(Math.max(0, totalDuration - elapsedTime))}</span>
           </div>
         </div>
       </div>

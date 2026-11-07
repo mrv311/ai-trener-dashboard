@@ -158,12 +158,12 @@ export function buildErgVibeWorkoutObject({
 }
 
 function getBarColor(powerPct) {
-  if (powerPct < 56) return 'bg-zinc-500';
-  if (powerPct < 76) return 'bg-emerald-500';
-  if (powerPct < 91) return 'bg-amber-400';
-  if (powerPct < 106) return 'bg-orange-500';
-  if (powerPct < 121) return 'bg-rose-500';
-  return 'bg-purple-500';
+  if (powerPct < 56) return 'bg-zinc-500/80 border-t-2 border-zinc-400';
+  if (powerPct < 76) return 'bg-sky-500/80 border-t-2 border-sky-300';
+  if (powerPct < 91) return 'bg-emerald-500/80 border-t-2 border-emerald-300';
+  if (powerPct < 106) return 'bg-amber-400/85 border-t-2 border-amber-200';
+  if (powerPct < 121) return 'bg-rose-500/85 border-t-2 border-rose-300';
+  return 'bg-purple-500/85 border-t-2 border-purple-300';
 }
 
 export function AIWorkoutCard({
@@ -255,32 +255,36 @@ export function AIWorkoutCard({
   };
 
   return (
-    <div className="my-4 bg-zinc-950/80 border border-cyan-500/30 rounded-2xl p-4 shadow-[0_0_20px_rgba(34,211,238,0.08)]">
+    <div className="my-4 carbon-panel border-volt-400/30 rounded-xl p-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/30">
               {built.category}
             </span>
-            <h4 className="font-black text-zinc-100 text-sm md:text-base">{built.title}</h4>
+            <h4 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-sm md:text-base">{built.title}</h4>
           </div>
           {structuredWorkout?.coachNote && (
             <p className="text-xs text-zinc-400 mt-1">{structuredWorkout.coachNote}</p>
           )}
         </div>
-        <div className="flex items-center gap-3 text-xs font-bold text-zinc-300 shrink-0">
-          <span className="flex items-center gap-1 bg-zinc-900 px-2.5 py-1 rounded-lg border border-zinc-800">
-            <Clock className="w-3.5 h-3.5 text-cyan-400" /> {built.duration} min
+        <div className="flex items-center gap-2 text-xs font-mono font-bold text-zinc-200 telemetry-num shrink-0">
+          <span className="flex items-center gap-1 bg-zinc-950 px-2.5 py-1 rounded-md border border-zinc-800">
+            <Clock className="w-3.5 h-3.5 text-volt-400" /> {built.duration}m
           </span>
-          <span className="flex items-center gap-1 bg-zinc-900 px-2.5 py-1 rounded-lg border border-zinc-800">
-            <Activity className="w-3.5 h-3.5 text-orange-400" /> {built.tss} TSS
+          <span className="flex items-center gap-1 bg-zinc-950 px-2.5 py-1 rounded-md border border-zinc-800">
+            <Activity className="w-3.5 h-3.5 text-amber-400" /> {built.tss} TSS
           </span>
         </div>
       </div>
 
       {/* Vizualni profil intervala */}
       {built.allSteps.length > 0 && (
-        <div className="h-14 w-full bg-zinc-900/80 rounded-xl p-1.5 flex items-end gap-0.5 border border-zinc-800/80 mb-3 overflow-hidden">
+        <div className="relative h-16 w-full bg-zinc-950 bg-telemetry-grid rounded-lg px-1.5 pt-2 pb-1 flex items-end gap-[1px] border border-zinc-800/90 mb-3 overflow-hidden">
+          <div
+            className="absolute inset-x-0 border-t border-dashed border-volt-400/35 pointer-events-none z-10"
+            style={{ bottom: `${Math.min(95, (100 / 135) * 100)}%` }}
+          />
           {built.allSteps.map((st, idx) => {
             const widthPct = Math.max(1.2, (st.duration / totalSec) * 100);
             const heightPct = Math.min(100, Math.max(18, (st.power / 135) * 100));
@@ -290,7 +294,7 @@ export function AIWorkoutCard({
                 key={idx}
                 style={{ width: `${widthPct}%`, height: `${heightPct}%` }}
                 title={`${Math.round(st.duration / 60)}m @ ${st.power}% FTP (${watts}W)`}
-                className={`${getBarColor(st.power)} rounded-t-sm opacity-85 hover:opacity-100 transition-opacity`}
+                className={`${getBarColor(st.power)} rounded-t-[2px] opacity-90 hover:opacity-100 transition-opacity`}
               />
             );
           })}
@@ -305,7 +309,7 @@ export function AIWorkoutCard({
               type="date"
               value={targetDate}
               onChange={(e) => setTargetDate(e.target.value)}
-              className="bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-medium focus:border-cyan-500 outline-none"
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 font-mono text-xs text-zinc-200 focus:border-volt-400 outline-none"
             />
             <button
               type="button"
@@ -313,7 +317,7 @@ export function AIWorkoutCard({
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all border ${
                 added
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                  : 'bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border-cyan-500/30'
+                  : 'bg-zinc-900 hover:bg-zinc-800 text-volt-400 border-volt-400/35'
               }`}
             >
               {added ? <Check className="w-3.5 h-3.5" /> : <CalendarPlus className="w-3.5 h-3.5" />}
@@ -326,7 +330,7 @@ export function AIWorkoutCard({
           <button
             type="button"
             onClick={() => onStartInTrainer(built)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-black bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-zinc-950 transition-all shadow-[0_0_12px_rgba(34,211,238,0.25)]"
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs bg-volt-400 hover:bg-volt-300 text-zinc-950 transition-all shadow-volt-glow"
           >
             <Play className="w-3.5 h-3.5 fill-current" /> Pokreni u Trenažeru
           </button>
@@ -346,7 +350,7 @@ function renderInlineFormatting(text) {
     }
     if (tok.startsWith('`') && tok.endsWith('`')) {
       return (
-        <code key={idx} className="px-1.5 py-0.5 rounded bg-zinc-800 text-cyan-300 font-mono text-[11px] border border-zinc-700/60">
+        <code key={idx} className="px-1.5 py-0.5 rounded bg-zinc-900 text-volt-300 font-mono text-[11px] border border-zinc-800">
           {tok.slice(1, -1)}
         </code>
       );
@@ -367,7 +371,7 @@ function MarkdownSection({ content }) {
       elements.push(
         <ol key={`ol_${keySuffix}`} className="list-decimal list-inside space-y-1.5 my-2 text-zinc-300 text-sm leading-relaxed pl-1">
           {listBuffer.map((item, i) => (
-            <li key={i} className="marker:text-cyan-400 marker:font-bold">{renderInlineFormatting(item)}</li>
+            <li key={i} className="marker:text-volt-400 marker:font-mono marker:font-bold">{renderInlineFormatting(item)}</li>
           ))}
         </ol>
       );
@@ -376,7 +380,7 @@ function MarkdownSection({ content }) {
         <ul key={`ul_${keySuffix}`} className="space-y-1.5 my-2 text-zinc-300 text-sm leading-relaxed">
           {listBuffer.map((item, i) => (
             <li key={i} className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-2 shrink-0" />
+              <span className="w-1.5 h-1.5 rounded-sm bg-volt-400 mt-2 shrink-0" />
               <span className="flex-1">{renderInlineFormatting(item)}</span>
             </li>
           ))}
@@ -402,7 +406,7 @@ function MarkdownSection({ content }) {
     if (line.startsWith('#### ')) {
       flushList(idx);
       elements.push(
-        <h4 key={idx} className="text-sm font-black text-cyan-300 mt-4 mb-1.5">
+        <h4 key={idx} className="text-sm font-display font-bold uppercase tracking-wide text-volt-300 mt-4 mb-1.5">
           {renderInlineFormatting(line.slice(5))}
         </h4>
       );
@@ -412,7 +416,7 @@ function MarkdownSection({ content }) {
     if (line.startsWith('### ')) {
       flushList(idx);
       elements.push(
-        <h3 key={idx} className="text-base font-black text-zinc-100 mt-4 mb-2 pb-1 border-b border-zinc-800/80 flex items-center gap-2">
+        <h3 key={idx} className="text-base font-display font-bold uppercase tracking-wide text-zinc-100 mt-4 mb-2 pb-1 border-b border-zinc-800/80 flex items-center gap-2">
           {renderInlineFormatting(line.slice(4))}
         </h3>
       );
@@ -423,7 +427,7 @@ function MarkdownSection({ content }) {
       flushList(idx);
       const clean = line.replace(/^#+\s*/, '');
       elements.push(
-        <h2 key={idx} className="text-lg font-black text-cyan-400 mt-4 mb-2">
+        <h2 key={idx} className="text-lg font-display font-bold uppercase tracking-wide text-volt-400 mt-4 mb-2">
           {renderInlineFormatting(clean)}
         </h2>
       );
@@ -433,7 +437,7 @@ function MarkdownSection({ content }) {
     if (line.startsWith('> ')) {
       flushList(idx);
       elements.push(
-        <blockquote key={idx} className="border-l-2 border-cyan-400 bg-cyan-500/5 px-3.5 py-2 my-2 rounded-r-xl text-xs md:text-sm text-zinc-300 italic">
+        <blockquote key={idx} className="border-l-2 border-volt-400 bg-volt-400/5 px-3.5 py-2 my-2 rounded-r-lg text-xs md:text-sm text-zinc-300 italic">
           {renderInlineFormatting(line.slice(2))}
         </blockquote>
       );
