@@ -12,6 +12,15 @@ export default defineConfig(({ mode }) => {
         name: 'local-gemini-proxy',
         configureServer(server) {
           server.middlewares.use('/api/gemini', async (req, res, next) => {
+            if (req.method === 'GET') {
+              const serverKey = env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY;
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              return res.end(JSON.stringify({
+                ok: true,
+                configured: Boolean(serverKey && String(serverKey).trim())
+              }));
+            }
             if (req.method === 'POST') {
               let bodyStr = '';
               req.on('data', chunk => { bodyStr += chunk; });
@@ -28,40 +37,57 @@ export default defineConfig(({ mode }) => {
                     }));
                   }
 
-                  let targetModel = payload.model || 'gemini-2.5-flash';
+                  let targetModel = payload.model || 'gemini-3.8-flash';
                   if (!payload.customApiKey && targetModel.toLowerCase().includes('pro')) {
-                    targetModel = 'gemini-2.5-flash';
+                    targetModel = 'gemini-3.8-flash';
                   }
 
-                  const googleBody = {
+                  const isProModel = targetModel.toLowerCase().includes('pro');
+                  const resolvedThinkingBudget = Number.isFinite(Number(payload.thinkingBudget)) && payload.thinkingBudget !== null
+                    ? Number(payload.thinkingBudget)
+                    : (isProModel ? 2048 : 512);
+
+                  const buildGoogleBody = (includeThinking = true) => ({
                     ...(payload.systemInstruction ? { systemInstruction: { parts: [{ text: payload.systemInstruction }] } } : {}),
                     contents: payload.contents || [],
                     generationConfig: {
                       temperature: payload.temperature || 0.4,
                       maxOutputTokens: 16384,
-                      ...(payload.responseMimeType ? { responseMimeType: payload.responseMimeType } : {})
+                      ...(payload.responseMimeType ? { responseMimeType: payload.responseMimeType } : {}),
+                      ...(includeThinking ? { thinkingConfig: { thinkingBudget: resolvedThinkingBudget } } : {})
                     }
-                  };
+                  });
 
-                  const execute = async (m) => {
-                    return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+                  const execute = async (m, includeThinking = true) => {
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(apiKey)}`;
+                    const r = await fetch(url, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(googleBody)
+                      body: JSON.stringify(buildGoogleBody(includeThinking))
                     });
+                    if (r.status === 400 && includeThinking) {
+                      return fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(buildGoogleBody(false))
+                      });
+                    }
+                    return r;
                   };
 
-                  let gRes = await execute(targetModel);
-                  if (gRes.status === 404) {
-                    gRes = await execute('gemini-2.5-flash');
-                  }
-                  if (gRes.status === 404) {
-                    gRes = await execute('gemini-1.5-flash');
+                  const candidateModels = isProModel
+                    ? [...new Set([targetModel, 'gemini-3.1-pro-preview', 'gemini-pro-latest', 'gemini-3.8-flash'])]
+                    : [...new Set([targetModel, 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.5-flash'])];
+
+                  let gRes = null;
+                  for (const candidate of candidateModels) {
+                    gRes = await execute(candidate);
+                    if (gRes.status !== 404) break;
                   }
 
                   if (!gRes.ok) {
                     const errData = await gRes.json().catch(() => ({}));
-                    res.statusCode = gRes.status;
+                    res.statusCode = gRes.status === 404 ? 502 : gRes.status;
                     res.setHeader('Content-Type', 'application/json');
                     return res.end(JSON.stringify({ error: errData?.error?.message || `Google HTTP ${gRes.status}` }));
                   }

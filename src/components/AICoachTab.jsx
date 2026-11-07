@@ -145,7 +145,26 @@ export default function AICoachTab({
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isSendingChat]);
+  }, [messages, isSendingChat, chatError]);
+
+  // Drži zaslon mobitela uključenim dok se čeka odgovor AI poslužitelja kako mobilni OS ne bi prekinuo vezu
+  useEffect(() => {
+    if (!isSendingChat && !isGeneratingPlan && !isProcessingSource) return;
+    if (typeof navigator === 'undefined' || !navigator.wakeLock?.request) return;
+    let sentinel = null;
+    let cancelled = false;
+    navigator.wakeLock.request('screen').then(lock => {
+      if (cancelled) {
+        lock.release().catch(() => {});
+      } else {
+        sentinel = lock;
+      }
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      sentinel?.release?.().catch(() => {});
+    };
+  }, [isSendingChat, isGeneratingPlan, isProcessingSource]);
 
   useEffect(() => {
     let active = true;
@@ -410,7 +429,7 @@ export default function AICoachTab({
   };
 
   return (
-    <div className="max-w-6xl mx-auto flex flex-col gap-5 short:gap-3 animate-in fade-in pb-8 short:pb-3">
+    <div className="max-w-6xl mx-auto flex flex-col gap-5 short:md:gap-3 animate-in fade-in pb-8 short:md:pb-3">
       {/* GORNJI HEADER + SUB-NAVIGATION */}
       <div className="carbon-panel rounded-xl p-4 md:p-5 short:p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-4 short:gap-2.5">
         <div className="flex items-center gap-3.5">
@@ -502,7 +521,7 @@ export default function AICoachTab({
           1. SUB-TAB: AI KONZULTACIJE (CHAT)
          ===================================================================== */}
       {subTab === 'chat' && (
-        <div className="carbon-panel rounded-xl flex flex-col h-[calc(100dvh-195px)] short:h-[calc(100dvh-145px)] min-h-[360px] max-h-[780px] overflow-hidden">
+        <div className="carbon-panel rounded-xl flex flex-col h-[calc(100dvh-250px)] md:h-[calc(100dvh-195px)] short:md:h-[calc(100dvh-145px)] min-h-[400px] max-h-[780px] overflow-hidden">
           <div className="px-5 py-3 border-b border-zinc-800/80 bg-zinc-950/60 flex items-center justify-between">
             <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-zinc-400">
               TELEMETRIJSKA KONZOLA · PITAJ O TRENINZIMA, ZONAMA ILI ZATRAŽI INTERVALNI TRENING
@@ -518,9 +537,9 @@ export default function AICoachTab({
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-4 custom-scrollbar">
             {messages.length === 0 && !isSendingChat && (
-              <div className="h-full flex flex-col items-center justify-center py-8 text-center max-w-2xl mx-auto">
+              <div className="my-auto flex flex-col items-center py-4 md:py-8 text-center max-w-2xl mx-auto w-full">
                 <div className="p-4 rounded-xl bg-volt-400/10 border border-volt-400/30 text-volt-400 mb-4">
                   <Sparkles className="w-8 h-8" />
                 </div>

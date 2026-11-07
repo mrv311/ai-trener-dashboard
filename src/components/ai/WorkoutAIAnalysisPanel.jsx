@@ -44,6 +44,24 @@ export default function WorkoutAIAnalysisPanel({
     setError(null);
   }, [cacheKey]);
 
+  useEffect(() => {
+    if (!isAnalyzing && !isAsking) return;
+    if (typeof navigator === 'undefined' || !navigator.wakeLock?.request) return;
+    let sentinel = null;
+    let cancelled = false;
+    navigator.wakeLock.request('screen').then(lock => {
+      if (cancelled) {
+        lock.release().catch(() => {});
+      } else {
+        sentinel = lock;
+      }
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      sentinel?.release?.().catch(() => {});
+    };
+  }, [isAnalyzing, isAsking]);
+
   const handleGenerateAnalysis = async () => {
     setIsAnalyzing(true);
     setError(null);

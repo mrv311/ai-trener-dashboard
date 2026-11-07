@@ -106,80 +106,136 @@ async function callGeminiApi({
   })();
 
   // 1. PRIMARNO: Poziv preko sigurnog Vercel / lokalnog poslužiteljskog proxyja (/api/gemini)
-  try {
-    const proxyRes = await fetch('/api/gemini', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction,
-        contents,
-        model,
-        temperature,
-        responseMimeType,
-        customApiKey: customKey || undefined
-      })
-    });
+  const proxyPayload = JSON.stringify({
+    systemInstruction,
+    contents,
+    model,
+    temperature,
+    responseMimeType,
+    customApiKey: customKey || undefined
+  });
 
-    if (proxyRes.ok) {
-      const data = await proxyRes.json();
-      if (data?.text) return data.text;
-    } else if (proxyRes.status !== 404) {
+  let proxyRouteMissing = false;
+  let lastNetworkError = null;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 58000);
+    try {
+      const proxyRes = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: proxyPayload,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (proxyRes.ok) {
+        const data = await proxyRes.json();
+        if (data?.text) return data.text;
+        throw new Error('AI poslužitelj nije vratio tekstualni odgovor. Pokušaj ponovno.');
+      }
+
+      if (proxyRes.status === 404) {
+        proxyRouteMissing = true;
+        break;
+      }
+
+      // Kod prolazne poslužiteljske greške (502/503/504) pokušaj još jednom
+      if ([502, 503, 504].includes(proxyRes.status) && attempt === 0) {
+        await new Promise(r => setTimeout(r, 800));
+        continue;
+      }
+
       const errJson = await proxyRes.json().catch(() => ({}));
-      throw new Error(errJson?.error || `AI poslužiteljska greška (HTTP ${proxyRes.status})`);
-    }
-  } catch (proxyErr) {
-    // Ako je proxy vratio eksplicitnu grešku, proslijedi je korisniku
-    if (proxyErr.message && !proxyErr.message.includes('Failed to fetch') && !proxyErr.message.includes('404')) {
-      throw proxyErr;
+      const serverErr = new Error(errJson?.error || `AI poslužiteljska greška (HTTP ${proxyRes.status})`);
+      serverErr.isExplicitServerError = true;
+      throw serverErr;
+    } catch (proxyErr) {
+      clearTimeout(timeoutId);
+      if (proxyErr?.isExplicitServerError) {
+        throw proxyErr;
+      }
+      lastNetworkError = proxyErr;
+      const msg = String(proxyErr?.message || '');
+      const isAbort = proxyErr?.name === 'AbortError' || msg.toLowerCase().includes('aborted');
+      const isTransientFetch =
+        msg.includes('Failed to fetch') ||
+        msg.includes('Load failed') ||
+        msg.includes('NetworkError') ||
+        msg.toLowerCase().includes('network');
+
+      if (!isAbort && isTransientFetch && attempt === 0) {
+        await new Promise(r => setTimeout(r, 800));
+        continue;
+      }
+      if (!isAbort && !isTransientFetch) {
+        throw proxyErr;
+      }
+      break;
     }
   }
 
-  // 2. FALLBACK: Direktni poziv samo ako proxy nije dostupan i postoji lokalni ključ
+  // 2. FALLBACK: Direktni poziv samo ako postoji lokalni/vlastiti ključ (npr. vite preview ili vlastiti ključ u tabu Veze)
   const fallbackKey = customKey || import.meta.env.VITE_GEMINI_API_KEY?.trim();
   if (!fallbackKey || fallbackKey === 'your-gemini-api-key') {
+    if (lastNetworkError && !proxyRouteMissing) {
+      const msg = String(lastNetworkError?.message || '');
+      if (lastNetworkError?.name === 'AbortError' || msg.toLowerCase().includes('aborted')) {
+        throw new Error('AI poslužitelj je predugo obrađivao zahtjev (timeout). Pokušaj ponovno s kraćim upitom.');
+      }
+      throw new Error('Prekid mrežne veze prema AI poslužitelju. Provjeri mobilni internet / VPN i drži zaslon uključenim dok AI priprema odgovor, pa pokušaj ponovno.');
+    }
     throw new Error('Gemini AI poslužitelj nije konfiguriran (GEMINI_API_KEY). Postavi varijablu u Vercel Environment Variables ili unesi privremeni ključ u tabu Veze.');
   }
 
-  let effectiveModel = model;
+  let effectiveModel = model || 'gemini-3.8-flash';
   if (!customKey && String(effectiveModel).toLowerCase().includes('pro')) {
-    effectiveModel = 'gemini-2.5-flash';
+    effectiveModel = 'gemini-3.8-flash';
   }
 
-  const generationConfig = {
-    temperature,
-    maxOutputTokens: 16384
+  const isProModel = String(effectiveModel).toLowerCase().includes('pro');
+  const buildBody = (includeThinking = true) => {
+    const generationConfig = {
+      temperature,
+      maxOutputTokens: 16384,
+      ...(responseMimeType ? { responseMimeType } : {}),
+      ...(includeThinking ? { thinkingConfig: { thinkingBudget: isProModel ? 2048 : 512 } } : {})
+    };
+    return {
+      ...(systemInstruction
+        ? { systemInstruction: { parts: [{ text: systemInstruction }] } }
+        : {}),
+      contents,
+      generationConfig
+    };
   };
-  if (responseMimeType) {
-    generationConfig.responseMimeType = responseMimeType;
-  }
 
-  const body = {
-    ...(systemInstruction
-      ? { systemInstruction: { parts: [{ text: systemInstruction }] } }
-      : {}),
-    contents,
-    generationConfig
-  };
-
-  const executeForModel = async (targetModel) => {
+  const executeForModel = async (targetModel, includeThinking = true) => {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${encodeURIComponent(fallbackKey)}`;
-    return fetch(url, {
+    const resFetch = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(buildBody(includeThinking))
     });
+    if (resFetch.status === 400 && includeThinking) {
+      return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildBody(false))
+      });
+    }
+    return resFetch;
   };
 
-  let response = await executeForModel(effectiveModel);
+  const candidateModels = isProModel
+    ? [...new Set([effectiveModel, 'gemini-3.1-pro-preview', 'gemini-pro-latest', 'gemini-3.8-flash'])]
+    : [...new Set([effectiveModel, 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.5-flash'])];
 
-  if (response.status === 404) {
-    const fallbackModel = String(effectiveModel).toLowerCase().includes('pro') ? 'gemini-pro-latest' : 'gemini-2.5-flash';
-    if (effectiveModel !== fallbackModel) {
-      response = await executeForModel(fallbackModel);
-    }
-    if (response.status === 404) {
-      response = await executeForModel('gemini-1.5-flash');
-    }
+  let response = null;
+  for (const candidate of candidateModels) {
+    response = await executeForModel(candidate);
+    if (response.status !== 404) break;
   }
 
   if (!response.ok) {
@@ -576,7 +632,7 @@ CONTENT:
 
   const rawText = await callGeminiApi({
     contents,
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.8-flash',
     temperature: 0.3
   });
 

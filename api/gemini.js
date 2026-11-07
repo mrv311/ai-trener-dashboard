@@ -5,13 +5,25 @@
  * To sprječava krađu ključa i zlouporabu izvan aplikacije.
  */
 
+export const config = {
+  maxDuration: 60
+};
+
 export default async function handler(req, res) {
   // CORS podrška
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return res.status(200).end();
+  }
+
+  if (req.method === 'GET') {
+    const serverKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    return res.status(200).json({
+      ok: true,
+      configured: Boolean(serverKey && String(serverKey).trim())
+    });
   }
 
   if (req.method !== 'POST') {
@@ -22,9 +34,10 @@ export default async function handler(req, res) {
     const {
       systemInstruction,
       contents,
-      model = 'gemini-2.5-flash',
+      model = 'gemini-3.8-flash',
       temperature = 0.4,
       responseMimeType = null,
+      thinkingBudget = null,
       customApiKey = null
     } = req.body || {};
 
@@ -43,43 +56,54 @@ export default async function handler(req, res) {
     // Ako se koristi server ključ (za frendove i goste), UVIJEK forsiraj Flash model!
     // Pro model je dopušten isključivo ako je korisnik poslao svoj privatni ključ.
     const isServerKey = !customApiKey || customApiKey.trim() === serverKey;
-    let targetModel = model;
+    let targetModel = model || 'gemini-3.8-flash';
     if (isServerKey && String(targetModel).toLowerCase().includes('pro')) {
-      targetModel = 'gemini-2.5-flash';
+      targetModel = 'gemini-3.8-flash';
     }
 
+    const isProModel = String(targetModel).toLowerCase().includes('pro');
+    const resolvedThinkingBudget = Number.isFinite(Number(thinkingBudget)) && thinkingBudget !== null
+      ? Number(thinkingBudget)
+      : (isProModel ? 2048 : 512);
+
     // 3. Priprema tijela za Google Gemini v1beta REST API
-    const body = {
+    const buildGoogleBody = (includeThinking = true) => ({
       ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction }] } } : {}),
       contents: Array.isArray(contents) ? contents : [],
       generationConfig: {
         temperature: Number(temperature) || 0.4,
         maxOutputTokens: 16384,
-        ...(responseMimeType ? { responseMimeType } : {})
+        ...(responseMimeType ? { responseMimeType } : {}),
+        ...(includeThinking ? { thinkingConfig: { thinkingBudget: resolvedThinkingBudget } } : {})
       }
-    };
+    });
 
     // 4. Poziv prema Googleu s automatskim fallbackom ako verzija modela vrati 404
-    const execute = async (m) => {
+    const execute = async (m, includeThinking = true) => {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(resolvedKey)}`;
-      return fetch(url, {
+      const resFetch = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(buildGoogleBody(includeThinking))
       });
+      if (resFetch.status === 400 && includeThinking) {
+        return fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildGoogleBody(false))
+        });
+      }
+      return resFetch;
     };
 
-    let googleRes = await execute(targetModel);
+    const candidateModels = isProModel
+      ? [...new Set([targetModel, 'gemini-3.1-pro-preview', 'gemini-pro-latest', 'gemini-3.8-flash'])]
+      : [...new Set([targetModel, 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.5-flash'])];
 
-    // Fallback ako specifični model vrati 404
-    if (googleRes.status === 404) {
-      const fallback = targetModel.toLowerCase().includes('pro') ? 'gemini-pro-latest' : 'gemini-2.5-flash';
-      if (targetModel !== fallback) {
-        googleRes = await execute(fallback);
-      }
-      if (googleRes.status === 404) {
-        googleRes = await execute('gemini-1.5-flash');
-      }
+    let googleRes = null;
+    for (const candidate of candidateModels) {
+      googleRes = await execute(candidate);
+      if (googleRes.status !== 404) break;
     }
 
     if (!googleRes.ok) {
@@ -88,7 +112,9 @@ export default async function handler(req, res) {
         const errJson = await googleRes.json();
         if (errJson?.error?.message) errDetail = errJson.error.message;
       } catch {}
-      return res.status(googleRes.status).json({ error: errDetail });
+      // Nikada ne vraćaj 404 klijentu kako klijent ne bi pomislio da /api/gemini ruta ne postoji
+      const outStatus = googleRes.status === 404 ? 502 : googleRes.status;
+      return res.status(outStatus).json({ error: errDetail });
     }
 
     const data = await googleRes.json();
