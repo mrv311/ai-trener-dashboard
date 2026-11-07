@@ -50,6 +50,7 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useLocalStorage('sidebarCollapsed', false);
   const [uiTheme, setUiTheme] = useLocalStorage('ergvibe_ui_theme', 'volt');
   const [isTrainerPlaying, setIsTrainerPlaying] = useState(false);
+  const [isTrainerFullscreen, setIsTrainerFullscreen] = useState(false);
 
   const [session, setSession] = useState(null);
   const [isSessionLoading, setIsSessionLoading] = useState(true);
@@ -175,6 +176,12 @@ export default function App() {
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     setIsMobileMenuOpen(false);
+    if (tab !== 'trainer') {
+      setIsTrainerFullscreen(false);
+      if (typeof document !== 'undefined' && document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
   };
 
   const handleLogout = async () => {
@@ -247,7 +254,7 @@ export default function App() {
     <div className="flex h-screen supports-[height:100dvh]:h-dvh overflow-hidden bg-zinc-950 text-zinc-200 font-sans selection:bg-volt-400 selection:text-zinc-950">
 
       {/* SIDEBAR (Desktop Hardware Rail) */}
-      <aside className={`hidden md:flex bg-zinc-900 border-r border-zinc-800 flex-col z-20 shrink-0 transition-all duration-300 ease-in-out relative ${isSidebarCollapsed ? 'w-[68px]' : 'w-52 lg:w-56 xl:w-60'}`}>
+      <aside className={`${activeTab === 'trainer' && isTrainerFullscreen ? 'hidden' : 'hidden md:flex'} bg-zinc-900 border-r border-zinc-800 flex-col z-20 shrink-0 transition-all duration-300 ease-in-out relative ${isSidebarCollapsed ? 'w-[68px]' : 'w-52 lg:w-56 xl:w-60'}`}>
         {/* Brand Header */}
         <div className={`h-14 md:h-16 short:h-12 flex items-center border-b border-zinc-800 bg-zinc-950/40 shrink-0 ${isSidebarCollapsed ? 'justify-center px-2' : 'justify-between px-3.5'}`}>
           {!isSidebarCollapsed ? (
@@ -397,7 +404,7 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
-        <header className={`h-12 md:h-14 short:h-11 bg-zinc-950/95 border-b border-zinc-800 flex items-center justify-between px-3.5 md:px-6 shrink-0 z-20 ${activeTab === 'trainer' ? 'md:short:hidden' : ''}`}>
+        <header className={`h-12 md:h-14 short:h-11 bg-zinc-950/95 border-b border-zinc-800 flex items-center justify-between px-3.5 md:px-6 shrink-0 z-20 ${activeTab === 'trainer' ? (isTrainerFullscreen ? 'hidden' : 'md:short:hidden') : ''}`}>
           <div className="flex items-center gap-2.5 md:gap-3.5 min-w-0">
             <div className="md:hidden">
               <BrandLogo size={28} spinning={isTrainerPlaying} />
@@ -451,7 +458,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className={`flex-1 min-h-0 ${['trainer', 'calendar'].includes(activeTab) ? 'overflow-hidden p-1 md:p-2 short:p-1.5 pb-16 md:pb-2 short:md:pb-1.5' : 'overflow-auto p-3 md:p-6 short:p-3 pb-20 md:pb-6 short:md:pb-3'} bg-zinc-950 bg-telemetry-grid relative flex flex-col`}>
+        <main className={`flex-1 min-h-0 ${['trainer', 'calendar'].includes(activeTab) ? `overflow-hidden p-1 md:p-2 short:p-1.5 ${activeTab === 'trainer' && isTrainerFullscreen ? 'pb-1.5' : 'pb-16 md:pb-2 short:md:pb-1.5'}` : 'overflow-auto p-3 md:p-6 short:p-3 pb-20 md:pb-6 short:md:pb-3'} bg-zinc-950 bg-telemetry-grid relative flex flex-col`}>
           <div className={`relative z-10 w-full ${['trainer', 'calendar'].includes(activeTab) ? 'flex-1 flex flex-col min-h-0 h-full' : ''}`}>
             {activeTab === 'calendar' && (
               <CalendarTab
@@ -483,6 +490,7 @@ export default function App() {
                 wellnessData={wellnessData}
                 onAddWorkoutToCalendar={handleCreateWorkout}
                 onPlayingChange={setIsTrainerPlaying}
+                onFullscreenChange={setIsTrainerFullscreen}
                 onClose={() => { setSelectedWorkout(null); handleTabChange('calendar'); }}
               />
             </div>
@@ -543,7 +551,7 @@ export default function App() {
         </main>
 
         {/* MOBILE NAVIGATION */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-950/95 border-t border-zinc-800 z-40 px-2 pb-safe-bottom">
+        <div className={`${activeTab === 'trainer' && isTrainerFullscreen ? 'hidden' : 'md:hidden'} fixed bottom-0 left-0 right-0 bg-zinc-950/95 border-t border-zinc-800 z-40 px-2 pb-safe-bottom`}>
           <div className="flex justify-around items-center h-14">
             <MobileTab icon={<CalendarIcon />} label="Kalendar" active={activeTab === 'calendar'} onClick={() => handleTabChange('calendar')} />
             <MobileTab icon={<Monitor />} label="Trenažer" live={isTrainerPlaying} active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />

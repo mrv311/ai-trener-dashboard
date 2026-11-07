@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X, Gamepad2, ArrowUpDown, RotateCcw, Battery, Maximize2, Minimize2 } from 'lucide-react';
+import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X, Gamepad2, ArrowUpDown, RotateCcw, Battery, Maximize2, Minimize2, Loader2, AlertCircle } from 'lucide-react';
 import TrainerModals from './trainer/TrainerModals';
 import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer, calculateCogganMetrics, calculateEF, calculateVI, calculateAerobicDecoupling } from '../utils/performanceMetrics';
@@ -125,7 +125,34 @@ const FTMS_SUPPORTED_RESISTANCE_RANGE_UUID = '00002ad6-0000-1000-8000-00805f9b34
 const FTMS_CONTROL_POINT_UUID = '00002ad9-0000-1000-8000-00805f9b34fb';
 const sleepMs = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-export default function TrainerTab({ profile, userId, workoutFromCalendar, onClose, intervalsId, intervalsKey, workouts = [], wellnessData = {}, onAddWorkoutToCalendar, onPlayingChange }) {
+const isBrowserFullscreenActive = () =>
+  typeof document !== 'undefined' && Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+
+const isUserCancelledBle = (err) => {
+  if (!err) return false;
+  const msg = String(err.message || '');
+  return err.name === 'NotFoundError' && /cancel|canceled|cancelled|dismiss|abort/i.test(msg);
+};
+
+const formatBleErrorMessage = (err, deviceLabel) => {
+  if (isUserCancelledBle(err)) return null;
+  const msg = String(err?.message || err || 'Nepoznata greška');
+  if (/adapter not available|globally disabled|not supported/i.test(msg)) {
+    return `Bluetooth nije dostupan ili je isključen (${deviceLabel}). Provjeri je li Bluetooth uključen u Windows postavkama.`;
+  }
+  if (/gesture|activation/i.test(msg)) {
+    return `Preglednik traži izravan klik na gumb za otvaranje Bluetooth popisa (${deviceLabel}). Klikni ponovno.`;
+  }
+  if (/already in progress/i.test(msg)) {
+    return `Bluetooth traženje je već u tijeku u pregledniku. Pričekaj trenutak ili osvježi stranicu (F5).`;
+  }
+  if (/gatt|connection attempt failed|disconnected/i.test(msg)) {
+    return `Spajanje na ${deviceLabel} nije uspjelo. Provjeri je li uređaj budan i da nije već spojen na mobitel, Garmin ili Zwift.`;
+  }
+  return `Nije uspjelo spajanje na ${deviceLabel}: ${msg}`;
+};
+
+export default function TrainerTab({ profile, userId, workoutFromCalendar, onClose, intervalsId, intervalsKey, workouts = [], wellnessData = {}, onAddWorkoutToCalendar, onPlayingChange, onFullscreenChange }) {
   const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
@@ -191,6 +218,44 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   const resHoldIntervalRef = useRef(null);
   const ergHoldTimerRef = useRef(null);
   const ergLongPressFiredRef = useRef(false);
+
+  // BLE spajanje i siguran prijelaz iz punog zaslona (sprječava Chromium ChooserBubbleUi deadlock u Fullscreenu)
+  const [bleConnectingType, setBleConnectingType] = useState(null); // 'trainer' | 'pm' | 'hr' | 'click' | null
+  const bleConnectingRef = useRef(null);
+  const [bleErrorBanner, setBleErrorBanner] = useState(null);
+  const [fullscreenBleModal, setFullscreenBleModal] = useState(null); // { target: 'trainer'|'pm'|'hr'|'click', lastConnectedLabel: string|null }
+  const [fsSettling, setFsSettling] = useState(false);
+  const exitingFsForBleRef = useRef(false);
+
+  const showHudToast = useCallback((text, subtext = '', tone = 'indigo') => {
+    if (shiftToastTimerRef.current) clearTimeout(shiftToastTimerRef.current);
+    setShiftToast({ text, subtext, tone, id: Date.now() });
+    shiftToastTimerRef.current = setTimeout(() => {
+      setShiftToast(null);
+    }, 1800);
+  }, []);
+
+  const openFullscreenBleHandoff = useCallback((sensorKey) => {
+    exitingFsForBleRef.current = true;
+    setFsSettling(true);
+    setBleErrorBanner(null);
+    setFullscreenBleModal({ target: sensorKey, lastConnectedLabel: null });
+
+    const exitPromise = document.exitFullscreen
+      ? document.exitFullscreen()
+      : document.webkitExitFullscreen
+      ? document.webkitExitFullscreen()
+      : Promise.resolve();
+
+    Promise.resolve(exitPromise)
+      .catch(() => {})
+      .finally(() => {
+        setTimeout(() => {
+          setFsSettling(false);
+          exitingFsForBleRef.current = false;
+        }, 220);
+      });
+  }, []);
 
   const [workoutHistory, setWorkoutHistory] = useState([]);
   const [isFinished, setIsFinished] = useState(false);
@@ -506,6 +571,12 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     setVirtualGear(VIRTUAL_GEAR_DEFAULT);
     setControlMode('ERG');
     setLiveMetrics({ np: 0, ifFactor: "0.00", tss: 0, workKj: 0 });
+    setFullscreenBleModal(null);
+    setBleErrorBanner(null);
+    exitingFsForBleRef.current = false;
+    if (isBrowserFullscreenActive() && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
 
     // Pozovi parent callback za navigaciju
     if (onClose) onClose();
@@ -1007,9 +1078,37 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   };
 
 
-  const connectHR = async () => {
+  const connectHRDirect = async () => {
+    if (bleConnectingRef.current) {
+      showHudToast('Bluetooth zauzet', 'Pričekaj završetak trenutnog traženja', 'amber');
+      return;
+    }
+    if (!navigator.bluetooth) {
+      setBleErrorBanner('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).');
+      return;
+    }
+    try {
+      const reqPromise = navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
+      bleConnectingRef.current = 'hr';
+      setBleConnectingType('hr');
+      setBleErrorBanner(null);
+
+      const device = await reqPromise;
+      await setupHRDevice(device);
+      showHudToast('Pulsmetar spojen!', device.name || 'Heart Rate', 'emerald');
+      setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: device.name || 'Pulsmetar' } : null));
+    } catch (err) {
+      const msg = formatBleErrorMessage(err, 'Pulsmetar');
+      if (msg) setBleErrorBanner(msg);
+    } finally {
+      bleConnectingRef.current = null;
+      setBleConnectingType(null);
+    }
+  };
+
+  const connectHR = () => {
     if (isHrConnected) {
-      if (hrDeviceRef.current && hrDeviceRef.current.gatt.connected) {
+      if (hrDeviceRef.current && hrDeviceRef.current.gatt?.connected) {
         hrDeviceRef.current.gatt.disconnect();
       }
       setIsHrConnected(false);
@@ -1017,45 +1116,102 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       hrDeviceRef.current = null;
       return;
     }
-    try {
-      if (!navigator.bluetooth) { alert("Tvoj preglednik ne podržava Web Bluetooth."); return; }
-      const device = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
-      await setupHRDevice(device);
-    } catch (err) { if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na pulsmetar: " + err.message); }
+    if (isBrowserFullscreenActive()) {
+      openFullscreenBleHandoff('hr');
+      return;
+    }
+    connectHRDirect();
   };
 
-  const connectTrainer = async () => {
-    if (isPowerConnected) {
-      if (trainerDeviceRef.current && trainerDeviceRef.current.gatt.connected) {
-        trainerDeviceRef.current.gatt.disconnect();
-      }
-      setIsPowerConnected(false);
-      setTrainerDeviceName('');
-      setCurrentPower(0);
-      setCurrentCadence(prevCadence => isPmConnected ? prevCadence : 0);
-      trainerDeviceRef.current = null;
-      setFtmsControlChar(null);
-      setFtmsStatus('idle');
+  const connectTrainerDirect = async () => {
+    if (bleConnectingRef.current) {
+      showHudToast('Bluetooth zauzet', 'Pričekaj završetak trenutnog traženja', 'amber');
+      return;
+    }
+    if (!navigator.bluetooth) {
+      setBleErrorBanner('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).');
       return;
     }
     try {
-      if (!navigator.bluetooth) { alert("Tvoj preglednik ne podržava Web Bluetooth."); return; }
-      const device = await navigator.bluetooth.requestDevice({
+      const reqPromise = navigator.bluetooth.requestDevice({
         filters: [
           { services: [FTMS_SERVICE_UUID] },
           { services: ['cycling_power'] }
         ],
         optionalServices: ['cycling_power', FTMS_SERVICE_UUID]
       });
+      bleConnectingRef.current = 'trainer';
+      setBleConnectingType('trainer');
+      setBleErrorBanner(null);
+
+      const device = await reqPromise;
       await setupTrainerDevice(device);
+      showHudToast('Trenažer spojen!', device.name || 'FTMS Trenažer', 'emerald');
+      setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: device.name || 'FTMS Trenažer' } : null));
     } catch (err) {
-      if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na trenažer: " + err.message);
+      setFtmsStatus('idle');
+      const msg = formatBleErrorMessage(err, 'FTMS Trenažer');
+      if (msg) setBleErrorBanner(msg);
+    } finally {
+      bleConnectingRef.current = null;
+      setBleConnectingType(null);
     }
   };
 
-  const connectPowerMeter = async () => {
+  const connectTrainer = () => {
+    if (isPowerConnected) {
+      if (trainerDeviceRef.current && trainerDeviceRef.current.gatt?.connected) {
+        trainerDeviceRef.current.gatt.disconnect();
+      }
+      setIsPowerConnected(false);
+      setTrainerDeviceName('');
+      setCurrentPower(0);
+      setCurrentCadence(prevCadence => (isPmConnected ? prevCadence : 0));
+      trainerDeviceRef.current = null;
+      setFtmsControlChar(null);
+      setFtmsStatus('idle');
+      return;
+    }
+    if (isBrowserFullscreenActive()) {
+      openFullscreenBleHandoff('trainer');
+      return;
+    }
+    connectTrainerDirect();
+  };
+
+  const connectPowerMeterDirect = async () => {
+    if (bleConnectingRef.current) {
+      showHudToast('Bluetooth zauzet', 'Pričekaj završetak trenutnog traženja', 'amber');
+      return;
+    }
+    if (!navigator.bluetooth) {
+      setBleErrorBanner('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).');
+      return;
+    }
+    try {
+      const reqPromise = navigator.bluetooth.requestDevice({
+        filters: [{ services: ['cycling_power'] }]
+      });
+      bleConnectingRef.current = 'pm';
+      setBleConnectingType('pm');
+      setBleErrorBanner(null);
+
+      const device = await reqPromise;
+      await setupPmDevice(device);
+      showHudToast('PowerMeter spojen!', device.name || 'PowerMeter', 'emerald');
+      setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: device.name || 'PowerMeter' } : null));
+    } catch (err) {
+      const msg = formatBleErrorMessage(err, 'PowerMeter');
+      if (msg) setBleErrorBanner(msg);
+    } finally {
+      bleConnectingRef.current = null;
+      setBleConnectingType(null);
+    }
+  };
+
+  const connectPowerMeter = () => {
     if (isPmConnected) {
-      if (pmDeviceRef.current && pmDeviceRef.current.gatt.connected) {
+      if (pmDeviceRef.current && pmDeviceRef.current.gatt?.connected) {
         pmDeviceRef.current.gatt.disconnect();
       }
       isPmConnectedRef.current = false;
@@ -1070,15 +1226,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       pmLiveBufferRef.current = [];
       return;
     }
-    try {
-      if (!navigator.bluetooth) { alert("Tvoj preglednik ne podržava Web Bluetooth."); return; }
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: ['cycling_power'] }]
-      });
-      await setupPmDevice(device);
-    } catch (err) {
-      if (err.name !== 'NotFoundError') alert("Nije uspjelo spajanje na powermetar: " + err.message);
+    if (isBrowserFullscreenActive()) {
+      openFullscreenBleHandoff('pm');
+      return;
     }
+    connectPowerMeterDirect();
   };
 
   const ergParamsRef = useRef({
@@ -1245,14 +1397,6 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     return () => clearInterval(timer);
   }, [ftmsControlChar, controlMode, dispatchResTarget]);
 
-  const showHudToast = useCallback((text, subtext = '', tone = 'indigo') => {
-    if (shiftToastTimerRef.current) clearTimeout(shiftToastTimerRef.current);
-    setShiftToast({ text, subtext, tone, id: Date.now() });
-    shiftToastTimerRef.current = setTimeout(() => {
-      setShiftToast(null);
-    }, 1500);
-  }, []);
-
   const shiftVirtualGear = useCallback((delta, source = '') => {
     setVirtualGear(prev => {
       const next = Math.max(VIRTUAL_GEAR_MIN, Math.min(VIRTUAL_GEAR_MAX, prev + delta));
@@ -1290,7 +1434,36 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     });
   }, []);
 
-  const connectZwiftClick = async () => {
+  const connectZwiftClickDirect = async () => {
+    const controller = zwiftClickRef.current;
+    if (!controller) return;
+    if (bleConnectingRef.current) {
+      showHudToast('Bluetooth zauzet', 'Pričekaj završetak trenutnog traženja', 'amber');
+      return;
+    }
+    if (!navigator.bluetooth) {
+      setBleErrorBanner('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).');
+      return;
+    }
+    try {
+      const connectPromise = controller.requestAndConnect();
+      bleConnectingRef.current = 'click';
+      setBleConnectingType('click');
+      setBleErrorBanner(null);
+
+      const snap = await connectPromise;
+      showHudToast('Zwift Click spojen!', 'Spremno za virtualne brzine i ERG kontrolu', 'emerald');
+      setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: snap?.deviceName || 'Zwift Click' } : null));
+    } catch (err) {
+      const msg = formatBleErrorMessage(err, 'Zwift Click');
+      if (msg) setBleErrorBanner(msg);
+    } finally {
+      bleConnectingRef.current = null;
+      setBleConnectingType(null);
+    }
+  };
+
+  const connectZwiftClick = () => {
     const controller = zwiftClickRef.current;
     if (!controller) return;
     if (controller.connected) {
@@ -1298,14 +1471,18 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       setShowClickSettings(false);
       return;
     }
-    try {
-      await controller.requestAndConnect();
-      showHudToast('Zwift Click spojen!', 'Spremno za virtualne brzine i ERG kontrolu', 'emerald');
-    } catch (err) {
-      if (err && err.name !== 'NotFoundError') {
-        alert('Nije uspjelo spajanje na Zwift Click: ' + err.message);
-      }
+    if (isBrowserFullscreenActive()) {
+      openFullscreenBleHandoff('click');
+      return;
     }
+    connectZwiftClickDirect();
+  };
+
+  const triggerDirectBleByKey = (sensorKey) => {
+    if (sensorKey === 'trainer') connectTrainerDirect();
+    else if (sensorKey === 'pm') connectPowerMeterDirect();
+    else if (sensorKey === 'hr') connectHRDirect();
+    else if (sensorKey === 'click') connectZwiftClickDirect();
   };
 
   const toggleMode = () => setControlMode(prev => prev === 'ERG' ? 'RES' : 'ERG');
@@ -1636,30 +1813,95 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     };
   }, []);
 
-  const [isFullscreen, setIsFullscreen] = useState(() => Boolean(typeof document !== 'undefined' && document.fullscreenElement));
+  const [isBrowserFs, setIsBrowserFs] = useState(() => isBrowserFullscreenActive());
+  const [isCockpitMode, setIsCockpitMode] = useState(false);
+  const isFullscreen = isBrowserFs || isCockpitMode;
 
   useEffect(() => {
-    const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    if (onFullscreenChange) onFullscreenChange(isFullscreen);
+  }, [isFullscreen, onFullscreenChange]);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      const active = isBrowserFullscreenActive();
+      setIsBrowserFs(active);
+      if (!active && !exitingFsForBleRef.current) {
+        setIsCockpitMode(false);
+      }
+    };
     document.addEventListener('fullscreenchange', onFsChange);
-    return () => document.removeEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+    };
   }, []);
 
-  const toggleFullscreen = useCallback(async () => {
+  const enterBrowserFullscreen = useCallback(async () => {
+    setIsCockpitMode(true);
     try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-      } else if (document.exitFullscreen) {
-        await document.exitFullscreen();
+      const root = document.documentElement;
+      if (!isBrowserFullscreenActive()) {
+        if (root.requestFullscreen) {
+          await root.requestFullscreen();
+        } else if (root.webkitRequestFullscreen) {
+          await root.webkitRequestFullscreen();
+        }
       }
     } catch (err) {
-      console.warn('[Fullscreen] Nije moguće prebaciti puni zaslon:', err);
+      console.warn('[Fullscreen] Browser fullscreen odbijen, aktivan Cockpit fokus prikaz:', err);
+      showHudToast('Cockpit fokus aktivan', 'Za skrivanje trake preglednika pritisni F11', 'amber');
+    }
+  }, [showHudToast]);
+
+  const exitAllFullscreen = useCallback(async () => {
+    exitingFsForBleRef.current = false;
+    setIsCockpitMode(false);
+    try {
+      if (isBrowserFullscreenActive()) {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          await document.webkitExitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.warn('[Fullscreen] Greška pri izlasku iz punog zaslona:', err);
     }
   }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (isBrowserFullscreenActive() || isCockpitMode) {
+      exitAllFullscreen();
+    } else {
+      enterBrowserFullscreen();
+    }
+  }, [isCockpitMode, enterBrowserFullscreen, exitAllFullscreen]);
+
+  const returnToFullscreenFromModal = () => {
+    setFullscreenBleModal(null);
+    setBleErrorBanner(null);
+    enterBrowserFullscreen();
+  };
+
+  const closeFullscreenBleModal = () => {
+    setFullscreenBleModal(null);
+    setIsCockpitMode(false);
+  };
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Allow default behavior inside text inputs or textareas
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) {
+        return;
+      }
+
+      if (fullscreenBleModal) {
+        if (e.code === 'Escape') {
+          e.preventDefault();
+          setFullscreenBleModal(null);
+          setIsCockpitMode(false);
+        }
         return;
       }
 
@@ -1700,10 +1942,142 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showStopPrompt, isFinished, controlMode, handleSkip, shiftVirtualGear, toggleFullscreen]);
+  }, [fullscreenBleModal, showStopPrompt, isFinished, controlMode, handleSkip, shiftVirtualGear, toggleFullscreen]);
+
+  const sensorMetaMap = {
+    trainer: { label: 'FTMS Trenažer', connected: isPowerConnected, detail: trainerDeviceName || 'Trenažer' },
+    pm: { label: 'PowerMeter', connected: isPmConnected, detail: pmDeviceName || 'PowerMeter' },
+    hr: { label: 'Pulsmetar', connected: isHrConnected, detail: 'Pulsmetar' },
+    click: { label: 'Zwift Click', connected: zwiftClickState.connected, detail: zwiftClickState.deviceName || 'Zwift Click' }
+  };
 
   return (
     <div className="w-full max-w-[1800px] mx-auto flex flex-col flex-1 md:h-full gap-1.5 md:gap-2 xl:gap-2.5 short:gap-1.5 vshort:gap-1 animate-in fade-in relative px-1 md:px-2 min-h-0">
+
+      {/* MODAL ZA SIGURNO BLUETOOTH UPARIVANJE IZ PUNOG ZASLONA (izbjegava Chromium ChooserBubbleUi bug) */}
+      {fullscreenBleModal && (
+        <div className="fixed inset-0 z-[110] bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 md:p-6 animate-in fade-in duration-150">
+          <div className="carbon-panel border-volt-400/40 rounded-2xl p-5 md:p-6 max-w-md w-full shadow-2xl flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-volt-400/15 border border-volt-400/35 text-volt-400 shrink-0">
+                  <Bluetooth className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-volt-400">
+                    BLUETOOTH UPARIVANJE
+                  </div>
+                  <h3 className="font-display font-bold text-lg md:text-xl uppercase tracking-wide text-zinc-100">
+                    {sensorMetaMap[fullscreenBleModal.target]?.label || 'Senzor'}
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeFullscreenBleModal}
+                className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-800"
+                title="Zatvori"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs md:text-sm text-zinc-400 leading-relaxed">
+              Chrome i Edge sigurnosno ne dopuštaju otvaranje Bluetooth popisa dok je skrivena traka preglednika.
+              Spoji željene senzore ispod i vrati se u <strong className="text-zinc-200">TV Puni zaslon</strong> jednim klikom.
+            </p>
+
+            {bleErrorBanner && (
+              <div className="bg-rose-950/60 border border-rose-500/40 text-rose-200 rounded-xl px-3 py-2 text-xs font-medium flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <span>{bleErrorBanner}</span>
+              </div>
+            )}
+
+            {/* Brzi odabir svih 4 senzora na jednom mjestu prije povratka u Fullscreen */}
+            <div className="grid grid-cols-2 gap-2">
+              {(['trainer', 'pm', 'hr', 'click']).map((sKey) => {
+                const info = sensorMetaMap[sKey];
+                const isBusy = bleConnectingType === sKey;
+                const isSelected = fullscreenBleModal.target === sKey;
+                return (
+                  <button
+                    key={sKey}
+                    type="button"
+                    disabled={fsSettling || Boolean(bleConnectingType)}
+                    onClick={() => {
+                      setFullscreenBleModal(prev => (prev ? { ...prev, target: sKey } : null));
+                      if (!info.connected) {
+                        triggerDirectBleByKey(sKey);
+                      }
+                    }}
+                    className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-xs font-bold transition-all text-left disabled:opacity-50 ${
+                      info.connected
+                        ? 'bg-emerald-500/12 text-emerald-300 border-emerald-500/35'
+                        : isSelected
+                        ? 'bg-volt-400/15 text-volt-300 border-volt-400/50 hover:bg-volt-400/25'
+                        : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-200 border-zinc-800 hover:border-zinc-700'
+                    }`}
+                  >
+                    <span className="truncate">{info.connected ? info.detail : info.label}</span>
+                    {isBusy ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-volt-400 shrink-0" />
+                    ) : info.connected ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    ) : (
+                      <span className="font-mono text-[10px] uppercase text-volt-400 shrink-0">Traži</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              {!sensorMetaMap[fullscreenBleModal.target]?.connected ? (
+                <button
+                  type="button"
+                  autoFocus
+                  disabled={fsSettling || Boolean(bleConnectingType)}
+                  onClick={() => triggerDirectBleByKey(fullscreenBleModal.target)}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-volt-400 hover:bg-volt-300 disabled:opacity-60 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm transition-all shadow-volt-glow"
+                >
+                  {fsSettling || bleConnectingType ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>{fsSettling ? 'Priprema...' : 'Spajanje...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bluetooth className="w-4 h-4" />
+                      <span>Otvori Bluetooth popis ({sensorMetaMap[fullscreenBleModal.target]?.label})</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={returnToFullscreenFromModal}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm transition-all shadow-volt-glow"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                  <span>Vrati u TV Puni zaslon</span>
+                </button>
+              )}
+
+              {!sensorMetaMap[fullscreenBleModal.target]?.connected && (
+                <button
+                  type="button"
+                  onClick={returnToFullscreenFromModal}
+                  className="py-3 px-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 text-zinc-300 border border-zinc-800 font-mono text-xs font-bold uppercase tracking-wider transition-colors shrink-0"
+                >
+                  Natrag u Fullscreen
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <TrainerModals
         showStopPrompt={showStopPrompt}
@@ -1730,6 +2104,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       {/* GORNJA TRAKA: Hardware Sensor Dock */}
       <div className="carbon-panel rounded-xl p-1.5 md:p-2 short:p-1 flex gap-1.5 md:gap-2 short:gap-1.5 flex-wrap md:flex-nowrap overflow-x-auto hide-scrollbar items-center shrink-0">
         <button
+          type="button"
           onClick={connectTrainer}
           title={trainerDeviceName ? `Spojen: ${trainerDeviceName}` : 'Spoji pametni trenažer (FTMS / Cycling Power)'}
           className={`flex items-center gap-2 px-2.5 md:px-3 short:px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg font-bold transition-all border text-xs shrink-0 ${
@@ -1745,9 +2120,17 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
               ? (ftmsStatus === 'ready' ? 'bg-volt-400 shadow-[0_0_8px_rgba(var(--accent-400),0.9)]' : 'bg-amber-400')
               : 'bg-zinc-600'
           }`} />
-          {isPowerConnected ? <BluetoothConnected className="w-3.5 h-3.5 shrink-0" /> : <Bluetooth className="w-3.5 h-3.5 text-sky-400 shrink-0" />}
+          {bleConnectingType === 'trainer' ? (
+            <Loader2 className="w-3.5 h-3.5 text-volt-400 animate-spin shrink-0" />
+          ) : isPowerConnected ? (
+            <BluetoothConnected className="w-3.5 h-3.5 shrink-0" />
+          ) : (
+            <Bluetooth className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+          )}
           <span className="tracking-tight whitespace-nowrap">
-            {isPowerConnected
+            {bleConnectingType === 'trainer'
+              ? 'Spajam trenažer...'
+              : isPowerConnected
               ? `${trainerDeviceName || 'Trenažer'} ${ftmsStatus === 'ready' ? '· ERG' : '· NO-ERG'}`
               : 'FTMS Trenažer'}
           </span>
@@ -1755,6 +2138,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
         <div className="flex items-center gap-1 shrink-0">
           <button
+            type="button"
             onClick={connectPowerMeter}
             title={pmDeviceName ? `Spojen: ${pmDeviceName}` : 'Spoji vanjski PowerMeter (npr. Favero Assioma)'}
             className={`flex items-center gap-2 px-2.5 md:px-3 short:px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg font-bold transition-all border text-xs shrink-0 ${
@@ -1764,13 +2148,20 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
             }`}
           >
             <span className={`w-2 h-2 rounded-full shrink-0 ${isPmConnected ? 'bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.9)]' : 'bg-zinc-600'}`} />
-            <Activity className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-            <span className="tracking-tight whitespace-nowrap">{isPmConnected ? (pmDeviceName || 'PowerMeter') : 'PowerMeter'}</span>
+            {bleConnectingType === 'pm' ? (
+              <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin shrink-0" />
+            ) : (
+              <Activity className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+            )}
+            <span className="tracking-tight whitespace-nowrap">
+              {bleConnectingType === 'pm' ? 'Spajam PM...' : isPmConnected ? (pmDeviceName || 'PowerMeter') : 'PowerMeter'}
+            </span>
           </button>
 
           {isPmConnected && (
             <>
               <button
+                type="button"
                 onClick={() => { setPowerMatchEnabled(prev => !prev); pidController.reset(); }}
                 title="Uskladi otpor trenažera prema očitanju PowerMetra"
                 className={`px-2 py-1.5 md:py-2 short:py-1 rounded-lg font-mono font-bold transition-all border text-[11px] shrink-0 ${
@@ -1783,6 +2174,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
               </button>
 
               <button
+                type="button"
                 onClick={togglePmDoublePower}
                 title="Udvostruči snagu jednostrane pedale (npr. Assioma UNO kada u Favero aplikaciji nije uključen Unified Channel L). Isključi ako Favero aplikacija već udvostručuje snagu!"
                 className={`px-2 py-1.5 md:py-2 short:py-1 rounded-lg font-mono font-bold transition-all border text-[11px] shrink-0 ${
@@ -1798,6 +2190,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         </div>
 
         <button
+          type="button"
           onClick={connectHR}
           className={`flex items-center gap-2 px-2.5 md:px-3 short:px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg font-bold transition-all border text-xs shrink-0 ${
             isHrConnected
@@ -1806,12 +2199,17 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           }`}
         >
           <span className={`w-2 h-2 rounded-full shrink-0 ${isHrConnected ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.9)]' : 'bg-zinc-600'}`} />
-          <Heart className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-          <span className="tracking-tight whitespace-nowrap">Pulsmetar</span>
+          {bleConnectingType === 'hr' ? (
+            <Loader2 className="w-3.5 h-3.5 text-rose-400 animate-spin shrink-0" />
+          ) : (
+            <Heart className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+          )}
+          <span className="tracking-tight whitespace-nowrap">{bleConnectingType === 'hr' ? 'Spajam HR...' : 'Pulsmetar'}</span>
         </button>
 
         <div className="flex items-center gap-1 shrink-0">
           <button
+            type="button"
             onClick={connectZwiftClick}
             title={
               zwiftClickState.connected
@@ -1825,8 +2223,18 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
             }`}
           >
             <span className={`w-2 h-2 rounded-full shrink-0 ${zwiftClickState.connected ? 'bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.9)]' : 'bg-zinc-600'}`} />
-            <Gamepad2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span className="tracking-tight whitespace-nowrap">{zwiftClickState.connected ? (zwiftClickState.deviceName || 'Zwift Click') : 'Zwift Click'}</span>
+            {bleConnectingType === 'click' ? (
+              <Loader2 className="w-3.5 h-3.5 text-sky-400 animate-spin shrink-0" />
+            ) : (
+              <Gamepad2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+            )}
+            <span className="tracking-tight whitespace-nowrap">
+              {bleConnectingType === 'click'
+                ? 'Spajam Click...'
+                : zwiftClickState.connected
+                ? (zwiftClickState.deviceName || 'Zwift Click')
+                : 'Zwift Click'}
+            </span>
             {zwiftClickState.connected && zwiftClickState.batteryLevel != null && (
               <span className="text-[10px] font-mono telemetry-num text-volt-300 bg-volt-400/10 px-1.5 py-0.5 rounded border border-volt-400/25 flex items-center gap-0.5">
                 <Battery className="w-3 h-3" /> {zwiftClickState.batteryLevel}%
@@ -1834,6 +2242,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
             )}
           </button>
           <button
+            type="button"
             onClick={() => setShowClickSettings(v => !v)}
             title="Postavke virtualnog mjenjača i kalibracija Zwift Click tipki"
             className={`p-1.5 md:p-2 short:p-1.5 rounded-lg border text-xs font-bold transition-colors shrink-0 ${
@@ -1850,8 +2259,8 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           <button
             type="button"
             onClick={toggleFullscreen}
-            title={isFullscreen ? 'Izađi iz punog zaslona (tipka F)' : 'Puni zaslon za TV / garažu (tipka F)'}
-            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg border font-mono text-[11px] font-bold uppercase tracking-wider transition-all ${
+            title={isFullscreen ? 'Izađi iz punog zaslona (tipka F ili Esc)' : 'Puni zaslon za TV / garažu (tipka F)'}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg border font-mono text-[11px] font-bold uppercase tracking-wider transition-all ${
               isFullscreen
                 ? 'bg-volt-400/15 text-volt-400 border-volt-400/40'
                 : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-300 hover:text-volt-400 border-zinc-800'
@@ -1870,7 +2279,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
             </div>
             {onClose && (
               <button
-                onClick={onClose}
+                type="button"
+                onClick={() => {
+                  exitAllFullscreen();
+                  onClose();
+                }}
                 className="px-2.5 md:px-3 py-1.5 md:py-2 short:py-1 bg-zinc-900 hover:bg-zinc-800 hover:text-white transition-colors text-zinc-400 font-bold text-xs border-l border-zinc-800 flex items-center gap-1.5"
               >
                 <X className="w-3.5 h-3.5 md:w-4 md:h-4" /> <span className="hidden lg:inline">Zatvori</span>
@@ -1879,6 +2292,24 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
           </div>
         </div>
       </div>
+
+      {/* OBAVIJEST O BLUETOOTH GREŠCI (bez window.alert koji gasi Fullscreen i blokira dretvu) */}
+      {bleErrorBanner && !fullscreenBleModal && (
+        <div className="bg-rose-950/60 border border-rose-500/45 text-rose-200 rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between gap-2 shrink-0 animate-in fade-in">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{bleErrorBanner}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBleErrorBanner(null)}
+            className="p-1 rounded hover:bg-rose-500/20 text-rose-300 shrink-0"
+            title="Sakrij obavijest"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* ZWIFT CLICK POSTAVKE, DIJAGNOSTIKA I KALIBRACIJA TIPKI */}
       {showClickSettings && (
