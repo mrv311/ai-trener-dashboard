@@ -995,10 +995,30 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         </div>
 
         {/* Week navigation */}
-        <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 gap-1">
-          <button onClick={goWeekBack} title="Prošli tjedan" className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-          <button onClick={goToday} title="Idi na današnji tjedan" className="px-3.5 py-1 hover:bg-zinc-800 rounded text-[11px] font-mono font-bold text-volt-400 uppercase tracking-wider transition-colors">Danas</button>
-          <button onClick={goWeekForward} title="Sljedeći tjedan" className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors"><ChevronRight className="w-4 h-4" /></button>
+        <div className="flex items-stretch bg-zinc-900 rounded-lg p-1 border border-zinc-800 gap-1">
+          <button
+            onClick={goWeekBack}
+            title="Prošli tjedan (-7 dana)"
+            className="px-2 py-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors flex flex-col items-center justify-center gap-0.5 group/nav"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-zinc-500 group-hover/nav:text-zinc-300 leading-none">-1 tjedan</span>
+          </button>
+          <button
+            onClick={goToday}
+            title="Idi na današnji tjedan"
+            className="px-3 py-1 hover:bg-zinc-800 rounded text-[11px] font-mono font-bold text-volt-400 uppercase tracking-wider transition-colors flex flex-col items-center justify-center border-x border-zinc-800/80"
+          >
+            <span>Danas</span>
+          </button>
+          <button
+            onClick={goWeekForward}
+            title="Sljedeći tjedan (+7 dana)"
+            className="px-2 py-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors flex flex-col items-center justify-center gap-0.5 group/nav"
+          >
+            <ChevronRight className="w-4 h-4" />
+            <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-zinc-500 group-hover/nav:text-zinc-300 leading-none">+1 tjedan</span>
+          </button>
         </div>
       </div>
 
