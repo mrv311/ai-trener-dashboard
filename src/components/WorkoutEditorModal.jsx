@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Save, Pencil, Eye, Database, Check } from 'lucide-react';
-import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
+import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty, resolveStepPowerPct } from '../utils/workoutParser';
 import { supabase } from '../services/supabaseClient';
 
 
@@ -19,46 +19,14 @@ function formatDuration(secs) {
   return parts.join('') || '0m';
 }
 
-function formatPower(power, ftp = 200) {
-  if (!power) return '50%';
-  if (typeof power === 'number') return `${Math.round(power)}%`;
-  if (typeof power === 'string') {
-    if (power.includes('-')) return power.endsWith('%') ? power : `${power}%`;
-    return `${Math.round(parseFloat(power) || 50)}%`;
-  }
-  if (typeof power === 'object') {
-    const rawMin = power.min ?? power.start ?? power.low;
-    const rawMax = power.max ?? power.end ?? power.high;
-    const units = String(power.units || '').toLowerCase();
-
-    const toPct = (val) => {
-      const n = Number(val);
-      if (!Number.isFinite(n) || n <= 0) return null;
-      if (units === 'w' || units === 'watts') return Math.round((n / (ftp || 200)) * 100);
-      if (n > 0 && n <= 3) return Math.round(n * 100);
-      return Math.round(n);
-    };
-
-    const pMin = toPct(rawMin);
-    const pMax = toPct(rawMax);
-
-    if (pMin != null && pMax != null) {
-      if (pMin !== pMax) return `${pMin}-${pMax}%`;
-      return `${pMin}%`;
-    }
-
-    if (power.value != null && Number(power.value) > 0) {
-      const pVal = toPct(power.value);
-      if (pVal != null) return `${pVal}%`;
-    }
-
-    if (pMin != null) return `${pMin}%`;
-    if (pMax != null) return `${pMax}%`;
-  }
-  return '50%';
+function formatStepPower(step, ftp = 200, docFtp = null) {
+  const norm = resolveStepPowerPct(step, ftp, docFtp);
+  const pwr = norm.min !== norm.max ? `${norm.min}-${norm.max}%` : `${norm.avg}%`;
+  const isRamp = !!(step.ramp || (step.power && step.power.ramp));
+  return isRamp && norm.min !== norm.max ? `ramp ${pwr}` : pwr;
 }
 
-function stepsToTextLines(steps, indent = '', ftp = 200) {
+function stepsToTextLines(steps, indent = '', ftp = 200, docFtp = null) {
   const lines = [];
   if (!steps || !Array.isArray(steps)) return lines;
 
@@ -73,14 +41,14 @@ function stepsToTextLines(steps, indent = '', ftp = 200) {
       if (reps > 1) {
         lines.push(`${indent}${reps}x`);
       }
-      const subLines = stepsToTextLines(step.steps, indent, ftp);
+      const subLines = stepsToTextLines(step.steps, indent, ftp, docFtp);
       lines.push(...subLines);
+      // Prazan red zatvara Nx blok (inače parser ponavlja i korake nakon bloka)
+      if (reps > 1) lines.push('');
     } else {
       // Pojedinačni korak
       const dur = formatDuration(step.duration || 0);
-      const pwr = (step.powerMin != null && step.powerMax != null && step.powerMin !== step.powerMax)
-        ? `${step.powerMin}-${step.powerMax}%`
-        : formatPower(step.power || step._power, ftp);
+      const pwr = formatStepPower(step, ftp, docFtp);
       const text = step.text ? ` ${step.text}` : '';
       lines.push(`${indent}- ${dur} ${pwr}${text}`);
     }
@@ -99,16 +67,14 @@ function workoutDocToCode(workoutDoc, ftp = 200) {
 
   // Intervals.icu format: { steps: [...] }
   if (workoutDoc.steps && Array.isArray(workoutDoc.steps)) {
-    return stepsToTextLines(workoutDoc.steps, '', ftp).join('\n');
+    return stepsToTextLines(workoutDoc.steps, '', ftp, workoutDoc.ftp).join('\n');
   }
 
   // Direktni niz koraka (lokalni format: [{ name, duration, power, powerMin, powerMax }])
   if (Array.isArray(workoutDoc)) {
     return workoutDoc.map(step => {
       const dur = formatDuration(step.duration || 0);
-      const pwr = (step.powerMin != null && step.powerMax != null && step.powerMin !== step.powerMax)
-        ? `${step.powerMin}-${step.powerMax}%`
-        : formatPower(step.power || step._power, ftp);
+      const pwr = formatStepPower(step, ftp);
       const name = step.name ? ` ${step.name}` : '';
       return `- ${dur} ${pwr}${name}`;
     }).join('\n');

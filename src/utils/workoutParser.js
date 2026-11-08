@@ -2,6 +2,34 @@ import { calculateCogganMetrics, expandStepsToSeconds } from './performanceMetri
 
 // Očekivani izlaz: { title, description, duration_seconds, difficulty_score, steps: [{ name, duration, power }] }
 
+// Zadane Intervals.icu (Coggan) power zone u % FTP-a: [donja, gornja] granica
+const DEFAULT_POWER_ZONES = {
+  1: [45, 55],
+  2: [56, 75],
+  3: [76, 90],
+  4: [91, 105],
+  5: [106, 120],
+  6: [121, 150],
+  7: [151, 200]
+};
+
+const isZoneUnits = (u) => u === 'power_zone' || u === 'zone' || u === 'z';
+const isWattUnits = (u) => u === 'w' || u === 'watts' || u === 'watt';
+const isFtpPctUnits = (u) => u === '%ftp' || u === 'ftp' || u === '%' || u === 'percent_ftp';
+// Jedinice koje NE opisuju snagu (puls, tempo, % MMP...) — iz njih ne možemo izračunati % FTP-a
+const isNonPowerUnits = (u) => !!u && !isZoneUnits(u) && !isWattUnits(u) && !isFtpPctUnits(u);
+
+/**
+ * Pretvara zonu (npr. 2 ili 2.5) u raspon % FTP-a.
+ */
+function zoneToPctRange(zoneVal) {
+  const z = Number(zoneVal);
+  if (!Number.isFinite(z) || z <= 0) return null;
+  const zi = Math.min(7, Math.max(1, Math.round(z)));
+  const [lo, hi] = DEFAULT_POWER_ZONES[zi];
+  return { min: lo, max: hi };
+}
+
 export function normalizeStepPowerPct(power, ftp = 200) {
   const validFtp = Number(ftp) > 0 ? Number(ftp) : 200;
   if (power == null) return { avg: 50, min: 50, max: 50, isRange: false };
@@ -15,11 +43,29 @@ export function normalizeStepPowerPct(power, ftp = 200) {
     const num = Number(cleanVal);
     if (!Number.isFinite(num) || num <= 0) return null;
     const u = String(units || '').toLowerCase();
-    if (u === 'w' || u === 'watts') return Math.round((num / validFtp) * 100);
-    // Ako je broj u decimalnom zapisu (npr. 0.65 = 65% FTP)
-    if (num > 0 && num <= 3) return Math.round(num * 100);
+    if (isWattUnits(u)) return Math.round((num / validFtp) * 100);
+    // Decimalni zapis (0.65 = 65% FTP) dopuštamo SAMO kad jedinice nisu navedene
+    if (!u && num <= 3) return Math.round(num * 100);
     return Math.round(num);
   };
+
+  // Zone (Intervals.icu "Z2" → { value: 2, units: "power_zone" }) — mapiramo u raspon % FTP-a
+  if (power && typeof power === 'object') {
+    const u = String(power.units || '').toLowerCase();
+    if (isZoneUnits(u)) {
+      const zLo = zoneToPctRange(power.start ?? power.min ?? power.value);
+      const zHi = zoneToPctRange(power.end ?? power.max ?? power.value);
+      if (zLo && zHi) {
+        const minVal = Math.min(zLo.min, zHi.min);
+        const maxVal = Math.max(zLo.max, zHi.max);
+        return { avg: Math.round((minVal + maxVal) / 2), min: minVal, max: maxVal, isRange: minVal !== maxVal };
+      }
+      return { avg: 50, min: 50, max: 50, isRange: false };
+    }
+    if (isNonPowerUnits(u)) {
+      return null; // pozivatelj treba koristiti _power ili zadani fallback
+    }
+  }
 
   // 1. Ako je power string tipa "65-75%" ili "65%-75%" ili "70%"
   if (typeof power === 'string') {
@@ -86,7 +132,55 @@ export function normalizeStepPowerPct(power, ftp = 200) {
   return { avg: 50, min: 50, max: 50, isRange: false };
 }
 
-export function flattenStructuredSteps(stepsArray, ftp = 200) {
+/**
+ * Određuje % FTP raspon jednog koraka iz Intervals.icu / lokalnog formata.
+ * Redoslijed: eksplicitni powerMin/Max → power (%ftp / W / zona) → _power (vati koje je Intervals razriješio) → 50%.
+ * docFtp = FTP s kojim je Intervals.icu računao _power vate (workout_doc.ftp).
+ */
+export function resolveStepPowerPct(step, ftp = 200, docFtp = null) {
+  if (!step) return { avg: 50, min: 50, max: 50, isRange: false };
+
+  if (step.powerMin != null && step.powerMax != null && Number(step.powerMin) > 0 && Number(step.powerMax) > 0) {
+    const mn = Math.round(Number(step.powerMin));
+    const mx = Math.round(Number(step.powerMax));
+    const avg = typeof step.power === 'number' && step.power > 0 ? Math.round(step.power) : Math.round((mn + mx) / 2);
+    return { avg, min: Math.min(mn, mx), max: Math.max(mn, mx), isRange: mn !== mx };
+  }
+
+  const powerUnits = step.power && typeof step.power === 'object' ? String(step.power.units || '').toLowerCase() : '';
+  const preferResolved = step._power && (isZoneUnits(powerUnits) || isNonPowerUnits(powerUnits));
+
+  if (step.power != null && !preferResolved) {
+    const res = normalizeStepPowerPct(step.power, ftp);
+    if (res) return res;
+  }
+
+  // Fallback: Intervals.icu razriješeni vati (_power: { start, end } ili { value })
+  if (step._power && typeof step._power === 'object') {
+    const baseFtp = Number(docFtp) > 0 ? Number(docFtp) : (Number(ftp) > 0 ? Number(ftp) : 200);
+    const toPct = (w) => {
+      const n = Number(w);
+      return Number.isFinite(n) && n > 0 ? Math.round((n / baseFtp) * 100) : null;
+    };
+    const lo = toPct(step._power.start ?? step._power.min ?? step._power.value);
+    const hi = toPct(step._power.end ?? step._power.max ?? step._power.value);
+    if (lo != null && hi != null) {
+      const mn = Math.min(lo, hi);
+      const mx = Math.max(lo, hi);
+      return { avg: Math.round((mn + mx) / 2), min: mn, max: mx, isRange: mn !== mx };
+    }
+  }
+
+  // Zona bez _power → zadana tablica zona
+  if (step.power != null && preferResolved) {
+    const res = normalizeStepPowerPct(step.power, ftp);
+    if (res) return res;
+  }
+
+  return { avg: 50, min: 50, max: 50, isRange: false };
+}
+
+export function flattenStructuredSteps(stepsArray, ftp = 200, docFtp = null) {
   const flat = [];
   if (!Array.isArray(stepsArray)) return flat;
 
@@ -94,7 +188,7 @@ export function flattenStructuredSteps(stepsArray, ftp = 200) {
     if (!step) return;
     if (Array.isArray(step.steps) && step.steps.length > 0) {
       const reps = Math.max(1, parseInt(step.reps || step.count || 1, 10) || 1);
-      const inner = flattenStructuredSteps(step.steps, ftp);
+      const inner = flattenStructuredSteps(step.steps, ftp, docFtp);
       for (let r = 0; r < reps; r++) {
         inner.forEach(s => flat.push({ ...s }));
       }
@@ -104,18 +198,13 @@ export function flattenStructuredSteps(stepsArray, ftp = 200) {
     const dur = Math.max(0, Math.round(Number(step.duration) || 0));
     if (dur <= 0) return;
 
-    // Uzmi power objekt ili _power ako je Intervals.icu ubacio riješene vrijednosti
-    const rawPower = step.power || step._power;
-    const pwr = normalizeStepPowerPct(rawPower, ftp);
-    const pMin = step.powerMin != null ? Math.round(Number(step.powerMin)) : pwr.min;
-    const pMax = step.powerMax != null ? Math.round(Number(step.powerMax)) : pwr.max;
+    const pwr = resolveStepPowerPct(step, ftp, docFtp);
+    const pMin = pwr.min;
+    const pMax = pwr.max;
     const isRange = pMin !== pMax;
-    // pAvg predstavlja srednju snagu bloka
-    const pAvg = (typeof step.power === 'number' && !isRange)
-      ? pwr.avg
-      : (pwr.avg || Math.round((pMin + pMax) / 2));
+    const pAvg = pwr.avg || Math.round((pMin + pMax) / 2);
 
-    const isRamp = !!(step.ramp || (step.power && step.power.ramp));
+    const isRamp = !!(step.ramp || (step.power && step.power.ramp) || /\bramp\b/i.test(step.text || ''));
 
     flat.push({
       name: step.name || step.text || (pMin >= 85 ? 'Interval' : (pMax <= 75 ? 'Oporavak' : 'Tempo')),
@@ -141,7 +230,8 @@ export const extractIntensityData = (workoutDoc) => {
   } else if (typeof workoutDoc === 'string') {
     allSteps = parseIntervalsCode(workoutDoc).allSteps;
   } else if (workoutDoc.steps && Array.isArray(workoutDoc.steps)) {
-    allSteps = flattenStructuredSteps(workoutDoc.steps);
+    const docFtp = Number(workoutDoc.ftp) > 0 ? Number(workoutDoc.ftp) : 200;
+    allSteps = flattenStructuredSteps(workoutDoc.steps, docFtp, docFtp);
   }
 
   const arr = [];
@@ -184,16 +274,9 @@ function stepsToTextLines(steps, indent = '', ftp = 200) {
         if (s > 0 && h === 0) parts.push(`${s}s`);
         return parts.join('') || '0m';
       };
-      const formatPower = (power) => {
-        const norm = normalizeStepPowerPct(power, ftp);
-        if (norm.isRange || norm.min !== norm.max) return `${norm.min}-${norm.max}%`;
-        return `${norm.avg}%`;
-      };
-
       const dur = formatDuration(step.duration || 0);
-      const pwr = (step.powerMin != null && step.powerMax != null && step.powerMin !== step.powerMax)
-        ? `${step.powerMin}-${step.powerMax}%`
-        : formatPower(step.power || step._power);
+      const norm = resolveStepPowerPct(step, ftp);
+      const pwr = norm.min !== norm.max ? `${norm.min}-${norm.max}%` : `${norm.avg}%`;
       const text = (step.text || step.name) ? ` ${step.text || step.name}` : '';
       lines.push(`${indent}- ${dur} ${pwr}${text}`);
     }
@@ -244,7 +327,7 @@ export const parseWorkoutDoc = (workoutDoc, ftp = 200) => {
     return parseIntervalsCode(workoutDoc, ftp);
   }
   if (workoutDoc.steps && Array.isArray(workoutDoc.steps)) {
-    const flat = flattenStructuredSteps(workoutDoc.steps, ftp);
+    const flat = flattenStructuredSteps(workoutDoc.steps, ftp, workoutDoc.ftp);
     return buildMetricsFromSteps(flat, ftp);
   }
   return null;

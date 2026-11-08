@@ -55,7 +55,7 @@ export const fetchIntervalsData = async (intervalsId, intervalsKey, options = {}
   }
 
   const actUrl = `https://intervals.icu/api/v1/athlete/${cleanId}/activities?oldest=${oldest}&newest=${newest}`;
-  const evUrl = `https://intervals.icu/api/v1/athlete/${cleanId}/events?oldest=${oldest}&newest=${newest}`;
+  const evUrl = `https://intervals.icu/api/v1/athlete/${cleanId}/events?oldest=${oldest}&newest=${newest}&resolve=true`;
   const wellUrl = `https://intervals.icu/api/v1/athlete/${cleanId}/wellness?oldest=${oldest}&newest=${newest}`;
   const athUrl = `https://intervals.icu/api/v1/athlete/${cleanId}`;
 

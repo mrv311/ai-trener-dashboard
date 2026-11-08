@@ -95,11 +95,32 @@ export function expandStepsToSeconds(steps, ftp) {
   if (!Array.isArray(steps)) return result;
   const validFtp = ftp && ftp > 0 ? ftp : 200;
 
+  // Sirovi power objekt (Intervals.icu) → [min, max] u % FTP-a (ili null ako nije snaga)
+  const ZONE_PCT = { 1: [45, 55], 2: [56, 75], 3: [76, 90], 4: [91, 105], 5: [106, 120], 6: [121, 150], 7: [151, 200] };
+  const objToPctRange = (p) => {
+    if (!p || typeof p !== 'object') return null;
+    const u = String(p.units || '').toLowerCase();
+    const lo = p.min ?? p.start ?? p.low ?? p.value;
+    const hi = p.max ?? p.end ?? p.high ?? p.value;
+    if (lo == null || hi == null) return null;
+    if (u === 'power_zone' || u === 'zone') {
+      const zl = ZONE_PCT[Math.min(7, Math.max(1, Math.round(Number(lo) || 1)))];
+      const zh = ZONE_PCT[Math.min(7, Math.max(1, Math.round(Number(hi) || 1)))];
+      return [zl[0], zh[1]];
+    }
+    if (u === 'w' || u === 'watts') return [(Number(lo) / validFtp) * 100, (Number(hi) / validFtp) * 100];
+    if (!u || u === '%ftp' || u === 'ftp' || u === '%') {
+      const conv = (v) => (!u && Number(v) > 0 && Number(v) <= 3 ? Number(v) * 100 : Number(v));
+      return [conv(lo), conv(hi)];
+    }
+    return null; // puls / tempo — nije snaga
+  };
+
+  // Ulaz u ovu funkciju je % FTP-a (ili decimalni omjer), nikad apsolutni vati
   const toWatts = (val) => {
     const num = Number(val) || 0;
     if (num > 0 && num <= 3) return num * validFtp; // decimalni omjer (npr. 0.85)
-    if (num >= 0 && num <= 300) return (num / 100) * validFtp; // % FTP-a
-    return num; // apsolutni wati (>300)
+    return (num / 100) * validFtp; // % FTP-a
   };
 
   steps.forEach(step => {
@@ -107,8 +128,12 @@ export function expandStepsToSeconds(steps, ftp) {
     const durSec = Math.max(0, Math.round(Number(step.duration) || 0));
     if (durSec <= 0) return;
 
-    const pMin = step.powerMin ?? (typeof step.power === 'object' && step.power ? (step.power.min ?? step.power.start ?? step.power.low) : null);
-    const pMax = step.powerMax ?? (typeof step.power === 'object' && step.power ? (step.power.max ?? step.power.end ?? step.power.high) : null);
+    let pMin = step.powerMin != null && Number(step.powerMin) > 0 ? Number(step.powerMin) : null;
+    let pMax = step.powerMax != null && Number(step.powerMax) > 0 ? Number(step.powerMax) : null;
+    if ((pMin == null || pMax == null) && typeof step.power === 'object' && step.power) {
+      const r = objToPctRange(step.power);
+      if (r) { pMin = r[0]; pMax = r[1]; }
+    }
     const hasRamp = !!(step.ramp || (step.power && step.power.ramp));
 
     if (hasRamp && pMin != null && pMax != null && pMin !== pMax && durSec > 1) {
@@ -119,23 +144,15 @@ export function expandStepsToSeconds(steps, ftp) {
       }
     } else if (pMin != null && pMax != null && pMin !== pMax) {
       // Za statički raspon (npr. 65-75%), koristimo srednju vrijednost za metrike (NP, TSS)
-      const avgW = toWatts((Number(pMin) + Number(pMax)) / 2);
+      const avgW = toWatts((pMin + pMax) / 2);
       for (let i = 0; i < durSec; i++) {
         result.push(avgW);
       }
     } else {
       let rawPwr = 50;
-      if (typeof step.power === 'object' && step.power !== null) {
-        const val = step.power.value;
-        const pM = step.power.min ?? step.power.start ?? step.power.low;
-        const pX = step.power.max ?? step.power.end ?? step.power.high;
-        if (pM != null && pX != null) rawPwr = (Number(pM) + Number(pX)) / 2;
-        else if (val != null && Number(val) > 0) rawPwr = Number(val);
-        else if (pM != null) rawPwr = Number(pM);
-        else if (pX != null) rawPwr = Number(pX);
-      } else if (step.power != null && Number(step.power) > 0) {
-        rawPwr = Number(step.power);
-      }
+      if (typeof step.power === 'number' && step.power > 0) rawPwr = step.power;
+      else if (pMin != null) rawPwr = pMin;
+      else if (step.power != null && typeof step.power !== 'object' && Number(step.power) > 0) rawPwr = Number(step.power);
       const watts = toWatts(rawPwr);
       for (let i = 0; i < durSec; i++) {
         result.push(watts);

@@ -5,7 +5,7 @@ import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer, calculateCogganMetrics, calculateEF, calculateVI, calculateAerobicDecoupling } from '../utils/performanceMetrics';
 import { exportToTCX, exportToFIT, buildFitUint8Array } from '../utils/exportUtils';
 import { calculateDistanceStream } from '../utils/virtualDistance';
-import { parseIntervalsCode, flattenStructuredSteps, normalizeStepPowerPct } from '../utils/workoutParser';
+import { parseIntervalsCode, flattenStructuredSteps, resolveStepPowerPct } from '../utils/workoutParser';
 import { uploadActivityToIntervals } from '../services/intervalsApi';
 import { supabase } from '../services/supabaseClient';
 import {
@@ -487,29 +487,23 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     let parsedRecipe = [];
 
     if (workoutFromCalendar.workout_doc && workoutFromCalendar.workout_doc.steps) {
-      // Intervals API struktura (workout_doc.steps)
-      parsedRecipe = flattenStructuredSteps(workoutFromCalendar.workout_doc.steps, currentFtp);
+      // Intervals API struktura (workout_doc.steps) — zone / %FTP / vati / _power
+      parsedRecipe = flattenStructuredSteps(workoutFromCalendar.workout_doc.steps, currentFtp, workoutFromCalendar.workout_doc.ftp);
     } else if (workoutFromCalendar.steps && Array.isArray(workoutFromCalendar.steps)) {
       // Supabase / Library / prethodno parsirani koraci
       parsedRecipe = workoutFromCalendar.steps.map(s => {
-        const rawPower = s.power || s._power;
-        const pwr = normalizeStepPowerPct(rawPower ?? s.powerMin, currentFtp);
-        const pMin = s.powerMin != null ? Math.round(Number(s.powerMin)) : pwr.min;
-        const pMax = s.powerMax != null ? Math.round(Number(s.powerMax)) : pwr.max;
-        const isRange = pMin !== pMax;
-        const pAvg = (typeof s.power === 'number' && !isRange)
-          ? Math.round(s.power)
-          : (pwr.avg || Math.round((pMin + pMax) / 2));
+        const pwr = resolveStepPowerPct(s, currentFtp);
+        const isRange = pwr.min !== pwr.max;
 
         return {
           ...s,
-          name: s.name || s.text || (pMin >= 85 ? 'Radni Interval' : (pMax <= 75 ? 'Oporavak' : 'Tempo')),
+          name: s.name || s.text || (pwr.min >= 85 ? 'Radni Interval' : (pwr.max <= 75 ? 'Oporavak' : 'Tempo')),
           duration: s.duration || 60,
-          power: pAvg,
-          powerMin: pMin,
-          powerMax: pMax,
+          power: pwr.avg,
+          powerMin: pwr.min,
+          powerMax: pwr.max,
           isRange,
-          ramp: !!(s.ramp || (s.power && s.power.ramp))
+          ramp: !!(s.ramp || (s.power && s.power.ramp) || /\bramp\b/i.test(s.text || ''))
         };
       });
     } else if (typeof workoutFromCalendar.workout_doc === 'string' && workoutFromCalendar.workout_doc.trim()) {

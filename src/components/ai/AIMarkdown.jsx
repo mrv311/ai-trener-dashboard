@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CalendarPlus, Play, Check, Clock, Activity } from 'lucide-react';
-import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty } from '../../utils/workoutParser';
+import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty, resolveStepPowerPct } from '../../utils/workoutParser';
 
 /**
  * Pretvara strukturirani niz koraka (npr. iz AI JSON plana) u Intervals.icu tekstualni kod.
@@ -17,22 +17,11 @@ export function stepsToIntervalsCode(steps) {
     else durStr = `${remSec}s`;
 
     let pwrStr = '50%';
-    if (st.powerMin && st.powerMax && st.powerMin !== st.powerMax) {
-      pwrStr = `${st.powerMin}-${st.powerMax}%`;
-    } else if (typeof st.power === 'number') {
-      pwrStr = `${Math.round(st.power)}%`;
-    } else if (typeof st.power === 'object' && st.power) {
-      const pMin = st.power.min ?? st.power.start ?? st.power.low;
-      const pMax = st.power.max ?? st.power.end ?? st.power.high;
-      if (pMin != null && pMax != null && pMin !== pMax) {
-        pwrStr = `${Math.round(pMin)}-${Math.round(pMax)}%`;
-      } else if (st.power.value != null && Number(st.power.value) > 0) {
-        pwrStr = `${Math.round(st.power.value)}%`;
-      } else if (pMin != null) {
-        pwrStr = `${Math.round(pMin)}%`;
-      }
-    } else if (st.power) {
-      pwrStr = `${st.power}%`;
+    if (typeof st.power === 'string' && st.power.trim()) {
+      pwrStr = st.power.includes('%') ? st.power : `${st.power}%`;
+    } else {
+      const norm = resolveStepPowerPct(st);
+      pwrStr = norm.min !== norm.max ? `${norm.min}-${norm.max}%` : `${norm.avg}%`;
     }
 
     const label = st.name || st.text ? ` ${st.name || st.text}` : '';
