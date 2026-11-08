@@ -1,42 +1,92 @@
-import { calculateCogganMetrics, expandStepsToSeconds } from './performanceMetrics';
+import { calculateCogganMetrics, expandStepsToSeconds } from './performanceMetrics.js';
 
 // Očekivani izlaz: { title, description, duration_seconds, difficulty_score, steps: [{ name, duration, power }] }
 
-function normalizeStepPowerPct(power, ftp = 200) {
+export function normalizeStepPowerPct(power, ftp = 200) {
   const validFtp = Number(ftp) > 0 ? Number(ftp) : 200;
-  if (power == null) return { avg: 50, min: 50, max: 50 };
+  if (power == null) return { avg: 50, min: 50, max: 50, isRange: false };
 
   const conv = (val, units = '') => {
-    const num = Number(val);
-    if (!Number.isFinite(num) || num <= 0) return 50;
+    if (val == null) return null;
+    let cleanVal = val;
+    if (typeof cleanVal === 'string') {
+      cleanVal = cleanVal.replace('%', '').trim();
+    }
+    const num = Number(cleanVal);
+    if (!Number.isFinite(num) || num <= 0) return null;
     const u = String(units || '').toLowerCase();
     if (u === 'w' || u === 'watts') return Math.round((num / validFtp) * 100);
-    if (!u && num > 0 && num <= 3) return Math.round(num * 100);
+    // Ako je broj u decimalnom zapisu (npr. 0.65 = 65% FTP)
+    if (num > 0 && num <= 3) return Math.round(num * 100);
     return Math.round(num);
   };
 
-  if (typeof power === 'number') {
-    const p = conv(power);
-    return { avg: p, min: p, max: p };
+  // 1. Ako je power string tipa "65-75%" ili "65%-75%" ili "70%"
+  if (typeof power === 'string') {
+    const rangeMatch = power.match(/(\d+(?:\.\d+)?)\s*[%]?\s*-\s*(\d+(?:\.\d+)?)\s*[%]?/);
+    if (rangeMatch) {
+      const pMin = conv(rangeMatch[1]);
+      const pMax = conv(rangeMatch[2]);
+      if (pMin != null && pMax != null) {
+        const minVal = Math.min(pMin, pMax);
+        const maxVal = Math.max(pMin, pMax);
+        return {
+          avg: Math.round((minVal + maxVal) / 2),
+          min: minVal,
+          max: maxVal,
+          isRange: minVal !== maxVal
+        };
+      }
+    }
+    const single = conv(power);
+    if (single != null) return { avg: single, min: single, max: single, isRange: false };
   }
 
+  // 2. Ako je power običan broj
+  if (typeof power === 'number') {
+    const p = conv(power) || 50;
+    return { avg: p, min: p, max: p, isRange: false };
+  }
+
+  // 3. Ako je power objekt (Intervals.icu / Zwift format)
   if (typeof power === 'object') {
     const units = power.units || '';
-    if (power.start != null && power.end != null) {
-      const pMin = conv(power.start, units);
-      const pMax = conv(power.end, units);
-      return { avg: Math.round((pMin + pMax) / 2), min: pMin, max: pMax };
+
+    // Provjeri min/max raspon (Intervals.icu { min: 65, max: 75, units: "%ftp" } ili { start: 65, end: 75 })
+    const rawMin = power.min ?? power.start ?? power.low;
+    const rawMax = power.max ?? power.end ?? power.high;
+
+    const pMin = conv(rawMin, units);
+    const pMax = conv(rawMax, units);
+
+    if (pMin != null && pMax != null && (pMin > 0 || pMax > 0)) {
+      const minVal = Math.min(pMin, pMax);
+      const maxVal = Math.max(pMin, pMax);
+      return {
+        avg: Math.round((minVal + maxVal) / 2),
+        min: minVal,
+        max: maxVal,
+        isRange: minVal !== maxVal
+      };
     }
-    if (power.value != null) {
+
+    // Fiksna vrijednost (ako postoji i veća je od 0 — ignoriramo ako je 0 ili null)
+    if (power.value != null && Number(power.value) > 0) {
       const p = conv(power.value, units);
-      return { avg: p, min: p, max: p };
+      if (p != null && p > 0) {
+        return { avg: p, min: p, max: p, isRange: false };
+      }
     }
+
+    // Pojedinačni fallback na min ili max ako samo jedan postoji
+    if (pMin != null && pMin > 0) return { avg: pMin, min: pMin, max: pMin, isRange: false };
+    if (pMax != null && pMax > 0) return { avg: pMax, min: pMax, max: pMax, isRange: false };
   }
 
-  return { avg: 50, min: 50, max: 50 };
+  return { avg: 50, min: 50, max: 50, isRange: false };
 }
 
-function flattenStructuredSteps(stepsArray, ftp = 200) {
+export function flattenStructuredSteps(stepsArray, ftp = 200) {
   const flat = [];
   if (!Array.isArray(stepsArray)) return flat;
 
@@ -54,18 +104,28 @@ function flattenStructuredSteps(stepsArray, ftp = 200) {
     const dur = Math.max(0, Math.round(Number(step.duration) || 0));
     if (dur <= 0) return;
 
-    const pwr = normalizeStepPowerPct(step.power, ftp);
+    // Uzmi power objekt ili _power ako je Intervals.icu ubacio riješene vrijednosti
+    const rawPower = step.power || step._power;
+    const pwr = normalizeStepPowerPct(rawPower, ftp);
     const pMin = step.powerMin != null ? Math.round(Number(step.powerMin)) : pwr.min;
     const pMax = step.powerMax != null ? Math.round(Number(step.powerMax)) : pwr.max;
-    const pAvg = typeof step.power === 'number' ? pwr.avg : (pwr.avg || Math.round((pMin + pMax) / 2));
+    const isRange = pMin !== pMax;
+    // pAvg predstavlja srednju snagu bloka
+    const pAvg = (typeof step.power === 'number' && !isRange)
+      ? pwr.avg
+      : (pwr.avg || Math.round((pMin + pMax) / 2));
+
+    const isRamp = !!(step.ramp || (step.power && step.power.ramp));
 
     flat.push({
-      name: step.name || step.text || (pAvg >= 85 ? 'Interval' : 'Oporavak'),
+      name: step.name || step.text || (pMin >= 85 ? 'Interval' : (pMax <= 75 ? 'Oporavak' : 'Tempo')),
       text: step.text || step.name || '',
       duration: dur,
       power: pAvg,
       powerMin: pMin,
-      powerMax: pMax
+      powerMax: pMax,
+      isRange,
+      ramp: isRamp
     });
   });
 
@@ -126,12 +186,14 @@ function stepsToTextLines(steps, indent = '', ftp = 200) {
       };
       const formatPower = (power) => {
         const norm = normalizeStepPowerPct(power, ftp);
-        if (norm.min !== norm.max) return `${norm.min}-${norm.max}%`;
+        if (norm.isRange || norm.min !== norm.max) return `${norm.min}-${norm.max}%`;
         return `${norm.avg}%`;
       };
 
       const dur = formatDuration(step.duration || 0);
-      const pwr = formatPower(step.power);
+      const pwr = (step.powerMin != null && step.powerMax != null && step.powerMin !== step.powerMax)
+        ? `${step.powerMin}-${step.powerMax}%`
+        : formatPower(step.power || step._power);
       const text = (step.text || step.name) ? ` ${step.text || step.name}` : '';
       lines.push(`${indent}- ${dur} ${pwr}${text}`);
     }
@@ -260,23 +322,32 @@ export const parseIntervalsCode = (code, ftp = 200) => {
     if (sMatch) secs += Math.round(parseFloat(sMatch[1]));
 
     let powerMin = 0, powerMax = 0, powerAvg = 0;
-    const pRangeMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*%/);
-    const pMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*%\s*(?:FTP)?/i);
-    const wRangeMatch = !pRangeMatch && !pMatch ? cleanLine.match(/(\d+)\s*-\s*(\d+)\s*w\b/i) : null;
-    const wMatch = !pRangeMatch && !pMatch && !wRangeMatch ? cleanLine.match(/(\d+)\s*w\b/i) : null;
+    // Podržava 65-75%, 65%-75%, 65% - 75%, 65-75% FTP, ramp 65-75%
+    const pRangeMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*%\s*-\s*(\d+(?:\.\d+)?)\s*%\s*(?:FTP)?/i)
+      || cleanLine.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*%\s*(?:FTP)?/i);
+
+    const wRangeMatch = !pRangeMatch ? (
+      cleanLine.match(/(\d+)\s*w\s*-\s*(\d+)\s*w\b/i)
+      || cleanLine.match(/(\d+)\s*-\s*(\d+)\s*w\b/i)
+    ) : null;
+
+    const pMatch = !pRangeMatch && !wRangeMatch ? cleanLine.match(/(\d+(?:\.\d+)?)\s*%\s*(?:FTP)?/i) : null;
+    const wMatch = !pRangeMatch && !wRangeMatch && !pMatch ? cleanLine.match(/(\d+)\s*w\b/i) : null;
+
+    const isRamp = /\bramp\b/i.test(cleanLine);
 
     if (pRangeMatch) {
       powerMin = Math.round(parseFloat(pRangeMatch[1]));
       powerMax = Math.round(parseFloat(pRangeMatch[2]));
       powerAvg = Math.round((powerMin + powerMax) / 2);
-    } else if (pMatch) {
-      powerMin = Math.round(parseFloat(pMatch[1]));
-      powerMax = powerMin;
-      powerAvg = powerMin;
     } else if (wRangeMatch) {
       powerMin = Math.round((parseInt(wRangeMatch[1], 10) / validFtp) * 100);
       powerMax = Math.round((parseInt(wRangeMatch[2], 10) / validFtp) * 100);
       powerAvg = Math.round((powerMin + powerMax) / 2);
+    } else if (pMatch) {
+      powerMin = Math.round(parseFloat(pMatch[1]));
+      powerMax = powerMin;
+      powerAvg = powerMin;
     } else if (wMatch) {
       powerMin = Math.round((parseInt(wMatch[1], 10) / validFtp) * 100);
       powerMax = powerMin;
@@ -284,12 +355,15 @@ export const parseIntervalsCode = (code, ftp = 200) => {
     }
 
     if (secs > 0) {
+      const isRange = powerMin > 0 && powerMax > 0 && powerMin !== powerMax;
       const stepObj = {
         text: cleanLine,
         duration: secs,
         powerMin: powerMin > 0 ? powerMin : 55,
         powerMax: powerMax > 0 ? powerMax : 55,
-        power: powerAvg > 0 ? powerAvg : 55
+        power: powerAvg > 0 ? powerAvg : 55,
+        isRange,
+        ramp: isRamp
       };
 
       if (activeRepeatCount > 1) {

@@ -588,12 +588,16 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                               const widthP = (wStep.duration / workout.duration_seconds) * 100;
                               const heightP = Math.min(Math.max((wStep.power / 150) * 100, 14), 100);
                               const watts = Math.round((wStep.power / 100) * ftp);
+                              const isRange = wStep.powerMin && wStep.powerMax && wStep.powerMin !== wStep.powerMax;
+                              const minW = isRange ? Math.round((wStep.powerMin / 100) * ftp) : watts;
+                              const maxW = isRange ? Math.round((wStep.powerMax / 100) * ftp) : watts;
+                              const targetStr = isRange ? `${minW}-${maxW}W (${wStep.powerMin}-${wStep.powerMax}%)` : `${watts}W (${wStep.power}%)`;
                               const mins = Math.round(wStep.duration / 60 * 10) / 10;
                               const zBg = getZoneColorForTrainer(wStep.power);
                               return (
                                 <div 
                                   key={i} 
-                                  title={`${wStep.name || 'Segment'}: ${wStep.duration >= 60 ? mins + ' min' : wStep.duration + ' sec'} @ ${watts}W (${wStep.power}%)`}
+                                  title={`${wStep.name || 'Segment'}: ${wStep.duration >= 60 ? mins + ' min' : wStep.duration + ' sec'} @ ${targetStr}`}
                                   style={{ width: `${widthP}%`, height: `${heightP}%` }} 
                                   className="relative overflow-hidden min-w-[2px] border-r border-zinc-950/60"
                                 >
@@ -677,12 +681,16 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                       const widthP = (wStep.duration / selectedDetailWorkout.duration_seconds) * 100;
                       const heightP = Math.min(Math.max((wStep.power / scaleMax) * 100, 5), 100);
                       const watts = Math.round((wStep.power / 100) * ftp);
+                      const isRange = wStep.powerMin && wStep.powerMax && wStep.powerMin !== wStep.powerMax;
+                      const minW = isRange ? Math.round((wStep.powerMin / 100) * ftp) : watts;
+                      const maxW = isRange ? Math.round((wStep.powerMax / 100) * ftp) : watts;
+                      const targetStr = isRange ? `${minW}-${maxW}W (${wStep.powerMin}-${wStep.powerMax}%)` : `${watts}W (${wStep.power}%)`;
                       const mins = Math.round(wStep.duration / 60 * 10) / 10;
                       const zBg = getZoneColorForTrainer(wStep.power);
                       return (
                         <div
                           key={i}
-                          title={`${wStep.name || 'Segment'}: ${wStep.duration >= 60 ? mins + ' min' : wStep.duration + ' sec'} @ ${watts}W (${wStep.power}%)`}
+                          title={`${wStep.name || 'Segment'}: ${wStep.duration >= 60 ? mins + ' min' : wStep.duration + ' sec'} @ ${targetStr}`}
                           style={{ width: `${widthP}%`, height: `${heightP}%` }}
                           className="relative overflow-hidden cursor-crosshair min-w-[2px] border-r border-zinc-950/70"
                         >

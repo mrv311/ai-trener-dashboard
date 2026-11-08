@@ -107,17 +107,35 @@ export function expandStepsToSeconds(steps, ftp) {
     const durSec = Math.max(0, Math.round(Number(step.duration) || 0));
     if (durSec <= 0) return;
 
-    const hasRamp = step.powerMin != null && step.powerMax != null && step.powerMin !== step.powerMax;
-    if (hasRamp && durSec > 1) {
-      const startW = toWatts(step.powerMin);
-      const endW = toWatts(step.powerMax);
+    const pMin = step.powerMin ?? (typeof step.power === 'object' && step.power ? (step.power.min ?? step.power.start ?? step.power.low) : null);
+    const pMax = step.powerMax ?? (typeof step.power === 'object' && step.power ? (step.power.max ?? step.power.end ?? step.power.high) : null);
+    const hasRamp = !!(step.ramp || (step.power && step.power.ramp));
+
+    if (hasRamp && pMin != null && pMax != null && pMin !== pMax && durSec > 1) {
+      const startW = toWatts(pMin);
+      const endW = toWatts(pMax);
       for (let i = 0; i < durSec; i++) {
         result.push(startW + ((endW - startW) * i) / (durSec - 1));
       }
+    } else if (pMin != null && pMax != null && pMin !== pMax) {
+      // Za statički raspon (npr. 65-75%), koristimo srednju vrijednost za metrike (NP, TSS)
+      const avgW = toWatts((Number(pMin) + Number(pMax)) / 2);
+      for (let i = 0; i < durSec; i++) {
+        result.push(avgW);
+      }
     } else {
-      const rawPwr = typeof step.power === 'object' && step.power !== null
-        ? (step.power.value ?? ((step.power.start != null && step.power.end != null) ? (step.power.start + step.power.end) / 2 : 50))
-        : (step.power ?? 50);
+      let rawPwr = 50;
+      if (typeof step.power === 'object' && step.power !== null) {
+        const val = step.power.value;
+        const pM = step.power.min ?? step.power.start ?? step.power.low;
+        const pX = step.power.max ?? step.power.end ?? step.power.high;
+        if (pM != null && pX != null) rawPwr = (Number(pM) + Number(pX)) / 2;
+        else if (val != null && Number(val) > 0) rawPwr = Number(val);
+        else if (pM != null) rawPwr = Number(pM);
+        else if (pX != null) rawPwr = Number(pX);
+      } else if (step.power != null && Number(step.power) > 0) {
+        rawPwr = Number(step.power);
+      }
       const watts = toWatts(rawPwr);
       for (let i = 0; i < durSec; i++) {
         result.push(watts);

@@ -38,9 +38,16 @@ export default function TrainerGraph({
     }
 
     if (foundStep) {
+      const isRange = !!(foundStep.isRange && foundStep.powerMin && foundStep.powerMax && foundStep.powerMin !== foundStep.powerMax);
+      const scaledMin = (foundStep.powerMin || foundStep.power) * (ergIntensity / 100);
+      const scaledMax = (foundStep.powerMax || foundStep.power) * (ergIntensity / 100);
+      const ftpVal = profile?.ftp || 200;
+      const targetMinW = Math.round((scaledMin / 100) * ftpVal);
+      const targetMaxW = Math.round((scaledMax / 100) * ftpVal);
+
       const scaledPower = foundStep.power * (ergIntensity / 100);
-      const targetW = Math.round((scaledPower / 100) * profile?.ftp);
-      setHoveredStep({ ...foundStep, targetW, scaledPower, index: stepIndex });
+      const targetW = Math.round((scaledPower / 100) * ftpVal);
+      setHoveredStep({ ...foundStep, targetW, targetMinW, targetMaxW, scaledPower, scaledMin, scaledMax, isRange, index: stepIndex });
       setHoverPosition(percentX);
     } else {
       setHoveredStep(null);
@@ -188,7 +195,14 @@ export default function TrainerGraph({
               <div className="flex flex-col gap-0.5 font-mono telemetry-num">
                 <span className="text-zinc-300 text-[10px] uppercase tracking-wider font-sans font-bold">{hoveredStep.name}</span>
                 <span className="text-volt-400 text-sm font-bold">
-                  {hoveredStep.targetW} W <span className="text-zinc-400 text-[11px] font-normal">({Math.round(hoveredStep.scaledPower)}% FTP)</span>
+                  {hoveredStep.isRange
+                    ? `${hoveredStep.targetMinW}–${hoveredStep.targetMaxW} W `
+                    : `${hoveredStep.targetW} W `}
+                  <span className="text-zinc-400 text-[11px] font-normal">
+                    ({hoveredStep.isRange
+                      ? `${Math.round(hoveredStep.scaledMin)}–${Math.round(hoveredStep.scaledMax)}% FTP`
+                      : `${Math.round(hoveredStep.scaledPower)}% FTP`})
+                  </span>
                 </span>
                 <span className="text-zinc-400 text-[11px]">{Math.floor(hoveredStep.duration / 60)}m {hoveredStep.duration % 60}s</span>
               </div>

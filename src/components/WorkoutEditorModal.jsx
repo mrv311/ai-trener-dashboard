@@ -19,17 +19,46 @@ function formatDuration(secs) {
   return parts.join('') || '0m';
 }
 
-function formatPower(power) {
+function formatPower(power, ftp = 200) {
   if (!power) return '50%';
   if (typeof power === 'number') return `${Math.round(power)}%`;
-  if (power.value != null) return `${Math.round(power.value)}%`;
-  if (power.start != null && power.end != null) {
-    return `${Math.round(power.start)}-${Math.round(power.end)}%`;
+  if (typeof power === 'string') {
+    if (power.includes('-')) return power.endsWith('%') ? power : `${power}%`;
+    return `${Math.round(parseFloat(power) || 50)}%`;
+  }
+  if (typeof power === 'object') {
+    const rawMin = power.min ?? power.start ?? power.low;
+    const rawMax = power.max ?? power.end ?? power.high;
+    const units = String(power.units || '').toLowerCase();
+
+    const toPct = (val) => {
+      const n = Number(val);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      if (units === 'w' || units === 'watts') return Math.round((n / (ftp || 200)) * 100);
+      if (n > 0 && n <= 3) return Math.round(n * 100);
+      return Math.round(n);
+    };
+
+    const pMin = toPct(rawMin);
+    const pMax = toPct(rawMax);
+
+    if (pMin != null && pMax != null) {
+      if (pMin !== pMax) return `${pMin}-${pMax}%`;
+      return `${pMin}%`;
+    }
+
+    if (power.value != null && Number(power.value) > 0) {
+      const pVal = toPct(power.value);
+      if (pVal != null) return `${pVal}%`;
+    }
+
+    if (pMin != null) return `${pMin}%`;
+    if (pMax != null) return `${pMax}%`;
   }
   return '50%';
 }
 
-function stepsToTextLines(steps, indent = '') {
+function stepsToTextLines(steps, indent = '', ftp = 200) {
   const lines = [];
   if (!steps || !Array.isArray(steps)) return lines;
 
@@ -44,12 +73,14 @@ function stepsToTextLines(steps, indent = '') {
       if (reps > 1) {
         lines.push(`${indent}${reps}x`);
       }
-      const subLines = stepsToTextLines(step.steps, indent);
+      const subLines = stepsToTextLines(step.steps, indent, ftp);
       lines.push(...subLines);
     } else {
       // Pojedinačni korak
       const dur = formatDuration(step.duration || 0);
-      const pwr = formatPower(step.power);
+      const pwr = (step.powerMin != null && step.powerMax != null && step.powerMin !== step.powerMax)
+        ? `${step.powerMin}-${step.powerMax}%`
+        : formatPower(step.power || step._power, ftp);
       const text = step.text ? ` ${step.text}` : '';
       lines.push(`${indent}- ${dur} ${pwr}${text}`);
     }
@@ -62,20 +93,22 @@ function stepsToTextLines(steps, indent = '') {
  * Pretvara workout_doc JSON objekt iz Intervals.icu API-ja u čitljivi tekst.
  * Podržava i lokalne step nizove iz Library/Schedule sustava.
  */
-function workoutDocToCode(workoutDoc) {
+function workoutDocToCode(workoutDoc, ftp = 200) {
   if (!workoutDoc) return '';
   if (typeof workoutDoc === 'string') return workoutDoc;
 
   // Intervals.icu format: { steps: [...] }
   if (workoutDoc.steps && Array.isArray(workoutDoc.steps)) {
-    return stepsToTextLines(workoutDoc.steps).join('\n');
+    return stepsToTextLines(workoutDoc.steps, '', ftp).join('\n');
   }
 
-  // Direktni niz koraka (lokalni format: [{ name, duration, power }])
+  // Direktni niz koraka (lokalni format: [{ name, duration, power, powerMin, powerMax }])
   if (Array.isArray(workoutDoc)) {
     return workoutDoc.map(step => {
       const dur = formatDuration(step.duration || 0);
-      const pwr = `${Math.round(step.power || 50)}%`;
+      const pwr = (step.powerMin != null && step.powerMax != null && step.powerMin !== step.powerMax)
+        ? `${step.powerMin}-${step.powerMax}%`
+        : formatPower(step.power || step._power, ftp);
       const name = step.name ? ` ${step.name}` : '';
       return `- ${dur} ${pwr}${name}`;
     }).join('\n');
@@ -196,11 +229,17 @@ function MiniWorkoutGraph({ allSteps, ftp, totalSecs }) {
     }
 
     if (currentStep) {
+      const isRange = currentStep.isRange && currentStep.powerMin !== currentStep.powerMax;
       setHoverInfo({
         x,
         rectWidth: rect.width,
+        isRange,
         powerPct: currentStep.power,
+        powerMinPct: currentStep.powerMin || currentStep.power,
+        powerMaxPct: currentStep.powerMax || currentStep.power,
         powerW: Math.round((currentStep.power / 100) * ftp),
+        powerMinW: Math.round(((currentStep.powerMin || currentStep.power) / 100) * ftp),
+        powerMaxW: Math.round(((currentStep.powerMax || currentStep.power) / 100) * ftp),
         timeStr: formatDurMinSec(currentStep.duration)
       });
     }
@@ -269,10 +308,10 @@ function MiniWorkoutGraph({ allSteps, ftp, totalSecs }) {
           >
             <div className="bg-zinc-950/95 border border-zinc-700 rounded-md px-2 py-1 shadow-xl flex flex-col items-center whitespace-nowrap font-mono telemetry-num">
               <span className="text-volt-400 font-bold text-[11px] leading-none">
-                {hoverInfo.powerW} W
+                {hoverInfo.isRange ? `${hoverInfo.powerMinW}–${hoverInfo.powerMaxW} W` : `${hoverInfo.powerW} W`}
               </span>
               <span className="text-zinc-400 text-[9px] leading-none mt-1">
-                {hoverInfo.powerPct}% · {hoverInfo.timeStr}
+                {hoverInfo.isRange ? `${hoverInfo.powerMinPct}–${hoverInfo.powerMaxPct}%` : `${hoverInfo.powerPct}%`} · {hoverInfo.timeStr}
               </span>
             </div>
           </div>
@@ -353,7 +392,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
       setTitle(workout.title || '');
       // Dohvat koda iz različitih mogućih izvora (JSON ili Array pretvaramo u tekst)
       const workoutData = workout.workout_doc || workout.steps || '';
-      setCode(workoutDocToCode(workoutData));
+      setCode(workoutDocToCode(workoutData, ftp));
       setMode('view');
     }
   }, [workout, isOpen]);

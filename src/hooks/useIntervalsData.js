@@ -47,6 +47,46 @@ const isCyclingActivity = (sbAct) => {
   return true;
 };
 
+const buildIntervalSummary = (steps) => {
+  if (!Array.isArray(steps) || steps.length === 0) return null;
+  const formatDur = (s) => {
+    const m = Math.round(s / 60);
+    if (m >= 60) {
+      const h = Math.floor(m / 60);
+      const remM = m % 60;
+      return remM > 0 ? `${h}h${remM}m` : `${h}h`;
+    }
+    return `${m}m`;
+  };
+
+  const formatStepPwr = (st) => {
+    if (st.powerMin && st.powerMax && st.powerMin !== st.powerMax) {
+      return `${st.powerMin}-${st.powerMax}%`;
+    }
+    return `${Math.round(st.power || 50)}%`;
+  };
+
+  if (steps.length === 1) {
+    return `${formatDur(steps[0].duration)} @ ${formatStepPwr(steps[0])}`;
+  }
+
+  if (steps.length <= 4) {
+    return steps.map(st => `${formatDur(st.duration)} @ ${formatStepPwr(st)}`).join(' · ');
+  }
+
+  const workSteps = steps.filter(st => (st.powerMin || st.power || 0) >= 75);
+  if (workSteps.length > 0) {
+    const firstWork = workSteps[0];
+    const sameWork = workSteps.filter(st => Math.abs((st.power || 0) - (firstWork.power || 0)) <= 3);
+    if (sameWork.length > 1) {
+      return `${sameWork.length}x ${formatDur(firstWork.duration)} @ ${formatStepPwr(firstWork)}`;
+    }
+    return `${workSteps.length} intervala (vrh ${Math.max(...workSteps.map(s => s.powerMax || s.power || 0))}%)`;
+  }
+
+  return `${steps.length} segmenata · ${formatDur(steps.reduce((a, b) => a + (b.duration || 0), 0))}`;
+};
+
 const extractEventPlannedMetrics = (ev, userFtp = 250) => {
   if (!ev) return { tss: 0, durationMin: 0, category: null, diffScore: null, targetNp: null, workoutDoc: null };
   const isEvCycling = isIntervalsCyclingType(ev.type);
@@ -108,6 +148,8 @@ const extractEventPlannedMetrics = (ev, userFtp = 250) => {
     category: actCategory,
     diffScore,
     targetNp,
+    steps: parsed?.allSteps || null,
+    intervalDescription: parsed?.allSteps?.length > 0 ? buildIntervalSummary(parsed.allSteps) : null,
     workoutDoc: ev.workout_doc || (parsed?.allSteps?.length > 0 ? ev.description : null)
   };
 };
@@ -432,6 +474,8 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         durationMin: Math.max(0, Math.round(durMin)),
         category: cat,
         diffScore: diff,
+        steps: parsed?.allSteps || (Array.isArray(lw.steps) ? lw.steps : null),
+        intervalDescription: parsed?.allSteps?.length > 0 ? buildIntervalSummary(parsed.allSteps) : null,
         workoutDoc: lw.workout_doc || lw.steps
       };
     };
@@ -879,6 +923,8 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         plannedTss: evMetrics.tss,
         statusColor: complianceColor,
         isCompleted: false,
+        steps: evMetrics.steps,
+        intervalDescription: evMetrics.intervalDescription,
         workout_doc: evMetrics.workoutDoc,
         difficulty_score: evMetrics.diffScore,
         category: isEvCycling ? evMetrics.category : 'OTHER'
@@ -907,7 +953,8 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         statusColor: complianceColor,
         isCompleted: false,
         isLocal: true,
-        steps: sched.steps,
+        steps: locMetrics.steps || sched.steps,
+        intervalDescription: locMetrics.intervalDescription,
         workout_doc: locMetrics.workoutDoc,
         category: locMetrics.category,
         difficulty_score: locMetrics.diffScore

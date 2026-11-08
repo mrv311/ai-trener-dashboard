@@ -17,9 +17,23 @@ export function stepsToIntervalsCode(steps) {
     else durStr = `${remSec}s`;
 
     let pwrStr = '50%';
-    if (typeof st.power === 'number') pwrStr = `${Math.round(st.power)}%`;
-    else if (st.power?.start != null && st.power?.end != null) pwrStr = `${Math.round(st.power.start)}-${Math.round(st.power.end)}%`;
-    else if (st.power) pwrStr = `${st.power}%`;
+    if (st.powerMin && st.powerMax && st.powerMin !== st.powerMax) {
+      pwrStr = `${st.powerMin}-${st.powerMax}%`;
+    } else if (typeof st.power === 'number') {
+      pwrStr = `${Math.round(st.power)}%`;
+    } else if (typeof st.power === 'object' && st.power) {
+      const pMin = st.power.min ?? st.power.start ?? st.power.low;
+      const pMax = st.power.max ?? st.power.end ?? st.power.high;
+      if (pMin != null && pMax != null && pMin !== pMax) {
+        pwrStr = `${Math.round(pMin)}-${Math.round(pMax)}%`;
+      } else if (st.power.value != null && Number(st.power.value) > 0) {
+        pwrStr = `${Math.round(st.power.value)}%`;
+      } else if (pMin != null) {
+        pwrStr = `${Math.round(pMin)}%`;
+      }
+    } else if (st.power) {
+      pwrStr = `${st.power}%`;
+    }
 
     const label = st.name || st.text ? ` ${st.name || st.text}` : '';
     return `- ${durStr} ${pwrStr}${label}`;

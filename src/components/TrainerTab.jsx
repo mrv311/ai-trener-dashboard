@@ -5,7 +5,7 @@ import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer, calculateCogganMetrics, calculateEF, calculateVI, calculateAerobicDecoupling } from '../utils/performanceMetrics';
 import { exportToTCX, exportToFIT, buildFitUint8Array } from '../utils/exportUtils';
 import { calculateDistanceStream } from '../utils/virtualDistance';
-import { parseIntervalsCode } from '../utils/workoutParser';
+import { parseIntervalsCode, flattenStructuredSteps, normalizeStepPowerPct } from '../utils/workoutParser';
 import { uploadActivityToIntervals } from '../services/intervalsApi';
 import { supabase } from '../services/supabaseClient';
 import {
@@ -487,44 +487,31 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     let parsedRecipe = [];
 
     if (workoutFromCalendar.workout_doc && workoutFromCalendar.workout_doc.steps) {
-      // Intervals API format
-      const extractSteps = (stepsArray) => {
-        let flatSteps = [];
-        stepsArray.forEach(step => {
-          if (step.steps && Array.isArray(step.steps)) {
-            const loops = step.reps || step.count || 1;
-            for (let i = 0; i < loops; i++) {
-              flatSteps = flatSteps.concat(extractSteps(step.steps));
-            }
-          } else {
-            let pwr = 50;
-            if (typeof step.power === 'number') {
-              pwr = step.power;
-            } else if (step.power) {
-              let rawVal = null;
-              if (step.power.value != null) rawVal = step.power.value;
-              else if (step.power.start != null && step.power.end != null) rawVal = (step.power.start + step.power.end) / 2;
-              if (rawVal != null) {
-                const units = String(step.power.units || '').toLowerCase();
-                pwr = units === 'w' ? Math.round((rawVal / currentFtp) * 100) : rawVal;
-              }
-            }
-            flatSteps.push({
-              name: step.name || step.text || (pwr > 80 ? 'Radni Interval' : 'Odmor'),
-              duration: step.duration || 60,
-              power: Math.round(pwr)
-            });
-          }
-        });
-        return flatSteps;
-      };
-      parsedRecipe = extractSteps(workoutFromCalendar.workout_doc.steps);
+      // Intervals API struktura (workout_doc.steps)
+      parsedRecipe = flattenStructuredSteps(workoutFromCalendar.workout_doc.steps, currentFtp);
     } else if (workoutFromCalendar.steps && Array.isArray(workoutFromCalendar.steps)) {
-      // Supabase / Library format
-      parsedRecipe = workoutFromCalendar.steps.map(s => ({
-        ...s,
-        name: s.name || s.text || 'Interval'
-      }));
+      // Supabase / Library / prethodno parsirani koraci
+      parsedRecipe = workoutFromCalendar.steps.map(s => {
+        const rawPower = s.power || s._power;
+        const pwr = normalizeStepPowerPct(rawPower ?? s.powerMin, currentFtp);
+        const pMin = s.powerMin != null ? Math.round(Number(s.powerMin)) : pwr.min;
+        const pMax = s.powerMax != null ? Math.round(Number(s.powerMax)) : pwr.max;
+        const isRange = pMin !== pMax;
+        const pAvg = (typeof s.power === 'number' && !isRange)
+          ? Math.round(s.power)
+          : (pwr.avg || Math.round((pMin + pMax) / 2));
+
+        return {
+          ...s,
+          name: s.name || s.text || (pMin >= 85 ? 'Radni Interval' : (pMax <= 75 ? 'Oporavak' : 'Tempo')),
+          duration: s.duration || 60,
+          power: pAvg,
+          powerMin: pMin,
+          powerMax: pMax,
+          isRange,
+          ramp: !!(s.ramp || (s.power && s.power.ramp))
+        };
+      });
     } else if (typeof workoutFromCalendar.workout_doc === 'string' && workoutFromCalendar.workout_doc.trim()) {
       const parsed = parseIntervalsCode(workoutFromCalendar.workout_doc, currentFtp);
       if (parsed?.allSteps?.length > 0) {
@@ -803,8 +790,16 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
   const hasValidFtp = profile && profile.ftp && profile.ftp > 0;
   const ftpValue = hasValidFtp ? profile.ftp : 200;
-  const baseTargetPower = Math.round((currentStep.power / 100) * ftpValue);
+
+  // Podrška za raspone snage (npr. 65-75%):
+  // Kao ERG bazu uzimamo donju granicu (powerMin), kako je zatraženo, a korisnik Zwift Clickom lako povisuje.
+  const isStepRange = !!(currentStep.isRange && currentStep.powerMin && currentStep.powerMax && currentStep.powerMin !== currentStep.powerMax);
+  const effectiveBasePct = (isStepRange && !currentStep.ramp) ? currentStep.powerMin : (currentStep.power || 50);
+  const baseTargetPower = Math.round((effectiveBasePct / 100) * ftpValue);
   const activeTargetPower = Math.round(baseTargetPower * (ergIntensity / 100));
+
+  const minTargetWatts = Math.round(((currentStep.powerMin || currentStep.power || 50) / 100) * ftpValue * (ergIntensity / 100));
+  const maxTargetWatts = Math.round(((currentStep.powerMax || currentStep.power || 50) / 100) * ftpValue * (ergIntensity / 100));
 
   // Konzistentan 3-sekundni zaglađeni prikaz isključivo s aktivnog izvora snage (nikada ne miješa Trenažer i PM)
   const displayPower = useMemo(() => {
@@ -829,6 +824,14 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
   const getPowerColor = () => {
     if (!isPlaying && displayPower === 0) return "text-zinc-600";
+    if (isStepRange) {
+      if (displayPower >= minTargetWatts && displayPower <= maxTargetWatts) {
+        return "text-volt-400 drop-shadow-[0_0_18px_rgba(var(--accent-400),0.32)]";
+      }
+      const diff = displayPower < minTargetWatts ? (minTargetWatts - displayPower) : (displayPower - maxTargetWatts);
+      if (diff <= 14) return "text-amber-400 drop-shadow-[0_0_14px_rgba(251,191,36,0.28)]";
+      return "text-rose-500 drop-shadow-[0_0_14px_rgba(244,63,94,0.32)]";
+    }
     const diff = Math.abs(displayPower - activeTargetPower);
     if (diff <= 8) return "text-volt-400 drop-shadow-[0_0_18px_rgba(var(--accent-400),0.32)]";
     if (diff <= 22) return "text-amber-400 drop-shadow-[0_0_14px_rgba(251,191,36,0.28)]";
@@ -3094,12 +3097,31 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                     ⚠️ <span className="hidden sm:inline">Nije unesen FTP — koristi se zadanih 200 W.</span><span className="sm:hidden">Unesi FTP!</span>
                   </span>
                 ) : (() => {
-                  const powerDelta = displayPower - activeTargetPower;
+                  let powerDelta = 0;
+                  let isLocked = false;
+                  if (isStepRange) {
+                    if (displayPower >= minTargetWatts && displayPower <= maxTargetWatts) {
+                      isLocked = true;
+                      powerDelta = 0;
+                    } else if (displayPower < minTargetWatts) {
+                      powerDelta = displayPower - minTargetWatts;
+                    } else {
+                      powerDelta = displayPower - maxTargetWatts;
+                    }
+                  } else {
+                    powerDelta = displayPower - activeTargetPower;
+                    isLocked = Math.abs(powerDelta) <= 8;
+                  }
+
                   const absDelta = Math.abs(powerDelta);
                   const clampedDelta = Math.max(-35, Math.min(35, powerDelta));
                   const needlePct = (isPlaying || displayPower > 0) ? ((clampedDelta + 35) / 70) * 100 : 50;
-                  const nextWatts = currentStepIndex < workoutRecipe.length - 1
-                    ? Math.round((workoutRecipe[currentStepIndex + 1].power / 100) * ftpValue * (ergIntensity / 100))
+
+                  const nextStep = currentStepIndex < workoutRecipe.length - 1 ? workoutRecipe[currentStepIndex + 1] : null;
+                  const nextWattsStr = nextStep
+                    ? (nextStep.isRange && nextStep.powerMin !== nextStep.powerMax
+                        ? `${Math.round((nextStep.powerMin / 100) * ftpValue * (ergIntensity / 100))}–${Math.round((nextStep.powerMax / 100) * ftpValue * (ergIntensity / 100))} W`
+                        : `${Math.round((nextStep.power / 100) * ftpValue * (ergIntensity / 100))} W`)
                     : null;
 
                   return (
@@ -3107,7 +3129,9 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                       <div className="flex items-center justify-between gap-2 text-xs md:text-sm short:text-xs font-mono telemetry-num">
                         <div className="flex items-center gap-1.5">
                           <span className="text-zinc-500 text-[10px] md:text-xs short:text-[10px] uppercase">CILJ</span>
-                          <span className="text-zinc-100 font-bold text-sm md:text-base short:text-sm">{activeTargetPower} W</span>
+                          <span className="text-zinc-100 font-bold text-sm md:text-base short:text-sm">
+                            {isStepRange ? `${minTargetWatts}–${maxTargetWatts} W` : `${activeTargetPower} W`}
+                          </span>
                           {powerMatchEnabled && isPmConnected && !(halfPowerDetected && !pmDoublePower) && (
                             <span className="text-violet-400 text-[10px] font-bold">⟳PM</span>
                           )}
@@ -3116,7 +3140,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                         <span className={`text-[10px] md:text-xs short:text-[10px] font-bold px-2 py-0.5 rounded border ${
                           !isPlaying && displayPower === 0
                             ? 'text-zinc-500 border-zinc-800 bg-zinc-900'
-                            : absDelta <= 8
+                            : isLocked
                             ? 'text-volt-400 border-volt-400/35 bg-volt-400/10'
                             : absDelta <= 22
                             ? 'text-amber-300 border-amber-500/35 bg-amber-500/10'
@@ -3124,15 +3148,15 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                         }`}>
                           {!isPlaying && displayPower === 0
                             ? 'READY'
-                            : absDelta <= 8
-                            ? `LOCKED (${powerDelta > 0 ? '+' : ''}${powerDelta}W)`
+                            : isLocked
+                            ? (isStepRange ? 'LOCKED (U RASPONU)' : `LOCKED (${powerDelta > 0 ? '+' : ''}${powerDelta}W)`)
                             : `Δ ${powerDelta > 0 ? '+' : ''}${powerDelta}W`}
                         </span>
 
                         <div className="flex items-center gap-1 text-right">
                           <span className="text-zinc-500 text-[10px] md:text-xs short:text-[10px] uppercase">SLJEDEĆI</span>
                           <span className="text-zinc-300 font-bold text-xs md:text-sm short:text-xs">
-                            {nextWatts !== null ? `${nextWatts} W` : 'KRAJ'}
+                            {nextWattsStr !== null ? nextWattsStr : 'KRAJ'}
                           </span>
                         </div>
                       </div>
@@ -3305,7 +3329,9 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
               <div className="text-sm md:text-lg lg:text-xl short:text-base font-display font-bold text-zinc-100 flex flex-wrap items-center justify-center sm:justify-start gap-1.5 md:gap-2 leading-none">
                 <span className="uppercase tracking-wide">{currentStep.name}</span>
                 <span className="text-volt-400 font-mono text-xs md:text-sm short:text-xs font-bold">
-                  @{Math.round(currentStep.power * (ergIntensity / 100))}% FTP
+                  {isStepRange
+                    ? `@${Math.round(currentStep.powerMin * (ergIntensity / 100))}–${Math.round(currentStep.powerMax * (ergIntensity / 100))}% FTP`
+                    : `@${Math.round(currentStep.power * (ergIntensity / 100))}% FTP`}
                 </span>
                 <button
                   onClick={handleExtend}
