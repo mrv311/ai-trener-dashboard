@@ -22,9 +22,6 @@ import { supabase } from './services/supabaseClient';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useProfileSync } from './hooks/useProfileSync';
 import { useIntervalsData } from './hooks/useIntervalsData';
-import { version as pkgVersion } from '../package.json';
-
-const APP_VERSION = `v${pkgVersion}`;
 
 const DEFAULT_GUEST_PROFILE = {
   username: 'Gost Vozač', weight: 75.9, ftp: 200, thresholdHr: 160, maxHr: 180,
@@ -300,8 +297,8 @@ export default function App() {
                   <div className="font-display font-bold text-lg xl:text-xl tracking-wider uppercase text-zinc-100 whitespace-nowrap">
                     ERG<span className="text-volt-400">VIBE</span>
                   </div>
-                  <span className="font-mono text-[10px] text-zinc-500 tracking-wider mt-0.5 short:hidden">
-                    {APP_VERSION} · FTMS
+                  <span className="font-mono text-[9px] uppercase tracking-widest text-zinc-500 mt-1 short:hidden whitespace-nowrap">
+                    TRAINING SUITE
                   </span>
                 </div>
               </div>
