@@ -124,9 +124,22 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase.from('workouts').select('*').order('difficulty_score', { ascending: true });
-      if (error) throw error;
-      setWorkouts(data || []);
+      let allWorkouts = [];
+      let from = 0;
+      const batchSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('workouts')
+          .select('*')
+          .order('difficulty_score', { ascending: true })
+          .range(from, from + batchSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allWorkouts = allWorkouts.concat(data);
+        if (data.length < batchSize) break;
+        from += batchSize;
+      }
+      setWorkouts(allWorkouts);
     } catch (err) {
       console.error(err);
       setError(err.message);
