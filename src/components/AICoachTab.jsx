@@ -678,7 +678,7 @@ export default function AICoachTab({
                   Spreman za analizu, {profile?.username || 'Vozač'}
                 </h3>
                 <p className="text-xs md:text-sm text-zinc-400 mb-6">
-                  Učitao sam vaše dostupne treninge, trenutni FTP (<span className="font-mono font-bold text-volt-400">{ftp} W</span>) i kalendar. Odaberite jedno od brzih pitanja ili upišite vlastiti upit:
+                  Učitao sam vaše dostupne treninge, trenutni FTP (<span className="font-mono font-bold text-volt-400">{ftp} W</span>) i kalendar. Možete zalijepiti sliku bilo kojeg treninga (<span className="font-mono text-volt-300">Ctrl+V</span> / spajalica) za automatsku konverziju u trenažer, ili odabrati brza pitanja:
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
@@ -757,32 +757,58 @@ export default function AICoachTab({
 
           {/* TRAKA S PRIPREMLJENIM PRIVITCIMA (PENDING) */}
           {pendingAttachments.length > 0 && (
-            <div className="px-4 py-2.5 bg-zinc-950/95 border-t border-zinc-800/80 flex flex-wrap gap-2 items-center">
-              <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest mr-1 flex items-center gap-1.5 font-bold">
-                <Paperclip className="w-3.5 h-3.5 text-volt-400" /> Priloženo ({pendingAttachments.length}):
-              </span>
-              {pendingAttachments.map((att) => (
-                <div
-                  key={att.id}
-                  className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 animate-in fade-in group"
-                >
-                  {att.type.startsWith('image/') ? (
-                    <img src={att.dataUrl} alt={att.name} className="w-6 h-6 object-cover rounded" />
-                  ) : (
-                    <FileText className="w-4 h-4 text-rose-400 shrink-0" />
-                  )}
-                  <span className="font-medium truncate max-w-[140px] text-[11px]">{att.name}</span>
-                  <span className="text-[10px] font-mono text-zinc-500">({formatFileSize(att.size)})</span>
-                  <button
-                    type="button"
-                    onClick={() => removePendingAttachment(att.id)}
-                    className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-colors"
-                    title="Ukloni privitak"
+            <div className="px-4 py-2.5 bg-zinc-950/95 border-t border-zinc-800/80 flex flex-col gap-2">
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest mr-1 flex items-center gap-1.5 font-bold">
+                  <Paperclip className="w-3.5 h-3.5 text-volt-400" /> Priloženo ({pendingAttachments.length}):
+                </span>
+                {pendingAttachments.map((att) => (
+                  <div
+                    key={att.id}
+                    className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 animate-in fade-in group"
                   >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
+                    {att.type.startsWith('image/') ? (
+                      <img src={att.dataUrl} alt={att.name} className="w-6 h-6 object-cover rounded" />
+                    ) : (
+                      <FileText className="w-4 h-4 text-rose-400 shrink-0" />
+                    )}
+                    <span className="font-medium truncate max-w-[140px] text-[11px]">{att.name}</span>
+                    <span className="text-[10px] font-mono text-zinc-500">({formatFileSize(att.size)})</span>
+                    <button
+                      type="button"
+                      onClick={() => removePendingAttachment(att.id)}
+                      className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-colors"
+                      title="Ukloni privitak"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Brze trenerske naredbe za priloženu sliku/dokument */}
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-zinc-900">
+                <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
+                  Brza akcija:
+                </span>
+                <button
+                  type="button"
+                  disabled={isSendingChat}
+                  onClick={() => sendMessage('Rekreiraj ovaj trening s priložene slike u točan strukturirani ErgVibe workout za moj trenažer (korak po korak s watima i postocima).')}
+                  className="px-2.5 py-1 rounded-md bg-volt-400/10 hover:bg-volt-400/20 border border-volt-400/30 text-volt-300 hover:text-volt-200 text-xs font-semibold flex items-center gap-1.5 transition-all"
+                  title="AI će dekonstruirati grafikon sa slike u izvedivi trenažni workout"
+                >
+                  <Zap className="w-3 h-3 text-volt-400" /> Pretvori sliku u workout
+                </button>
+                <button
+                  type="button"
+                  disabled={isSendingChat}
+                  onClick={() => sendMessage('Detaljno analiziraj ovaj priloženi fiziološki nalaz (laktati, VO2max ili puls) u kontekstu mog profila i ažuriraj moje trenažne zone.')}
+                  className="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1.5 transition-all"
+                >
+                  <Activity className="w-3 h-3 text-sky-400" /> Analiziraj fiziološki nalaz
+                </button>
+              </div>
             </div>
           )}
 
@@ -806,7 +832,7 @@ export default function AICoachTab({
               onClick={() => fileInputRef.current?.click()}
               disabled={isSendingChat || isUploadingFile}
               className="p-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-volt-400/40 text-zinc-400 hover:text-volt-400 transition-all shrink-0 flex items-center justify-center cursor-pointer disabled:opacity-40"
-              title="Priloži sliku ili PDF nalaza (laktati, spiroergometrija, Garmin grafikon...)"
+              title="Priloži sliku ili PDF (Zwift/Garmin/TR grafikon, laktati, spiroergometrija...)"
             >
               {isUploadingFile ? (
                 <Loader2 className="w-4 h-4 animate-spin text-volt-400" />
@@ -820,7 +846,7 @@ export default function AICoachTab({
               onChange={(e) => setChatInput(e.target.value)}
               onPaste={handlePaste}
               disabled={isSendingChat}
-              placeholder="Postavi pitanje ili priloži nalaz (možeš zalijepiti sliku i s Ctrl+V)..."
+              placeholder={pendingAttachments.length > 0 ? "Opiši upute ili klikni 'Pretvori sliku u workout' iznad..." : "Postavi pitanje ili priloži sliku/PDF (možeš zalijepiti sliku i s Ctrl+V)..."}
               className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-volt-400 outline-none disabled:opacity-50"
             />
             <button
