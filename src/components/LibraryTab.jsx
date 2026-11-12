@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare, Sparkles, Search } from 'lucide-react';
+import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare, Sparkles, Search, Star, Timer, Target, Compass, Flame, Filter } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/performanceMetrics';
 import { parseWorkoutFile, normalizeCategory, CANONICAL_CATEGORIES } from '../utils/workoutParser';
 import { calculateCogganMetrics, expandStepsToSeconds } from '../utils/performanceMetrics';
@@ -8,12 +8,106 @@ import { generateLocalWorkout } from '../utils/workoutGenerator';
 import { stepsToIntervalsCode } from './ai/AIMarkdown';
 import AIWorkoutCreatorModal from './AIWorkoutCreatorModal';
 
+const FAMOUS_CLASSICS = [
+  'carson', 'gorby', 'antelope', 'baxter', 'mary austin', 'rattlesnake',
+  'hunter', 'galena', 'kaweah', 'petit', 'geiger', 'tallac', 'spencer',
+  'eclipse', 'palisade', 'over-under', 'over under', 'ramp test', 'colins',
+  'spanish needle', '4x8', '3x10', '3x12', '3x15', '3x20', '2x20',
+  'sweet spot progression', 'sweet spot foundation', 'vo2max tt', 'lactate threshold',
+  'eichorn', 'taku', 'blackcap'
+];
+
+export function isClassicWorkout(workout) {
+  if (!workout?.title) return false;
+  const t = workout.title.toLowerCase();
+  return FAMOUS_CLASSICS.some(c => t.includes(c));
+}
+
+export const DURATION_CHIPS = [
+  { id: 'all', label: 'Sva trajanja' },
+  { id: 'under45', label: '< 45 min' },
+  { id: '45to60', label: '45–60 min' },
+  { id: '60to75', label: '60–75 min' },
+  { id: '75to90', label: '75–90 min' },
+  { id: 'over90', label: '90+ min' },
+];
+
+export const SMART_COLLECTIONS = [
+  {
+    id: 'classics',
+    title: 'Zlatni Klasici',
+    subtitle: 'Provjereni recepti i progresije',
+    icon: Star,
+    color: 'text-amber-400 bg-amber-400/10 border-amber-400/30 hover:border-amber-400/60',
+    predicate: (w) => isClassicWorkout(w)
+  },
+  {
+    id: 'time_crunched',
+    title: 'Time-Crunched',
+    subtitle: '≤ 45 min · Maksimalan efekt',
+    icon: Timer,
+    color: 'text-volt-400 bg-volt-400/10 border-volt-400/30 hover:border-volt-400/60',
+    predicate: (w) => {
+      const mins = Math.round((w.duration_seconds || 3600) / 60);
+      return mins <= 45;
+    }
+  },
+  {
+    id: 'ftp_booster',
+    title: 'FTP & Prag',
+    subtitle: 'Threshold i Over-Unders',
+    icon: Target,
+    color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30 hover:border-emerald-400/60',
+    predicate: (w) => {
+      const c = normalizeCategory(w.category);
+      const t = (w.title || '').toLowerCase();
+      return c === 'Threshold' || t.includes('over-under') || t.includes('prag') || t.includes('ftp') || t.includes('suprathresh');
+    }
+  },
+  {
+    id: 'winter_base',
+    title: 'Zimska Baza',
+    subtitle: 'Z2 Aerobik & Kontrolirani tempo',
+    icon: Compass,
+    color: 'text-sky-400 bg-sky-400/10 border-sky-400/30 hover:border-sky-400/60',
+    predicate: (w) => {
+      const c = normalizeCategory(w.category);
+      return c === 'Endurance' || c === 'Tempo';
+    }
+  },
+  {
+    id: 'vo2_hiit',
+    title: 'VO2 Max Intervali',
+    subtitle: '30/30, 40/20 i mikropulsacije',
+    icon: Flame,
+    color: 'text-rose-400 bg-rose-400/10 border-rose-400/30 hover:border-rose-400/60',
+    predicate: (w) => {
+      const c = normalizeCategory(w.category);
+      return c === 'VO2 Max' || c === 'Anaerobni';
+    }
+  },
+  {
+    id: 'testing',
+    title: 'Testovi & Rampa',
+    subtitle: 'FTP provjere & Kalibracija',
+    icon: Activity,
+    color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30 hover:border-cyan-400/60',
+    predicate: (w) => {
+      const c = normalizeCategory(w.category);
+      const t = (w.title || '').toLowerCase();
+      return c === 'Testiranje' || t.includes('ramp') || t.includes('test') || t.includes('kolokvij') || t.includes('20 min');
+    }
+  }
+];
+
 export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 250, userId }) {
   const [workouts, setWorkouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [activeFolder, setActiveFolder] = useState(null);
+  const [activeCollection, setActiveCollection] = useState(null);
+  const [durationFilter, setDurationFilter] = useState('all');
   const [editingWorkoutId, setEditingWorkoutId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editCategory, setEditCategory] = useState('');
@@ -285,20 +379,123 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
 
   const categoryOrder = ['Oporavak', 'Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Anaerobni', 'Testiranje', 'Ostalo'];
 
-  const groupedWorkouts = workouts.reduce((acc, workout) => {
-    const cat = normalizeCategory(workout.category);
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(workout);
-    return acc;
-  }, {});
+  const groupedWorkouts = useMemo(() => {
+    return workouts.reduce((acc, workout) => {
+      const cat = normalizeCategory(workout.category);
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(workout);
+      return acc;
+    }, {});
+  }, [workouts]);
 
-  const sortedCategories = Object.keys(groupedWorkouts).sort((a, b) => {
-    let indexA = categoryOrder.indexOf(a);
-    let indexB = categoryOrder.indexOf(b);
-    if (indexA === -1) indexA = 999;
-    if (indexB === -1) indexB = 999;
-    return indexA - indexB;
-  });
+  const categoryDurationStats = useMemo(() => {
+    const stats = {};
+    workouts.forEach(w => {
+      const cat = normalizeCategory(w.category);
+      if (!stats[cat]) stats[cat] = { under45: 0, std60: 0, long75: 0 };
+      const mins = Math.round((w.duration_seconds || 3600) / 60);
+      if (mins < 45) stats[cat].under45++;
+      else if (mins <= 60) stats[cat].std60++;
+      else stats[cat].long75++;
+    });
+    return stats;
+  }, [workouts]);
+
+  const activeDurationCounts = useMemo(() => {
+    let base = [];
+    if (activeFolder) {
+      base = groupedWorkouts[activeFolder] || [];
+    } else if (activeCollection) {
+      const col = SMART_COLLECTIONS.find(c => c.id === activeCollection);
+      base = col ? workouts.filter(col.predicate) : workouts;
+    } else {
+      base = workouts;
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      base = base.filter(w =>
+        (w.title && w.title.toLowerCase().includes(q)) ||
+        (w.description && w.description.toLowerCase().includes(q))
+      );
+    }
+
+    const counts = { all: base.length, under45: 0, '45to60': 0, '60to75': 0, '75to90': 0, over90: 0 };
+    base.forEach(w => {
+      const mins = Math.round((w.duration_seconds || 3600) / 60);
+      if (mins < 45) counts.under45++;
+      else if (mins <= 60) counts['45to60']++;
+      else if (mins <= 75) counts['60to75']++;
+      else if (mins <= 90) counts['75to90']++;
+      else counts.over90++;
+    });
+    return counts;
+  }, [workouts, activeFolder, activeCollection, searchQuery, groupedWorkouts]);
+
+  const sortedCategories = useMemo(() => {
+    return Object.keys(groupedWorkouts).sort((a, b) => {
+      let indexA = categoryOrder.indexOf(a);
+      let indexB = categoryOrder.indexOf(b);
+      if (indexA === -1) indexA = 999;
+      if (indexB === -1) indexB = 999;
+      return indexA - indexB;
+    });
+  }, [groupedWorkouts]);
+
+  const isViewingWorkoutsList = Boolean(activeFolder || activeCollection || searchQuery.trim() || durationFilter !== 'all');
+
+  const displayWorkouts = useMemo(() => {
+    let list = [];
+    if (activeFolder) {
+      list = [...(groupedWorkouts[activeFolder] || [])];
+    } else if (activeCollection) {
+      const col = SMART_COLLECTIONS.find(c => c.id === activeCollection);
+      list = col ? workouts.filter(col.predicate) : [...workouts];
+    } else {
+      list = [...workouts];
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(w =>
+        (w.title && w.title.toLowerCase().includes(q)) ||
+        (w.description && w.description.toLowerCase().includes(q)) ||
+        (w.category && w.category.toLowerCase().includes(q))
+      );
+    }
+
+    if (durationFilter !== 'all') {
+      list = list.filter(w => {
+        const mins = Math.round((w.duration_seconds || 3600) / 60);
+        if (durationFilter === 'under45') return mins < 45;
+        if (durationFilter === '45to60') return mins >= 45 && mins <= 60;
+        if (durationFilter === '60to75') return mins > 60 && mins <= 75;
+        if (durationFilter === '75to90') return mins > 75 && mins <= 90;
+        if (durationFilter === 'over90') return mins > 90;
+        return true;
+      });
+    }
+
+    list.sort((a, b) => {
+      if (sortBy === 'name') {
+        return sortOrder === 'asc' ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title);
+      }
+      let valA = 0; let valB = 0;
+      if (sortBy === 'difficulty') {
+        valA = a.difficulty_score; valB = b.difficulty_score;
+      } else if (sortBy === 'duration') {
+        valA = a.duration_seconds; valB = b.duration_seconds;
+      } else {
+        const metricsA = getCachedWorkoutMetrics(a);
+        const metricsB = getCachedWorkoutMetrics(b);
+        if (sortBy === 'tss') { valA = metricsA.tss; valB = metricsB.tss; }
+        if (sortBy === 'np') { valA = metricsA.np; valB = metricsB.np; }
+      }
+      return sortOrder === 'asc' ? valA - valB : valB - valA;
+    });
+
+    return list;
+  }, [workouts, activeFolder, activeCollection, searchQuery, durationFilter, sortBy, sortOrder, groupedWorkouts]);
 
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-5 animate-in fade-in pb-20 md:pb-4">
@@ -383,141 +580,240 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
         </div>
       ) : (
         <div className="w-full">
-          {!activeFolder && !searchQuery.trim() ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
-              {sortedCategories.map(cat => {
-                const meta = getCategoryMeta(cat);
-                const catList = groupedWorkouts[cat] || [];
-                return (
-                  <button 
-                    key={cat}
-                    onClick={() => setActiveFolder(cat)}
-                    className={`carbon-panel rounded-xl p-5 text-left flex flex-col justify-between min-h-[136px] relative overflow-hidden transition-all duration-150 group hover:-translate-y-0.5 ${meta.border}`}
-                  >
-                    <div className={`absolute top-0 left-0 right-0 h-[3px] ${meta.topBar}`} />
-                    <div className="flex items-center justify-between w-full">
-                      <span className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${meta.badge}`}>
-                        {meta.zone}
-                      </span>
-                      <Folder className={`w-5 h-5 ${meta.text} opacity-75 group-hover:opacity-100 transition-opacity`} />
-                    </div>
-                    <div className="mt-5">
-                      <h3 className="text-xl font-display font-bold uppercase tracking-wide text-zinc-100 group-hover:text-white transition-colors">
-                        {cat}
-                      </h3>
-                      <p className="text-[11px] font-mono telemetry-num text-zinc-500 uppercase tracking-widest mt-0.5">
-                        {catList.length} {catList.length === 1 ? 'trening' : 'treninga'}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-              {workouts.length === 0 && !loading && !error && (
-                <div className="col-span-full py-16 text-center flex flex-col items-center carbon-panel rounded-xl">
-                  <Database className="w-12 h-12 text-zinc-700 mb-3" />
-                  <h3 className="text-lg font-display font-bold uppercase text-zinc-300 mb-1">Knjižnica je prazna</h3>
-                  <p className="text-zinc-500 font-mono text-xs">Uvezi .ZWO ili .ERG datoteke putem gumba u zaglavlju.</p>
+          {!isViewingWorkoutsList ? (
+            <div className="flex flex-col gap-6">
+              
+              {/* SEKCIJA 1: PAMETNE KOLEKCIJE & CILJANI PROGRAMI */}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" /> Pametne Kolekcije & Ciljani Programi
+                  </span>
+                  <span className="text-[10px] font-mono text-zinc-500 hidden sm:inline">Brzi odabir prema fiziološkom cilju i vremenu</span>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4 animate-in fade-in duration-200">
-              <div className="carbon-panel rounded-xl p-3.5 px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800">
-                    {activeFolder ? <FolderOpen className="w-5 h-5 text-volt-400" /> : <Search className="w-5 h-5 text-volt-400" />}
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-display font-bold uppercase tracking-wide text-zinc-100">
-                      {activeFolder ? activeFolder : `Pretraga: "${searchQuery}"`}
-                    </h3>
-                    <p className="text-[10px] font-mono telemetry-num font-bold text-zinc-500 uppercase tracking-widest">
-                      {(() => {
-                        const baseList = activeFolder ? (groupedWorkouts[activeFolder] || []) : workouts;
-                        const count = searchQuery.trim()
-                          ? baseList.filter(w => {
-                              const q = searchQuery.toLowerCase();
-                              return (w.title && w.title.toLowerCase().includes(q)) || (w.description && w.description.toLowerCase().includes(q));
-                            }).length
-                          : baseList.length;
-                        return `${count} treninga ${activeFolder ? 'u kategoriji' : 'pronađeno'}`;
-                      })()}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center flex-wrap gap-2 w-full sm:w-auto">
-                  <div className="flex gap-1.5">
-                    <select 
-                      value={sortBy} 
-                      onChange={(e) => setSortBy(e.target.value)}
-                      className="bg-zinc-950 border border-zinc-800 text-zinc-200 rounded-lg px-3 py-1.5 text-xs font-mono font-bold outline-none focus:border-volt-400"
-                    >
-                      <option value="name">Naziv</option>
-                      <option value="difficulty">Težina (LVL)</option>
-                      <option value="duration">Trajanje</option>
-                      <option value="tss">TSS Load</option>
-                      <option value="np">NP (W)</option>
-                    </select>
 
-                    <button 
-                      onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')} 
-                      className="p-1.5 px-2.5 flex items-center justify-center bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400 hover:text-volt-400 hover:border-zinc-700 transition"
-                      title="Promijeni smjer sortiranja"
-                    >
-                      {sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                  {activeFolder ? (
-                    <button onClick={() => setActiveFolder(null)} className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 hover:text-volt-400 hover:border-volt-400/40 transition-all font-mono font-bold text-xs uppercase tracking-wider">
-                      <ArrowLeft className="w-3.5 h-3.5" /> Kategorije
-                    </button>
-                  ) : (
-                    <button onClick={() => setSearchQuery('')} className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 hover:text-volt-400 transition-all font-mono font-bold text-xs uppercase tracking-wider">
-                      <X className="w-3.5 h-3.5" /> Sve kategorije
-                    </button>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {SMART_COLLECTIONS.map(col => {
+                    const Icon = col.icon;
+                    const count = workouts.filter(col.predicate).length;
+                    return (
+                      <button
+                        key={col.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveCollection(col.id);
+                          setActiveFolder(null);
+                          setDurationFilter('all');
+                        }}
+                        className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all duration-150 group hover:-translate-y-0.5 min-h-[110px] ${col.color}`}
+                      >
+                        <div className="flex items-center justify-between w-full mb-2">
+                          <div className="p-1.5 rounded-lg bg-zinc-950/70 border border-white/5 group-hover:scale-105 transition-transform">
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-950/80 border border-white/10 text-zinc-200">
+                            {count}
+                          </span>
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-display font-bold uppercase tracking-wider text-zinc-100 group-hover:text-white line-clamp-1">
+                            {col.title}
+                          </h4>
+                          <p className="text-[9px] text-zinc-400 font-mono mt-0.5 line-clamp-1">
+                            {col.subtitle}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* SEKCIJA 2: MAPE PO FIZIOLOŠKIM ZONAMA */}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-zinc-400 flex items-center gap-1.5">
+                    <Folder className="w-3.5 h-3.5 text-zinc-400" /> Mape po Fiziološkim Zonama
+                  </span>
+                  <span className="text-[10px] font-mono text-zinc-500">8 standardnih Coggan zona</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
+                  {sortedCategories.map(cat => {
+                    const meta = getCategoryMeta(cat);
+                    const catList = groupedWorkouts[cat] || [];
+                    const stats = categoryDurationStats[cat] || { under45: 0, std60: 0, long75: 0 };
+                    return (
+                      <button 
+                        key={cat}
+                        onClick={() => {
+                          setActiveFolder(cat);
+                          setActiveCollection(null);
+                          setDurationFilter('all');
+                        }}
+                        className={`carbon-panel rounded-xl p-5 text-left flex flex-col justify-between min-h-[148px] relative overflow-hidden transition-all duration-150 group hover:-translate-y-0.5 ${meta.border}`}
+                      >
+                        <div className={`absolute top-0 left-0 right-0 h-[3px] ${meta.topBar}`} />
+                        <div className="flex items-center justify-between w-full">
+                          <span className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${meta.badge}`}>
+                            {meta.zone}
+                          </span>
+                          <Folder className={`w-5 h-5 ${meta.text} opacity-75 group-hover:opacity-100 transition-opacity`} />
+                        </div>
+                        <div className="mt-4">
+                          <h3 className="text-xl font-display font-bold uppercase tracking-wide text-zinc-100 group-hover:text-white transition-colors">
+                            {cat}
+                          </h3>
+                          <p className="text-[11px] font-mono telemetry-num text-zinc-500 uppercase tracking-widest mt-0.5">
+                            {catList.length} {catList.length === 1 ? 'trening' : 'treninga'}
+                          </p>
+                        </div>
+                        <div className="mt-3 pt-2.5 border-t border-zinc-800/60 flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 text-zinc-400">
+                            &lt;45m: <strong className="text-zinc-200">{stats.under45 || 0}</strong>
+                          </span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 text-zinc-400">
+                            60m: <strong className="text-volt-300">{stats.std60 || 0}</strong>
+                          </span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 text-zinc-400">
+                            75m+: <strong className="text-zinc-200">{stats.long75 || 0}</strong>
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {workouts.length === 0 && !loading && !error && (
+                    <div className="col-span-full py-16 text-center flex flex-col items-center carbon-panel rounded-xl">
+                      <Database className="w-12 h-12 text-zinc-700 mb-3" />
+                      <h3 className="text-lg font-display font-bold uppercase text-zinc-300 mb-1">Knjižnica je prazna</h3>
+                      <p className="text-zinc-500 font-mono text-xs">Uvezi .ZWO ili .ERG datoteke putem gumba u zaglavlju.</p>
+                    </div>
                   )}
                 </div>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {(() => {
-                  let items = activeFolder ? [...(groupedWorkouts[activeFolder] || [])] : [...workouts];
-                  if (searchQuery.trim()) {
-                    const q = searchQuery.toLowerCase();
-                    items = items.filter(w => 
-                      (w.title && w.title.toLowerCase().includes(q)) || 
-                      (w.description && w.description.toLowerCase().includes(q))
-                    );
-                  }
-                  if (items.length === 0) {
-                    return (
-                      <div className="col-span-full py-16 text-center text-zinc-500 font-mono text-xs carbon-panel rounded-xl">
-                        Nema pronađenih treninga za pojam &quot;{searchQuery}&quot;.
-                      </div>
-                    );
-                  }
-                  items.sort((a, b) => {
-                    if (sortBy === 'name') {
-                      return sortOrder === 'asc' 
-                        ? a.title.localeCompare(b.title) 
-                        : b.title.localeCompare(a.title);
-                    }
-                    
-                    let valA = 0; let valB = 0;
-                    if (sortBy === 'difficulty') {
-                      valA = a.difficulty_score; valB = b.difficulty_score;
-                    } else if (sortBy === 'duration') {
-                      valA = a.duration_seconds; valB = b.duration_seconds;
-                    } else {
-                      const metricsA = getCachedWorkoutMetrics(a);
-                      const metricsB = getCachedWorkoutMetrics(b);
-                      if (sortBy === 'tss') { valA = metricsA.tss; valB = metricsB.tss; }
-                      if (sortBy === 'np') { valA = metricsA.np; valB = metricsB.np; }
-                    }
-                    return sortOrder === 'asc' ? valA - valB : valB - valA;
-                  });
 
-                  return items.map((workout) => {
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+              
+              {/* ZAGLAVLJE LISTE S KONTROLAMA */}
+              <div className="carbon-panel rounded-xl p-3.5 px-4 flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800 text-volt-400">
+                      {activeFolder ? <FolderOpen className="w-5 h-5" /> : (activeCollection ? <Sparkles className="w-5 h-5" /> : <Search className="w-5 h-5" />)}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-display font-bold uppercase tracking-wide text-zinc-100">
+                          {activeFolder 
+                            ? activeFolder 
+                            : (activeCollection 
+                                ? SMART_COLLECTIONS.find(c => c.id === activeCollection)?.title || 'Kolekcija'
+                                : (searchQuery.trim() ? `Pretraga: "${searchQuery}"` : 'Svi Treninzi'))}
+                        </h3>
+                        {activeFolder && (
+                          <span className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getCategoryMeta(activeFolder).badge}`}>
+                            {getCategoryMeta(activeFolder).zone}
+                          </span>
+                        )}
+                        {activeCollection && (
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-volt-400/20 text-volt-300 border border-volt-400/30">
+                            KOLEKCIJA
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] font-mono telemetry-num font-bold text-zinc-500 uppercase tracking-widest mt-0.5">
+                        {displayWorkouts.length} {displayWorkouts.length === 1 ? 'trening prikazan' : 'treninga prikazano'} 
+                        {durationFilter !== 'all' ? ` (filter: ${DURATION_CHIPS.find(c => c.id === durationFilter)?.label})` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center flex-wrap gap-2 w-full sm:w-auto">
+                    <div className="flex gap-1.5">
+                      <select 
+                        value={sortBy} 
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="bg-zinc-950 border border-zinc-800 text-zinc-200 rounded-lg px-3 py-1.5 text-xs font-mono font-bold outline-none focus:border-volt-400"
+                      >
+                        <option value="name">Naziv</option>
+                        <option value="difficulty">Težina (LVL)</option>
+                        <option value="duration">Trajanje</option>
+                        <option value="tss">TSS Load</option>
+                        <option value="np">NP (W)</option>
+                      </select>
+
+                      <button 
+                        onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')} 
+                        className="p-1.5 px-2.5 flex items-center justify-center bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400 hover:text-volt-400 hover:border-zinc-700 transition"
+                        title="Promijeni smjer sortiranja"
+                      >
+                        {sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+
+                    <button 
+                      onClick={() => {
+                        setActiveFolder(null);
+                        setActiveCollection(null);
+                        setSearchQuery('');
+                        setDurationFilter('all');
+                      }} 
+                      className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 hover:text-volt-400 hover:border-volt-400/40 transition-all font-mono font-bold text-xs uppercase tracking-wider"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" /> Sve Mape
+                    </button>
+                  </div>
+                </div>
+
+                {/* VREMENSKI FILTERI (DURATION CHIPS) */}
+                <div className="pt-2.5 border-t border-zinc-800/80 flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 custom-scrollbar">
+                  <span className="text-[10px] font-mono font-bold uppercase text-zinc-500 tracking-wider flex items-center gap-1 shrink-0 mr-1">
+                    <Timer className="w-3 h-3 text-volt-400" /> Trajanje:
+                  </span>
+                  {DURATION_CHIPS.map(chip => {
+                    const count = activeDurationCounts[chip.id] || 0;
+                    const isActive = durationFilter === chip.id;
+                    return (
+                      <button
+                        key={chip.id}
+                        type="button"
+                        onClick={() => setDurationFilter(chip.id)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-medium whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                          isActive
+                            ? 'bg-volt-400 text-zinc-950 font-bold shadow-volt-glow/20'
+                            : 'bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100'
+                        }`}
+                      >
+                        <span>{chip.label}</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isActive ? 'bg-zinc-950/20 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              {/* KARTICE TRENINGA */}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {displayWorkouts.length === 0 ? (
+                  <div className="col-span-full py-16 text-center text-zinc-500 font-mono text-xs carbon-panel rounded-xl flex flex-col items-center gap-2">
+                    <Database className="w-8 h-8 text-zinc-700" />
+                    <span>Nema treninga koji odgovaraju odabranim kriterijima.</span>
+                    <button
+                      onClick={() => {
+                        setDurationFilter('all');
+                        setSearchQuery('');
+                      }}
+                      className="mt-2 px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-volt-400 hover:border-volt-400/50 text-xs font-bold font-mono uppercase"
+                    >
+                      Poništi filtere
+                    </button>
+                  </div>
+                ) : (
+                  displayWorkouts.map((workout) => {
                     const catMeta = getCategoryMeta(workout.category);
                     const metrics = getCachedWorkoutMetrics(workout);
                     return (
@@ -562,11 +858,18 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                           ) : (
                             <>
                               <div className="min-w-0 flex-1">
-                                {!activeFolder && workout.category && (
-                                  <span className={`inline-block text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border mb-1 ${catMeta.badge}`}>
-                                    {normalizeCategory(workout.category)}
-                                  </span>
-                                )}
+                                <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                  {!activeFolder && workout.category && (
+                                    <span className={`inline-block text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${catMeta.badge}`}>
+                                      {normalizeCategory(workout.category)}
+                                    </span>
+                                  )}
+                                  {isClassicWorkout(workout) && (
+                                    <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-400/15 border border-amber-400/30 text-amber-300">
+                                      <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" /> Klasik
+                                    </span>
+                                  )}
+                                </div>
                                 <h3 className="text-base font-display font-bold uppercase tracking-wide text-zinc-100 group-hover/card:text-volt-400 transition-colors leading-snug line-clamp-2">
                                   {workout.title}
                                 </h3>
@@ -659,8 +962,8 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                         </div>
                       </div>
                     );
-                  });
-                })()}
+                  })
+                )}
               </div>
             </div>
           )}
