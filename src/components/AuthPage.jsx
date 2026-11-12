@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Mail, Lock, Loader2, AlertCircle, CheckCircle2, Bluetooth, Cpu, Sparkles, Download, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Loader2, AlertCircle, CheckCircle2, Bluetooth, Cpu, Sparkles, Download, ArrowRight, Link as LinkIcon, X } from 'lucide-react';
 import BrandLogo from './BrandLogo';
+import { startIntervalsOAuth } from '../services/intervalsOAuth';
 
-export default function AuthPage({ onGuestLogin }) {
+export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isIntervalsLoading, setIsIntervalsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -144,6 +146,57 @@ export default function AuthPage({ onGuestLogin }) {
                 ? 'Sinkroniziraj profil, FTP i povijest treninga u oblaku.'
                 : 'Besplatna registracija za trajnu pohranu vožnji na svim uređajima.'}
             </p>
+          </div>
+
+          {/* Obavijest o autentifikaciji ako postoji (npr. Intervals OAuth povratak ili greška) */}
+          {authNotice && (
+            <div className={`mb-4 text-xs font-semibold p-3 rounded-lg flex items-start gap-2.5 ${
+              authNotice.type === 'error'
+                ? 'bg-rose-500/10 border border-rose-500/25 text-rose-400'
+                : authNotice.type === 'success'
+                ? 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-400'
+                : 'bg-volt-400/10 border border-volt-400/25 text-volt-400'
+            }`}>
+              {authNotice.type === 'error' ? (
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              ) : authNotice.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+              ) : (
+                <Loader2 className="w-4 h-4 shrink-0 mt-0.5 animate-spin" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p>{authNotice.text}</p>
+              </div>
+              {onClearNotice && (
+                <button type="button" onClick={onClearNotice} className="text-zinc-500 hover:text-zinc-200 shrink-0">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Službena 1-klik prijava putem Intervals.icu */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsIntervalsLoading(true);
+              startIntervalsOAuth();
+            }}
+            disabled={isIntervalsLoading}
+            className="w-full mb-4 bg-zinc-950 hover:bg-zinc-800 text-volt-400 border border-volt-400/40 hover:border-volt-400 py-3.5 px-4 rounded-xl font-display font-bold uppercase tracking-wider text-xs transition-all shadow-volt-glow flex items-center justify-center gap-2.5 group cursor-pointer disabled:opacity-50"
+          >
+            {isIntervalsLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-volt-400" />
+            ) : (
+              <LinkIcon className="w-4 h-4 text-volt-400 group-hover:scale-110 transition-transform" />
+            )}
+            <span>{isIntervalsLoading ? 'Preusmjeravanje...' : 'Prijavi se putem Intervals.icu'}</span>
+          </button>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-px bg-zinc-800 flex-1" />
+            <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">ili klasičnim računom</span>
+            <div className="h-px bg-zinc-800 flex-1" />
           </div>
 
           <form onSubmit={handleAuth} className="space-y-4">

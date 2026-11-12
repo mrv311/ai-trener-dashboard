@@ -64,6 +64,10 @@ export default function App() {
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [authNotice, setAuthNotice] = useState(null);
+  const [isOAuthProcessing, setIsOAuthProcessing] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(new URLSearchParams(window.location.search).get('code'));
+  });
 
   // Detekcija i obrada povratka iz Supabase email potvrde (URL hash/params)
   useEffect(() => {
@@ -120,28 +124,105 @@ export default function App() {
         .then(async (result) => {
           const athleteId = result.athleteId || '0';
           const authKey = result.authKey;
+          const athleteName = result.athleteName || '';
 
           setIntervalsId(athleteId);
           setIntervalsKey(authKey);
 
-          // Ako je korisnik prijavljen, spremi u Supabase user_metadata za sinkronizaciju na svim računalima
-          if (currentUserId && currentUserId !== 'guest') {
+          // Provjeri postoji li već aktivna Supabase sesija
+          const { data: sessionData } = await supabase.auth.getSession();
+          const activeSession = sessionData?.session;
+
+          if (activeSession?.user) {
+            // Korisnik je već prijavljen u svoj račun (npr. spojio se iz Connections taba)
             try {
               await supabase.auth.updateUser({
                 data: {
                   intervals_id: athleteId,
                   intervals_key: authKey,
-                  intervals_athlete_name: result.athleteName || ''
+                  intervals_athlete_name: athleteName
                 }
               });
             } catch (metaErr) {
               console.warn('[Intervals OAuth] Greška pri spremanju u user_metadata:', metaErr);
             }
+          } else {
+            // Korisnik se prijavljuje s početnog ekrana (AuthPage ili Gost)
+            // Automatski prijavljujemo ili registriramo namjenski račun povezan s Intervals ID-jem
+            const cleanAthleteId = String(athleteId).toLowerCase().replace(/[^a-z0-9]/g, '');
+            const intervalsEmail = `intervals_${cleanAthleteId}@auth.ergvibe.app`;
+            const intervalsPassword = `ErgVibe!${cleanAthleteId}#Auth2026`;
+
+            let authRes = await supabase.auth.signInWithPassword({
+              email: intervalsEmail,
+              password: intervalsPassword
+            });
+
+            if (authRes.error) {
+              // Ako račun ne postoji, kreiramo ga (signUp odmah vraća sesiju u našem Supabase projektu)
+              authRes = await supabase.auth.signUp({
+                email: intervalsEmail,
+                password: intervalsPassword,
+                options: {
+                  data: {
+                    intervals_id: athleteId,
+                    intervals_key: authKey,
+                    intervals_athlete_name: athleteName,
+                    username: athleteName || 'Vozač'
+                  }
+                }
+              });
+            } else if (authRes.data?.session) {
+              // Ažuriraj token ako je račun već postojao
+              await supabase.auth.updateUser({
+                data: {
+                  intervals_id: athleteId,
+                  intervals_key: authKey,
+                  intervals_athlete_name: athleteName
+                }
+              }).catch(() => {});
+            }
+
+            if (authRes.data?.session) {
+              const newSession = authRes.data.session;
+              setSession(newSession);
+              setIsGuest(false);
+
+              // Pohrani i u per-user localStorage ključeve za trenutnu dostupnost
+              try {
+                localStorage.setItem(`intervalsId_${newSession.user.id}`, athleteId);
+                localStorage.setItem(`intervalsKey_${newSession.user.id}`, authKey);
+              } catch (e) {}
+
+              // Migriraj podatke gosta ako su postojali na ovom uređaju
+              try {
+                const guestProfile = JSON.parse(localStorage.getItem('ai_trener_profile_guest') || '{}');
+                if (guestProfile && Object.keys(guestProfile).length > 0) {
+                  await supabase.from('profiles').upsert({
+                    user_id: newSession.user.id,
+                    ...guestProfile,
+                    username: athleteName || guestProfile.username || 'Vozač'
+                  });
+                }
+                const guestActivities = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities_guest') || '[]');
+                if (guestActivities.length > 0) {
+                  const recordsToInsert = guestActivities.map(act => {
+                    const { id, ...rest } = act;
+                    return { ...rest, user_id: newSession.user.id };
+                  });
+                  await supabase.from('completed_activities').insert(recordsToInsert);
+                }
+              } catch (migErr) {
+                console.warn('[Intervals OAuth] Migracija gost podataka:', migErr);
+              }
+            } else if (authRes.error) {
+              throw authRes.error;
+            }
           }
 
           setAuthNotice({
             type: 'success',
-            text: `Uspješno povezano s Intervals.icu! ${result.athleteName ? `Dobrodošao, ${result.athleteName}.` : ''}`
+            text: `Uspješno prijavljeni putem Intervals.icu! ${athleteName ? `Dobrodošao, ${athleteName}.` : ''}`
           });
           setTimeout(() => setAuthNotice(null), 6000);
         })
@@ -149,11 +230,14 @@ export default function App() {
           console.error('[Intervals OAuth] Greška pri obradi autorizacije:', err);
           setAuthNotice({
             type: 'error',
-            text: `Greška pri povezivanju s Intervals.icu: ${err.message}`
+            text: `Greška pri prijavi s Intervals.icu: ${err.message}`
           });
+        })
+        .finally(() => {
+          setIsOAuthProcessing(false);
         });
     }
-  }, [currentUserId, setIntervalsId, setIntervalsKey]);
+  }, [setIntervalsId, setIntervalsKey]);
 
   // Modali za autentifikaciju i onboarding vodič
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -371,17 +455,25 @@ export default function App() {
   const displayName = isDefaultGuestName ? 'Gost Vozač' : athleteProfile.username.trim().split(' ')[0];
   const athleteWkg = ((Number(athleteProfile?.ftp) || 200) / (Number(athleteProfile?.weight) || 75)).toFixed(2);
 
-  if (isSessionLoading) {
+  if (isSessionLoading || isOAuthProcessing) {
     return (
       <div className="h-screen bg-zinc-950 flex flex-col items-center justify-center gap-3">
         <BrandLogo size={52} spinning />
-        <span className="font-mono text-xs uppercase tracking-widest text-zinc-500">Inicijalizacija sustava...</span>
+        <span className="font-mono text-xs uppercase tracking-widest text-zinc-500">
+          {isOAuthProcessing ? 'Povezivanje i prijava putem Intervals.icu...' : 'Inicijalizacija sustava...'}
+        </span>
       </div>
     );
   }
 
   if (!session && !isGuest) {
-    return <AuthPage onGuestLogin={() => setIsGuest(true)} />;
+    return (
+      <AuthPage
+        onGuestLogin={() => setIsGuest(true)}
+        authNotice={authNotice}
+        onClearNotice={() => setAuthNotice(null)}
+      />
+    );
   }
 
   return (

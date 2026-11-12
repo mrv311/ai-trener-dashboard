@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Mail, Lock, Loader2, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { Mail, Lock, Loader2, AlertCircle, CheckCircle2, X, Link as LinkIcon } from 'lucide-react';
 import BrandLogo from './BrandLogo';
+import { startIntervalsOAuth } from '../services/intervalsOAuth';
 
 export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isIntervalsLoading, setIsIntervalsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -119,6 +121,30 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
             Tvoj dosadašnji profil i odvoženi treninzi kao Gost automatski će se prenijeti na račun.
           </div>
         )}
+
+        {/* Službena 1-klik prijava putem Intervals.icu */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsIntervalsLoading(true);
+            startIntervalsOAuth();
+          }}
+          disabled={isIntervalsLoading}
+          className="w-full mb-4 bg-zinc-950 hover:bg-zinc-800 text-volt-400 border border-volt-400/40 hover:border-volt-400 py-3 px-4 rounded-xl font-display font-bold uppercase tracking-wider text-xs transition-all shadow-volt-glow flex items-center justify-center gap-2.5 group cursor-pointer disabled:opacity-50"
+        >
+          {isIntervalsLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-volt-400" />
+          ) : (
+            <LinkIcon className="w-4 h-4 text-volt-400 group-hover:scale-110 transition-transform" />
+          )}
+          <span>{isIntervalsLoading ? 'Preusmjeravanje...' : 'Prijavi se putem Intervals.icu'}</span>
+        </button>
+
+        <div className="flex items-center gap-3 mb-4">
+          <div className="h-px bg-zinc-800 flex-1" />
+          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">ili emailom</span>
+          <div className="h-px bg-zinc-800 flex-1" />
+        </div>
 
         <form onSubmit={handleAuth} className="space-y-4">
           <div>
