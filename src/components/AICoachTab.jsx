@@ -86,6 +86,8 @@ export default function AICoachTab({
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [chatError, setChatError] = useState(null);
   const chatEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
+  const isFirstChatRender = useRef(true);
 
   // --- PLANNER STATE ---
   const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
@@ -144,7 +146,18 @@ export default function AICoachTab({
   }, [messages]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Spriječi neželjeno scrollanje na učitavanju komponente koje bi gurnulo cijeli prozor prema dolje
+    if (isFirstChatRender.current) {
+      isFirstChatRender.current = false;
+      return;
+    }
+    // Skrolaj samo unutrašnji spremnik chat poruka, bez pomicanja glavne stranice
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
   }, [messages, isSendingChat, chatError]);
 
   // Drži zaslon mobitela uključenim dok se čeka odgovor AI poslužitelja kako mobilni OS ne bi prekinuo vezu
@@ -537,7 +550,7 @@ export default function AICoachTab({
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-4 custom-scrollbar">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-4 custom-scrollbar">
             {messages.length === 0 && !isSendingChat && (
               <div className="my-auto flex flex-col items-center py-4 md:py-8 text-center max-w-2xl mx-auto w-full">
                 <div className="p-4 rounded-xl bg-volt-400/10 border border-volt-400/30 text-volt-400 mb-4">

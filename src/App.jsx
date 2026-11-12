@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Activity, Calendar as CalendarIcon,
   User, Loader2, Monitor, LogOut, Link as LinkIcon,
@@ -65,6 +65,7 @@ export default function App() {
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [authNotice, setAuthNotice] = useState(null);
+  const mainContentRef = useRef(null);
   const [isOAuthProcessing, setIsOAuthProcessing] = useState(() => {
     if (typeof window === 'undefined') return false;
     return Boolean(new URLSearchParams(window.location.search).get('code'));
@@ -373,6 +374,9 @@ export default function App() {
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     setIsMobileMenuOpen(false);
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTop = 0;
+    }
     if (tab !== 'trainer') {
       setIsTrainerFullscreen(false);
       if (typeof document !== 'undefined' && document.fullscreenElement && document.exitFullscreen) {
@@ -718,7 +722,7 @@ export default function App() {
           </div>
         )}
 
-        <main className={`flex-1 min-h-0 ${['trainer', 'calendar'].includes(activeTab) ? `overflow-hidden p-1 md:p-2 short:p-1.5 ${activeTab === 'trainer' && isTrainerFullscreen ? 'pb-1.5' : 'pb-16 md:pb-2 short:md:pb-1.5'}` : 'overflow-auto p-3 md:p-6 short:p-3 pb-20 md:pb-6 short:md:pb-3'} bg-zinc-950 bg-telemetry-grid relative flex flex-col`}>
+        <main ref={mainContentRef} className={`flex-1 min-h-0 ${['trainer', 'calendar'].includes(activeTab) ? `overflow-hidden p-1 md:p-2 short:p-1.5 ${activeTab === 'trainer' && isTrainerFullscreen ? 'pb-1.5' : 'pb-16 md:pb-2 short:md:pb-1.5'}` : 'overflow-auto p-3 md:p-6 short:p-3 pb-20 md:pb-6 short:md:pb-3'} bg-zinc-950 bg-telemetry-grid relative flex flex-col`}>
           <div className={`relative z-10 w-full ${['trainer', 'calendar'].includes(activeTab) ? 'flex-1 flex flex-col min-h-0 h-full' : ''}`}>
             {activeTab === 'calendar' && (
               <CalendarTab
