@@ -374,7 +374,7 @@ export const parseIntervalsCode = (code, ftp = 200) => {
       return;
     }
 
-    const isStep = cleanLine.startsWith('-') || /^\d+\s*(?:h|hr|hrs|m|min|mins|s|sec|secs)\b/i.test(cleanLine);
+    const isStep = cleanLine.startsWith('-') || /^\d+:\d{2}/.test(cleanLine) || /^\d+\s*(?:h|hr|hrs|m|min|mins|s|sec|secs)(?![a-zA-Z])/i.test(cleanLine);
     const pureMultiplierMatch = cleanLine.match(/^(\d+)\s*x\s*:?$/i);
     const headerMultiplierMatch = !isStep && !cleanLine.includes('%') ? cleanLine.match(/\b(\d+)\s*x\b/i) : null;
 
@@ -394,15 +394,20 @@ export const parseIntervalsCode = (code, ftp = 200) => {
       return;
     }
 
-    // Parsiranje trajanja koraka
+    // Parsiranje trajanja koraka (podržava 1m20s, 1m 20s, 1:20, 90s, 1.5m, 1h20m)
     let secs = 0;
-    const hMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)\b/i);
-    const mMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins)\b/i);
-    const sMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:s|sec|secs)\b/i);
+    const colonMatch = cleanLine.match(/\b(\d+):(\d{2})\b/);
+    if (colonMatch) {
+      secs = parseInt(colonMatch[1], 10) * 60 + parseInt(colonMatch[2], 10);
+    } else {
+      const hMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)(?![a-zA-Z])/i);
+      const mMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins)(?![a-zA-Z])/i);
+      const sMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:s|sec|secs)(?![a-zA-Z])/i);
 
-    if (hMatch) secs += Math.round(parseFloat(hMatch[1]) * 3600);
-    if (mMatch) secs += Math.round(parseFloat(mMatch[1]) * 60);
-    if (sMatch) secs += Math.round(parseFloat(sMatch[1]));
+      if (hMatch) secs += Math.round(parseFloat(hMatch[1]) * 3600);
+      if (mMatch) secs += Math.round(parseFloat(mMatch[1]) * 60);
+      if (sMatch) secs += Math.round(parseFloat(sMatch[1]));
+    }
 
     let powerMin = 0, powerMax = 0, powerAvg = 0;
     // Podržava 65-75%, 65%-75%, 65% - 75%, 65-75% FTP, ramp 65-75%

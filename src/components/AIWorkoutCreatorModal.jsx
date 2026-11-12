@@ -19,6 +19,72 @@ function getZoneBarColor(powerPct) {
   return '#a855f7'; // Z6+ Ljubičasta
 }
 
+/**
+ * Automatski usklađuje zadnji korak (hlađenje) kako bi ukupno trajanje
+ * treninga točno u sekundu odgovaralo ciljanim minutama.
+ */
+export function alignCooldownToTarget(rawCode, targetMinutes) {
+  if (!rawCode || !targetMinutes || targetMinutes <= 0) return rawCode;
+  const targetSecs = targetMinutes * 60;
+
+  const current = parseIntervalsCode(rawCode, 200);
+  if (!current || !current.duration) return rawCode;
+
+  const diffSecs = targetSecs - current.duration;
+  if (Math.abs(diffSecs) < 5) return rawCode;
+
+  const lines = rawCode.split(/\r?\n/);
+  let lastStepIdx = -1;
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i].trim();
+    if (l.startsWith('-') || /^\d+:\d{2}/.test(l) || /^\d+\s*(?:h|m|min|s|sec)/i.test(l)) {
+      lastStepIdx = i;
+      break;
+    }
+  }
+
+  if (lastStepIdx !== -1) {
+    const lastLine = lines[lastStepIdx];
+    const colonMatch = lastLine.match(/\b(\d+):(\d{2})\b/);
+    let curSecs = 0;
+    if (colonMatch) {
+      curSecs = parseInt(colonMatch[1], 10) * 60 + parseInt(colonMatch[2], 10);
+    } else {
+      const hMatch = lastLine.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)(?![a-zA-Z])/i);
+      const mMatch = lastLine.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins)(?![a-zA-Z])/i);
+      const sMatch = lastLine.match(/(\d+(?:\.\d+)?)\s*(?:s|sec|secs)(?![a-zA-Z])/i);
+      if (hMatch) curSecs += Math.round(parseFloat(hMatch[1]) * 3600);
+      if (mMatch) curSecs += Math.round(parseFloat(mMatch[1]) * 60);
+      if (sMatch) curSecs += Math.round(parseFloat(sMatch[1]));
+    }
+
+    const newSecs = curSecs + diffSecs;
+    if (newSecs >= 20) {
+      const formatSecs = (s) => {
+        const m = Math.floor(s / 60);
+        const remS = s % 60;
+        if (m > 0 && remS > 0) return `${m}m${remS}s`;
+        if (m > 0) return `${m}m`;
+        return `${remS}s`;
+      };
+      const formattedDur = formatSecs(newSecs);
+
+      const powerMatch = lastLine.match(/(\d+(?:\.\d+)?\s*%\s*-\s*\d+(?:\.\d+)?\s*%|\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s*%|\d+(?:\.\d+)?\s*%|\d+\s*w)/i);
+      const powerStr = powerMatch ? powerMatch[0] : '40%';
+      lines[lastStepIdx] = `- ${formattedDur} ${powerStr}`;
+      return lines.join('\n');
+    }
+  }
+
+  if (diffSecs >= 30) {
+    const addMins = Math.round(diffSecs / 60);
+    return `${rawCode.trim()}\n\nHlađenje\n- ${addMins}m 40%`;
+  }
+
+  return rawCode;
+}
+
 export default function AIWorkoutCreatorModal({
   isOpen,
   onClose,
@@ -107,6 +173,19 @@ export default function AIWorkoutCreatorModal({
     return parseIntervalsCode(code, ftp);
   }, [code, ftp]);
 
+  const currentDurationMins = useMemo(() => {
+    return parsedStats?.duration ? Math.round(parsedStats.duration / 60) : targetDuration;
+  }, [parsedStats, targetDuration]);
+
+  const workIntervalsCount = useMemo(() => {
+    return parsedStats?.allSteps?.filter(s => (s.power || s.powerAvg || 50) >= 85).length || 0;
+  }, [parsedStats]);
+
+  const setsCount = useMemo(() => {
+    const customBlocks = parsedStats?.blocks?.filter(b => b.name && !/zagrij|warm|cool|hlađ/i.test(b.name));
+    return customBlocks && customBlocks.length > 0 ? customBlocks.length : 1;
+  }, [parsedStats]);
+
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -138,6 +217,8 @@ export default function AIWorkoutCreatorModal({
         imageBase64: attachedImage?.dataBase64 || null,
         mimeType: attachedImage?.type || 'image/jpeg',
         description: descriptionInput,
+        targetDuration,
+        targetTss,
         athleteProfile
       });
 
@@ -150,14 +231,15 @@ export default function AIWorkoutCreatorModal({
       setAnalysisText(introText);
 
       // Parsiraj naslov, kategoriju, TSS i korake iz koda
-      let extractedTitle = 'AI Rekreirani Trening';
-      let extractedCategory = 'VO2max';
-      let extractedDuration = 60;
-      let extractedTss = 75;
+      let extractedTitle = title || 'AI Rekreirani Trening';
+      let extractedCategory = category || 'VO2max';
+      let extractedDuration = targetDuration || 60;
+      let extractedTss = targetTss || 75;
       const stepLines = [];
 
       const lines = rawBlock.split(/\r?\n/);
       let inSteps = false;
+      let foundStepOrHeader = false;
 
       lines.forEach(l => {
         const t = l.trim();
@@ -166,25 +248,36 @@ export default function AIWorkoutCreatorModal({
         } else if (/^CATEGORY:/i.test(t)) {
           extractedCategory = t.replace(/^CATEGORY:\s*/i, '').trim();
         } else if (/^DURATION:/i.test(t)) {
-          extractedDuration = parseInt(t.replace(/^DURATION:\s*/i, '').replace(/m(in)?/i, ''), 10) || 60;
+          const d = parseInt(t.replace(/^DURATION:\s*/i, '').replace(/m(in)?/i, ''), 10);
+          if (d > 0) extractedDuration = d;
         } else if (/^TSS:/i.test(t)) {
-          extractedTss = parseInt(t.replace(/^TSS:\s*/i, ''), 10) || 75;
+          const s = parseInt(t.replace(/^TSS:\s*/i, ''), 10);
+          if (s > 0) extractedTss = s;
         } else if (/^STEPS:/i.test(t)) {
           inSteps = true;
+          foundStepOrHeader = true;
         } else if (inSteps) {
           stepLines.push(l);
-        } else if (t.startsWith('-') || /^\d+\s*x/i.test(t) || t === 'Zagrijavanje' || t === 'Glavni dio' || t === 'Hlađenje' || t.startsWith('Set')) {
+        } else if (t.startsWith('-') || /^\d+\s*x/i.test(t) || /^\d+:\d{2}/.test(t) || /^\d+\s*(?:h|m|min|s|sec)/i.test(t) || t === 'Zagrijavanje' || t === 'Glavni dio' || t === 'Hlađenje' || t.startsWith('Set') || t.startsWith('Oporavak') || t.startsWith('Warmup') || t.startsWith('Cooldown')) {
+          foundStepOrHeader = true;
           stepLines.push(l);
+        } else if (foundStepOrHeader && t === '') {
+          // Zadrži prazne redove radi Intervals.icu sintakse za setove
+          stepLines.push('');
         }
       });
 
-      const cleanCode = stepLines.join('\n').trim();
+      let cleanCode = stepLines.join('\n').trim() || rawBlock;
+
+      // Automatsko usklađivanje hlađenja na točno ciljano trajanje u minutama
+      const finalTargetMin = extractedDuration || targetDuration || 60;
+      cleanCode = alignCooldownToTarget(cleanCode, finalTargetMin);
 
       setTitle(extractedTitle);
       setCategory(extractedCategory);
-      setTargetDuration(extractedDuration);
+      setTargetDuration(finalTargetMin);
       setTargetTss(extractedTss);
-      setCode(cleanCode || rawBlock);
+      setCode(cleanCode);
     } catch (err) {
       setErrorMessage(err.message || 'Greška pri AI rekreaciji treninga.');
     } finally {
@@ -401,17 +494,29 @@ export default function AIWorkoutCreatorModal({
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setDescriptionInput('TrainerRoad Anticosti, 3 seta po 5 intervala VO2max, 76 TSS, 60 min.')}
+                  onClick={() => {
+                    setDescriptionInput('TrainerRoad Anticosti, 3 seta po 5 intervala VO2max (1m do 1m20s @ 120-125% FTP), 2 min oporavka između intervala, 3 min između setova, 60 min, 76 TSS.');
+                    setTargetDuration(60);
+                    setTargetTss(76);
+                    setCategory('VO2max');
+                    setTitle('Anticosti');
+                  }}
                   className="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-[10px] text-zinc-300 hover:text-volt-300 transition-colors"
                 >
-                  ⚡ TR Anticosti (3x5)
+                  ⚡ TR Anticosti (3x5, 60m, 76 TSS)
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDescriptionInput('Carson Sweet Spot, 6x 5-7 min @ 88-94% FTP s 2 min odmora, 60 min.')}
+                  onClick={() => {
+                    setDescriptionInput('Carson Sweet Spot, 6x 5-7 min @ 88-94% FTP s 2 min oporavka, 60 min, 66 TSS.');
+                    setTargetDuration(60);
+                    setTargetTss(66);
+                    setCategory('SweetSpot');
+                    setTitle('Carson');
+                  }}
                   className="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-[10px] text-zinc-300 hover:text-volt-300 transition-colors"
                 >
-                  💛 Carson (6x SweetSpot)
+                  💛 Carson (6x SweetSpot, 60m, 66 TSS)
                 </button>
                 <button
                   type="button"
@@ -420,6 +525,44 @@ export default function AIWorkoutCreatorModal({
                 >
                   🎯 FTP {ftp}W kalibracija
                 </button>
+              </div>
+
+              {/* Ciljano trajanje i TSS sidra */}
+              <div className="grid grid-cols-2 gap-2.5 pt-1.5 border-t border-zinc-800/80">
+                <div>
+                  <label className="font-mono text-[10px] uppercase tracking-wider text-zinc-400 font-bold block mb-1">
+                    Ciljano Trajanje
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="15"
+                      max="300"
+                      value={targetDuration}
+                      onChange={(e) => setTargetDuration(parseInt(e.target.value, 10) || 60)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-zinc-100 focus:border-volt-400 outline-none pr-9"
+                    />
+                    <span className="absolute right-2.5 top-1.5 text-xs font-mono text-zinc-500">min</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-mono text-[10px] uppercase tracking-wider text-zinc-400 font-bold block mb-1">
+                    Ciljani TSS (Opcionalno)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="10"
+                      max="400"
+                      value={targetTss || ''}
+                      onChange={(e) => setTargetTss(e.target.value ? parseInt(e.target.value, 10) : '')}
+                      placeholder="npr. 76"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-zinc-100 focus:border-volt-400 outline-none pr-9"
+                    />
+                    <span className="absolute right-2.5 top-1.5 text-xs font-mono text-zinc-500">TSS</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -497,13 +640,32 @@ export default function AIWorkoutCreatorModal({
                       <div className="flex items-center gap-2 font-mono text-xs font-bold text-zinc-200">
                         <span className="flex items-center gap-1 text-volt-300">
                           <Clock className="w-3.5 h-3.5" />
-                          {parsedStats?.duration ? Math.round(parsedStats.duration / 60) : targetDuration} min
+                          {currentDurationMins} min
                         </span>
                         <span className="text-zinc-600">·</span>
                         <span className="flex items-center gap-1 text-sky-400">
                           <Activity className="w-3.5 h-3.5" />
                           {parsedStats?.tss || targetTss} TSS
                         </span>
+                        {parsedStats?.ifFactor && (
+                          <>
+                            <span className="text-zinc-600">·</span>
+                            <span className="text-amber-400 text-[11px]">
+                              {parsedStats.ifFactor} IF
+                            </span>
+                          </>
+                        )}
+                        {currentDurationMins !== targetDuration && (
+                          <button
+                            type="button"
+                            onClick={() => setCode(alignCooldownToTarget(code, targetDuration))}
+                            className="ml-1.5 px-2 py-0.5 rounded bg-volt-400/20 hover:bg-volt-400/30 text-volt-300 border border-volt-400/40 text-[10px] font-mono font-bold flex items-center gap-1 transition-colors"
+                            title={`Prilagodi trajanje hlađenja na točno ${targetDuration} min`}
+                          >
+                            <RefreshCw className="w-2.5 h-2.5" />
+                            <span>Uskladi na {targetDuration}m</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -539,6 +701,32 @@ export default function AIWorkoutCreatorModal({
                   </div>
                 )}
 
+                {/* STRUKTURNI SAŽETAK SETOVA I INTERVALA */}
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-lg bg-zinc-950/70 border border-zinc-800 text-xs">
+                  <div className="flex items-center gap-2 font-mono text-[11px]">
+                    <span className="text-zinc-400 font-bold uppercase tracking-wider">Struktura:</span>
+                    <span className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-volt-300 font-bold">
+                      {setsCount} {setsCount === 1 ? 'set' : setsCount < 5 ? 'seta' : 'setova'}
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-rose-400 font-bold">
+                      {workIntervalsCount} radnih intervala
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-sky-400 font-bold">
+                      {currentDurationMins} min ukupno
+                    </span>
+                  </div>
+                  {currentDurationMins !== targetDuration && (
+                    <button
+                      type="button"
+                      onClick={() => setCode(alignCooldownToTarget(code, targetDuration))}
+                      className="text-[11px] font-mono text-volt-300 hover:text-volt-200 transition-colors flex items-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3 h-3 text-volt-400" />
+                      <span>Uskladi hlađenje na {targetDuration} min</span>
+                    </button>
+                  )}
+                </div>
+
                 {/* INTERAKTIVNI EDITOR INTERVALS.ICU KODA */}
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
@@ -550,7 +738,7 @@ export default function AIWorkoutCreatorModal({
                   <textarea
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
-                    rows={8}
+                    rows={13}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 font-mono text-xs text-zinc-100 focus:border-volt-400 outline-none leading-relaxed custom-scrollbar"
                   />
                 </div>
