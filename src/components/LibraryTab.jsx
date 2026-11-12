@@ -6,6 +6,7 @@ import { parseWorkoutFile } from '../utils/workoutParser';
 import { calculateCogganMetrics, expandStepsToSeconds } from '../utils/performanceMetrics';
 import { generateLocalWorkout } from '../utils/workoutGenerator';
 import { stepsToIntervalsCode } from './ai/AIMarkdown';
+import AIWorkoutCreatorModal from './AIWorkoutCreatorModal';
 
 export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 250, userId }) {
   const [workouts, setWorkouts] = useState([]);
@@ -29,6 +30,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
   const [isSavingAi, setIsSavingAi] = useState(false);
 
   const [showGeneratorModal, setShowGeneratorModal] = useState(false);
+  const [showAiCreatorModal, setShowAiCreatorModal] = useState(false);
   const [genType, setGenType] = useState('Endurance');
   const [genDuration, setGenDuration] = useState(60);
   const [genDifficulty, setGenDifficulty] = useState(3);
@@ -330,6 +332,17 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
               </button>
             )}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowAiCreatorModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-volt-400/10 hover:bg-volt-400/20 border border-volt-400/30 text-volt-300 font-mono font-bold text-xs uppercase tracking-wider rounded-lg transition-all shadow-volt-glow/15"
+            title="Rekreiraj trening iz snimke zaslona (TrainerRoad, Zwift, Garmin itd.)"
+          >
+            <Zap className="w-3.5 h-3.5 text-volt-400" />
+            <span className="hidden sm:inline">AI Kreator iz slike</span>
+            <span className="sm:hidden">AI Slika</span>
+          </button>
 
           <button 
             onClick={() => setShowGeneratorModal(true)}
@@ -850,6 +863,19 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
           </div>
         </div>
       )}
+
+      {/* DEDICATED AI WORKOUT CREATOR MODAL */}
+      <AIWorkoutCreatorModal
+        isOpen={showAiCreatorModal}
+        onClose={() => {
+          setShowAiCreatorModal(false);
+          fetchWorkouts();
+        }}
+        athleteProfile={{ ftp }}
+        onAddWorkoutToCalendar={onScheduleWorkout}
+        onStartWorkoutInTrainer={onSelectWorkout}
+        userId={userId}
+      />
     </div>
   );
 }

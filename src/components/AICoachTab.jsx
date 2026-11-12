@@ -42,6 +42,7 @@ import {
   clearExtraImportedHistory
 } from '../services/historyService';
 import AIMarkdown, { AIWorkoutCard, buildErgVibeWorkoutObject } from './ai/AIMarkdown';
+import AIWorkoutCreatorModal from './AIWorkoutCreatorModal';
 
 const STORAGE_KEY_CHAT = 'ergvibe_ai_coach_chat_v1';
 const STORAGE_KEY_PLAN = 'ergvibe_ai_saved_plan_v1';
@@ -80,6 +81,7 @@ export default function AICoachTab({
 }) {
   const [subTab, setSubTab] = useState('chat'); // 'chat' | 'planner' | 'knowledge'
   const [selectedModel, setSelectedModel] = useState('gemini-3.8-flash');
+  const [showCreatorModal, setShowCreatorModal] = useState(false);
   const [includeCoachArchive, setIncludeCoachArchiveState] = useState(() => getHistoryOptions(userId).includeBaseHistory);
 
   // --- CHAT STATE ---
@@ -628,6 +630,15 @@ export default function AICoachTab({
               }`}
             >
               <BookOpen className="w-3.5 h-3.5" /> Baza & Povijest
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCreatorModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-display font-bold uppercase tracking-wider text-volt-300 bg-volt-400/10 hover:bg-volt-400/20 border border-volt-400/30 transition-all shadow-volt-glow/20"
+              title="Specijalizirani studio za automatsku izradu workouta iz slike (Zwift, TrainerRoad, Garmin)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-volt-400" />
+              <span>AI Workout Studio</span>
             </button>
           </div>
 
@@ -1717,6 +1728,16 @@ export default function AICoachTab({
           </div>
         </div>
       )}
+
+      {/* DEDICATED AI WORKOUT CREATOR MODAL */}
+      <AIWorkoutCreatorModal
+        isOpen={showCreatorModal}
+        onClose={() => setShowCreatorModal(false)}
+        athleteProfile={profile}
+        onAddWorkoutToCalendar={onAddWorkoutToCalendar}
+        onStartWorkoutInTrainer={onStartWorkoutInTrainer}
+        userId={userId}
+      />
     </div>
   );
 }

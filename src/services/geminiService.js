@@ -643,6 +643,92 @@ Ako poruka sadrži priloženu sliku ili PDF laboratorijskog nalaza spiroergometr
 }
 
 /**
+ * Specijalizirana funkcija za AI Workout Creator modal.
+ * Fokusirana isključivo na dekonstrukciju slike treninga (TrainerRoad, Zwift, Garmin itd.)
+ * ili tekstualnog opisa u 100% točan ErgVibe kod bez ometanja općenitim chat kontekstom.
+ */
+export async function recreateWorkoutWithAi({
+  imageBase64 = null,
+  mimeType = 'image/jpeg',
+  description = '',
+  athleteProfile = null,
+  model = 'gemini-3.8-flash'
+}) {
+  const ftp = Number(athleteProfile?.ftp) || 270;
+  const weight = Number(athleteProfile?.weight) || 74;
+
+  const systemInstruction = `Ti si specijalizirani ErgVibe AI Vision Workout Deconstructor i vrhunski biciklistički trener.
+Tvoj ISKLJUČIVI zadatak je pretvoriti priloženu snimku zaslona biciklističkog treninga (TrainerRoad, Zwift, TrainingPeaks, Garmin, Intervals.icu, crtež ili tablicu) ili tekstualni opis u točan, strukturirani trenažni workout.
+
+Profil sportaša:
+- Trenutni FTP: ${ftp} W | Težina: ${weight} kg
+
+ZLATNA PRAVILA ZA APSOLUTNU PRECIZNOST:
+1. AKO NA SLICI ILI U OPISU PIŠU TSS, TRAJANJE ILI NAZIV TRENINGA:
+   - ZABRANJENO JE PROIZVOLJNO MIJENJATI TSS! Ako na slici ili u opisu piše npr. "TSS: 76", izlaz MORA imati točno "TSS: 76".
+   - Ako je vidljiv naziv treninga (npr. TrainerRoad kataloga: "Anticosti", "Carson", "The Gorby", "Mary Austin", "Baxter", "Erie", "Spanish Needle", ili Zwift treninga), OBAVEZNO uskladi strukturu intervala s točnim poznatim katalogom tog treninga!
+   - Primjer: TrainerRoad "Anticosti" ima točno 3 seta po 5 intervala (ukupno 15 intervala rada na 120% FTP) u trajanju od 60 min i 76 TSS!
+2. BROJANJE USKIH INTERVALA U SETOVIMA:
+   - Na trenažnim grafovima intervali u setu su uski šiljci. Pažljivo prebroji svaki šiljak u svakom setu! Ako vidiš 3 seta, prebroji točno koliko šiljaka je u svakom setu (npr. 5 intervala, a ne 4).
+3. KORISNIČKE UPUTE I OPIS IMAJU APSOLUTNI PRIORITET:
+   - Ako korisnik u opisu napiše specifikaciju (npr. "3 seta po 5 intervala", "76 TSS", "napravi verziju od 60 min"), to je ZAKON i mora biti točno tako ugrađeno.
+4. TOČAN FORMAT KODA:
+Na početku daj 2-3 rečenice analize onoga što si prepoznao (naziv, trajanje, setove, TSS), a zatim OBAVEZNO ispiši strukturirani blok:
+\`\`\`workout
+TITLE: Naziv Treninga
+CATEGORY: VO2max | SweetSpot | Threshold | Endurance | Anaerobic | Recovery
+DURATION: trajanje u minutama
+TSS: točan broj
+STEPS:
+Zagrijavanje
+- 10m 50-75%
+Set 1
+5x
+- 1m 120%
+- 1m 40%
+Oporavak
+- 4m 40%
+Set 2
+5x
+- 1m 120%
+- 1m 40%
+Oporavak
+- 4m 40%
+Set 3
+5x
+- 1m 120%
+- 1m 40%
+Hlađenje
+- 6m 40%
+\`\`\`
+`;
+
+  const parts = [];
+
+  const promptText = description?.trim()
+    ? `Rekreiraj ovaj trening sa slike poštujući ove korisničke upute i podatke:\n${description.trim()}`
+    : 'Pažljivo analiziraj priloženu sliku treninga, očitaj točan naziv, trajanje, TSS i točan broj intervala u svakom setu te ga rekreiraj u strukturirani ErgVibe workout.';
+
+  parts.push({ text: promptText });
+
+  if (imageBase64 && mimeType) {
+    parts.push({
+      inlineData: {
+        mimeType,
+        data: imageBase64
+      }
+    });
+  }
+
+  return callGeminiApi({
+    systemInstruction,
+    contents: [{ role: 'user', parts }],
+    model,
+    temperature: 0.1
+  });
+}
+
+/**
  * Automatsko generiranje cjelovitog periodiziranog trenažnog plana.
  */
 export async function generateStructuredTrainingPlan({
