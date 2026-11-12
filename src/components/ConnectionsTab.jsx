@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Clock, Link as LinkIcon, Unlink, HardDriveDownload, ShieldCheck, Check, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Link as LinkIcon, Unlink, HardDriveDownload, ShieldCheck, Check, Eye, EyeOff, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { getGeminiConfigStatus, setCustomGeminiApiKey } from '../services/geminiService';
+import { startIntervalsOAuth } from '../services/intervalsOAuth';
 
-export default function ConnectionsTab({ connectionStatus, connectionError, intervalsId, setId, intervalsKey, setKey, onSave, onDisconnect, userId }) {
+export default function ConnectionsTab({ connectionStatus, connectionError, intervalsId, setId, intervalsKey, setKey, onSave, onDisconnect, userId, athleteInfo }) {
   const [draftId, setDraftId] = useState(() => String(intervalsId ?? ''));
   const [draftKey, setDraftKey] = useState(() => String(intervalsKey ?? ''));
   const [showKey, setShowKey] = useState(false);
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [geminiStatus, setGeminiStatus] = useState(() => getGeminiConfigStatus());
   const [customGeminiDraft, setCustomGeminiDraft] = useState('');
   const [showGeminiKey, setShowGeminiKey] = useState(false);
@@ -19,6 +22,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
   }, [intervalsKey]);
 
   const isConfigured = Boolean(String(intervalsId ?? '').trim() && String(intervalsKey ?? '').trim());
+  const isOAuth = String(intervalsKey ?? '').toLowerCase().startsWith('bearer ');
 
   const saveSettings = (e) => {
     if (e) e.preventDefault();
@@ -96,7 +100,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
         </div>
 
         {/* 2. Intervals.icu sinkronizacija */}
-        <form onSubmit={saveSettings} className="bg-zinc-950 border border-zinc-800 rounded-xl p-6 flex flex-col gap-4 relative overflow-hidden">
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-6 flex flex-col gap-4 relative overflow-hidden">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-400">
@@ -104,7 +108,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
               </div>
               <div>
                 <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">Intervals.icu</h3>
-                <span className="text-[11px] text-zinc-500">Automatski kalendar i upload</span>
+                <span className="text-[11px] text-zinc-500">Automatski kalendar i upload vožnji</span>
               </div>
             </div>
 
@@ -130,74 +134,145 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
             )}
           </div>
 
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            Ako želiš automatsko povlačenje treninga iz svog Intervals.icu kalendara i automatski upload po završetku vožnje, unesi svoje pristupne podatke:
-          </p>
-
-          <div className="space-y-3 mt-1">
-            <div>
-              <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-                Korisnički ID (Athlete ID)
-              </label>
-              <input
-                type="text"
-                value={draftId}
-                onChange={(e) => setDraftId(e.target.value)}
-                placeholder="npr. i12345 ili brojčani ID"
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-zinc-100 font-mono text-xs focus:border-volt-400 focus:outline-none transition-all placeholder:text-zinc-600"
-              />
-            </div>
-
-            <div>
-              <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-                API Ključ (Settings &gt; Developer &gt; API Keys)
-              </label>
-              <div className="relative">
-                <input
-                  type={showKey ? 'text' : 'password'}
-                  value={draftKey}
-                  onChange={(e) => setDraftKey(e.target.value)}
-                  placeholder="Unesi svoj privatni API ključ"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2.5 pr-10 text-zinc-100 font-mono text-xs focus:border-volt-400 focus:outline-none transition-all placeholder:text-zinc-600"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
-                  title={showKey ? 'Sakrij ključ' : 'Prikaži ključ'}
-                >
-                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+          {/* Ako je račun povezan */}
+          {isConfigured ? (
+            <div className="flex flex-col gap-3">
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-3.5 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-300">
+                    Povezani sportaš: <strong className="text-zinc-100">{athleteInfo?.name || intervalsId}</strong>
+                  </span>
+                  <span className="font-mono text-[10px] uppercase px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+                    {isOAuth ? 'OAuth 2.0 (Sigurno)' : 'Ručni API ključ'}
+                  </span>
+                </div>
+                {intervalsId && intervalsId !== '0' && (
+                  <div className="text-[11px] font-mono text-zinc-500">
+                    Athlete ID: <span className="text-zinc-300">{intervalsId}</span>
+                  </div>
+                )}
               </div>
-            </div>
 
-            {connectionError && (
-              <p className="text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg p-2.5 font-medium">
-                {connectionError}
-              </p>
-            )}
-
-            <div className="flex gap-2 pt-2">
-              <button
-                type="submit"
-                disabled={!String(draftId ?? '').trim() || !String(draftKey ?? '').trim()}
-                className="flex-1 bg-volt-400 hover:bg-volt-300 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-950 py-2.5 px-4 rounded-lg font-display font-bold shadow-volt-glow transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
-              >
-                <LinkIcon className="w-4 h-4" /> Spremi i Poveži
-              </button>
-
-              {(isConfigured || String(draftId ?? '').trim() || String(draftKey ?? '').trim()) && (
+              <div className="flex flex-wrap gap-2 pt-1">
                 <button
                   type="button"
                   onClick={handleDisconnect}
-                  className="px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider bg-zinc-900 hover:bg-rose-500/15 text-zinc-300 hover:text-rose-400 border border-zinc-800 hover:border-rose-500/30 transition-all flex items-center justify-center gap-2 shrink-0"
+                  className="flex-1 px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider bg-zinc-900 hover:bg-rose-500/15 text-zinc-300 hover:text-rose-400 border border-zinc-800 hover:border-rose-500/30 transition-all flex items-center justify-center gap-2"
                 >
-                  <Unlink className="w-4 h-4" /> Odspoji
+                  <Unlink className="w-4 h-4" /> Odspoji Intervals.icu
                 </button>
-              )}
+                {!isOAuth && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRedirecting(true);
+                      startIntervalsOAuth();
+                    }}
+                    disabled={isRedirecting}
+                    className="px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider bg-volt-400 hover:bg-volt-300 text-zinc-950 shadow-volt-glow transition-all flex items-center justify-center gap-2"
+                  >
+                    <LinkIcon className="w-4 h-4" /> Prebaci na 1-klik OAuth
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        </form>
+          ) : (
+            /* Ako NIJE povezano */
+            <div className="flex flex-col gap-4">
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Poveži svoj Intervals.icu račun za automatsko povlačenje treninga u kalendar i automatski upload po završetku svake vožnje:
+              </p>
+
+              {/* GLAVNI GUMB: 1-KLIK OAUTH */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRedirecting(true);
+                  startIntervalsOAuth();
+                }}
+                disabled={isRedirecting}
+                className="w-full bg-volt-400 hover:bg-volt-300 disabled:opacity-50 text-zinc-950 py-3.5 px-4 rounded-xl font-display font-bold shadow-volt-glow transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 group cursor-pointer"
+              >
+                {isRedirecting ? (
+                  <Clock className="w-4 h-4 animate-spin text-zinc-950" />
+                ) : (
+                  <LinkIcon className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                )}
+                <span>{isRedirecting ? 'Preusmjeravanje...' : 'Poveži s Intervals.icu (1-klik)'}</span>
+              </button>
+
+              <p className="text-[11px] text-zinc-500 text-center -mt-2 font-mono">
+                ✓ Službena autorizacija · Nema ručnog prepisivanja ključeva
+              </p>
+
+              {/* PREKIDAČ ZA RUČNI UNOS */}
+              <div className="border-t border-zinc-800/80 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowManualForm(!showManualForm)}
+                  className="text-[11px] font-mono text-zinc-400 hover:text-zinc-200 transition-colors flex items-center justify-between w-full"
+                >
+                  <span>Ili se poveži ručno putem API ključa (napredno)</span>
+                  {showManualForm ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+
+                {showManualForm && (
+                  <form onSubmit={saveSettings} className="space-y-3 mt-3 animate-in fade-in duration-200">
+                    <div>
+                      <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                        Korisnički ID (Athlete ID)
+                      </label>
+                      <input
+                        type="text"
+                        value={draftId}
+                        onChange={(e) => setDraftId(e.target.value)}
+                        placeholder="npr. i12345 ili brojčani ID"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-zinc-100 font-mono text-xs focus:border-volt-400 focus:outline-none transition-all placeholder:text-zinc-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
+                        API Ključ (Settings &gt; Developer &gt; API Keys)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showKey ? 'text' : 'password'}
+                          value={draftKey}
+                          onChange={(e) => setDraftKey(e.target.value)}
+                          placeholder="Unesi svoj privatni API ključ"
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2.5 pr-10 text-zinc-100 font-mono text-xs focus:border-volt-400 focus:outline-none transition-all placeholder:text-zinc-600"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowKey(!showKey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                          title={showKey ? 'Sakrij ključ' : 'Prikaži ključ'}
+                        >
+                          {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={!String(draftId ?? '').trim() || !String(draftKey ?? '').trim()}
+                      className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 py-2.5 px-4 rounded-lg font-mono font-bold transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
+                    >
+                      <Check className="w-4 h-4" /> Spremi ručni ključ
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          )}
+
+          {connectionError && (
+            <p className="text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg p-2.5 font-medium mt-1">
+              {connectionError}
+            </p>
+          )}
+        </div>
 
         {/* 3. Google Gemini AI Trener integracija */}
         <div className="lg:col-span-2 bg-zinc-950 border border-volt-400/25 rounded-xl p-6 flex flex-col gap-4 relative overflow-hidden">

@@ -22,6 +22,7 @@ import { supabase } from './services/supabaseClient';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useProfileSync } from './hooks/useProfileSync';
 import { useIntervalsData } from './hooks/useIntervalsData';
+import { handleIntervalsOAuthCallback } from './services/intervalsOAuth';
 
 const DEFAULT_GUEST_PROFILE = {
   username: 'Gost Vozač', weight: 75.9, ftp: 200, thresholdHr: 160, maxHr: 180,
@@ -97,6 +98,62 @@ export default function App() {
       window.history.replaceState(null, '', window.location.pathname);
     }
   }, []);
+
+  // Obrada povratka iz Intervals.icu OAuth autorizacije
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const state = urlParams.get('state');
+
+    if (code) {
+      // Očisti URL odmah da token ne stoji u traci preglednika
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState(null, '', cleanUrl);
+
+      setAuthNotice({
+        type: 'info',
+        text: 'Povezivanje s Intervals.icu u tijeku...'
+      });
+
+      handleIntervalsOAuthCallback(code, state)
+        .then(async (result) => {
+          const athleteId = result.athleteId || '0';
+          const authKey = result.authKey;
+
+          setIntervalsId(athleteId);
+          setIntervalsKey(authKey);
+
+          // Ako je korisnik prijavljen, spremi u Supabase user_metadata za sinkronizaciju na svim računalima
+          if (currentUserId && currentUserId !== 'guest') {
+            try {
+              await supabase.auth.updateUser({
+                data: {
+                  intervals_id: athleteId,
+                  intervals_key: authKey,
+                  intervals_athlete_name: result.athleteName || ''
+                }
+              });
+            } catch (metaErr) {
+              console.warn('[Intervals OAuth] Greška pri spremanju u user_metadata:', metaErr);
+            }
+          }
+
+          setAuthNotice({
+            type: 'success',
+            text: `Uspješno povezano s Intervals.icu! ${result.athleteName ? `Dobrodošao, ${result.athleteName}.` : ''}`
+          });
+          setTimeout(() => setAuthNotice(null), 6000);
+        })
+        .catch((err) => {
+          console.error('[Intervals OAuth] Greška pri obradi autorizacije:', err);
+          setAuthNotice({
+            type: 'error',
+            text: `Greška pri povezivanju s Intervals.icu: ${err.message}`
+          });
+        });
+    }
+  }, [currentUserId, setIntervalsId, setIntervalsKey]);
 
   // Modali za autentifikaciju i onboarding vodič
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -179,6 +236,19 @@ export default function App() {
     }
   }, [athleteInfo, intervalsConnected, setAthleteProfile]);
 
+  // Sinkronizacija Intervals podataka iz Supabase user_metadata kad se korisnik prijavi
+  useEffect(() => {
+    if (session?.user?.user_metadata && currentUserId && currentUserId !== 'guest') {
+      const meta = session.user.user_metadata;
+      if (meta.intervals_key && (!intervalsKey || intervalsKey !== meta.intervals_key)) {
+        setIntervalsKey(meta.intervals_key);
+        if (meta.intervals_id && meta.intervals_id !== intervalsId) {
+          setIntervalsId(meta.intervals_id);
+        }
+      }
+    }
+  }, [session, currentUserId, intervalsKey, intervalsId, setIntervalsKey, setIntervalsId]);
+
   // Automatsko pokretanje onboarding vodiča za nove korisnike ili goste
   useEffect(() => {
     if (!isSessionLoading && (session || isGuest) && !hasCompletedOnboarding) {
@@ -244,7 +314,7 @@ export default function App() {
     setAthleteProfile(DEFAULT_GUEST_PROFILE);
   };
 
-  const handleIntervalsDisconnect = () => {
+  const handleIntervalsDisconnect = async () => {
     setIntervalsId('');
     setIntervalsKey('');
     try {
@@ -252,11 +322,43 @@ export default function App() {
       localStorage.removeItem('intervalsKey_guest');
       localStorage.removeItem('intervalsId');
       localStorage.removeItem('intervalsKey');
+      if (currentUserId) {
+        localStorage.removeItem(`intervalsId_${currentUserId}`);
+        localStorage.removeItem(`intervalsKey_${currentUserId}`);
+      }
       localStorage.removeItem('ai_trener_profile_guest');
     } catch (e) {}
 
+    if (currentUserId && currentUserId !== 'guest') {
+      try {
+        await supabase.auth.updateUser({
+          data: {
+            intervals_id: '',
+            intervals_key: '',
+            intervals_athlete_name: ''
+          }
+        });
+      } catch (e) {
+        console.warn('[Intervals] Greška pri čišćenju user_metadata:', e);
+      }
+    }
+
     if (currentUserId === 'guest') {
       setAthleteProfile(DEFAULT_GUEST_PROFILE);
+    }
+  };
+
+  const handleSetIntervalsId = (newId) => {
+    setIntervalsId(newId);
+    if (currentUserId && currentUserId !== 'guest') {
+      supabase.auth.updateUser({ data: { intervals_id: newId } }).catch(() => {});
+    }
+  };
+
+  const handleSetIntervalsKey = (newKey) => {
+    setIntervalsKey(newKey);
+    if (currentUserId && currentUserId !== 'guest') {
+      supabase.auth.updateUser({ data: { intervals_key: newKey } }).catch(() => {});
     }
   };
 
@@ -594,12 +696,13 @@ export default function App() {
                 connectionStatus={connectionStatus}
                 connectionError={error}
                 intervalsId={intervalsId}
-                setId={setIntervalsId}
+                setId={handleSetIntervalsId}
                 intervalsKey={intervalsKey}
-                setKey={setIntervalsKey}
+                setKey={handleSetIntervalsKey}
                 onSave={fetchWorkouts}
                 onDisconnect={handleIntervalsDisconnect}
                 userId={currentUserId}
+                athleteInfo={athleteInfo}
               />
             )}
           </div>

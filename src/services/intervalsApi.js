@@ -3,6 +3,18 @@ const FETCH_FUTURE_MONTHS = 3;
 
 const getAuthHeaders = (apiKey) => {
   const cleanKey = String(apiKey || '').trim();
+  if (cleanKey.toLowerCase().startsWith('bearer ')) {
+    return { 
+      'Authorization': cleanKey, 
+      'Accept': 'application/json' 
+    };
+  }
+  if (cleanKey.toLowerCase().startsWith('oauth:')) {
+    return { 
+      'Authorization': `Bearer ${cleanKey.slice(6).trim()}`, 
+      'Accept': 'application/json' 
+    };
+  }
   const authString = btoa(`API_KEY:${cleanKey}`);
   return { 
     'Authorization': `Basic ${authString}`, 
@@ -303,7 +315,7 @@ export const uploadActivityToIntervals = async (intervalsId, intervalsKey, fitUi
     throw new Error('Nema podataka treninga za slanje.');
   }
 
-  const authString = btoa(`API_KEY:${cleanKey}`);
+  const authHeaders = getAuthHeaders(cleanKey);
   const params = new URLSearchParams();
   if (workoutName) params.set('name', workoutName);
   if (description) params.set('description', description);
@@ -318,8 +330,7 @@ export const uploadActivityToIntervals = async (intervalsId, intervalsKey, fitUi
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      'Authorization': `Basic ${authString}`,
-      'Accept': 'application/json'
+      ...authHeaders
     },
     body: formData
   });

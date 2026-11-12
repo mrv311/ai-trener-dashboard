@@ -11,6 +11,40 @@ export default defineConfig(({ mode }) => {
       {
         name: 'local-gemini-proxy',
         configureServer(server) {
+          server.middlewares.use('/api/intervals-token', async (req, res, next) => {
+            if (req.method === 'POST') {
+              let bodyStr = '';
+              req.on('data', chunk => { bodyStr += chunk; });
+              req.on('end', async () => {
+                try {
+                  const payload = JSON.parse(bodyStr || '{}');
+                  const bodyParams = new URLSearchParams({
+                    client_id: String(payload.client_id || '1787'),
+                    code: String(payload.code || ''),
+                    code_verifier: String(payload.code_verifier || ''),
+                    grant_type: 'authorization_code',
+                    redirect_uri: String(payload.redirect_uri || '')
+                  });
+                  const resp = await fetch('https://intervals.icu/api/oauth/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: bodyParams.toString()
+                  });
+                  const data = await resp.json().catch(() => ({}));
+                  res.statusCode = resp.status;
+                  res.setHeader('Content-Type', 'application/json');
+                  return res.end(JSON.stringify(data));
+                } catch (e) {
+                  res.statusCode = 500;
+                  res.setHeader('Content-Type', 'application/json');
+                  return res.end(JSON.stringify({ error: e.message }));
+                }
+              });
+              return;
+            }
+            next();
+          });
+
           server.middlewares.use('/api/gemini', async (req, res, next) => {
             if (req.method === 'GET') {
               const serverKey = env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY;
