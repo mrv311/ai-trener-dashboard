@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Zap, CheckCircle2, ArrowRight, ArrowLeft,
   Monitor, Database, Download, User, Scale
@@ -10,6 +10,19 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
   const [username, setUsername] = useState(initialProfile?.username || 'Odvažni Vozač');
   const [ftp, setFtp] = useState(initialProfile?.ftp || 200);
   const [weight, setWeight] = useState(initialProfile?.weight || 75);
+
+  // Ažuriraj polja ako podaci sportaša pristignu s Intervals.icu ili iz baze
+  useEffect(() => {
+    if (initialProfile?.username && !['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(initialProfile.username)) {
+      setUsername(initialProfile.username);
+    }
+    if (initialProfile?.ftp && initialProfile.ftp !== 200) {
+      setFtp(initialProfile.ftp);
+    }
+    if (initialProfile?.weight && initialProfile.weight !== 75 && initialProfile.weight !== 75.9) {
+      setWeight(initialProfile.weight);
+    }
+  }, [initialProfile]);
 
   if (!isOpen) return null;
 
