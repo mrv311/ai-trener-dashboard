@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X, Sparkles, Upload, Loader2, Play, CalendarPlus, Database,
   Check, AlertCircle, Image as ImageIcon, Zap, Edit3, Trash2,
-  Clock, Activity, RefreshCw, ZoomIn
+  Clock, Activity, RefreshCw, ZoomIn, Send, Undo2, Wand2
 } from 'lucide-react';
-import { recreateWorkoutWithAi } from '../services/geminiService';
+import { recreateWorkoutWithAi, refineWorkoutWithAi } from '../services/geminiService';
 import { processFileForAi, formatFileSize } from '../services/aiFilesStorage';
 import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
 import { buildErgVibeWorkoutObject } from './ai/AIMarkdown';
@@ -108,6 +108,12 @@ export default function AIWorkoutCreatorModal({
   const [targetTss, setTargetTss] = useState(76);
   const [targetDuration, setTargetDuration] = useState(60);
 
+  // Interaktivna dorada (AI Refinement)
+  const [refinementInput, setRefinementInput] = useState('');
+  const [isRefining, setIsRefining] = useState(false);
+  const [refinementHistory, setRefinementHistory] = useState([]);
+  const [refinementFeedback, setRefinementFeedback] = useState(null);
+
   // Statusi spremanja
   const [scheduleDate, setScheduleDate] = useState(() => {
     const tomorrow = new Date(Date.now() + 86400000);
@@ -164,6 +170,10 @@ export default function AIWorkoutCreatorModal({
       setCode('');
       setScheduleSuccess(false);
       setLibrarySuccess(false);
+      setRefinementInput('');
+      setIsRefining(false);
+      setRefinementHistory([]);
+      setRefinementFeedback(null);
     }
   }, [isOpen]);
 
@@ -278,11 +288,108 @@ export default function AIWorkoutCreatorModal({
       setTargetDuration(finalTargetMin);
       setTargetTss(extractedTss);
       setCode(cleanCode);
+      setRefinementHistory([cleanCode]);
+      setRefinementFeedback(null);
     } catch (err) {
       setErrorMessage(err.message || 'Greška pri AI rekreaciji treninga.');
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // Interaktivna dorada trenutnog workouta s AI-jem
+  const handleRefineWorkout = async (overridePrompt = null) => {
+    const promptToUse = (typeof overridePrompt === 'string' ? overridePrompt : refinementInput).trim();
+    if (!promptToUse || !code) return;
+
+    setIsRefining(true);
+    setErrorMessage(null);
+    setRefinementFeedback(null);
+
+    // Spremi u povijest prije dorade
+    setRefinementHistory(prev => [...prev, code]);
+
+    try {
+      const aiResponse = await refineWorkoutWithAi({
+        currentCode: code,
+        userInstruction: promptToUse,
+        title,
+        category,
+        targetDuration,
+        targetTss,
+        imageBase64: attachedImage?.dataBase64 || null,
+        mimeType: attachedImage?.type || 'image/jpeg',
+        athleteProfile
+      });
+
+      const match = aiResponse.match(/```(?:workout|ergvibe-workout)\s*([\s\S]*?)```/i);
+      const rawBlock = match ? match[1].trim() : aiResponse;
+      const introText = match && match.index > 0 ? aiResponse.slice(0, match.index).trim() : '';
+
+      let extractedTitle = title;
+      let extractedCategory = category;
+      let extractedDuration = targetDuration;
+      let extractedTss = targetTss;
+      const stepLines = [];
+
+      const lines = rawBlock.split(/\r?\n/);
+      let inSteps = false;
+      let foundStepOrHeader = false;
+
+      lines.forEach(l => {
+        const t = l.trim();
+        if (/^TITLE:/i.test(t)) {
+          extractedTitle = t.replace(/^TITLE:\s*/i, '').trim();
+        } else if (/^CATEGORY:/i.test(t)) {
+          extractedCategory = t.replace(/^CATEGORY:\s*/i, '').trim();
+        } else if (/^DURATION:/i.test(t)) {
+          const d = parseInt(t.replace(/^DURATION:\s*/i, '').replace(/m(in)?/i, ''), 10);
+          if (d > 0) extractedDuration = d;
+        } else if (/^TSS:/i.test(t)) {
+          const s = parseInt(t.replace(/^TSS:\s*/i, ''), 10);
+          if (s > 0) extractedTss = s;
+        } else if (/^STEPS:/i.test(t)) {
+          inSteps = true;
+          foundStepOrHeader = true;
+        } else if (inSteps) {
+          stepLines.push(l);
+        } else if (t.startsWith('-') || /^\d+\s*x/i.test(t) || /^\d+:\d{2}/.test(t) || /^\d+\s*(?:h|m|min|s|sec)/i.test(t) || t === 'Zagrijavanje' || t === 'Glavni dio' || t === 'Hlađenje' || t.startsWith('Set') || t.startsWith('Oporavak') || t.startsWith('Warmup') || t.startsWith('Cooldown')) {
+          foundStepOrHeader = true;
+          stepLines.push(l);
+        } else if (foundStepOrHeader && t === '') {
+          stepLines.push('');
+        }
+      });
+
+      let cleanCode = stepLines.join('\n').trim() || rawBlock;
+
+      if (extractedDuration > 0) {
+        cleanCode = alignCooldownToTarget(cleanCode, extractedDuration);
+      }
+
+      setTitle(extractedTitle);
+      setCategory(extractedCategory);
+      setTargetDuration(extractedDuration);
+      if (extractedTss) setTargetTss(extractedTss);
+      setCode(cleanCode);
+      setRefinementInput('');
+      setRefinementFeedback(introText || 'Workout uspješno prilagođen prema uputi!');
+      setTimeout(() => setRefinementFeedback(null), 5000);
+    } catch (err) {
+      setErrorMessage(err.message || 'Greška pri doradi treninga.');
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
+  // Poništavanje zadnje AI izmjene
+  const handleUndoRefinement = () => {
+    if (refinementHistory.length === 0) return;
+    const lastCode = refinementHistory[refinementHistory.length - 1];
+    setRefinementHistory(prev => prev.slice(0, -1));
+    setCode(lastCode);
+    setRefinementFeedback('Vraćena prethodna verzija treninga.');
+    setTimeout(() => setRefinementFeedback(null), 3000);
   };
 
   // Dodavanje u kalendar
@@ -727,18 +834,120 @@ export default function AIWorkoutCreatorModal({
                   )}
                 </div>
 
+                {/* AI ASISTENT ZA INTERAKTIVNU DORADU */}
+                <div className="p-3 sm:p-3.5 rounded-xl bg-zinc-950 border border-volt-400/30 flex flex-col gap-2.5 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-[11px] font-bold text-volt-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" /> AI Dorada i Upute za Popravak
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {refinementHistory.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={handleUndoRefinement}
+                          className="text-[10px] font-mono text-zinc-300 hover:text-volt-300 flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-850 border border-zinc-750 transition-colors"
+                          title="Vrati prethodnu verziju prije zadnje AI izmjene"
+                        >
+                          <Undo2 className="w-3 h-3 text-zinc-400" />
+                          <span>Poništi izmjenu ({refinementHistory.length - 1})</span>
+                        </button>
+                      )}
+                      <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline">
+                        Upiši uputu i AI dorađuje kod
+                      </span>
+                    </div>
+                  </div>
+
+                  {refinementFeedback && (
+                    <div className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span className="truncate">{refinementFeedback}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={refinementInput}
+                      onChange={(e) => setRefinementInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isRefining && refinementInput.trim()) {
+                          handleRefineWorkout();
+                        }
+                      }}
+                      placeholder="Npr. 'Dodaj stepenasto ramp zagrijavanje 50-75% kroz 10 min', 'Skrati odmore na 90s'..."
+                      className="flex-1 bg-zinc-900 border border-zinc-750 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-volt-400 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRefineWorkout()}
+                      disabled={isRefining || !refinementInput.trim()}
+                      className="px-4 py-2 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-40 text-zinc-950 text-xs font-bold font-display uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-volt-glow"
+                    >
+                      {isRefining ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Dorađujem...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Doradi</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Brzi čipovi za česte dorade */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <span className="text-[10px] font-mono text-zinc-500 font-bold mr-1">BRZE UPUTE:</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRefineWorkout('Zamijeni zagrijavanje sa stepenastim ramp zagrijavanjem od 50% do 75% FTP-a u trajanju od 10 minuta (npr. 3m 50%, 3m 62%, 4m 75%)')}
+                      disabled={isRefining}
+                      className="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-[10px] text-zinc-300 hover:text-volt-300 transition-colors flex items-center gap-1"
+                    >
+                      <span>📈 Stepenasto zagrijavanje (10m 50-75%)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRefineWorkout('Skrati sve oporavke između radnih intervala na točno 90 sekundi na 40% FTP-a')}
+                      disabled={isRefining}
+                      className="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-[10px] text-zinc-300 hover:text-volt-300 transition-colors flex items-center gap-1"
+                    >
+                      <span>⏱️ Skrati odmore na 90s</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRefineWorkout('Dodaj 3 kratka otvarača/sprinta na kraju zagrijavanja: 3x 30s na 110% s 30s odmora')}
+                      disabled={isRefining}
+                      className="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-[10px] text-zinc-300 hover:text-volt-300 transition-colors flex items-center gap-1"
+                    >
+                      <span>⚡ Dodaj 3x otvarača u zagrijavanje</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRefineWorkout('Dodaj još jedan puni radni set identičan ostalim setovima uz odgovarajući odmor')}
+                      disabled={isRefining}
+                      className="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-[10px] text-zinc-300 hover:text-volt-300 transition-colors flex items-center gap-1"
+                    >
+                      <span>➕ Dodaj još jedan set</span>
+                    </button>
+                  </div>
+                </div>
+
                 {/* INTERAKTIVNI EDITOR INTERVALS.ICU KODA */}
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-400 font-bold flex items-center gap-1">
-                      <Edit3 className="w-3.5 h-3.5 text-volt-400" /> Koraci Treninga (Uredi minute ili ponavljanja)
+                      <Edit3 className="w-3.5 h-3.5 text-volt-400" /> Koraci Treninga (Uredi minute ili ponavljanja ručno)
                     </span>
                     <span className="text-[10px] font-mono text-zinc-500">Promjene se odmah iscrtavaju na grafikonu</span>
                   </div>
                   <textarea
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
-                    rows={13}
+                    rows={9}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 font-mono text-xs text-zinc-100 focus:border-volt-400 outline-none leading-relaxed custom-scrollbar"
                   />
                 </div>

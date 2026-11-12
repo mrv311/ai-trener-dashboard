@@ -770,6 +770,82 @@ Hlađenje
 }
 
 /**
+ * Interaktivna dorada postojećeg workouta prema uputama sportaša ili trenera.
+ * Omogućuje iterativno usavršavanje (npr. dodaj stepenasto zagrijavanje, promijeni odmore, dodaj set).
+ */
+export async function refineWorkoutWithAi({
+  currentCode,
+  userInstruction,
+  title = '',
+  category = 'VO2max',
+  targetDuration = 60,
+  targetTss = null,
+  imageBase64 = null,
+  mimeType = 'image/jpeg',
+  athleteProfile = null,
+  model = 'gemini-3.8-flash'
+}) {
+  const ftp = Number(athleteProfile?.ftp) || 270;
+  const weight = Number(athleteProfile?.weight) || 74;
+
+  const systemInstruction = `Ti si specijalizirani ErgVibe AI Workout Editor i vrhunski biciklistički trener.
+Tvoj zadatak je modificirati i poboljšati POSTOJEĆI Intervals.icu workout prema točnim uputama biciklista.
+
+Profil sportaša:
+- Trenutni FTP: ${ftp} W | Težina: ${weight} kg
+
+PRAVILA ZA INTERAKTIVNU DORADU:
+1. ZADRŽI STRUKTURU KOJU KORISNIK NIJE TRAŽIO DA SE MIJENJA:
+   - Ako korisnik zatraži npr. "dodaj stepenasto zagrijavanje", promijeni SAMO Zagrijavanje (npr. dodaj stepenasti ramp ili piramidu), a zadrži postojeće radne setove i odmore!
+   - Ako korisnik zatraži "skrati odmore na 90s", promijeni samo odmore između intervala.
+   - Ako zatraži "dodaj još jedan set", repliciraj radni set uz odgovarajući odmor.
+2. TOČAN FORMAT KORAKA (Intervals.icu):
+   - Zagrijavanje: npr. \`- 10m ramp 50-75%\` ili stepenasto: \`- 3m 50%\`, \`- 3m 60%\`, \`- 4m 70%\`.
+   - Radni intervali: \`- 1m 120%\`, \`- 1m20s 125%\`, \`- 80s 125%\` itd.
+   - Odmori / Oporavci: \`- 2m 40%\` ili \`- 90s 40%\`.
+   - Hlađenje: \`- 5m 40%\` (uskladi da ukupno vrijeme odgovara ciljanom trajanju).
+3. IZLAZNI FORMAT:
+Napiši 1 kratku rečenicu objašnjenja što si prilagodio, a zatim OBAVEZNO ispiši:
+\`\`\`workout
+TITLE: ${title || 'Trening'}
+CATEGORY: ${category || 'VO2max'}
+DURATION: ${targetDuration || 60}
+TSS: ${targetTss || 75}
+STEPS:
+[Ovdje idu svi ažurirani koraci treninga u Intervals.icu formatu]
+\`\`\`
+`;
+
+  const parts = [];
+
+  let promptText = `Ovo je trenutni workout:\n\`\`\`intervals\n${currentCode}\n\`\`\`\n\n`;
+  promptText += `KORISNIČKA UPUTA ZA DORADU:\n"${userInstruction.trim()}"\n\n`;
+  promptText += `Primijeni traženu izmjenu na ovaj workout i vrati ažurirani \`\`\`workout ... \`\`\` blok.`;
+
+  if (targetDuration) {
+    promptText += `\nCiljano ukupno trajanje ostaje: ${targetDuration} minuta.`;
+  }
+
+  parts.push({ text: promptText });
+
+  if (imageBase64 && mimeType) {
+    parts.push({
+      inlineData: {
+        mimeType,
+        data: imageBase64
+      }
+    });
+  }
+
+  return callGeminiApi({
+    systemInstruction,
+    contents: [{ role: 'user', parts }],
+    model,
+    temperature: 0.1
+  });
+}
+
+/**
  * Automatsko generiranje cjelovitog periodiziranog trenažnog plana.
  */
 export async function generateStructuredTrainingPlan({
