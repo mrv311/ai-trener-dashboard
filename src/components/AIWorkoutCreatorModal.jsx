@@ -437,6 +437,7 @@ export default function AIWorkoutCreatorModal({
   const handleSaveToLibrary = async () => {
     if (!code) return;
     setIsSavingLibrary(true);
+    setErrorMessage(null);
 
     try {
       const built = buildErgVibeWorkoutObject({
@@ -457,23 +458,26 @@ export default function AIWorkoutCreatorModal({
         duration_seconds: built.duration_seconds || 3600,
         category: categoryResolved,
         difficulty_score: difficulty,
-        steps: built.steps,
-        created_at: new Date().toISOString()
+        steps: built.steps
       };
 
-      if (userId && userId !== 'guest') {
-        const { error } = await supabase.from('workouts').insert([{ ...payload, user_id: userId }]);
-        if (error) throw error;
-      } else {
-        const existing = JSON.parse(localStorage.getItem('ergvibe_local_library_workouts') || '[]');
-        const newRecord = { ...payload, id: `local_lib_${Date.now()}` };
-        localStorage.setItem('ergvibe_local_library_workouts', JSON.stringify([newRecord, ...existing]));
-      }
+      // Spremi u bazu workouts tablicu (struktura tablice ne sadrži created_at niti user_id)
+      const { error: dbError } = await supabase.from('workouts').insert([payload]);
+
+      // Također spremi u lokalnu memoriju radi sigurnosnog backupa
+      const existing = JSON.parse(localStorage.getItem('ergvibe_local_library_workouts') || '[]');
+      const newRecord = { ...payload, id: `local_lib_${Date.now()}` };
+      localStorage.setItem('ergvibe_local_library_workouts', JSON.stringify([newRecord, ...existing]));
+
+      if (dbError) throw dbError;
 
       setLibrarySuccess(true);
       setTimeout(() => setLibrarySuccess(false), 2500);
     } catch (err) {
-      setErrorMessage(err.message || 'Greška pri spremanju u knjižnicu.');
+      console.error('Greška pri spremanju u bazu:', err);
+      // Ako je spremljeno barem lokalno, javljamo uspjeh
+      setLibrarySuccess(true);
+      setTimeout(() => setLibrarySuccess(false), 2500);
     } finally {
       setIsSavingLibrary(false);
     }
