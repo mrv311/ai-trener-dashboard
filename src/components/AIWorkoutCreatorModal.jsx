@@ -103,10 +103,10 @@ export default function AIWorkoutCreatorModal({
 
   // Generirani podaci treninga
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('VO2max');
+  const [category, setCategory] = useState('Threshold');
   const [code, setCode] = useState('');
-  const [targetTss, setTargetTss] = useState(76);
-  const [targetDuration, setTargetDuration] = useState(60);
+  const [targetTss, setTargetTss] = useState('');
+  const [targetDuration, setTargetDuration] = useState('');
 
   // Interaktivna dorada (AI Refinement)
   const [refinementInput, setRefinementInput] = useState('');
@@ -168,6 +168,8 @@ export default function AIWorkoutCreatorModal({
       setAnalysisText('');
       setTitle('');
       setCode('');
+      setTargetDuration('');
+      setTargetTss('');
       setScheduleSuccess(false);
       setLibrarySuccess(false);
       setRefinementInput('');
@@ -223,12 +225,15 @@ export default function AIWorkoutCreatorModal({
     setAnalysisText('');
 
     try {
+      const explicitDuration = targetDuration ? parseInt(targetDuration, 10) : null;
+      const explicitTss = targetTss ? parseInt(targetTss, 10) : null;
+
       const aiResponse = await recreateWorkoutWithAi({
         imageBase64: attachedImage?.dataBase64 || null,
         mimeType: attachedImage?.type || 'image/jpeg',
         description: descriptionInput,
-        targetDuration,
-        targetTss,
+        targetDuration: explicitDuration,
+        targetTss: explicitTss,
         athleteProfile
       });
 
@@ -241,10 +246,10 @@ export default function AIWorkoutCreatorModal({
       setAnalysisText(introText);
 
       // Parsiraj naslov, kategoriju, TSS i korake iz koda
-      let extractedTitle = title || 'AI Rekreirani Trening';
-      let extractedCategory = category || 'VO2max';
-      let extractedDuration = targetDuration || 60;
-      let extractedTss = targetTss || 75;
+      let extractedTitle = title || '';
+      let extractedCategory = category || 'Threshold';
+      let extractedDuration = explicitDuration || null;
+      let extractedTss = explicitTss || null;
       const stepLines = [];
 
       const lines = rawBlock.split(/\r?\n/);
@@ -280,13 +285,13 @@ export default function AIWorkoutCreatorModal({
       let cleanCode = stepLines.join('\n').trim() || rawBlock;
 
       // Automatsko usklađivanje hlađenja na točno ciljano trajanje u minutama
-      const finalTargetMin = extractedDuration || targetDuration || 60;
+      const finalTargetMin = extractedDuration || explicitDuration || 60;
       cleanCode = alignCooldownToTarget(cleanCode, finalTargetMin);
 
-      setTitle(extractedTitle);
+      setTitle(extractedTitle || 'AI Trening');
       setCategory(extractedCategory);
       setTargetDuration(finalTargetMin);
-      setTargetTss(extractedTss);
+      if (extractedTss) setTargetTss(extractedTss);
       setCode(cleanCode);
       setRefinementHistory([cleanCode]);
       setRefinementFeedback(null);
@@ -649,9 +654,10 @@ export default function AIWorkoutCreatorModal({
                       type="number"
                       min="15"
                       max="300"
-                      value={targetDuration}
-                      onChange={(e) => setTargetDuration(parseInt(e.target.value, 10) || 60)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-zinc-100 focus:border-volt-400 outline-none pr-9"
+                      value={targetDuration || ''}
+                      onChange={(e) => setTargetDuration(e.target.value ? parseInt(e.target.value, 10) : '')}
+                      placeholder="Auto (sa slike)"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-zinc-100 focus:border-volt-400 outline-none pr-9 placeholder:text-zinc-600"
                     />
                     <span className="absolute right-2.5 top-1.5 text-xs font-mono text-zinc-500">min</span>
                   </div>
@@ -668,8 +674,8 @@ export default function AIWorkoutCreatorModal({
                       max="400"
                       value={targetTss || ''}
                       onChange={(e) => setTargetTss(e.target.value ? parseInt(e.target.value, 10) : '')}
-                      placeholder="npr. 76"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-zinc-100 focus:border-volt-400 outline-none pr-9"
+                      placeholder="Auto (sa slike)"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-zinc-100 focus:border-volt-400 outline-none pr-9 placeholder:text-zinc-600"
                     />
                     <span className="absolute right-2.5 top-1.5 text-xs font-mono text-zinc-500">TSS</span>
                   </div>
@@ -766,7 +772,7 @@ export default function AIWorkoutCreatorModal({
                             </span>
                           </>
                         )}
-                        {currentDurationMins !== targetDuration && (
+                        {Boolean(targetDuration && currentDurationMins !== targetDuration) && (
                           <button
                             type="button"
                             onClick={() => setCode(alignCooldownToTarget(code, targetDuration))}
@@ -826,7 +832,7 @@ export default function AIWorkoutCreatorModal({
                       {currentDurationMins} min ukupno
                     </span>
                   </div>
-                  {currentDurationMins !== targetDuration && (
+                  {Boolean(targetDuration && currentDurationMins !== targetDuration) && (
                     <button
                       type="button"
                       onClick={() => setCode(alignCooldownToTarget(code, targetDuration))}

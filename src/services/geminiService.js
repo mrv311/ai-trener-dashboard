@@ -669,19 +669,22 @@ Profil sportaša:
 - Trenutni FTP: ${ftp} W | Težina: ${weight} kg
 
 ZLATNA PRAVILA ZA APSOLUTNU PRECIZNOST:
-1. AKO NA SLICI ILI U OPISU PIŠU TSS, TRAJANJE ILI NAZIV TRENINGA:
-   - ZABRANJENO JE PROIZVOLJNO MIJENJATI TSS! Ako na slici ili u opisu piše npr. "TSS: 76", izlaz MORA imati točno "TSS: 76".
-   - Ako je vidljiv naziv treninga (npr. TrainerRoad kataloga: "Anticosti", "Carson", "The Gorby", "Mary Austin", "Baxter", "Erie", "Spanish Needle", ili Zwift treninga), OBAVEZNO uskladi strukturu intervala s točnim poznatim katalogom tog treninga!
-   - Primjer: TrainerRoad "Anticosti" ima točno 3 seta po 5 intervala (ukupno 15 intervala rada na 120-125% FTP) u trajanju od 60 min i 76 TSS!
-2. BROJANJE USKIH INTERVALA U SETOVIMA:
-   - Na trenažnim grafovima intervali u setu su uski šiljci. Pažljivo prebroji svaki šiljak u svakom setu! Ako vidiš 3 seta, prebroji točno koliko šiljaka je u svakom setu (npr. točno 5 intervala po setu, a ne 4).
-3. KORISNIČKE UPUTE I OPIS IMAJU APSOLUTNI PRIORITET:
-   - Ako korisnik u opisu napiše specifikaciju (npr. "3 seta po 5 intervala", "76 TSS", "60 min", "odmori 2 min"), to je ZAKON i mora biti točno tako ugrađeno.
+1. AKO NA SLICI PIŠU DURATION (TRAJANJE) ILI TSS:
+   - ZABRANJENO JE AUTOMATSKI PREDPOSTAVLJATI 60 MINUTA!
+   - Ako na slici piše npr. "Duration 00:45:00", trajanje MORA biti točno 45 minuta ("DURATION: 45").
+   - Ako na slici piše npr. "Duration 01:15:00", trajanje MORA biti točno 75 minuta ("DURATION: 75").
+   - Ako na slici piše npr. "TSS: 53", izlaz MORA imati točno "TSS: 53".
+   - Ako je vidljiv naziv treninga (npr. "Ainslie -4", "Anticosti", "Carson", "The Gorby", "Mary Austin", "Baxter"), OBAVEZNO točno prepiši taj naziv ("TITLE: Ainslie -4") i kategoriju ("CATEGORY: Threshold").
+2. BROJANJE RADNIH INTERVALA I ODMORA:
+   - Pažljivo prebroji radne blokove i odmore između njih (npr. 4 radna bloka iznad FTP-a po 5 min, s 3 odmora od 4 min na 40% FTP-a).
+   - Očitaj vrijednosti iz tooltipsa ili osi (npr. "Time 0:18:38, Target 40%, Interval Time 0:04:00").
+3. KORISNIČKE UPUTE I OPIS:
+   - Ako korisnik u opisu napiše specifičnu uputu (npr. "napravi 60 min verziju"), to ima prioritet. Ako nije naveo trajanje, koristi točno trajanje sa slike.
 4. FORMAT KOMPOZITNOG TRAJANJA (MINUTE I SEKUNDE):
    - Za intervale koji imaju minute i sekunde, piši standardni format: \`- 1m20s 125%\` ili \`- 80s 125%\`, \`- 1m05s 121%\`, \`- 1m10s 122%\`, \`- 1m15s 123%\`.
    - Nikada nemoj ispuštati minute!
 5. BALANSIRANJE UKUPNOG TRAJANJA:
-   - Ukupno trajanje svih koraka (Zagrijavanje + Setovi + Oporavci + Hlađenje) mora točno odgovarati ciljanom trajanju treninga (npr. 60 minuta). Zadnji korak (Hlađenje) prilagodi tako da ukupna suma sekundi bude točno na ciljanoj minuti.
+   - Ukupno trajanje svih koraka (Zagrijavanje + Setovi + Oporavci + Hlađenje) mora točno odgovarati ciljanom trajanju treninga sa slike (npr. 45 min ili 60 min). Zadnji korak (Hlađenje) prilagodi tako da ukupna suma sekundi bude točno na ciljanoj minuti.
 6. TOČAN FORMAT KODA:
 Na početku daj 2-3 rečenice analize onoga što si prepoznao (naziv, trajanje, setove, TSS), a zatim OBAVEZNO ispiši strukturirani blok:
 \`\`\`workout
@@ -696,42 +699,7 @@ Zagrijavanje
 Set 1
 - 1m 120%
 - 2m 40%
-- 1m05s 121%
-- 2m 40%
-- 1m10s 122%
-- 2m 40%
-- 1m15s 123%
-- 2m 40%
-- 1m20s 125%
-
-Oporavak
-- 3m 40%
-
-Set 2
-- 1m 120%
-- 2m 40%
-- 1m05s 121%
-- 2m 40%
-- 1m10s 122%
-- 2m 40%
-- 1m15s 123%
-- 2m 40%
-- 1m20s 125%
-
-Oporavak
-- 3m 40%
-
-Set 3
-- 1m 120%
-- 2m 40%
-- 1m05s 121%
-- 2m 40%
-- 1m10s 122%
-- 2m 40%
-- 1m15s 123%
-- 2m 40%
-- 1m20s 125%
-
+...
 Hlađenje
 - 2m 40%
 \`\`\`
@@ -741,13 +709,16 @@ Hlađenje
 
   let promptText = description?.trim()
     ? `Rekreiraj ovaj trening sa slike poštujući ove korisničke upute i specifikacije:\n${description.trim()}`
-    : 'Pažljivo analiziraj priloženu sliku treninga, očitaj točan naziv, trajanje, TSS i točan broj intervala u svakom setu te ga rekreiraj u strukturirani ErgVibe workout.';
+    : 'Pažljivo analiziraj priloženu sliku treninga, očitaj točan naziv, trajanje (Duration), TSS i točan broj intervala te ga rekreiraj u strukturirani ErgVibe workout.';
 
   if (targetDuration) {
-    promptText += `\nCILJANO TRAJANJE: ${targetDuration} minuta (ukupni zbroj Zagrijavanja, Setova, Oporavaka i Hlađenja MORA iznositi točno ${targetDuration} min).`;
+    promptText += `\nKORISNIČKI ZAHTJEV ZA TRAJANJE: ${targetDuration} minuta (ukupni zbroj Zagrijavanja, Setova, Oporavaka i Hlađenja MORA iznositi točno ${targetDuration} min).`;
+  } else if (imageBase64) {
+    promptText += `\nOBAVEZNO: Očitaj točno trajanje (Duration) i TSS koji pišu na slici i uskladi trening s tim trajanjem (nemoj pogađati 60 min ako piše 45 min ili drugo trajanje).`;
   }
+
   if (targetTss) {
-    promptText += `\nCILJANI TSS: ${targetTss} TSS (potrebno postići točno ${targetTss} TSS).`;
+    promptText += `\nKORISNIČKI ZAHTJEV ZA TSS: ${targetTss} TSS (potrebno postići točno ${targetTss} TSS).`;
   }
 
   parts.push({ text: promptText });
