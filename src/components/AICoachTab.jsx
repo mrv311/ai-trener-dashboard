@@ -3,7 +3,7 @@ import {
   Sparkles, Bot, Send, Loader2, CalendarPlus, Trash2, BookOpen,
   History, ClipboardList, MessageSquare, Upload, Plus, Check,
   AlertCircle, Zap, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Shield,
-  FileText, ExternalLink, Video
+  FileText, ExternalLink, Video, Paperclip, X, Image as ImageIcon, Download, Eye
 } from 'lucide-react';
 import {
   chatWithAICoach,
@@ -11,6 +11,13 @@ import {
   getGeminiConfigStatus,
   analyzeYouTubeVideoForKnowledgeBase
 } from '../services/geminiService';
+import {
+  processFileForAi,
+  saveAttachmentToLocalDB,
+  getAttachmentFromLocalDB,
+  clearAllAttachmentsFromLocalDB,
+  formatFileSize
+} from '../services/aiFilesStorage';
 import {
   parsePdfFile,
   parseEpubFile,
@@ -85,6 +92,10 @@ export default function AICoachTab({
   const [chatInput, setChatInput] = useState('');
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [chatError, setChatError] = useState(null);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [selectedPreviewAttachment, setSelectedPreviewAttachment] = useState(null);
+  const fileInputRef = useRef(null);
   const chatEndRef = useRef(null);
   const chatContainerRef = useRef(null);
   const isFirstChatRender = useRef(true);
@@ -139,7 +150,15 @@ export default function AICoachTab({
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(messages.slice(-30)));
+      // Spremamo samo zadnjih 30 poruka i uklanjamo teške base64 stringove iz localStorage-a
+      const lightweightMessages = messages.slice(-30).map(m => {
+        if (!Array.isArray(m?.attachments) || m.attachments.length === 0) return m;
+        return {
+          ...m,
+          attachments: m.attachments.map(({ id, name, type, size }) => ({ id, name, type, size }))
+        };
+      });
+      localStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(lightweightMessages));
     } catch {
       // ignore quota warning
     }
@@ -187,20 +206,112 @@ export default function AICoachTab({
     return () => { active = false; };
   }, [workouts, userId, includeCoachArchive]);
 
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setIsUploadingFile(true);
+    setChatError(null);
+
+    try {
+      const processed = [];
+      for (const f of files) {
+        const att = await processFileForAi(f);
+        await saveAttachmentToLocalDB(att);
+        processed.push({
+          id: att.id,
+          name: att.name,
+          type: att.type,
+          size: att.size,
+          dataUrl: att.dataUrl,
+          dataBase64: att.dataBase64
+        });
+      }
+      setPendingAttachments(prev => [...prev, ...processed]);
+    } catch (err) {
+      setChatError(err.message || 'Greška pri čitanju datoteke.');
+    } finally {
+      setIsUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handlePaste = async (e) => {
+    const items = Array.from(e.clipboardData?.items || []);
+    const fileItems = items.filter(it => it.kind === 'file');
+    if (fileItems.length === 0) return;
+
+    setIsUploadingFile(true);
+    setChatError(null);
+    try {
+      const processed = [];
+      for (const it of fileItems) {
+        const f = it.getAsFile();
+        if (f) {
+          const att = await processFileForAi(f);
+          await saveAttachmentToLocalDB(att);
+          processed.push({
+            id: att.id,
+            name: att.name || 'snimka_zaslona.png',
+            type: att.type,
+            size: att.size,
+            dataUrl: att.dataUrl,
+            dataBase64: att.dataBase64
+          });
+        }
+      }
+      setPendingAttachments(prev => [...prev, ...processed]);
+    } catch (err) {
+      setChatError(err.message || 'Greška pri lijepljenju datoteke.');
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
+  const removePendingAttachment = (id) => {
+    setPendingAttachments(prev => prev.filter(a => a.id !== id));
+  };
+
   const sendMessage = async (textOverride) => {
     const content = (textOverride ?? chatInput).trim();
-    if (!content || isSendingChat) return;
+    if ((!content && pendingAttachments.length === 0) || isSendingChat) return;
 
     setChatError(null);
+    const currentAttachments = [...pendingAttachments];
+    setPendingAttachments([]);
+
+    // Za trajno stanje i localStorage: čuvamo samo lagane metapodatke privitka
+    const cleanAttachments = currentAttachments.map(({ id, name, type, size, dataUrl }) => ({
+      id,
+      name,
+      type,
+      size,
+      dataUrl: type.startsWith('image/') ? dataUrl : undefined
+    }));
+
     const prevMessages = [...messages];
-    const nextMessages = [...prevMessages, { role: 'user', text: content }];
+    const nextUserMessage = {
+      role: 'user',
+      text: content,
+      ...(cleanAttachments.length > 0 ? { attachments: cleanAttachments } : {})
+    };
+    const nextMessages = [...prevMessages, nextUserMessage];
     setMessages(nextMessages);
     if (!textOverride) setChatInput('');
     setIsSendingChat(true);
 
+    // Za Gemini API: proslijedi poruke uključujući base64 podatke privitaka
+    const messagesForGemini = [
+      ...prevMessages,
+      {
+        role: 'user',
+        text: content,
+        attachments: currentAttachments
+      }
+    ];
+
     try {
       const reply = await chatWithAICoach({
-        messages: nextMessages,
+        messages: messagesForGemini,
         athleteProfile: profile,
         liveWorkouts: workouts,
         wellnessData,
@@ -211,17 +322,24 @@ export default function AICoachTab({
     } catch (err) {
       setChatError(err.message || 'Greška u komunikaciji s Gemini AI.');
       setMessages(prevMessages);
+      setPendingAttachments(currentAttachments);
       if (!textOverride) setChatInput(content);
     } finally {
       setIsSendingChat(false);
     }
   };
 
-  const handleClearChat = () => {
-    if (messages.length > 0 && !window.confirm('Očistiti trenutni razgovor s AI Trenerom?')) return;
+  const handleClearChat = async () => {
+    if (messages.length > 0 && !window.confirm('Očistiti trenutni razgovor i sve priložene datoteke s AI Trenerom?')) return;
     setMessages([]);
+    setPendingAttachments([]);
     setChatError(null);
     localStorage.removeItem(STORAGE_KEY_CHAT);
+    try {
+      await clearAllAttachmentsFromLocalDB();
+    } catch (e) {
+      console.warn('Greška pri čišćenju IndexedDB:', e);
+    }
   };
 
   const handleGeneratePlan = async (e) => {
@@ -591,6 +709,19 @@ export default function AICoachTab({
                       : 'bg-zinc-950 border border-zinc-800/90 text-zinc-200 w-full'
                   }`}
                 >
+                  {/* Priložene datoteke (slike ili PDF) */}
+                  {Array.isArray(m.attachments) && m.attachments.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {m.attachments.map((att) => (
+                        <ChatAttachmentItem
+                          key={att.id}
+                          attachment={att}
+                          onPreview={(fullAtt) => setSelectedPreviewAttachment(fullAtt)}
+                        />
+                      ))}
+                    </div>
+                  )}
+
                   {m.role === 'model' ? (
                     <AIMarkdown
                       text={m.text}
@@ -624,6 +755,37 @@ export default function AICoachTab({
             <div ref={chatEndRef} />
           </div>
 
+          {/* TRAKA S PRIPREMLJENIM PRIVITCIMA (PENDING) */}
+          {pendingAttachments.length > 0 && (
+            <div className="px-4 py-2.5 bg-zinc-950/95 border-t border-zinc-800/80 flex flex-wrap gap-2 items-center">
+              <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest mr-1 flex items-center gap-1.5 font-bold">
+                <Paperclip className="w-3.5 h-3.5 text-volt-400" /> Priloženo ({pendingAttachments.length}):
+              </span>
+              {pendingAttachments.map((att) => (
+                <div
+                  key={att.id}
+                  className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 animate-in fade-in group"
+                >
+                  {att.type.startsWith('image/') ? (
+                    <img src={att.dataUrl} alt={att.name} className="w-6 h-6 object-cover rounded" />
+                  ) : (
+                    <FileText className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span className="font-medium truncate max-w-[140px] text-[11px]">{att.name}</span>
+                  <span className="text-[10px] font-mono text-zinc-500">({formatFileSize(att.size)})</span>
+                  <button
+                    type="button"
+                    onClick={() => removePendingAttachment(att.id)}
+                    className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-colors"
+                    title="Ukloni privitak"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -632,16 +794,38 @@ export default function AICoachTab({
             className="p-3 md:p-4 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center gap-2.5"
           >
             <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              multiple
+              accept="image/png,image/jpeg,image/webp,application/pdf"
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isSendingChat || isUploadingFile}
+              className="p-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-volt-400/40 text-zinc-400 hover:text-volt-400 transition-all shrink-0 flex items-center justify-center cursor-pointer disabled:opacity-40"
+              title="Priloži sliku ili PDF nalaza (laktati, spiroergometrija, Garmin grafikon...)"
+            >
+              {isUploadingFile ? (
+                <Loader2 className="w-4 h-4 animate-spin text-volt-400" />
+              ) : (
+                <Paperclip className="w-4 h-4" />
+              )}
+            </button>
+            <input
               type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
+              onPaste={handlePaste}
               disabled={isSendingChat}
-              placeholder="Npr. 'Usporedi moj jučerašnji trening s prošlim mjesecom' ili 'Složi mi Sweet Spot od 75 min'..."
+              placeholder="Postavi pitanje ili priloži nalaz (možeš zalijepiti sliku i s Ctrl+V)..."
               className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-volt-400 outline-none disabled:opacity-50"
             />
             <button
               type="submit"
-              disabled={isSendingChat || !chatInput.trim()}
+              disabled={isSendingChat || (!chatInput.trim() && pendingAttachments.length === 0)}
               className="px-5 py-3 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-40 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm flex items-center gap-2 transition-all shadow-volt-glow shrink-0"
             >
               {isSendingChat ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -1442,6 +1626,149 @@ export default function AICoachTab({
           </div>
         </div>
       )}
+
+      {/* MODAL ZA PREGLED PRIVITKA (SLIKA ILI PDF) */}
+      {selectedPreviewAttachment && (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setSelectedPreviewAttachment(null)}
+        >
+          <div
+            className="w-full max-w-4xl bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 md:p-6 relative flex flex-col max-h-[92vh] overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2 min-w-0">
+                {selectedPreviewAttachment.type?.startsWith('image/') ? (
+                  <ImageIcon className="w-4 h-4 text-volt-400 shrink-0" />
+                ) : (
+                  <FileText className="w-4 h-4 text-rose-400 shrink-0" />
+                )}
+                <span className="font-semibold text-sm text-zinc-100 truncate">
+                  {selectedPreviewAttachment.name}
+                </span>
+                <span className="text-xs font-mono text-zinc-500">
+                  ({formatFileSize(selectedPreviewAttachment.size)})
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedPreviewAttachment.dataUrl && (
+                  <a
+                    href={selectedPreviewAttachment.dataUrl}
+                    download={selectedPreviewAttachment.name}
+                    className="p-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors text-xs flex items-center gap-1 px-2.5 font-medium"
+                    title="Preuzmi datoteku"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Preuzmi
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedPreviewAttachment(null)}
+                  className="p-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto flex items-center justify-center bg-zinc-950 rounded-lg p-2 min-h-[300px]">
+              {selectedPreviewAttachment.type?.startsWith('image/') ? (
+                <img
+                  src={selectedPreviewAttachment.dataUrl}
+                  alt={selectedPreviewAttachment.name}
+                  className="max-w-full max-h-[75vh] object-contain rounded"
+                />
+              ) : (
+                <iframe
+                  src={selectedPreviewAttachment.dataUrl}
+                  title={selectedPreviewAttachment.name}
+                  className="w-full h-[75vh] rounded border-0"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Prikazuje minijaturu slike ili PDF karticu u chat oblačiću.
+ * Ako slika nije u memoriji (npr. nakon ponovnog učitavanja),
+ * automatski je povlači iz lokalnog IndexedDB-a.
+ */
+function ChatAttachmentItem({ attachment, onPreview }) {
+  const [dataUrl, setDataUrl] = useState(attachment.dataUrl || null);
+  const [loading, setLoading] = useState(!attachment.dataUrl);
+
+  useEffect(() => {
+    if (dataUrl || !attachment.id) return;
+    let active = true;
+    getAttachmentFromLocalDB(attachment.id)
+      .then(item => {
+        if (active && item?.dataUrl) {
+          setDataUrl(item.dataUrl);
+        }
+        if (active) setLoading(false);
+      })
+      .catch(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [attachment.id, dataUrl]);
+
+  const isImage = attachment.type?.startsWith('image/');
+
+  if (isImage) {
+    return (
+      <div
+        onClick={() => onPreview && onPreview({ ...attachment, dataUrl })}
+        className="group relative cursor-pointer rounded-lg overflow-hidden border border-zinc-800 hover:border-volt-400/60 transition-all bg-zinc-950 max-w-[200px]"
+        title="Klikni za uvećanje slike"
+      >
+        {dataUrl ? (
+          <img
+            src={dataUrl}
+            alt={attachment.name}
+            className="w-full h-24 object-cover group-hover:scale-105 transition-transform"
+          />
+        ) : loading ? (
+          <div className="w-36 h-24 flex items-center justify-center bg-zinc-900 text-zinc-600">
+            <Loader2 className="w-4 h-4 animate-spin text-volt-400" />
+          </div>
+        ) : (
+          <div className="w-36 h-24 flex flex-col items-center justify-center bg-zinc-900 text-zinc-500 gap-1 p-2 text-center">
+            <ImageIcon className="w-5 h-5 text-zinc-400" />
+            <span className="text-[10px] truncate max-w-full">{attachment.name}</span>
+          </div>
+        )}
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-volt-300 font-mono text-[10px] font-bold">
+          <Eye className="w-3.5 h-3.5" /> Uvećaj
+        </div>
+      </div>
+    );
+  }
+
+  // PDF prilog
+  return (
+    <div
+      onClick={() => onPreview && onPreview({ ...attachment, dataUrl })}
+      className="flex items-center gap-2.5 p-2.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-rose-500/50 cursor-pointer transition-all max-w-xs group"
+      title="Klikni za pregled PDF dokumenta"
+    >
+      <div className="p-2 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 group-hover:scale-105 transition-transform">
+        <FileText className="w-4 h-4" />
+      </div>
+      <div className="flex flex-col min-w-0 pr-2 text-left">
+        <span className="text-xs font-semibold text-zinc-200 truncate group-hover:text-zinc-100 transition-colors">
+          {attachment.name}
+        </span>
+        <span className="text-[10px] font-mono text-zinc-500">
+          PDF · {formatFileSize(attachment.size)}
+        </span>
+      </div>
     </div>
   );
 }

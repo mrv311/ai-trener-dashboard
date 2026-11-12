@@ -6,6 +6,7 @@
 
 import { compileKnowledgeBasePrompt } from './aiKnowledgeBase';
 import { buildAthleteContextPrompt, findExactHistoricalRecord } from './historyService';
+import { getAttachmentFromLocalDB } from './aiFilesStorage';
 
 const STORAGE_KEY_CUSTOM_API_KEY = 'ergvibe_custom_gemini_key';
 const STORAGE_KEY_ANALYSES_CACHE = 'ergvibe_ai_workout_analyses_v1';
@@ -449,7 +450,17 @@ ili u JSON formatu:
   ]
 }
 \`\`\`
-VAŽNO: DURATION i durationMinutes su U MINUTAMA (npr. 60 ili 75, NIKAKO u sekundama poput 3600). U steps nizu, pojedinačni "duration" je u sekundama, a "power" je u % FTP.`;
+VAŽNO: DURATION i durationMinutes su U MINUTAMA (npr. 60 ili 75, NIKAKO u sekundama poput 3600). U steps nizu, pojedinačni "duration" je u sekundama, a "power" je u % FTP.
+
+### SPECIFIČNA UPUTA ZA ANALIZU PRILOŽENIH SLIKA I PDF DOKUMENATA:
+Ako poruka sadrži priloženu sliku ili PDF (npr. laboratorijski nalaz spiroergometrije, laktatni test, krvnu sliku, tablicu koraka opterećenja ili snimku zaslona Garmin/Wahoo/Strava grafikona):
+1. Pažljivo očitaj sve tablične i grafičke vrijednosti: watte po koraku, puls (HR), laktate (mmol/L), VO2max, ventilaciju ili kadencu.
+2. Precizno identificiraj fiziološke točke:
+   - **LT1 / Aerobni prag**: točka prvog skoka laktata iznad bazalnih vrijednosti (obično oko 1.5 - 2.0 mmol/L ili prvi ventilacijski lom VT1).
+   - **LT2 / MLSS / Anaerobni prag (FTP)**: točka ubrzane akumulacije laktata (oko 4.0 mmol/L ili oštar skok krivulje).
+3. Usporedi nalaz s trenutnim profilom sportaša u ErgVibe-u (FTP, težina, zone) i jasno preporuči:
+   - Ažurirani FTP ili pragove pulsa ako se razlikuju od trenutnih.
+   - U kojem rasponu watta voziti Zone 2 (izdržljivost) ispod LT1, a u kojem Sweet Spot / Threshold oko LT2.`;
 
   const rawList = Array.isArray(messages) && messages.length > 0
     ? messages
@@ -458,16 +469,61 @@ VAŽNO: DURATION i durationMinutes su U MINUTAMA (npr. 60 ili 75, NIKAKO u sekun
         ...(String(userMessage || '').trim() ? [{ role: 'user', text: String(userMessage).trim() }] : [])
       ];
 
-  const normalizedTurns = rawList
-    .map(m => {
-      const txt = String(m?.text ?? m?.content ?? '').trim();
-      if (!txt) return null;
-      return {
+  // 1. Pripremi asinkrono sve partove uključujući multimodalne privitke (slike i PDF-ove)
+  const normalizedTurns = [];
+  for (const m of rawList) {
+    const txt = String(m?.text ?? m?.content ?? '').trim();
+    const parts = [];
+
+    // Dodaj tekstualni dio ako postoji
+    if (txt) {
+      parts.push({ text: txt });
+    }
+
+    // Dodaj multimodalne privitke (slike ili PDF)
+    if (Array.isArray(m?.attachments) && m.attachments.length > 0) {
+      for (const att of m.attachments) {
+        let base64 = att?.dataBase64;
+        let mime = att?.type;
+
+        // Ako base64 nije u memoriji, povuci ga iz lokalnog IndexedDB-a
+        if (!base64 && att?.id) {
+          try {
+            const dbItem = await getAttachmentFromLocalDB(att.id);
+            if (dbItem?.dataBase64) {
+              base64 = dbItem.dataBase64;
+              mime = dbItem.type || mime;
+            }
+          } catch (e) {
+            console.warn('[chatWithAICoach] Neuspjelo dohvaćanje privitka iz IndexedDB-a:', att.id, e);
+          }
+        }
+
+        if (base64 && mime) {
+          parts.push({
+            inlineData: {
+              mimeType: mime,
+              data: base64
+            }
+          });
+        }
+      }
+    }
+
+    // Ako korisnik nije upisao tekst nego samo priložio sliku/PDF, postavi defaultni upit
+    if (parts.length > 0 && !txt && m?.role === 'user') {
+      parts.unshift({
+        text: 'Molim te detaljno analiziraj ovu priloženu sliku/dokument u kontekstu mog profila, trenutnog FTP-a i biciklističkog treninga.'
+      });
+    }
+
+    if (parts.length > 0) {
+      normalizedTurns.push({
         role: m?.role === 'user' ? 'user' : 'model',
-        parts: [{ text: txt }]
-      };
-    })
-    .filter(Boolean);
+        parts
+      });
+    }
+  }
 
   // Osiguraj da razgovor počinje s 'user' ulogom i spaja uzastopne poruke iste uloge
   while (normalizedTurns.length > 0 && normalizedTurns[0].role !== 'user') {
@@ -478,14 +534,14 @@ VAŽNO: DURATION i durationMinutes su U MINUTAMA (npr. 60 ili 75, NIKAKO u sekun
   for (const turn of normalizedTurns) {
     const prev = formattedContents[formattedContents.length - 1];
     if (prev && prev.role === turn.role) {
-      prev.parts[0].text = `${prev.parts[0].text}\n\n${turn.parts[0].text}`;
+      prev.parts.push(...turn.parts);
     } else {
       formattedContents.push(turn);
     }
   }
 
   if (formattedContents.length === 0) {
-    throw new Error('Poruka za AI Trenera je prazna. Upiši pitanje i pokušaj ponovno.');
+    throw new Error('Poruka za AI Trenera je prazna. Upiši pitanje ili priloži dokument i pokušaj ponovno.');
   }
 
   return callGeminiApi({
