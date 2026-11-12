@@ -105,30 +105,135 @@ export async function clearAllAttachmentsFromLocalDB() {
 }
 
 /**
+ * Pomoćna funkcija za optimizaciju i proporcionalno smanjenje prevelikih slika.
+ * Osigurava maksimalnu oštrinu teksta i grafikona za AI, uz drastično brže slanje i manji payload.
+ */
+async function optimizeImageForAi(file) {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return resolve(null);
+    }
+
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX_DIM = 1920;
+      let { width, height } = img;
+
+      // Ako je slika već manja od 1920px i manja od 2MB, nema potrebe za rekodiranjem
+      if (width <= MAX_DIM && height <= MAX_DIM && file.size <= 2 * 1024 * 1024) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const resultStr = String(reader.result || '');
+          const base64Index = resultStr.indexOf(';base64,');
+          resolve({
+            dataUrl: resultStr,
+            dataBase64: base64Index !== -1 ? resultStr.slice(base64Index + 8) : resultStr,
+            type: file.type || 'image/jpeg',
+            size: file.size
+          });
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      // Proporcionalno skaliraj ako premašuje maksimalnu dimenziju
+      if (width > MAX_DIM || height > MAX_DIM) {
+        if (width > height) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+      }
+
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(null);
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const quality = mime === 'image/jpeg' ? 0.88 : undefined;
+        const dataUrl = canvas.toDataURL(mime, quality);
+        const base64Index = dataUrl.indexOf(';base64,');
+        const dataBase64 = base64Index !== -1 ? dataUrl.slice(base64Index + 8) : dataUrl;
+        const approxBytes = Math.round((dataBase64.length * 3) / 4);
+
+        resolve({
+          dataUrl,
+          dataBase64,
+          type: mime,
+          size: approxBytes
+        });
+      } catch (err) {
+        console.warn('[aiFilesStorage] Canvas optimizacija greška, fallback:', err);
+        resolve(null);
+      }
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+
+    img.src = url;
+  });
+}
+
+/**
  * Čita korisnički odabranu ili zalijepljenu datoteku (File / Blob),
  * provjerava tip i veličinu, te vraća strukturirani objekt spreman za spremanje.
  */
 export async function processFileForAi(file) {
+  if (!file) throw new Error('Datoteka nije odabrana.');
+
+  const MAX_SIZE_MB = 20;
+  if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+    throw new Error(
+      `Datoteka '${file.name || 'Prilog'}' je prevelika (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maksimalna dopuštena veličina je ${MAX_SIZE_MB} MB.`
+    );
+  }
+
+  const type = file.type || '';
+  const isImage = type.startsWith('image/');
+  const isPdf = type === 'application/pdf' || (file.name && file.name.toLowerCase().endsWith('.pdf'));
+
+  if (!isImage && !isPdf) {
+    throw new Error(`Format datoteke '${file.name || ''}' nije podržan. Možete priložiti slike (JPG, PNG, WEBP) ili PDF dokumente.`);
+  }
+
+  const resolvedMime = isPdf ? 'application/pdf' : type;
+
+  // 1. Za slike: pokušaj optimizaciju i skaliranje na max 1920px za kristalno jasnu OCR detekciju bez kašnjenja
+  if (isImage) {
+    try {
+      const optimized = await optimizeImageForAi(file);
+      if (optimized?.dataBase64) {
+        const id = 'att_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+        return {
+          id,
+          name: file.name || 'slika.png',
+          type: optimized.type || resolvedMime,
+          size: optimized.size || file.size,
+          dataBase64: optimized.dataBase64,
+          dataUrl: optimized.dataUrl,
+          createdAt: new Date().toISOString()
+        };
+      }
+    } catch (e) {
+      console.warn('[processFileForAi] Optimizacija slike zabilježila iznimku, nastavljam s izvornom:', e);
+    }
+  }
+
+  // 2. Standardno učitavanje za PDF ili fallback za slike
   return new Promise((resolve, reject) => {
-    if (!file) return reject(new Error('Datoteka nije odabrana.'));
-
-    const MAX_SIZE_MB = 15;
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      return reject(
-        new Error(`Datoteka '${file.name || 'Prilog'}' je prevelika (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maksimalna dopuštena veličina je ${MAX_SIZE_MB} MB.`)
-      );
-    }
-
-    const type = file.type || '';
-    const isImage = type.startsWith('image/');
-    const isPdf = type === 'application/pdf' || (file.name && file.name.toLowerCase().endsWith('.pdf'));
-
-    if (!isImage && !isPdf) {
-      return reject(new Error(`Format datoteke '${file.name || ''}' nije podržan. Možete priložiti slike (JPG, PNG, WEBP) ili PDF dokumente.`));
-    }
-
-    const resolvedMime = isPdf ? 'application/pdf' : type;
-
     const reader = new FileReader();
     reader.onload = () => {
       const resultStr = String(reader.result || '');

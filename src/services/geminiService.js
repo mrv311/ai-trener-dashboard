@@ -499,9 +499,19 @@ Slijedi ove rigorozne korake i trenerska pravila:
      * UKUPNO = 10 + 40 + 10 = 60 min.
    - Ako ti fali vremena do ukupnog trajanja prikazanog na slici, provjeri jesi li previdio pripremni korak u zagrijavanju (npr. 3 brza skoka kadence / openers od po 30s) ili završno hlađenje!
 
-6. STRUKTURA I FORMAT ODGOVORA KOD REKREIRANJA SLIKE:
-   - Na početku odgovora daj kratak, jasan uvod (1-2 rečenice): potvrdi koji si trening prepoznao sa slike, ukupno trajanje, prepoznatu zonu/kategoriju i fiziološki cilj.
-   - ZATIM OBAVEZNO ispiši strukturirani blok u točnom formatu:
+6. OBAVEZNA STRUKTURA ODGOVORA KOD REKREIRANJA SLIKE (KORAK-PO-KORAK ANALIZA):
+   Prije ispisa samog programskog koda, UVIJEK najprije napiši kratku, preciznu sekciju opažanja:
+   ### 🔍 VIZUALNA ANALIZA SLIKE:
+   - **Izvor / platforma:** (npr. TrainerRoad, Zwift, TrainingPeaks, Garmin, crtež/tablica)
+   - **Prepoznati naziv treninga:** (npr. Carson, The Wringer ili točan naziv s ekrana)
+   - **Ukupno trajanje s grafike:** (npr. 60 min ili 45 min)
+   - **Broj radnih intervala:** (točan prebrojani broj stupaca rada, npr. 5 ili 6)
+   - **Zona i intenzitet rada:** (npr. žuta Z4 / Sweet Spot, ~90% FTP = 249 W)
+   - **Trajanje radnog intervala i odmora:** (npr. rad 6 min na 90%, odmor 2 min na 50%)
+   - **Zagrijavanje i hlađenje:** (npr. 10 min rampa 50-75%, hlađenje 2 min na 50%)
+   - **Matematička provjera zbroja:** 10m + 6x(6m+2m) + 2m = 60m (mora se podudarati s trajanjem na slici!)
+
+   TEK NAKON OVE ANALIZE, ispiši gotov kod:
 \`\`\`workout
 TITLE: Točan Naziv Treninga
 CATEGORY: SweetSpot | VO2max | Threshold | Endurance | Anaerobic | Recovery
@@ -521,6 +531,12 @@ Hlađenje
      1. Točne wate za radne intervale prema njegovom trenutnom FTP-u (npr. "Na tvom FTP-u od X W, radni interval od Y% iznosi Z W, a odmor je W W").
      2. Savjet za kadencu i biomehaniku (npr. stabilnih 90-95 rpm, miran gornji dio tijela).
      3. Način izvedbe na pametnom trenažeru (ERG mode preporuka, hlađenje i hidracija).
+
+7. 🔄 PROTOKOL ZA KORISNIČKE ISPRAVKE (FOLLOW-UP PORUKE):
+   Ako sportaš u nastavku razgovora pošalje ispravak (npr. "krivo je, nije 4x nego 5x", "odmor je 2 min a ne 4 min", "intenzitet je Sweet Spot a ne VO2max", "ukupno trajanje je 45 min a ne 60 min"):
+   - Prihvati sportaševu ispravku kao APSOLUTNI FAKT.
+   - Ne mijenjaj one dijelove treninga koji su bili točni, već izmijeni TOČNO one stavke koje je sportaš naveo.
+   - Ponovno proračunaj trajanje i OBAVEZNO ispiši NOVI, ažurirani \`\`\`workout\`\`\` blok s unesenim ispravkama tako da ga korisnik može odmah spremiti!
 
 ### SPECIFIČNA UPUTA ZA ANALIZU FIZIOLOŠKIH NALAZA (LAKTIČKI TEST, SPIROERGOMETRIJA, KRVNA SLIKA):
 Ako poruka sadrži priloženu sliku ili PDF laboratorijskog nalaza spiroergometrije, laktatnog testa, krvne slike ili tablice koraka opterećenja:
@@ -614,11 +630,15 @@ Ako poruka sadrži priloženu sliku ili PDF laboratorijskog nalaza spiroergometr
     throw new Error('Poruka za AI Trenera je prazna. Upiši pitanje ili priloži dokument i pokušaj ponovno.');
   }
 
+  const hasMultimodal = formattedContents.some(turn =>
+    Array.isArray(turn.parts) && turn.parts.some(p => p.inlineData)
+  );
+
   return callGeminiApi({
     systemInstruction,
     contents: formattedContents,
     model,
-    temperature: 0.4
+    temperature: hasMultimodal ? 0.2 : 0.35
   });
 }
 
