@@ -3,7 +3,8 @@ import {
   Sparkles, Bot, Send, Loader2, CalendarPlus, Trash2, BookOpen,
   History, ClipboardList, MessageSquare, Upload, Plus, Check,
   AlertCircle, Zap, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Shield,
-  FileText, ExternalLink, Video, Paperclip, X, Image as ImageIcon, Download, Eye
+  FileText, ExternalLink, Video, Paperclip, X, Image as ImageIcon, Download, Eye,
+  Activity
 } from 'lucide-react';
 import {
   chatWithAICoach,
