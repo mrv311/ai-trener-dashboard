@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { recreateWorkoutWithAi, refineWorkoutWithAi } from '../services/geminiService';
 import { processFileForAi, formatFileSize } from '../services/aiFilesStorage';
-import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
+import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty, normalizeCategory, CANONICAL_CATEGORIES, parseDurationMinutes } from '../utils/workoutParser';
 import { buildErgVibeWorkoutObject } from './ai/AIMarkdown';
 import { supabase } from '../services/supabaseClient';
 
@@ -159,23 +159,41 @@ export default function AIWorkoutCreatorModal({
     return () => window.removeEventListener('paste', handleWindowPaste);
   }, [isOpen]);
 
+  const handleResetNewWorkout = () => {
+    setAttachedImage(null);
+    setDescriptionInput('');
+    setErrorMessage(null);
+    setAnalysisText('');
+    setTitle('');
+    setCode('');
+    setCategory('Threshold');
+    setTargetDuration('');
+    setTargetTss('');
+    setScheduleSuccess(false);
+    setLibrarySuccess(false);
+    setRefinementInput('');
+    setIsRefining(false);
+    setRefinementHistory([]);
+    setRefinementFeedback(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Zatvaranje modala tipkom Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   // Resetiraj stanje pri zatvaranju
   useEffect(() => {
     if (!isOpen) {
-      setAttachedImage(null);
-      setDescriptionInput('');
-      setErrorMessage(null);
-      setAnalysisText('');
-      setTitle('');
-      setCode('');
-      setTargetDuration('');
-      setTargetTss('');
-      setScheduleSuccess(false);
-      setLibrarySuccess(false);
-      setRefinementInput('');
-      setIsRefining(false);
-      setRefinementHistory([]);
-      setRefinementFeedback(null);
+      handleResetNewWorkout();
     }
   }, [isOpen]);
 
@@ -261,10 +279,10 @@ export default function AIWorkoutCreatorModal({
         if (/^TITLE:/i.test(t)) {
           extractedTitle = t.replace(/^TITLE:\s*/i, '').trim();
         } else if (/^CATEGORY:/i.test(t)) {
-          extractedCategory = t.replace(/^CATEGORY:\s*/i, '').trim();
+          extractedCategory = normalizeCategory(t.replace(/^CATEGORY:\s*/i, '').trim());
         } else if (/^DURATION:/i.test(t)) {
-          const d = parseInt(t.replace(/^DURATION:\s*/i, '').replace(/m(in)?/i, ''), 10);
-          if (d > 0) extractedDuration = d;
+          const d = parseDurationMinutes(t.replace(/^DURATION:\s*/i, ''));
+          if (d && d > 0) extractedDuration = d;
         } else if (/^TSS:/i.test(t)) {
           const s = parseInt(t.replace(/^TSS:\s*/i, ''), 10);
           if (s > 0) extractedTss = s;
@@ -282,14 +300,35 @@ export default function AIWorkoutCreatorModal({
         }
       });
 
+      // Ako trajanje ili TSS nisu bili na posebnim linijama, potraži ih u cijelom odgovoru
+      const fullText = `${introText}\n${rawBlock}`;
+      if (!extractedDuration && !explicitDuration) {
+        const durMatch = fullText.match(/(?:duration|trajanje|vrijeme|time)\s*[:=]?\s*(\d{1,2}:\d{2}:\d{2}|\d{1,3}:\d{2}|\d+\s*(?:m|min|h))/i);
+        if (durMatch) {
+          const parsedD = parseDurationMinutes(durMatch[1]);
+          if (parsedD && parsedD > 0) extractedDuration = parsedD;
+        }
+      }
+      if (!extractedTss && !explicitTss) {
+        const tssMatch = fullText.match(/\bTSS\s*[:=]?\s*(\d{1,3})\b/i);
+        if (tssMatch) {
+          const parsedT = parseInt(tssMatch[1], 10);
+          if (parsedT > 0) extractedTss = parsedT;
+        }
+      }
+
       let cleanCode = stepLines.join('\n').trim() || rawBlock;
 
+      // Izračunaj trajanje koraka kako ne bismo nepotrebno dodavali minute na npr. 45-minutni trening
+      const prelimParsed = parseIntervalsCode(cleanCode, ftp);
+      const stepsDurationMin = prelimParsed?.duration ? Math.round(prelimParsed.duration / 60) : 0;
+
       // Automatsko usklađivanje hlađenja na točno ciljano trajanje u minutama
-      const finalTargetMin = extractedDuration || explicitDuration || 60;
+      const finalTargetMin = extractedDuration || explicitDuration || (stepsDurationMin > 0 ? stepsDurationMin : 60);
       cleanCode = alignCooldownToTarget(cleanCode, finalTargetMin);
 
       setTitle(extractedTitle || 'AI Trening');
-      setCategory(extractedCategory);
+      setCategory(normalizeCategory(extractedCategory));
       setTargetDuration(finalTargetMin);
       if (extractedTss) setTargetTss(extractedTss);
       setCode(cleanCode);
@@ -346,10 +385,10 @@ export default function AIWorkoutCreatorModal({
         if (/^TITLE:/i.test(t)) {
           extractedTitle = t.replace(/^TITLE:\s*/i, '').trim();
         } else if (/^CATEGORY:/i.test(t)) {
-          extractedCategory = t.replace(/^CATEGORY:\s*/i, '').trim();
+          extractedCategory = normalizeCategory(t.replace(/^CATEGORY:\s*/i, '').trim());
         } else if (/^DURATION:/i.test(t)) {
-          const d = parseInt(t.replace(/^DURATION:\s*/i, '').replace(/m(in)?/i, ''), 10);
-          if (d > 0) extractedDuration = d;
+          const d = parseDurationMinutes(t.replace(/^DURATION:\s*/i, ''));
+          if (d && d > 0) extractedDuration = d;
         } else if (/^TSS:/i.test(t)) {
           const s = parseInt(t.replace(/^TSS:\s*/i, ''), 10);
           if (s > 0) extractedTss = s;
@@ -373,7 +412,7 @@ export default function AIWorkoutCreatorModal({
       }
 
       setTitle(extractedTitle);
-      setCategory(extractedCategory);
+      setCategory(normalizeCategory(extractedCategory));
       setTargetDuration(extractedDuration);
       if (extractedTss) setTargetTss(extractedTss);
       setCode(cleanCode);
@@ -402,9 +441,10 @@ export default function AIWorkoutCreatorModal({
     if (!code || !onAddWorkoutToCalendar) return;
 
     try {
+      const categoryResolved = normalizeCategory(category);
       const built = buildErgVibeWorkoutObject({
         title: title.trim() || 'AI Trening',
-        category,
+        category: categoryResolved,
         intervalsCode: code,
         durationMinutes: targetDuration,
         estimatedTss: targetTss,
@@ -424,9 +464,10 @@ export default function AIWorkoutCreatorModal({
   const handleStartInTrainer = () => {
     if (!code || !onStartWorkoutInTrainer) return;
 
+    const categoryResolved = normalizeCategory(category);
     const built = buildErgVibeWorkoutObject({
       title: title.trim() || 'AI Trening',
-      category,
+      category: categoryResolved,
       intervalsCode: code,
       durationMinutes: targetDuration,
       estimatedTss: targetTss,
@@ -445,23 +486,24 @@ export default function AIWorkoutCreatorModal({
     setErrorMessage(null);
 
     try {
+      const categoryResolved = normalizeCategory(category);
       const built = buildErgVibeWorkoutObject({
         title: title.trim() || 'AI Trening',
-        category,
+        category: categoryResolved,
         intervalsCode: code,
         durationMinutes: targetDuration,
         estimatedTss: targetTss,
         ftp
       });
 
-      const categoryResolved = category || categorizeWorkout(built.steps) || 'Custom';
-      const difficulty = calculateCategoryDifficulty(built.steps, categoryResolved);
+      const finalCategory = normalizeCategory(categoryResolved || categorizeWorkout(built.steps) || 'Sweet Spot');
+      const difficulty = calculateCategoryDifficulty(built.steps, finalCategory);
 
       const payload = {
         title: title.trim() || 'AI Trening',
         description: code,
         duration_seconds: built.duration_seconds || 3600,
-        category: categoryResolved,
+        category: finalCategory,
         difficulty_score: difficulty,
         steps: built.steps
       };
@@ -491,7 +533,10 @@ export default function AIWorkoutCreatorModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-zinc-950/85 backdrop-blur-md animate-in fade-in">
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-zinc-950/85 backdrop-blur-md animate-in fade-in"
+    >
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95">
         
         {/* MODAL HEADER */}
@@ -512,12 +557,25 @@ export default function AIWorkoutCreatorModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleResetNewWorkout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-850 hover:bg-zinc-800 border border-zinc-750 hover:border-zinc-650 text-zinc-200 hover:text-volt-300 text-xs font-mono font-medium transition-all shadow-sm"
+              title="Očisti studio i započni novi trening"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-volt-400" />
+              <span className="hidden sm:inline">+ Novi trening</span>
+              <span className="sm:hidden">+ Novi</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+              title="Zatvori (Esc)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* MODAL CONTENT GRID */}
@@ -737,16 +795,13 @@ export default function AIWorkoutCreatorModal({
                         Kategorija
                       </label>
                       <select
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
+                        value={normalizeCategory(category)}
+                        onChange={(e) => setCategory(normalizeCategory(e.target.value))}
                         className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs font-bold text-volt-400 focus:border-volt-400 outline-none uppercase"
                       >
-                        <option value="VO2max">VO2max</option>
-                        <option value="SweetSpot">SweetSpot</option>
-                        <option value="Threshold">Threshold</option>
-                        <option value="Endurance">Endurance</option>
-                        <option value="Anaerobic">Anaerobic</option>
-                        <option value="Recovery">Recovery</option>
+                        {CANONICAL_CATEGORIES.filter(c => c !== 'Ostalo').map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
                       </select>
                     </div>
 
@@ -982,6 +1037,16 @@ export default function AIWorkoutCreatorModal({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleResetNewWorkout}
+                      className="px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-xs font-bold text-zinc-300 hover:text-volt-300 flex items-center gap-1.5 transition-colors"
+                      title="Očisti studio i kreni s novim treningom"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-volt-400" />
+                      <span>Novi trening</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={handleSaveToLibrary}

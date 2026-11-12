@@ -587,7 +587,93 @@ export function categorizeWorkout(steps) {
     anaerobic: 'Anaerobni'
   };
 
-  return map[dominantCategory];
+  return map[dominantCategory] || 'Sweet Spot';
+}
+
+export const CANONICAL_CATEGORIES = [
+  'Oporavak',
+  'Endurance',
+  'Tempo',
+  'Sweet Spot',
+  'Threshold',
+  'VO2 Max',
+  'Anaerobni',
+  'Testiranje',
+  'Ostalo'
+];
+
+/**
+ * Normalizira bilo koji unos kategorije u točno standardizirano ime foldera u knjižnici
+ * (npr. 'sweetspot' -> 'Sweet Spot', 'anaerobic' -> 'Anaerobni', 'vo2max' -> 'VO2 Max').
+ */
+export function normalizeCategory(rawCat) {
+  if (!rawCat) return 'Sweet Spot';
+  const c = String(rawCat).trim().toLowerCase();
+
+  if (c.includes('sweet') || c === 'ss') return 'Sweet Spot';
+  if (c.includes('anaerob') || c.includes('ana')) return 'Anaerobni';
+  if (c.includes('vo2') || c.includes('v02')) return 'VO2 Max';
+  if (c.includes('thresh') || c.includes('prag') || c.includes('ftp') || c.includes('suprathresh')) return 'Threshold';
+  if (c.includes('tempo') || c === 'z3') return 'Tempo';
+  if (c.includes('endur') || c.includes('izdrž') || c.includes('izdrz') || c === 'z2') return 'Endurance';
+  if (c.includes('oporav') || c.includes('recov') || c === 'z1') return 'Oporavak';
+  if (c.includes('test') || c.includes('ramp')) return 'Testiranje';
+
+  const exact = CANONICAL_CATEGORIES.find(k => k.toLowerCase() === c);
+  if (exact) return exact;
+
+  return 'Ostalo';
+}
+
+/**
+ * Parsira bilo koji format trajanja (HH:MM:SS, MM:SS, 45m, 1h15m, 45) u točan broj minuta.
+ */
+export function parseDurationMinutes(rawStr) {
+  if (!rawStr) return null;
+  const s = String(rawStr).trim();
+
+  // Format HH:MM:SS ili H:MM:SS (npr. 00:45:00 ili 01:15:00)
+  const hmsMatch = s.match(/\b(\d{1,2}):(\d{2}):(\d{2})\b/);
+  if (hmsMatch) {
+    const hours = parseInt(hmsMatch[1], 10);
+    const mins = parseInt(hmsMatch[2], 10);
+    const secs = parseInt(hmsMatch[3], 10);
+    return Math.round(hours * 60 + mins + secs / 60);
+  }
+
+  // Format MM:SS (npr. 45:00)
+  const msMatch = s.match(/\b(\d{1,3}):(\d{2})\b/);
+  if (msMatch) {
+    const mins = parseInt(msMatch[1], 10);
+    const secs = parseInt(msMatch[2], 10);
+    return Math.round(mins + secs / 60);
+  }
+
+  // Format s satima i/ili minutama (npr. "1h 15m", "1h", "45m", "45 min")
+  let totalMins = 0;
+  let matched = false;
+  const hMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hours?)\b/i);
+  if (hMatch) {
+    totalMins += parseFloat(hMatch[1]) * 60;
+    matched = true;
+  }
+  const mMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins|minutes?)\b/i);
+  if (mMatch) {
+    totalMins += parseFloat(mMatch[1]);
+    matched = true;
+  }
+  if (matched && totalMins > 0) {
+    return Math.round(totalMins);
+  }
+
+  // Običan broj (npr. "45")
+  const numMatch = s.match(/\b(\d+)\b/);
+  if (numMatch) {
+    const val = parseInt(numMatch[1], 10);
+    if (val > 0) return val;
+  }
+
+  return null;
 }
 
 function getZoneRange(category) {

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, Zap, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare, Sparkles, Search } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/performanceMetrics';
-import { parseWorkoutFile } from '../utils/workoutParser';
+import { parseWorkoutFile, normalizeCategory, CANONICAL_CATEGORIES } from '../utils/workoutParser';
 import { calculateCogganMetrics, expandStepsToSeconds } from '../utils/performanceMetrics';
 import { generateLocalWorkout } from '../utils/workoutGenerator';
 import { stepsToIntervalsCode } from './ai/AIMarkdown';
@@ -227,7 +227,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
   const handleUpdateWorkout = async () => {
     if (!editingWorkoutId || !editTitle.trim()) return;
     try {
-      const { error } = await supabase.from('workouts').update({ title: editTitle.trim(), category: editCategory }).eq('id', editingWorkoutId);
+      const { error } = await supabase.from('workouts').update({ title: editTitle.trim(), category: normalizeCategory(editCategory) }).eq('id', editingWorkoutId);
       if (error) throw error;
       setEditingWorkoutId(null);
       await fetchWorkouts();
@@ -286,7 +286,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
   const categoryOrder = ['Oporavak', 'Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Anaerobni', 'Testiranje', 'Ostalo'];
 
   const groupedWorkouts = workouts.reduce((acc, workout) => {
-    const cat = workout.category || 'Ostalo';
+    const cat = normalizeCategory(workout.category);
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(workout);
     return acc;
@@ -564,7 +564,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                               <div className="min-w-0 flex-1">
                                 {!activeFolder && workout.category && (
                                   <span className={`inline-block text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border mb-1 ${catMeta.badge}`}>
-                                    {workout.category}
+                                    {normalizeCategory(workout.category)}
                                   </span>
                                 )}
                                 <h3 className="text-base font-display font-bold uppercase tracking-wide text-zinc-100 group-hover/card:text-volt-400 transition-colors leading-snug line-clamp-2">

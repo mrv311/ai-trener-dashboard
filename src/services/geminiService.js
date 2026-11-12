@@ -517,7 +517,7 @@ Slijedi ove rigorozne korake i trenerska pravila:
    TEK NAKON OVE ANALIZE, ispiši gotov kod:
 \`\`\`workout
 TITLE: Točan Naziv Treninga
-CATEGORY: SweetSpot | VO2max | Threshold | Endurance | Anaerobic | Recovery
+CATEGORY: Sweet Spot | VO2 Max | Threshold | Endurance | Anaerobni | Tempo | Oporavak | Testiranje
 DURATION: 60
 TSS: 65
 STEPS:
@@ -669,29 +669,40 @@ Profil sportaša:
 - Trenutni FTP: ${ftp} W | Težina: ${weight} kg
 
 ZLATNA PRAVILA ZA APSOLUTNU PRECIZNOST:
-1. AKO NA SLICI PIŠU DURATION (TRAJANJE) ILI TSS:
+1. DETEKCIJA METRIKA SA SLIKE (TrainerRoad, Zwift, TP, Garmin):
    - ZABRANJENO JE AUTOMATSKI PREDPOSTAVLJATI 60 MINUTA!
-   - Ako na slici piše npr. "Duration 00:45:00", trajanje MORA biti točno 45 minuta ("DURATION: 45").
-   - Ako na slici piše npr. "Duration 01:15:00", trajanje MORA biti točno 75 minuta ("DURATION: 75").
-   - Ako na slici piše npr. "TSS: 53", izlaz MORA imati točno "TSS: 53".
+   - Pažljivo očitaj desni bočni stupac s podacima ("Duration", "TSS", "NP", "IF"):
+     * Ako piše "Duration 00:45:00", trajanje MORA biti točno 45 minuta ("DURATION: 45").
+     * Ako piše "Duration 01:15:00", trajanje MORA biti točno 75 minuta ("DURATION: 75").
+     * Ako piše "Duration 01:30:00", trajanje MORA biti točno 90 minuta ("DURATION: 90").
+     * Ako piše "TSS: 53", izlaz MORA imati točno "TSS: 53".
+     * Pogledaj i X-os na dnu (vremensku skalu): gdje završava graf (npr. 45:00, 60:00).
    - Ako je vidljiv naziv treninga (npr. "Ainslie -4", "Anticosti", "Carson", "The Gorby", "Mary Austin", "Baxter"), OBAVEZNO točno prepiši taj naziv ("TITLE: Ainslie -4") i kategoriju ("CATEGORY: Threshold").
-2. BROJANJE RADNIH INTERVALA I ODMORA:
-   - Pažljivo prebroji radne blokove i odmore između njih (npr. 4 radna bloka iznad FTP-a po 5 min, s 3 odmora od 4 min na 40% FTP-a).
-   - Očitaj vrijednosti iz tooltipsa ili osi (npr. "Time 0:18:38, Target 40%, Interval Time 0:04:00").
-3. KORISNIČKE UPUTE I OPIS:
+2. BROJANJE RADNIH INTERVALA I SETOVA (NPR. ANTICOSTI, AINSLIE):
+   - Ako korisnik u opisu navede strukturu (npr. "3 sets of 5 intervals"), to je APSOLUTNO OBAVEZUJUĆE!
+   - Generiraj točno onoliki broj setova i ponavljanja koliko je zatraženo (npr. 3 seta po 5 intervala = ukupno 15 radnih intervala).
+   - Za setove koristi Intervals.icu grupnu sintaksu:
+     Set 1
+     5x
+     - 1m 120%
+     - 2m 40%
+3. BROJANJE IZ GRAFIKONA I TOOLTIPSA:
+   - Pažljivo prebroji radne blokove i odmore (npr. 4 radna bloka na pragu po 5 min, s 3 odmora od 4 min na 40% FTP-a).
+   - Očitaj vrijednosti iz tooltipsa ako postoje (npr. "Time 0:15:38, Target 40%, Interval Time 0:04:00").
+4. KORISNIČKE UPUTE I OPIS:
    - Ako korisnik u opisu napiše specifičnu uputu (npr. "napravi 60 min verziju"), to ima prioritet. Ako nije naveo trajanje, koristi točno trajanje sa slike.
-4. FORMAT KOMPOZITNOG TRAJANJA (MINUTE I SEKUNDE):
+5. FORMAT KOMPOZITNOG TRAJANJA (MINUTE I SEKUNDE):
    - Za intervale koji imaju minute i sekunde, piši standardni format: \`- 1m20s 125%\` ili \`- 80s 125%\`, \`- 1m05s 121%\`, \`- 1m10s 122%\`, \`- 1m15s 123%\`.
    - Nikada nemoj ispuštati minute!
-5. BALANSIRANJE UKUPNOG TRAJANJA:
+6. BALANSIRANJE UKUPNOG TRAJANJA:
    - Ukupno trajanje svih koraka (Zagrijavanje + Setovi + Oporavci + Hlađenje) mora točno odgovarati ciljanom trajanju treninga sa slike (npr. 45 min ili 60 min). Zadnji korak (Hlađenje) prilagodi tako da ukupna suma sekundi bude točno na ciljanoj minuti.
-6. TOČAN FORMAT KODA:
+7. TOČAN FORMAT KODA:
 Na početku daj 2-3 rečenice analize onoga što si prepoznao (naziv, trajanje, setove, TSS), a zatim OBAVEZNO ispiši strukturirani blok:
 \`\`\`workout
 TITLE: Naziv Treninga
-CATEGORY: VO2max | SweetSpot | Threshold | Endurance | Anaerobic | Recovery
-DURATION: trajanje u minutama
-TSS: točan broj
+CATEGORY: Sweet Spot | VO2 Max | Threshold | Endurance | Anaerobni | Tempo | Oporavak | Testiranje
+DURATION: trajanje u minutama (npr. 45)
+TSS: točan broj (npr. 53)
 STEPS:
 Zagrijavanje
 - 10m 50-75%
@@ -748,7 +759,7 @@ export async function refineWorkoutWithAi({
   currentCode,
   userInstruction,
   title = '',
-  category = 'VO2max',
+  category = 'Sweet Spot',
   targetDuration = 60,
   targetTss = null,
   imageBase64 = null,
@@ -779,7 +790,7 @@ PRAVILA ZA INTERAKTIVNU DORADU:
 Napiši 1 kratku rečenicu objašnjenja što si prilagodio, a zatim OBAVEZNO ispiši:
 \`\`\`workout
 TITLE: ${title || 'Trening'}
-CATEGORY: ${category || 'VO2max'}
+CATEGORY: ${category || 'Sweet Spot'}
 DURATION: ${targetDuration || 60}
 TSS: ${targetTss || 75}
 STEPS:
