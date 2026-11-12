@@ -1269,13 +1269,13 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     : 'PMC FORMA';
 
                   return (
-                    <div className={`p-3 flex flex-col justify-between border-l border-zinc-800 text-right font-mono telemetry-num
+                    <div className={`p-3 flex flex-col justify-start border-l border-zinc-800 text-right font-mono telemetry-num
                       ${isActive ? 'bg-zinc-900/90' : 'bg-zinc-950/90'}`}
                     >
-                      <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${isActive ? 'text-volt-400' : 'text-zinc-500'}`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 ${isActive ? 'text-volt-400' : 'text-zinc-500'}`}>
                         {weekRangeLabel}
                       </p>
-                      <div className="space-y-2.5">
+                      <div className="space-y-2.5 w-full">
                         <div>
                           <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-0.5">
                             <span className={isActive ? 'text-zinc-400' : 'text-zinc-600'}>VRIJEME</span>
