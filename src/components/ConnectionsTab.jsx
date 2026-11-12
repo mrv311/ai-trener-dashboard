@@ -147,8 +147,14 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                   </span>
                 </div>
                 {intervalsId && intervalsId !== '0' && (
-                  <div className="text-[11px] font-mono text-zinc-500">
-                    Athlete ID: <span className="text-zinc-300">{intervalsId}</span>
+                  <div className="text-[11px] font-mono text-zinc-500 flex items-center justify-between">
+                    <div>Athlete ID: <span className="text-zinc-300">{intervalsId}</span></div>
+                    {athleteInfo?.ftp && (
+                      <div className="text-zinc-400">
+                        FTP: <strong className="text-volt-400">{athleteInfo.ftp}W</strong>
+                        {athleteInfo.weight && <span className="ml-2 text-zinc-300">({athleteInfo.weight} kg)</span>}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

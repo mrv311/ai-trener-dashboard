@@ -5,6 +5,7 @@ import {
   Lock, Gauge, Award, ShieldCheck, Palette
 } from 'lucide-react';
 import ActivityDetailModal from './ActivityDetailModal';
+import { extractIntervalsAthleteMetrics } from '../services/intervalsApi';
 
 const UI_THEMES = [
   {
@@ -56,6 +57,7 @@ export default function ProfileTab({
 
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
+  const athleteMetrics = useMemo(() => extractIntervalsAthleteMetrics(athleteInfo), [athleteInfo]);
 
   useEffect(() => {
     if (!profile) return;
@@ -94,11 +96,12 @@ export default function ProfileTab({
 
   const handleRefreshFromIntervals = () => {
     if (!athleteInfo) return;
-    const athleteFirstName = athleteInfo.firstname || (athleteInfo.name ? athleteInfo.name.trim().split(' ')[0] : '');
-    const icuFtp = Number(athleteInfo.icu_ftp || athleteInfo.ftp);
-    const icuWeight = Number(athleteInfo.weight || athleteInfo.icu_weight);
-    const icuMaxHr = Number(athleteInfo.icu_max_hr || athleteInfo.max_hr);
-    const icuLthr = Number(athleteInfo.icu_threshold_hr || athleteInfo.lthr);
+    const metrics = extractIntervalsAthleteMetrics(athleteInfo);
+    const athleteFirstName = metrics?.firstName || athleteInfo.firstname || (athleteInfo.name ? athleteInfo.name.trim().split(' ')[0] : '');
+    const icuFtp = metrics?.ftp || Number(athleteInfo.icu_ftp || athleteInfo.ftp);
+    const icuWeight = metrics?.weight || Number(athleteInfo.weight || athleteInfo.icu_weight);
+    const icuMaxHr = metrics?.maxHr || Number(athleteInfo.icu_max_hr || athleteInfo.max_hr);
+    const icuLthr = metrics?.thresholdHr || Number(athleteInfo.icu_threshold_hr || athleteInfo.lthr);
 
     const updated = {
       ...formData,
@@ -242,7 +245,10 @@ export default function ProfileTab({
               </span>
               {athleteInfo?.name && (
                 <span className="text-zinc-400 ml-1.5 font-medium">
-                  (Sportaš: <strong className="text-volt-400 font-mono">{athleteInfo.name}</strong>)
+                  (Sportaš: <strong className="text-volt-400 font-mono">{athleteInfo.name}</strong>
+                  {athleteMetrics?.ftp && (
+                    <> · FTP na ICU: <strong className="text-volt-400 font-mono">{athleteMetrics.ftp}W</strong></>
+                  )})
                 </span>
               )}
               <span className="text-zinc-500 block text-[11px] mt-0.5">

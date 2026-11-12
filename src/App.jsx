@@ -23,6 +23,7 @@ import { useLocalStorage } from './hooks/useLocalStorage';
 import { useProfileSync } from './hooks/useProfileSync';
 import { useIntervalsData } from './hooks/useIntervalsData';
 import { handleIntervalsOAuthCallback } from './services/intervalsOAuth';
+import { extractIntervalsAthleteMetrics } from './services/intervalsApi';
 
 const DEFAULT_GUEST_PROFILE = {
   username: 'Gost Vozač', weight: 75.9, ftp: 200, thresholdHr: 160, maxHr: 180,
@@ -284,19 +285,29 @@ export default function App() {
   // Sinkronizacija imena i parametara s Intervals.icu profila kad je povezan
   useEffect(() => {
     if (athleteInfo && intervalsConnected) {
-      const athleteFirstName = athleteInfo.firstname || (athleteInfo.name ? athleteInfo.name.trim().split(' ')[0] : '');
+      const metrics = extractIntervalsAthleteMetrics(athleteInfo);
+      const athleteFirstName = metrics?.firstName || athleteInfo.firstname || (athleteInfo.name ? athleteInfo.name.trim().split(' ')[0] : '');
+
+      const icuFtp = metrics?.ftp || Number(athleteInfo.icu_ftp || athleteInfo.ftp) || null;
+      const icuWeight = metrics?.weight || Number(athleteInfo.weight || athleteInfo.icu_weight) || null;
+      const icuMaxHr = metrics?.maxHr || Number(athleteInfo.icu_max_hr || athleteInfo.max_hr) || null;
+      const icuLthr = metrics?.thresholdHr || Number(athleteInfo.icu_threshold_hr || athleteInfo.lthr) || null;
+
       setAthleteProfile(prev => {
         const isGenericName = !prev?.username || ['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(prev.username);
         const hasFullLastName = prev?.username && athleteInfo.name && prev.username.trim() === athleteInfo.name.trim();
         const nextUsername = (isGenericName || hasFullLastName) && athleteFirstName ? athleteFirstName : (prev?.username || athleteFirstName || 'Vozač');
-        const hasCustomFtp = prev?.isManualFtp || (prev?.ftp && prev?.ftp !== 200);
-        const nextFtp = hasCustomFtp ? prev.ftp : (Number(athleteInfo.icu_ftp || athleteInfo.ftp) || prev?.ftp || 200);
 
-        const hasCustomWeight = prev?.isManualWeight || (prev?.weight && prev?.weight !== 75 && prev?.weight !== 75.9);
-        const nextWeight = hasCustomWeight ? prev.weight : (Number(athleteInfo.weight || athleteInfo.icu_weight) || prev?.weight || 75.9);
+        // Ako korisnik NIJE ručno zaključao FTP (isManualFtp: false) ili ako je FTP na zadanih 200W, preuzmi stvarni FTP s Intervals.icu
+        const shouldUpdateFtp = !prev?.isManualFtp || prev?.ftp === 200;
+        const nextFtp = (shouldUpdateFtp && icuFtp) ? icuFtp : (prev?.ftp || icuFtp || 200);
 
-        const nextMaxHr = prev?.isManualHr ? prev.maxHr : (Number(athleteInfo.icu_max_hr || athleteInfo.max_hr) || prev?.maxHr || 180);
-        const nextThresholdHr = prev?.isManualHr ? prev.thresholdHr : (Number(athleteInfo.icu_threshold_hr || athleteInfo.lthr) || prev?.thresholdHr || 160);
+        const shouldUpdateWeight = !prev?.isManualWeight || prev?.weight === 75 || prev?.weight === 75.9;
+        const nextWeight = (shouldUpdateWeight && icuWeight) ? icuWeight : (prev?.weight || icuWeight || 75.9);
+
+        const shouldUpdateHr = !prev?.isManualHr || prev?.maxHr === 180;
+        const nextMaxHr = (shouldUpdateHr && icuMaxHr) ? icuMaxHr : (prev?.maxHr || icuMaxHr || 180);
+        const nextThresholdHr = (shouldUpdateHr && icuLthr) ? icuLthr : (prev?.thresholdHr || icuLthr || 160);
 
         if (
           prev?.username === nextUsername &&
