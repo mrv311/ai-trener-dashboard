@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Calendar, Trophy, Flag, Sparkles, CheckCircle2, AlertTriangle,
   Trash2, RefreshCw, ChevronRight, Loader2, ExternalLink, Info,
-  Layers, Activity, Clock, Zap, Check, Plus, Cloud, HardDrive
+  Layers, Activity, Clock, Zap, Check, Plus, Cloud, HardDrive,
+  MessageSquare, Send, X
 } from 'lucide-react';
 import {
   PHASE_META,
@@ -17,7 +18,8 @@ import {
 } from '../../utils/plannerUtils';
 import {
   generateMacrocycleBlueprint,
-  generatePlanBlockWorkouts
+  generatePlanBlockWorkouts,
+  reviseSinglePlanWorkout
 } from '../../services/geminiService';
 import { AIWorkoutCard, buildErgVibeWorkoutObject } from '../ai/AIMarkdown';
 import PlanQuestionnaire from './PlanQuestionnaire';
@@ -74,6 +76,13 @@ export default function TrainingPlannerView({
   const [isGeneratingBlock, setIsGeneratingBlock] = useState(false);
   const [showRationale, setShowRationale] = useState(false);
 
+  // Block & single-workout AI feedback / revision state
+  const [showBlockFeedbackBox, setShowBlockFeedbackBox] = useState(false);
+  const [blockFeedbackText, setBlockFeedbackText] = useState('');
+  const [editingWorkoutKey, setEditingWorkoutKey] = useState(null);
+  const [workoutFeedbackText, setWorkoutFeedbackText] = useState('');
+  const [revisingWorkoutKey, setRevisingWorkoutKey] = useState(null);
+
   // Sync panel state
   const [syncToIntervals, setSyncToIntervals] = useState(intervalsConnected);
   const [collisionMode, setCollisionMode] = useState('skip'); // 'skip' | 'alongside' | 'replace'
@@ -109,8 +118,8 @@ export default function TrainingPlannerView({
   }, [intervalsConnected]);
 
   useEffect(() => {
-    onGeneratingChange?.(isGenerating || isGeneratingBlock);
-  }, [isGenerating, isGeneratingBlock, onGeneratingChange]);
+    onGeneratingChange?.(isGenerating || isGeneratingBlock || Boolean(revisingWorkoutKey));
+  }, [isGenerating, isGeneratingBlock, revisingWorkoutKey, onGeneratingChange]);
 
   const persistPlan = (nextPlan) => {
     setSavedPlan(nextPlan);
@@ -300,8 +309,9 @@ export default function TrainingPlannerView({
     }
   };
 
-  const handleGenerateBlock = async (blockMeta) => {
-    if (!blueprint || !blockMeta || isGeneratingBlock) return;
+  const handleGenerateBlock = async (blockMeta, blockFeedback = '') => {
+    if (!blueprint || !blockMeta || isGeneratingBlock || revisingWorkoutKey) return;
+    const trimmedFeedback = String(blockFeedback || '').trim();
     setIsGeneratingBlock(true);
     setGenError(null);
     setSyncStatus(null);
@@ -318,6 +328,8 @@ export default function TrainingPlannerView({
         minWorkoutDate: minDate,
         prioritizeCustomSources: Boolean(questionnaire?.prioritizeCustomSources),
         notes: questionnaire?.notes || '',
+        blockFeedback: trimmedFeedback,
+        previousBlockData: trimmedFeedback ? generatedBlocks[blockMeta.key] || null : null,
         athleteProfile: profile,
         liveWorkouts: workouts,
         wellnessData,
@@ -335,10 +347,111 @@ export default function TrainingPlannerView({
       };
       persistPlan(nextPlan);
       setActiveBlockKey(blockMeta.key);
+      setEditingWorkoutKey(null);
+      setWorkoutFeedbackText('');
+
+      if (trimmedFeedback) {
+        setShowBlockFeedbackBox(false);
+        setBlockFeedbackText('');
+
+        const isAlreadySynced = planRegistry.some(
+          p => p.blockKey === `${blueprint.planId}:${blockMeta.key}`
+        );
+        setSyncStatus({
+          type: isAlreadySynced ? 'warning' : 'success',
+          text: isAlreadySynced
+            ? `Blok ${blockMeta.blockIndex} je ažuriran prema komentaru. Napomena: stara verzija ovog bloka već je u kalendaru — ukloni je i ponovno dodaj blok kako bi se promjene prenijele.`
+            : `Blok ${blockMeta.blockIndex} je ažuriran prema tvom komentaru!`
+        });
+      }
     } catch (err) {
       setGenError(err?.message || `Greška pri generiranju Bloka ${blockMeta.blockIndex}.`);
     } finally {
       setIsGeneratingBlock(false);
+    }
+  };
+
+  const handleReviseSingleWorkout = async (week, workout, workoutIndex) => {
+    if (!blueprint || !activeBlockMeta || !workout || revisingWorkoutKey || isGeneratingBlock) return;
+    const trimmedFeedback = String(workoutFeedbackText || '').trim();
+    if (!trimmedFeedback) return;
+
+    const workoutKey = `${week.weekNumber}-${workout.date}-${workoutIndex}`;
+    setRevisingWorkoutKey(workoutKey);
+    setGenError(null);
+    setSyncStatus(null);
+
+    try {
+      const schedule = questionnaire?.weeklySchedule || DEFAULT_WEEKLY_SCHEDULE;
+      const dayKeysByJsDay = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+      const inferredDayKey = workout.dayKey || (
+        workout.date ? dayKeysByJsDay[new Date(`${workout.date}T12:00:00`).getDay()] : null
+      );
+      const dayMaxMinutes = Number(schedule[inferredDayKey]?.maxMinutes) || Number(workout.durationMinutes) || 60;
+
+      const revisedWorkout = await reviseSinglePlanWorkout({
+        blueprint,
+        weekMeta: {
+          weekNumber: week.weekNumber,
+          phaseType: week.phaseType,
+          phaseLabel: week.phaseLabel,
+          theme: week.theme,
+          targetTss: week.targetTss,
+          isRecoveryWeek: week.isRecoveryWeek
+        },
+        workout,
+        feedback: trimmedFeedback,
+        dayMaxMinutes,
+        athleteProfile: profile,
+        wellnessData,
+        model: selectedModel,
+        userId
+      });
+
+      const currentBlockData = generatedBlocks[activeBlockMeta.key];
+      if (!currentBlockData) {
+        throw new Error('Aktivni blok nije pronađen za spremanje izmjene.');
+      }
+
+      const updatedWeeks = (currentBlockData.weeks || []).map(wk => {
+        if (wk.weekNumber !== week.weekNumber) return wk;
+        return {
+          ...wk,
+          workouts: (wk.workouts || []).map((item, idx) =>
+            idx === workoutIndex ? revisedWorkout : item
+          )
+        };
+      });
+
+      const nextPlan = {
+        ...savedPlan,
+        blocks: {
+          ...generatedBlocks,
+          [activeBlockMeta.key]: {
+            ...currentBlockData,
+            weeks: updatedWeeks
+          }
+        },
+        updatedAt: new Date().toISOString()
+      };
+
+      persistPlan(nextPlan);
+      setEditingWorkoutKey(null);
+      setWorkoutFeedbackText('');
+
+      const isAlreadySynced = planRegistry.some(
+        p => p.blockKey === `${blueprint.planId}:${activeBlockMeta.key}`
+      );
+      setSyncStatus({
+        type: isAlreadySynced ? 'warning' : 'success',
+        text: isAlreadySynced
+          ? `Trening "${revisedWorkout.title}" (${formatShortHrDate(revisedWorkout.date)}) je zamijenjen u planu. Kako je ovaj blok već u kalendaru, dodaj novi trening na taj dan ili ponovno sinkroniziraj blok.`
+          : `Trening za ${formatShortHrDate(revisedWorkout.date)} je ažuriran: "${revisedWorkout.title}".`
+      });
+    } catch (err) {
+      setGenError(err?.message || 'Greška pri korekciji odabranog treninga.');
+    } finally {
+      setRevisingWorkoutKey(null);
     }
   };
 
@@ -768,6 +881,9 @@ export default function TrainingPlannerView({
                     onClick={() => {
                       setActiveBlockKey(meta.key);
                       setSyncStatus(null);
+                      setShowBlockFeedbackBox(false);
+                      setEditingWorkoutKey(null);
+                      setWorkoutFeedbackText('');
                     }}
                     className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
                       isActive
@@ -952,7 +1068,22 @@ export default function TrainingPlannerView({
 
                   <button
                     type="button"
-                    disabled={isGeneratingBlock || isSyncBusy}
+                    disabled={isGeneratingBlock || isSyncBusy || Boolean(revisingWorkoutKey)}
+                    onClick={() => setShowBlockFeedbackBox(prev => !prev)}
+                    title="Upiši komentar ili uputu AI treneru za prilagodbu cijelog bloka"
+                    className={`inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-colors disabled:opacity-50 ${
+                      showBlockFeedbackBox
+                        ? 'bg-volt-400/15 border-volt-400/40 text-volt-300'
+                        : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+                    }`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Komentiraj / Prilagodi blok
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isGeneratingBlock || isSyncBusy || Boolean(revisingWorkoutKey)}
                     onClick={() => handleGenerateBlock(activeBlockMeta)}
                     title="Ponovno generiraj treninge samo za ovaj blok"
                     className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors disabled:opacity-50"
@@ -962,6 +1093,92 @@ export default function TrainingPlannerView({
                   </button>
                 </div>
               </div>
+
+              {/* Block-level AI Feedback & Revision Panel */}
+              {showBlockFeedbackBox && (
+                <div className="p-4 rounded-xl bg-zinc-950/90 border border-volt-400/30 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-bold text-volt-300 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Komentar za AI trenera — prilagodba Bloka {activeBlockMeta.blockIndex}
+                      </div>
+                      <p className="text-[11px] text-zinc-400">
+                        Napiši što ne štima u trenutnom bloku (npr. nerealni over-under intervali, prejak intenzitet, trajanje ili raspored) i AI će regenerirati blok uz uvažavanje tvoje upute.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isGeneratingBlock}
+                      onClick={() => setShowBlockFeedbackBox(false)}
+                      className="text-zinc-500 hover:text-zinc-300 p-1 disabled:opacity-50"
+                      title="Zatvori"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      'Zamijeni over-under s klasičnim intervalima',
+                      'Smanji intenzitet za ~10%',
+                      'Više Z2 izdržljivosti, manje stresa',
+                      'Skraćuj treninge na ~45-50m'
+                    ].map(chip => (
+                      <button
+                        key={chip}
+                        type="button"
+                        disabled={isGeneratingBlock}
+                        onClick={() => setBlockFeedbackText(chip)}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 transition-colors disabled:opacity-50"
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+
+                  <textarea
+                    rows={2}
+                    value={blockFeedbackText}
+                    onChange={(e) => setBlockFeedbackText(e.target.value)}
+                    disabled={isGeneratingBlock}
+                    placeholder="Npr. Ukloni čudne over-under treninge i stavi klasične 4x4m / 5x3m VO2max intervale, a srijedu smanji na lakši oporavak..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-volt-400/50 focus:outline-none text-xs text-white placeholder:text-zinc-500 resize-y"
+                  />
+
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      disabled={isGeneratingBlock}
+                      onClick={() => {
+                        setShowBlockFeedbackBox(false);
+                        setBlockFeedbackText('');
+                      }}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 transition-colors disabled:opacity-50"
+                    >
+                      Odustani
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!blockFeedbackText.trim() || isGeneratingBlock || Boolean(revisingWorkoutKey)}
+                      onClick={() => handleGenerateBlock(activeBlockMeta, blockFeedbackText)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-volt-400 hover:bg-volt-300 text-zinc-950 transition-colors disabled:opacity-50"
+                    >
+                      {isGeneratingBlock ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Prilagođavam blok...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          Primijeni korekciju na blok
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Target race inclusion checkbox */}
               {blueprint.goalMode === 'event' && !isEventInCalendar && !activeSyncedRecord && (
@@ -1137,36 +1354,150 @@ export default function TrainingPlannerView({
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                        {weekWorkouts.map((w, wIdx) => (
-                          <div key={`${w.date}-${wIdx}`} className="space-y-1.5">
-                            <div className="flex items-center justify-between px-1 text-[11px]">
-                              <span className="font-bold text-zinc-200 flex items-center gap-1.5">
-                                <ChevronRight className="w-3.5 h-3.5 text-volt-400" />
-                                {w.dayName} • {formatShortHrDate(w.date)}
-                              </span>
-                            </div>
+                        {weekWorkouts.map((w, wIdx) => {
+                          const workoutKey = `${week.weekNumber}-${w.date}-${wIdx}`;
+                          const isEditingThis = editingWorkoutKey === workoutKey;
+                          const isRevisingThis = revisingWorkoutKey === workoutKey;
 
-                            <AIWorkoutCard
-                              structuredWorkout={{
-                                title: w.title,
-                                category: w.category || 'Endurance',
-                                date: w.date,
-                                durationMinutes: w.durationMinutes,
-                                estimatedTss: w.estimatedTss,
-                                coachNote: w.coachNote,
-                                intervalsCode: w.intervalsCode,
-                                steps: w.steps
-                              }}
-                              ftp={ftp}
-                              onAddToCalendar={(workoutObj) =>
-                                onAddWorkoutToCalendar?.(workoutObj, {
-                                  syncToIntervals: Boolean(intervalsConnected && syncToIntervals)
-                                })
-                              }
-                              onStartInTrainer={onStartWorkoutInTrainer}
-                            />
-                          </div>
-                        ))}
+                          return (
+                            <div key={workoutKey} className="space-y-2">
+                              <div className="flex items-center justify-between gap-2 px-1 text-[11px]">
+                                <span className="font-bold text-zinc-200 flex items-center gap-1.5">
+                                  <ChevronRight className="w-3.5 h-3.5 text-volt-400" />
+                                  {w.dayName} • {formatShortHrDate(w.date)}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  disabled={isGeneratingBlock || Boolean(revisingWorkoutKey)}
+                                  onClick={() => {
+                                    if (isEditingThis) {
+                                      setEditingWorkoutKey(null);
+                                      setWorkoutFeedbackText('');
+                                    } else {
+                                      setEditingWorkoutKey(workoutKey);
+                                      setWorkoutFeedbackText('');
+                                    }
+                                  }}
+                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-semibold border transition-colors disabled:opacity-50 ${
+                                    isEditingThis
+                                      ? 'bg-volt-400/15 border-volt-400/40 text-volt-300'
+                                      : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white'
+                                  }`}
+                                >
+                                  {isRevisingThis ? (
+                                    <>
+                                      <Loader2 className="w-3 h-3 animate-spin text-volt-400" />
+                                      <span>Popravljam...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <MessageSquare className="w-3 h-3" />
+                                      <span>Komentiraj / Popravi</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+
+                              {isEditingThis && (
+                                <form
+                                  onSubmit={(e) => {
+                                    e.preventDefault();
+                                    handleReviseSingleWorkout(week, w, wIdx);
+                                  }}
+                                  className="p-3 rounded-xl bg-zinc-950/90 border border-volt-400/30 space-y-2.5"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[11px] font-bold text-volt-300 flex items-center gap-1.5">
+                                      <Sparkles className="w-3.5 h-3.5" />
+                                      Uputa AI treneru za ovaj trening
+                                    </span>
+                                    <button
+                                      type="button"
+                                      disabled={isRevisingThis}
+                                      onClick={() => {
+                                        setEditingWorkoutKey(null);
+                                        setWorkoutFeedbackText('');
+                                      }}
+                                      className="text-zinc-500 hover:text-zinc-300 p-0.5 disabled:opacity-50"
+                                      title="Zatvori"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {[
+                                      'Klasični VO2max (5x3m)',
+                                      'Lakši Sweet Spot',
+                                      'Prebaci u Z2',
+                                      'Skraćeno (45m)'
+                                    ].map(chip => (
+                                      <button
+                                        key={chip}
+                                        type="button"
+                                        disabled={isRevisingThis}
+                                        onClick={() => setWorkoutFeedbackText(chip)}
+                                        className="px-2 py-1 rounded-md text-[10px] font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 transition-colors disabled:opacity-50"
+                                      >
+                                        {chip}
+                                      </button>
+                                    ))}
+                                  </div>
+
+                                  <div className="flex flex-col sm:flex-row gap-2">
+                                    <input
+                                      type="text"
+                                      value={workoutFeedbackText}
+                                      onChange={(e) => setWorkoutFeedbackText(e.target.value)}
+                                      disabled={isRevisingThis}
+                                      placeholder="Npr. ovaj over-under nije izvediv, stavi klasični VO2max 5x3m ili lakši Sweet Spot..."
+                                      className="flex-1 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 focus:border-volt-400/50 focus:outline-none text-xs text-white placeholder:text-zinc-500"
+                                    />
+                                    <button
+                                      type="submit"
+                                      disabled={!workoutFeedbackText.trim() || isRevisingThis || isGeneratingBlock}
+                                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-volt-400 hover:bg-volt-300 text-zinc-950 transition-colors shrink-0 disabled:opacity-50"
+                                    >
+                                      {isRevisingThis ? (
+                                        <>
+                                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                          Popravljam...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Send className="w-3.5 h-3.5" />
+                                          Popravi trening
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+                                </form>
+                              )}
+
+                              <AIWorkoutCard
+                                key={`${w.date}-${w.title}-${w.durationMinutes}-${w.estimatedTss}-${(w.intervalsCode || '').length}-${wIdx}`}
+                                structuredWorkout={{
+                                  title: w.title,
+                                  category: w.category || 'Endurance',
+                                  date: w.date,
+                                  durationMinutes: w.durationMinutes,
+                                  estimatedTss: w.estimatedTss,
+                                  coachNote: w.coachNote,
+                                  intervalsCode: w.intervalsCode,
+                                  steps: w.steps
+                                }}
+                                ftp={ftp}
+                                onAddToCalendar={(workoutObj) =>
+                                  onAddWorkoutToCalendar?.(workoutObj, {
+                                    syncToIntervals: Boolean(intervalsConnected && syncToIntervals)
+                                  })
+                                }
+                                onStartInTrainer={onStartWorkoutInTrainer}
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

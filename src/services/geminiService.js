@@ -1205,6 +1205,28 @@ Niz "weeks" MORA sadržavati točno ${safeWeeks} elemenata (weekNumber od 1 do $
   };
 }
 
+const PLANNER_WORKOUT_PROTOCOLS_GUIDE = `### KANONSKI BICIKLISTIČKI TRENING PROTOKOLI (KORISTI REALNE, IZVEDIVE STRUKTURE):
+- **VO2 Max (klasični intervali, Z5 108–122% FTP):**
+  * 5x3m @ 112–118% FTP (odmor 3m @ 50% FTP) -> idealno za 55-65 min dan
+  * 4x4m @ 110–115% FTP (odmor 4m @ 50% FTP) -> idealno za 60-65 min dan
+  * 5x4m @ 108–114% FTP (odmor 3m30s @ 50% FTP) -> za 70-80 min dan
+  * Rønnestad mikro-intervali: 2 seta x 8-10x (30s @ 120% / 15s @ 50%) s 5m @ 55% odmora između setova
+  * 4x5m @ 106–112% FTP -> za 80-90 min dan
+- **Sweet Spot (88–94% FTP):** 3x10m, 3x12m, 2x20m (odmor 4-5m @ 50-55%).
+- **Threshold / Prag (95–103% FTP):** 3x10m, 4x8m, 2x20m (odmor 4-5m @ 50%).
+- **Over-Under (SAMO u Threshold/Build fazi kad ima smisla — NIKAD u čistom VO2max bloku!):**
+  * Realne i izvedive brojke za pametni trenažer: 3 seta po 6–9 min (npr. ponovljenih 2m @ 93-95% + 1m @ 103-105% FTP uz 4-5m @ 50% odmora između setova).
+  * ZABRANJENO izmišljati neizvedive Over-Undere iznad 108% ili duge neprekidne blokove od >12 min bez pauze.
+- **Endurance / Z2 (58–72% FTP):** stabilan aerobni blok nakon zagrijavanja i prije hlađenja, BEZ besmislenih skokova u Z4/Z5 usred laganog treninga.
+- **Recovery / Oporavak:** 30–50m kontinuirano u 45–55% FTP.
+
+### STROGA PRAVILA ZA \`intervalsCode\` (INTERVALS.ICU SINTAKSA):
+1. Svaki \`Nx\` blok ponavljanja MORA imati **PRAZAN RED (\\n\\n) PRIJE I POSLIJE SEBE**, inače će parser pomnožiti i Hlađenje puta N!
+2. NIKADA ne stavljaj ugniježđeni \`Nx\` unutar \`Mx\`. Ako trening ima 2 seta mikro-intervala, napiši Set 1 (\`8x\`), prazan red, \`- 5m 55% Odmor između setova\`, prazan red, Set 2 (\`8x\`), prazan red, \`- 10m 50% Hlađenje\`.
+3. Primjer ISPRAVNOG VO2max treninga (~55 min):
+"- 12m 55-70% Zagrijavanje\\n\\n5x\\n- 3m 115% VO2 Max\\n- 3m 50% Oporavak\\n\\n- 13m 50% Hlađenje"
+4. \`steps\` niz ostavi prazan \`[]\` ili usklađen s \`intervalsCode\` — primarni izvor istine za parser je valjani \`intervalsCode\` s praznim redovima oko \`Nx\`!`;
+
 /**
  * Korak 2 dvofaznog planera: Generira detaljne strukturirane treninge za jedan blok (2–4 tjedna)
  * strogo poštujući korisnikove odabrane dane u tjednu i maksimalno trajanje po danu.
@@ -1217,6 +1239,8 @@ export async function generatePlanBlockWorkouts({
   minWorkoutDate = null,
   prioritizeCustomSources = false,
   notes = '',
+  blockFeedback = '',
+  previousBlockData = null,
   athleteProfile,
   liveWorkouts = [],
   wellnessData = {},
@@ -1262,6 +1286,19 @@ export async function generatePlanBlockWorkouts({
 
   const allowedDayKeys = scheduleSummary.activeDays.map(d => d.key);
 
+  const feedbackSection = blockFeedback && String(blockFeedback).trim()
+    ? [
+        '\n### KOREKCIJA SPORTAŠA ZA OVAJ BLOK (OBAVEZNO UVAŽI):',
+        `Sportaš je pregledao trenutni prijedlog i poslao komentar: "${String(blockFeedback).trim()}"`,
+        previousBlockData?.weeks?.length
+          ? `Trenutni treninzi u bloku koji su prikazani sportašu:\n${previousBlockData.weeks.map(w =>
+              `Tjedan ${w.weekNumber}: ${(w.workouts || []).map(x => `${x.dayName}(${x.dayKey}): "${x.title}" [${x.category}, ${x.durationMinutes}m]`).join('; ')}`
+            ).join('\n')}`
+          : null,
+        'Primijeni sportašev komentar izravno na treninge u bloku (npr. zamijeni sporne treninge, prilagodi intenzitet ili trajanje), a ostale dane zadrži smisleno posložene.'
+      ].filter(Boolean).join('\n')
+    : '';
+
   const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
 
 ### ZADATAK GENERATORA BLOKA TRENINGA:
@@ -1269,35 +1306,19 @@ Generiraj detaljne, strukturirane biciklističke treninge za BLOK (Tjedni ${week
 Metodologija: ${blueprint.recommendedMethodology || 'Piramidalni / Polarizirani'}.
 ${prioritizeCustomSources ? 'PRIORITET IZVORA: Koristi primarno protokole i principe iz sportaševe DODATNE KORISNIČKE LITERATURE I BILJEŠKI iz baze znanja iznad.' : ''}
 ${notes ? `Dodatne napomene sportaša: "${notes}"` : ''}
+${feedbackSection}
 
 TJEDNI U OVOM BLOKU:
 ${weeksBrief}
 
-STROGI RASPORED DANA I MAKSIMALNOG TRAJANJA (POŠTUJ TOČNO):
+STROGI RASPORED DANA I MAKSIMALOG TRAJANJA (POŠTUJ TOČNO):
 ${scheduleSummary.promptText}
 Dozvoljeni ključevi dana ("dayKey") su ISKLJUČIVO: ${allowedDayKeys.join(', ')}.
 Ukupno trajanje SVAKOG treninga (zagrijavanje + SVA ponavljanja intervala + hlađenje) NE SMIJE premašiti max trajanje tog dana!
 ${eventConstraint}
 ${minDateConstraint}
 
-### KANONSKI BICIKLISTIČKI TRENING PROTOKOLI (KORISTI PROVJERENE STRUKTURE):
-- **VO2 Max (klasični intervali, Z5 108–122% FTP):**
-  * 5x3m @ 112–118% FTP (odmor 3m @ 50% FTP) -> idealno za 55-65 min dan
-  * 4x4m @ 110–115% FTP (odmor 4m @ 50% FTP) -> idealno za 60-65 min dan
-  * 5x4m @ 108–114% FTP (odmor 3m30s @ 50% FTP) -> za 70-80 min dan
-  * Rønnestad mikro-intervali: 2 seta x 8-10x (30s @ 120% / 15s @ 50%) s 5m @ 55% odmora između setova
-  * 4x5m @ 106–112% FTP -> za 80-90 min dan
-- **Sweet Spot (88–94% FTP):** 3x10m, 3x12m, 2x20m (odmor 4-5m @ 50-55%).
-- **Threshold / Prag (95–103% FTP):** 3x10m, 4x8m, 2x20m (odmor 4-5m @ 50%).
-- **Endurance / Z2 (58–72% FTP):** stabilan aerobni blok nakon zagrijavanja i prije hlađenja, BEZ besmislenih skokova u Z4/Z5 usred laganog treninga.
-- **Recovery / Oporavak:** 30–50m kontinuirano u 45–55% FTP.
-
-### STROGA PRAVILA ZA \`intervalsCode\` (INTERVALS.ICU SINTAKSA):
-1. Svaki \`Nx\` blok ponavljanja MORA imati **PRAZAN RED (\\n\\n) PRIJE I POSLIJE SEBE**, inače će parser pomnožiti i Hlađenje puta N!
-2. NIKADA ne stavljaj ugniježđeni \`Nx\` unutar \`Mx\`. Ako trening ima 2 seta mikro-intervala, napiši Set 1 (\`8x\`), prazan red, \`- 5m 55% Odmor između setova\`, prazan red, Set 2 (\`8x\`), prazan red, \`- 10m 50% Hlađenje\`.
-3. Primjer ISPRAVNOG VO2max treninga (~55 min):
-"- 12m 55-70% Zagrijavanje\\n\\n5x\\n- 3m 115% VO2 Max\\n- 3m 50% Oporavak\\n\\n- 13m 50% Hlađenje"
-4. \`steps\` niz ostavi prazan \`[]\` ili usklađen s \`intervalsCode\` — primarni izvor istine za parser je valjani \`intervalsCode\` s praznim redovima oko \`Nx\`!
+${PLANNER_WORKOUT_PROTOCOLS_GUIDE}
 
 VAŽNO: Odgovor MORA biti ISKLJUČIVO valjani JSON objekt bez markdown backtick oznaka:
 {
@@ -1407,6 +1428,99 @@ Pravila za jedinice: 'durationMinutes' je cijeli broj MINUTA (npr. 55, NIKAKO u 
     blockSummary: parsed?.blockSummary || '',
     weeks: normalizedWeeks,
     generatedAt: new Date().toISOString()
+  };
+}
+
+/**
+ * Brza revizija pojedinačnog treninga u bloku na temelju komentara sportaša
+ * (npr. zamjena neizvedivog over-undera s klasičnim VO2max ili lakšim Z2 treningom).
+ */
+export async function reviseSinglePlanWorkout({
+  blueprint,
+  weekMeta,
+  workout,
+  feedback,
+  dayMaxMinutes = 60,
+  athleteProfile,
+  wellnessData = {},
+  model = 'gemini-3.8-flash',
+  userId = null
+}) {
+  const cleanFeedback = String(feedback || '').trim();
+  if (!cleanFeedback) {
+    throw new Error('Upiši komentar ili uputu za izmjenu treninga.');
+  }
+
+  const ftp = Number(athleteProfile?.ftp) || 200;
+  const dayLimit = Math.max(30, Number(dayMaxMinutes) || Number(workout?.durationMinutes) || 60);
+
+  const athleteContextPrompt = await buildAthleteContextPrompt({
+    athleteProfile,
+    liveWorkouts: [],
+    wellnessData,
+    userId
+  });
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
+
+  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
+
+### ZADATAK: IZMJENA JEDNOG TRENINGA PO KOMENTARU SPORTAŠA
+Sportaš ima prigovor ili poseban zahtjev za trening u okviru plana "${blueprint?.planTitle || 'Trening Plan'}" (${blueprint?.recommendedMethodology || 'Piramidalni / Polarizirani'}).
+- Tjedan ${weekMeta?.weekNumber || 1} (${weekMeta?.phaseLabel || ''}) | Fokus tjedna: ${weekMeta?.focus || weekMeta?.theme || '-'}
+- Dan: ${workout?.dayName || ''} (${workout?.date || ''}) | MAX DOZVOLJENO TRAJANJE DANA: ${dayLimit} min
+
+TRENUTNI TRENING KOJI SPORTAŠ ŽELI POPRAVITI:
+- Naziv: ${workout?.title || ''}
+- Kategorija: ${workout?.category || ''}
+- Trajanje: ${workout?.durationMinutes || dayLimit} min | TSS: ${workout?.estimatedTss || '-'}
+- Trenutni intervalsCode:
+${workout?.intervalsCode || ''}
+
+KOMENTAR / ZAHTJEV SPORTAŠA:
+"${cleanFeedback}"
+
+Popravi i zamijeni OVAJ trening tako da u potpunosti poštuje komentar sportaša, bude realan i fiziološki izvediv na trenažeru te unutar max ${dayLimit} minuta.
+
+${PLANNER_WORKOUT_PROTOCOLS_GUIDE}
+
+VAŽNO: Vrati ISKLJUČIVO jedan valjani JSON objekt bez markdown backtick oznaka:
+{
+  "title": "Novi jasan naziv treninga",
+  "category": "VO2max | SweetSpot | Endurance | Tempo | Threshold | Recovery | Anaerobic",
+  "durationMinutes": ${dayLimit},
+  "estimatedTss": 65,
+  "coachNote": "Kratko objašnjenje što je izmijenjeno i zašto",
+  "intervalsCode": "- 12m 55-70% Zagrijavanje\\n\\n5x\\n- 3m 115% VO2 Max\\n- 3m 50% Oporavak\\n\\n- 13m 50% Hlađenje"
+}`;
+
+  const rawJsonText = await callGeminiApi({
+    systemInstruction,
+    contents: [{ role: 'user', parts: [{ text: `Izmijeni trening "${workout?.title}" prema komentaru: "${cleanFeedback}"` }] }],
+    model,
+    temperature: 0.25,
+    responseMimeType: 'application/json'
+  });
+
+  let parsed;
+  try {
+    const cleanJson = rawJsonText.replace(/```json\s*|```/g, '').trim();
+    parsed = JSON.parse(cleanJson);
+  } catch (err) {
+    console.error('[geminiService] Single workout revision JSON parse error:', err, rawJsonText);
+    throw new Error('AI nije vratio valjani JSON za izmijenjeni trening. Pokušaj ponovno.');
+  }
+
+  const sanitized = sanitizePlannedWorkout(parsed, dayLimit, ftp);
+
+  return {
+    ...workout,
+    title: parsed?.title || workout?.title || 'Prilagođeni trening',
+    category: parsed?.category || workout?.category || 'Endurance',
+    durationMinutes: sanitized.durationMinutes,
+    estimatedTss: sanitized.estimatedTss,
+    coachNote: parsed?.coachNote || workout?.coachNote || '',
+    intervalsCode: sanitized.intervalsCode,
+    steps: sanitized.steps
   };
 }
 
