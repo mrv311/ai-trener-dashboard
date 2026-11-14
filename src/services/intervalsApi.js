@@ -1,5 +1,5 @@
 const FETCH_PAST_MONTHS = 36;
-const FETCH_FUTURE_MONTHS = 3;
+const FETCH_FUTURE_MONTHS = 12;
 
 const getAuthHeaders = (apiKey) => {
   const cleanKey = String(apiKey || '').trim();
@@ -455,4 +455,113 @@ export const uploadActivityToIntervals = async (intervalsId, intervalsKey, fitUi
   }
 
   return res.json().catch(() => ({}));
+};
+
+const sleepMs = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Sekvencijalno kreira više evenata na Intervals.icu uz zaštitu od rate limita (429)
+ * i prijavu napretka kroz onProgress callback.
+ */
+export const createEventsBatch = async (
+  intervalsId,
+  intervalsKey,
+  payloads = [],
+  { onProgress, delayMs = 150 } = {}
+) => {
+  const created = [];
+  const errors = [];
+  const total = Array.isArray(payloads) ? payloads.length : 0;
+
+  for (let i = 0; i < total; i++) {
+    const item = payloads[i];
+    if (onProgress) {
+      onProgress({ done: i, total, currentName: item?.name || 'Trening' });
+    }
+
+    let attempt = 0;
+    let doneItem = false;
+    while (attempt < 2 && !doneItem) {
+      try {
+        const resEvent = await createEvent(intervalsId, intervalsKey, item);
+        created.push({ index: i, payload: item, event: resEvent });
+        doneItem = true;
+      } catch (err) {
+        const msg = String(err?.message || '');
+        if (msg.includes('429') && attempt === 0) {
+          attempt++;
+          await sleepMs(1200);
+          continue;
+        }
+        errors.push({ index: i, payload: item, error: msg || 'Nepoznata greška' });
+        doneItem = true;
+      }
+    }
+
+    if (i < total - 1 && delayMs > 0) {
+      await sleepMs(delayMs);
+    }
+  }
+
+  if (onProgress) {
+    onProgress({ done: total, total, currentName: '' });
+  }
+
+  return { created, errors };
+};
+
+/**
+ * Sekvencijalno briše više evenata s Intervals.icu uz zaštitu od rate limita (429).
+ * 404 (event već obrisan na Intervals.icu) ne tretira se kao fatalna greška.
+ */
+export const deleteEventsBatch = async (
+  intervalsId,
+  intervalsKey,
+  eventIds = [],
+  { onProgress, delayMs = 120 } = {}
+) => {
+  const deleted = [];
+  const errors = [];
+  const ids = Array.isArray(eventIds) ? eventIds.filter(Boolean) : [];
+  const total = ids.length;
+
+  for (let i = 0; i < total; i++) {
+    const evId = String(ids[i]).replace(/^ev-/, '');
+    if (onProgress) {
+      onProgress({ done: i, total, currentId: evId });
+    }
+
+    let attempt = 0;
+    let finished = false;
+    while (attempt < 2 && !finished) {
+      try {
+        await deleteEvent(intervalsId, intervalsKey, evId);
+        deleted.push(evId);
+        finished = true;
+      } catch (err) {
+        const msg = String(err?.message || '');
+        if (msg.includes('404')) {
+          deleted.push(evId);
+          finished = true;
+        } else if (msg.includes('429') && attempt === 0) {
+          attempt++;
+          await sleepMs(1200);
+          continue;
+        } else {
+          errors.push({ id: evId, error: msg || 'Nepoznata greška' });
+          finished = true;
+        }
+      }
+    }
+
+    if (i < total - 1 && delayMs > 0) {
+      await sleepMs(delayMs);
+    }
+  }
+
+  if (onProgress) {
+    onProgress({ done: total, total, currentId: '' });
+  }
+
+  return { deleted, errors };
 };

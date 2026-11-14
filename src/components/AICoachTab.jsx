@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Sparkles, Bot, Send, Loader2, CalendarPlus, Trash2, BookOpen,
+  Sparkles, Bot, Send, Loader2, Trash2, BookOpen,
   History, ClipboardList, MessageSquare, Upload, Plus, Check,
   AlertCircle, Zap, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Shield,
   FileText, ExternalLink, Video, Paperclip, X, Image as ImageIcon, Download, Eye,
@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import {
   chatWithAICoach,
-  generateStructuredTrainingPlan,
   getGeminiConfigStatus,
   analyzeYouTubeVideoForKnowledgeBase
 } from '../services/geminiService';
@@ -41,11 +40,11 @@ import {
   getExtraImportedHistory,
   clearExtraImportedHistory
 } from '../services/historyService';
-import AIMarkdown, { AIWorkoutCard, buildErgVibeWorkoutObject } from './ai/AIMarkdown';
+import AIMarkdown from './ai/AIMarkdown';
 import AIWorkoutCreatorModal from './AIWorkoutCreatorModal';
+import TrainingPlannerView from './planner/TrainingPlannerView';
 
 const STORAGE_KEY_CHAT = 'ergvibe_ai_coach_chat_v1';
-const STORAGE_KEY_PLAN = 'ergvibe_ai_saved_plan_v1';
 
 function YoutubeIcon(props) {
   return (
@@ -62,24 +61,23 @@ const QUICK_PROMPTS = [
   'Kako mogu optimalno strukturirati tjedan s 4 treninga za stabilan napredak i podizanje FTP-a?'
 ];
 
-function addDaysIso(baseDateIso, daysToAdd) {
-  const [y, m, d] = baseDateIso.split('-').map(Number);
-  const dt = new Date(y, (m || 1) - 1, (d || 1) + daysToAdd);
-  const yy = dt.getFullYear();
-  const mm = String(dt.getMonth() + 1).padStart(2, '0');
-  const dd = String(dt.getDate()).padStart(2, '0');
-  return `${yy}-${mm}-${dd}`;
-}
-
 export default function AICoachTab({
   profile,
+  setProfile,
   workouts = [],
   wellnessData = {},
   userId = null,
+  intervalsConnected = false,
   onAddWorkoutToCalendar,
-  onStartWorkoutInTrainer
+  onCreatePlanBatch,
+  onDeletePlanBlock,
+  planRegistry = [],
+  onStartWorkoutInTrainer,
+  onNavigateToCalendar,
+  plannerLaunchRequest = null,
+  onConsumePlannerLaunchRequest
 }) {
-  const [subTab, setSubTab] = useState('chat'); // 'chat' | 'planner' | 'knowledge'
+  const [subTab, setSubTab] = useState(() => (plannerLaunchRequest ? 'planner' : 'chat')); // 'chat' | 'planner' | 'knowledge'
   const [selectedModel, setSelectedModel] = useState('gemini-3.8-flash');
   const [showCreatorModal, setShowCreatorModal] = useState(false);
   const [includeCoachArchive, setIncludeCoachArchiveState] = useState(() => getHistoryOptions(userId).includeBaseHistory);
@@ -104,24 +102,13 @@ export default function AICoachTab({
   const isFirstChatRender = useRef(true);
 
   // --- PLANNER STATE ---
-  const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-  const [planGoal, setPlanGoal] = useState('Podizanje FTP-a i Sweet Spot izdržljivosti');
-  const [planWeeks, setPlanWeeks] = useState(2);
-  const [planWorkoutsPerWeek, setPlanWorkoutsPerWeek] = useState(4);
-  const [planHours, setPlanHours] = useState(profile?.hoursPerWeek || 6);
-  const [planMethodology, setPlanMethodology] = useState('Polarizirani / Piramidalni (80/20)');
-  const [planStartDate, setPlanStartDate] = useState(tomorrowIso);
-  const [planNotes, setPlanNotes] = useState('');
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
-  const [planError, setPlanError] = useState(null);
-  const [generatedPlan, setGeneratedPlan] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY_PLAN) || 'null');
-    } catch {
-      return null;
+
+  useEffect(() => {
+    if (plannerLaunchRequest) {
+      setSubTab('planner');
     }
-  });
-  const [allPlanAdded, setAllPlanAdded] = useState(false);
+  }, [plannerLaunchRequest]);
 
   // --- KNOWLEDGE & HISTORY STATE ---
   const [histStats, setHistStats] = useState(null);
@@ -343,61 +330,6 @@ export default function AICoachTab({
     } catch (e) {
       console.warn('Greška pri čišćenju IndexedDB:', e);
     }
-  };
-
-  const handleGeneratePlan = async (e) => {
-    if (e) e.preventDefault();
-    setIsGeneratingPlan(true);
-    setPlanError(null);
-    setAllPlanAdded(false);
-
-    try {
-      const plan = await generateStructuredTrainingPlan({
-        goal: planGoal,
-        weeks: Number(planWeeks),
-        workoutsPerWeek: Number(planWorkoutsPerWeek),
-        hoursPerWeek: Number(planHours),
-        methodology: planMethodology,
-        startDate: planStartDate,
-        notes: planNotes,
-        athleteProfile: profile,
-        liveWorkouts: workouts,
-        wellnessData,
-        model: selectedModel,
-        userId
-      });
-      const planWithMeta = { ...plan, startDate: planStartDate, generatedAt: new Date().toISOString() };
-      setGeneratedPlan(planWithMeta);
-      localStorage.setItem(STORAGE_KEY_PLAN, JSON.stringify(planWithMeta));
-    } catch (err) {
-      setPlanError(err.message || 'Greška pri generiranju trening plana.');
-    } finally {
-      setIsGeneratingPlan(false);
-    }
-  };
-
-  const handleAddEntirePlanToCalendar = async () => {
-    if (!generatedPlan?.weeks || !onAddWorkoutToCalendar) return;
-    const baseStart = generatedPlan.startDate || planStartDate;
-
-    for (const wk of generatedPlan.weeks) {
-      for (const w of wk.workouts || []) {
-        const targetDate = addDaysIso(baseStart, Number(w.dayOffset || 0));
-        const built = buildErgVibeWorkoutObject({
-          title: w.title,
-          category: w.category,
-          intervalsCode: w.intervalsCode,
-          steps: w.steps,
-          durationMinutes: w.durationMinutes,
-          estimatedTss: w.estimatedTss,
-          date: targetDate,
-          ftp
-        });
-        await onAddWorkoutToCalendar(built);
-      }
-    }
-    setAllPlanAdded(true);
-    setTimeout(() => setAllPlanAdded(false), 4000);
   };
 
   const handleCsvUpload = async (e) => {
@@ -877,264 +809,25 @@ export default function AICoachTab({
           2. SUB-TAB: GENERATOR TRENING PLANA
          ===================================================================== */}
       {subTab === 'planner' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Lijeva kolona: Postavke plana */}
-          <form
-            onSubmit={handleGeneratePlan}
-            className="lg:col-span-5 carbon-panel rounded-xl p-5 md:p-6 space-y-4"
-          >
-            <div className="border-b border-zinc-800 pb-3">
-              <h3 className="text-base font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2">
-                <ClipboardList className="w-4 h-4 text-volt-400" /> Generator Strukturiranog Plana
-              </h3>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                AI kreira plan prema tvom FTP-u (<span className="font-mono font-bold text-volt-400">{ftp} W</span>), trenutnom zamoru i zabilježenim treninzima
-              </p>
-            </div>
-
-            <div>
-              <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-                Glavni cilj ciklusa
-              </label>
-              <input
-                type="text"
-                value={planGoal}
-                onChange={(e) => setPlanGoal(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-xs md:text-sm text-zinc-100 focus:border-volt-400 outline-none"
-              />
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {[
-                  'Podizanje FTP-a i praga',
-                  'Z2 Aerobna baza i izdržljivost',
-                  'VO2 Max probijanje platoa',
-                  'Održavanje uz manji umor'
-                ].map(preset => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setPlanGoal(preset)}
-                    className="text-[10px] font-bold px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-volt-300 border border-zinc-800 transition-colors"
-                  >
-                    {preset}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Trajanje
-                </label>
-                <select
-                  value={planWeeks}
-                  onChange={(e) => setPlanWeeks(Number(e.target.value))}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs font-bold text-zinc-200 outline-none focus:border-volt-400"
-                >
-                  <option value={1}>1 tjedan</option>
-                  <option value={2}>2 tjedna</option>
-                  <option value={3}>3 tjedna</option>
-                  <option value={4}>4 tjedna (Mezo)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Treninga / tj.
-                </label>
-                <select
-                  value={planWorkoutsPerWeek}
-                  onChange={(e) => setPlanWorkoutsPerWeek(Number(e.target.value))}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs font-bold text-zinc-200 outline-none focus:border-volt-400"
-                >
-                  {[2, 3, 4, 5, 6].map(n => (
-                    <option key={n} value={n}>{n}x tjedno</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Sati / tjedno
-                </label>
-                <input
-                  type="number"
-                  min={2}
-                  max={20}
-                  step={0.5}
-                  value={planHours}
-                  onChange={(e) => setPlanHours(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 font-mono telemetry-num text-xs font-bold text-zinc-200 outline-none focus:border-volt-400"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Trenerska metodologija
-                </label>
-                <select
-                  value={planMethodology}
-                  onChange={(e) => setPlanMethodology(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-xs font-bold text-zinc-200 outline-none focus:border-volt-400"
-                >
-                  <option value="Polarizirani 80/20 (Seiler)">Polarizirani 80/20 (Seiler)</option>
-                  <option value="Piramidalni / Sweet Spot">Piramidalni / Sweet Spot</option>
-                  <option value="Joe Friel Periodizacija">Joe Friel Periodizacija</option>
-                  <option value="Coggan Threshold Fokus">Coggan Threshold Fokus</option>
-                </select>
-              </div>
-              <div>
-                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Početni datum plana
-                </label>
-                <input
-                  type="date"
-                  value={planStartDate}
-                  onChange={(e) => setPlanStartDate(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 font-mono text-xs font-bold text-zinc-200 outline-none focus:border-volt-400"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                Posebne želje ili raspored dana (opcionalno)
-              </label>
-              <textarea
-                rows={3}
-                value={planNotes}
-                onChange={(e) => setPlanNotes(e.target.value)}
-                placeholder="Npr. Utorkom i četvrtkom max 60 min na trenažeru, vikendom duža Z2 vožnja do 2h..."
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-xs text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-volt-400 resize-none"
-              />
-            </div>
-
-            {planError && (
-              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-                {planError}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isGeneratingPlan}
-              className="w-full py-3 px-4 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-50 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 shadow-volt-glow transition-all"
-            >
-              {isGeneratingPlan ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Slažem personalizirani plan...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" /> Generiraj AI Trening Plan
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Desna kolona: Prikaz generiranog plana */}
-          <div className="lg:col-span-7 space-y-4">
-            {isGeneratingPlan && (
-              <div className="carbon-panel rounded-xl p-10 flex flex-col items-center justify-center text-center gap-3">
-                <Loader2 className="w-8 h-8 text-volt-400 animate-spin" />
-                <p className="text-sm font-display font-bold uppercase tracking-wide text-zinc-200">
-                  Kreiram strukturirane treninge s intervalima u % FTP-a...
-                </p>
-                <p className="text-xs text-zinc-500">
-                  Ovo obično traje 5–12 sekundi ovisno o broju tjedana.
-                </p>
-              </div>
-            )}
-
-            {!isGeneratingPlan && !generatedPlan && (
-              <div className="carbon-panel border-dashed rounded-xl p-10 text-center">
-                <ClipboardList className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-                <h4 className="text-sm font-display font-bold uppercase tracking-wide text-zinc-300">Još nema generiranog plana</h4>
-                <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto">
-                  Odaberi cilj i broj sati s lijeve strane. Svaki generirani trening moći ćeš jednim klikom dodati izravno u ErgVibe i Intervals.icu kalendar!
-                </p>
-              </div>
-            )}
-
-            {!isGeneratingPlan && generatedPlan && (
-              <div className="carbon-panel rounded-xl p-5 md:p-6 space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-zinc-800 pb-4">
-                  <div>
-                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/30">
-                      AI Strukturirani Plan
-                    </span>
-                    <h3 className="text-lg md:text-xl font-display font-bold uppercase tracking-wide text-zinc-100 mt-2">
-                      {generatedPlan.planTitle || 'Personalizirani Plan'}
-                    </h3>
-                    <p className="text-xs text-zinc-300 mt-1 leading-relaxed">{generatedPlan.summary}</p>
-                    {generatedPlan.physiologicalRationale && (
-                      <p className="text-xs text-zinc-400 mt-2 bg-zinc-950 border border-zinc-800 rounded-lg p-3">
-                        <strong className="text-volt-400">Fiziološko obrazloženje: </strong>
-                        {generatedPlan.physiologicalRationale}
-                      </p>
-                    )}
-                  </div>
-
-                  {onAddWorkoutToCalendar && (
-                    <button
-                      type="button"
-                      onClick={handleAddEntirePlanToCalendar}
-                      className={`shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs transition-all border ${
-                        allPlanAdded
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : 'bg-volt-400 hover:bg-volt-300 text-zinc-950 border-volt-400 shadow-volt-glow'
-                      }`}
-                    >
-                      {allPlanAdded ? <Check className="w-4 h-4" /> : <CalendarPlus className="w-4 h-4" />}
-                      {allPlanAdded ? 'Cijeli plan je u Kalendaru!' : 'Upiši cijeli plan u Kalendar'}
-                    </button>
-                  )}
-                </div>
-
-                {(generatedPlan.weeks || []).map((wk, wIdx) => (
-                  <div key={wIdx} className="space-y-2">
-                    <div className="flex items-center justify-between bg-zinc-950 px-4 py-2.5 rounded-lg border border-zinc-800">
-                      <div>
-                        <span className="font-mono text-xs font-bold uppercase tracking-wider text-volt-400">
-                          Tjedan {wk.weekNumber || wIdx + 1}
-                        </span>
-                        {(wk.theme || wk.focus) && <span className="text-xs font-bold text-zinc-300 ml-2">— {wk.theme || wk.focus}</span>}
-                      </div>
-                      {wk.targetTss && (
-                        <span className="font-mono telemetry-num text-xs font-bold text-amber-400">Cilj: ~{wk.targetTss} TSS</span>
-                      )}
-                    </div>
-
-                    {(wk.workouts || []).map((wo, idx) => {
-                      const calcDate = addDaysIso(
-                        generatedPlan.startDate || planStartDate,
-                        Number(wo.dayOffset || 0)
-                      );
-                      return (
-                        <AIWorkoutCard
-                          key={idx}
-                          structuredWorkout={{
-                            title: `${wo.dayName ? wo.dayName + ': ' : ''}${wo.title}`,
-                            category: wo.category,
-                            intervalsCode: wo.intervalsCode,
-                            steps: wo.steps,
-                            durationMinutes: wo.durationMinutes,
-                            estimatedTss: wo.estimatedTss,
-                            coachNote: wo.coachNote || wo.description,
-                            date: calcDate
-                          }}
-                          ftp={ftp}
-                          onAddToCalendar={onAddWorkoutToCalendar}
-                          onStartInTrainer={onStartWorkoutInTrainer}
-                        />
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <TrainingPlannerView
+          profile={profile}
+          setProfile={setProfile}
+          workouts={workouts}
+          wellnessData={wellnessData}
+          userId={userId}
+          intervalsConnected={intervalsConnected}
+          selectedModel={selectedModel}
+          initialPrefill={plannerLaunchRequest?.prefill || null}
+          forceOpenWizard={Boolean(plannerLaunchRequest?.openWizard)}
+          onClearPrefill={onConsumePlannerLaunchRequest}
+          onAddWorkoutToCalendar={onAddWorkoutToCalendar}
+          onCreatePlanBatch={onCreatePlanBatch}
+          onDeletePlanBlock={onDeletePlanBlock}
+          planRegistry={planRegistry}
+          onStartWorkoutInTrainer={onStartWorkoutInTrainer}
+          onNavigateToCalendar={onNavigateToCalendar}
+          onGeneratingChange={setIsGeneratingPlan}
+        />
       )}
 
       {/* =====================================================================

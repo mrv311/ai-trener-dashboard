@@ -1,5 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { fetchIntervalsData, updateEventDate, updateEventDetails } from '../services/intervalsApi';
+import {
+  fetchIntervalsData,
+  updateEventDate,
+  updateEventDetails,
+  createEvent,
+  createEventsBatch,
+  deleteEventsBatch
+} from '../services/intervalsApi';
 import { supabase } from '../services/supabaseClient';
 import { parseWorkoutDoc, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
 
@@ -11,6 +18,65 @@ const formatLocalDate = (d = new Date()) => {
 };
 
 const PLANNED_EVENT_CATEGORIES = new Set(['WORKOUT', 'RACE_A', 'RACE_B', 'RACE_C']);
+const isRaceEventCategory = (cat) => cat === 'RACE_A' || cat === 'RACE_B' || cat === 'RACE_C';
+
+const getPlanRegistryKey = (userId) => `ergvibe_plan_registry_${userId || 'guest'}`;
+
+const readPlanRegistry = (userId) => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(getPlanRegistryKey(userId)) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+};
+
+const writePlanRegistry = (userId, list) => {
+  try {
+    localStorage.setItem(getPlanRegistryKey(userId), JSON.stringify(Array.isArray(list) ? list : []));
+  } catch {
+    // ignore quota error
+  }
+};
+
+const normalizeDurationMinutes = (workoutObj, isRace = false) => {
+  if (isRace) {
+    const rawMin = Number(workoutObj?.duration || 0);
+    return rawMin > 0 ? Math.round(rawMin) : 0;
+  }
+  let durMin = workoutObj?.duration;
+  if (durMin && durMin >= 360 && durMin % 60 === 0) {
+    durMin = Math.round(durMin / 60);
+  } else if (durMin > 1440) {
+    durMin = Math.round(durMin / 60);
+  } else if (!durMin && workoutObj?.duration_seconds) {
+    durMin = Math.round(workoutObj.duration_seconds / 60);
+  }
+  return Math.max(10, Math.round(durMin || 60));
+};
+
+const buildIntervalsEventPayload = (workoutObj) => {
+  const eventCategory = workoutObj?.eventCategory || 'WORKOUT';
+  const isRace = isRaceEventCategory(eventCategory);
+  const durMin = normalizeDurationMinutes(workoutObj, isRace);
+  const durSec = durMin * 60;
+  const payload = {
+    start_date_local: `${workoutObj.date}T08:00:00`,
+    category: eventCategory,
+    name: workoutObj.title || (isRace ? 'Ciljni Event' : 'Trening'),
+    description: isRace
+      ? (workoutObj.descriptionText || workoutObj.description || '')
+      : (workoutObj.description || ''),
+    type: workoutObj.type === 'run' ? 'Run' : (workoutObj.type === 'strength' ? 'WeightTraining' : 'Ride')
+  };
+  if (workoutObj.tss && Number(workoutObj.tss) > 0) {
+    payload.icu_training_load = Math.round(Number(workoutObj.tss));
+  }
+  if (durSec > 0) {
+    payload.moving_time = durSec;
+  }
+  return payload;
+};
 
 const isIntervalsCyclingType = (typeStr) => {
   if (!typeStr) return true; // default je biciklizam kad tip nije specificiran na treningu
@@ -428,10 +494,11 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
 
     const rawActivityIdSet = new Set(rawActivities.map(a => String(a.id)));
 
-    // Kreiraj Map objekte za O(1) lookup (uključuje WORKOUT i planirane utrke RACE_A/B/C)
+    // Kreiraj Map objekte za O(1) lookup (utrke RACE_A/B/C ostaju zasebno vidljive i ne troše se na automatsko sparivanje)
     const eventsByDate = new Map();
     rawEvents.forEach(e => {
       if (!PLANNED_EVENT_CATEGORIES.has(e.category)) return;
+      if (isRaceEventCategory(e.category)) return;
       const date = e.start_date_local?.split('T')[0];
       if (!date) return;
       if (!eventsByDate.has(date)) eventsByDate.set(date, []);
@@ -440,6 +507,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
 
     const localByDate = new Map();
     localScheduled.forEach(lw => {
+      if (isRaceEventCategory(lw.eventCategory)) return;
       if (!localByDate.has(lw.date)) localByDate.set(lw.date, []);
       localByDate.get(lw.date).push(lw);
     });
@@ -906,8 +974,9 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       const evDate = ev.start_date_local ? ev.start_date_local.split('T')[0] : '';
       if (!evDate) return;
 
-      let complianceColor = 'grey';
-      if (evDate < todayStr) complianceColor = 'red-missed';
+      const isRace = isRaceEventCategory(ev.category);
+      let complianceColor = isRace ? 'race' : 'grey';
+      if (!isRace && evDate < todayStr) complianceColor = 'red-missed';
 
       const evMetrics = extractEventPlannedMetrics(ev, effectiveFtp);
       const isEvCycling = isIntervalsCyclingType(ev.type);
@@ -915,19 +984,21 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       finalWorkouts.push({
         id: `ev-${ev.id}`,
         eventId: ev.id,
+        eventCategory: ev.category || 'WORKOUT',
         date: evDate,
-        title: ev.name || (ev.category?.startsWith('RACE') ? 'Utrka' : 'Planirano'),
-        duration: evMetrics.durationMin,
-        plannedDuration: evMetrics.durationMin,
+        title: ev.name || (isRace ? 'Utrka' : 'Planirano'),
+        duration: isRace ? (evMetrics.durationMin || 0) : evMetrics.durationMin,
+        plannedDuration: isRace ? (evMetrics.durationMin || 0) : evMetrics.durationMin,
         tss: evMetrics.tss,
         plannedTss: evMetrics.tss,
         statusColor: complianceColor,
         isCompleted: false,
-        steps: evMetrics.steps,
-        intervalDescription: evMetrics.intervalDescription,
-        workout_doc: evMetrics.workoutDoc,
-        difficulty_score: evMetrics.diffScore,
-        category: isEvCycling ? evMetrics.category : 'OTHER'
+        steps: isRace ? null : evMetrics.steps,
+        intervalDescription: isRace ? null : evMetrics.intervalDescription,
+        workout_doc: isRace ? null : evMetrics.workoutDoc,
+        descriptionText: isRace ? (ev.description || '') : undefined,
+        difficulty_score: isRace ? null : evMetrics.diffScore,
+        category: isRace ? ev.category : (isEvCycling ? evMetrics.category : 'OTHER')
       });
     });
 
@@ -936,16 +1007,23 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       if (consumedLocalIds.has(sched.id)) return;
       if (!sched.date) return;
 
-      let complianceColor = 'grey';
-      if (sched.date < todayStr) complianceColor = 'red-missed';
+      const evCat = sched.eventCategory || 'WORKOUT';
+      const isRace = isRaceEventCategory(evCat);
+      let complianceColor = isRace ? 'race' : 'grey';
+      if (!isRace && sched.date < todayStr) complianceColor = 'red-missed';
 
       const locMetrics = getLocalPlannedMetrics(sched);
-      const cleanDuration = locMetrics.durationMin > 0 ? locMetrics.durationMin : 60;
+      const cleanDuration = isRace
+        ? (locMetrics.durationMin || 0)
+        : (locMetrics.durationMin > 0 ? locMetrics.durationMin : 60);
 
       finalWorkouts.push({
         id: `local-${sched.id}`,
+        eventCategory: evCat,
+        planId: sched.planId || null,
+        blockKey: sched.blockKey || null,
         date: sched.date,
-        title: sched.title || 'Planirani trening',
+        title: sched.title || (isRace ? 'Ciljni Event' : 'Planirani trening'),
         duration: cleanDuration,
         plannedDuration: cleanDuration,
         tss: locMetrics.tss,
@@ -953,11 +1031,12 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         statusColor: complianceColor,
         isCompleted: false,
         isLocal: true,
-        steps: locMetrics.steps || sched.steps,
-        intervalDescription: locMetrics.intervalDescription,
-        workout_doc: locMetrics.workoutDoc,
-        category: locMetrics.category,
-        difficulty_score: locMetrics.diffScore
+        steps: isRace ? null : (locMetrics.steps || sched.steps),
+        intervalDescription: isRace ? null : locMetrics.intervalDescription,
+        workout_doc: isRace ? null : locMetrics.workoutDoc,
+        descriptionText: isRace ? (sched.descriptionText || '') : undefined,
+        category: isRace ? evCat : locMetrics.category,
+        difficulty_score: isRace ? null : locMetrics.diffScore
       });
     });
 
@@ -1386,31 +1465,34 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     }
   }, [rawEvents, intervalsId, intervalsKey, userId]);
 
-  const handleCreateWorkout = useCallback(async (workoutObj) => {
-    // 1. Priprema optimističnog stanja (kreiramo lokalni zapis)
-    let durMin = workoutObj.duration;
-    if (durMin && durMin >= 360 && durMin % 60 === 0) {
-      durMin = Math.round(durMin / 60);
-    } else if (durMin > 1440) {
-      durMin = Math.round(durMin / 60);
-    } else if (!durMin && workoutObj.duration_seconds) {
-      durMin = Math.round(workoutObj.duration_seconds / 60);
-    }
-    durMin = Math.max(10, Math.round(durMin || 60));
+  const planRegistry = useMemo(() => readPlanRegistry(userId), [userId, localRefreshTrigger]);
+
+  const handleCreateWorkout = useCallback(async (workoutObj, options = {}) => {
+    const { syncToIntervals = true } = options;
+    const eventCategory = workoutObj.eventCategory || 'WORKOUT';
+    const isRace = isRaceEventCategory(eventCategory);
+    const durMin = normalizeDurationMinutes(workoutObj, isRace);
     const durSec = durMin * 60;
 
     let localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
+    const rawLocalId = String(workoutObj.id || `local-${Date.now()}_${Math.random().toString(36).slice(2, 6)}`).replace(/^local-/, '');
     const newLocalWorkout = {
-      id: workoutObj.id.replace('local-', ''),
+      id: rawLocalId,
       date: workoutObj.date,
       title: workoutObj.title,
       duration: durMin,
       duration_seconds: durSec,
-      tss: workoutObj.tss,
-      workout_doc: workoutObj.description,
-      steps: Array.isArray(workoutObj.allSteps) && workoutObj.allSteps.length > 0 ? workoutObj.allSteps : workoutObj.description,
-      category: workoutObj.category || 'WORKOUT',
-      difficulty_score: workoutObj.difficulty_score ?? null,
+      tss: workoutObj.tss || 0,
+      workout_doc: isRace ? '' : workoutObj.description,
+      steps: isRace
+        ? ''
+        : (Array.isArray(workoutObj.allSteps) && workoutObj.allSteps.length > 0 ? workoutObj.allSteps : workoutObj.description),
+      category: isRace ? eventCategory : (workoutObj.category || 'WORKOUT'),
+      eventCategory,
+      planId: workoutObj.planId || null,
+      blockKey: workoutObj.blockKey || null,
+      descriptionText: isRace ? (workoutObj.descriptionText || workoutObj.description || '') : '',
+      difficulty_score: isRace ? null : (workoutObj.difficulty_score ?? null),
       type: workoutObj.type || 'ride'
     };
 
@@ -1418,36 +1500,211 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify(localScheduled));
     setLocalRefreshTrigger(prev => prev + 1);
 
-    // Ako nemamo API ključeve, stajemo ovdje, ostaje samo lokalno
-    if (!intervalsId || !intervalsKey) return;
+    // Ako nemamo API ključeve ili je odabran isključivo lokalni upis, stajemo ovdje
+    if (!syncToIntervals || !intervalsId || !intervalsKey) {
+      return { success: true, id: `local-${newLocalWorkout.id}`, intervalsSynced: false };
+    }
 
     // 2. Slanje na Intervals.icu u pozadini
     try {
-      const { createEvent } = await import('../services/intervalsApi');
-      const payload = {
-        start_date_local: `${workoutObj.date}T08:00:00`,
-        category: 'WORKOUT',
-        name: workoutObj.title,
-        description: workoutObj.description,
-        icu_training_load: workoutObj.tss,
-        moving_time: durSec,
-        type: workoutObj.type === 'run' ? 'Run' : (workoutObj.type === 'strength' ? 'WeightTraining' : 'Ride')
-      };
-
+      const payload = buildIntervalsEventPayload({ ...workoutObj, eventCategory, duration: durMin });
       const newEvent = await createEvent(intervalsId, intervalsKey, payload);
 
-      // Uspješno dodano na Intervals!
-      // Brišemo lokalni i dodajemo pravi event
+      // Uspješno dodano na Intervals! Brišemo lokalni privremeni i dodajemo pravi event
       localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
       localScheduled = localScheduled.filter(w => w.id !== newLocalWorkout.id);
       localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify(localScheduled));
 
       setRawEvents(prev => [...prev, newEvent]);
       setLocalRefreshTrigger(prev => prev + 1);
+      return { success: true, id: `ev-${newEvent.id}`, intervalsSynced: true, intervalsEventId: newEvent.id };
     } catch (err) {
       console.error('Create Workout API error:', err);
-      // Ako api pukne, workout ostaje u lokalnom storageu što je ok fallback.
+      return { success: true, id: `local-${newLocalWorkout.id}`, intervalsSynced: false, error: err?.message || 'Greška pri slanju na Intervals.icu' };
     }
+  }, [intervalsId, intervalsKey, userId]);
+
+  /**
+   * Grupno upisuje cijeli trenažni blok (i eventualni ciljni event) u lokalni Kalendar
+   * te po želji sinkronizira sve stavke na Intervals.icu uz zaštitu od rate limita.
+   */
+  const handleCreatePlanBatch = useCallback(async (
+    workoutObjs = [],
+    {
+      planId,
+      blockKey,
+      blockTitle = 'AI Trenažni Blok',
+      startDate = '',
+      endDate = '',
+      syncToIntervals = true,
+      onProgress
+    } = {}
+  ) => {
+    const itemsList = Array.isArray(workoutObjs) ? workoutObjs : [];
+    if (itemsList.length === 0) {
+      return { total: 0, intervalsCount: 0, localCount: 0, errors: [], blockKey };
+    }
+
+    const storageKey = `ai_trener_scheduled_workouts_${userId || 'guest'}`;
+    let localScheduled = [];
+    try {
+      localScheduled = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    } catch {
+      localScheduled = [];
+    }
+
+    const canSyncIntervals = Boolean(syncToIntervals && intervalsId && intervalsKey);
+    const createdIntervalsIds = [];
+    const createdLocalIds = [];
+    const errors = [];
+
+    if (canSyncIntervals) {
+      const payloads = itemsList.map(wo => buildIntervalsEventPayload(wo));
+      const { created, errors: batchErrors } = await createEventsBatch(intervalsId, intervalsKey, payloads, {
+        onProgress,
+        delayMs: 150
+      });
+
+      const createdIndexSet = new Set();
+      const newEvents = [];
+      created.forEach(({ index, event }) => {
+        createdIndexSet.add(index);
+        if (event) {
+          newEvents.push(event);
+          if (event.id != null) createdIntervalsIds.push(String(event.id));
+        }
+      });
+
+      if (newEvents.length > 0) {
+        setRawEvents(prev => [...prev, ...newEvents]);
+      }
+
+      batchErrors.forEach(errItem => {
+        errors.push({ title: errItem.payload?.name || 'Trening', error: errItem.error });
+      });
+
+      // Ako neka stavka nije prošla na Intervals.icu, sačuvaj je lokalno da ništa ne nestane
+      itemsList.forEach((wo, idx) => {
+        if (!createdIndexSet.has(idx)) {
+          const evCat = wo.eventCategory || 'WORKOUT';
+          const isRace = isRaceEventCategory(evCat);
+          const durMin = normalizeDurationMinutes(wo, isRace);
+          const rawId = String(wo.id || `local-ai_${Date.now()}_${idx}`).replace(/^local-/, '');
+          localScheduled.push({
+            id: rawId,
+            date: wo.date,
+            title: wo.title,
+            duration: durMin,
+            duration_seconds: durMin * 60,
+            tss: wo.tss || 0,
+            workout_doc: isRace ? '' : wo.description,
+            steps: isRace ? '' : (Array.isArray(wo.allSteps) && wo.allSteps.length > 0 ? wo.allSteps : wo.description),
+            category: isRace ? evCat : (wo.category || 'WORKOUT'),
+            eventCategory: evCat,
+            planId: planId || wo.planId || null,
+            blockKey: blockKey || wo.blockKey || null,
+            descriptionText: isRace ? (wo.descriptionText || wo.description || '') : '',
+            difficulty_score: isRace ? null : (wo.difficulty_score ?? null),
+            type: wo.type || 'ride'
+          });
+          createdLocalIds.push(rawId);
+        }
+      });
+    } else {
+      itemsList.forEach((wo, idx) => {
+        if (onProgress) onProgress({ done: idx + 1, total: itemsList.length, currentName: wo.title || 'Trening' });
+        const evCat = wo.eventCategory || 'WORKOUT';
+        const isRace = isRaceEventCategory(evCat);
+        const durMin = normalizeDurationMinutes(wo, isRace);
+        const rawId = String(wo.id || `local-ai_${Date.now()}_${idx}`).replace(/^local-/, '');
+        localScheduled.push({
+          id: rawId,
+          date: wo.date,
+          title: wo.title,
+          duration: durMin,
+          duration_seconds: durMin * 60,
+          tss: wo.tss || 0,
+          workout_doc: isRace ? '' : wo.description,
+          steps: isRace ? '' : (Array.isArray(wo.allSteps) && wo.allSteps.length > 0 ? wo.allSteps : wo.description),
+          category: isRace ? evCat : (wo.category || 'WORKOUT'),
+          eventCategory: evCat,
+          planId: planId || wo.planId || null,
+          blockKey: blockKey || wo.blockKey || null,
+          descriptionText: isRace ? (wo.descriptionText || wo.description || '') : '',
+          difficulty_score: isRace ? null : (wo.difficulty_score ?? null),
+          type: wo.type || 'ride'
+        });
+        createdLocalIds.push(rawId);
+      });
+    }
+
+    if (createdLocalIds.length > 0) {
+      localStorage.setItem(storageKey, JSON.stringify(localScheduled));
+    }
+
+    // Zabilježi u registar planova radi mogućnosti brisanja ili zamjene cijelog bloka jednim klikom
+    const resolvedBlockKey = blockKey || `block_${Date.now()}`;
+    const registry = readPlanRegistry(userId).filter(entry => entry.blockKey !== resolvedBlockKey);
+    registry.push({
+      blockKey: resolvedBlockKey,
+      planId: planId || null,
+      title: blockTitle,
+      startDate,
+      endDate,
+      createdAt: new Date().toISOString(),
+      intervalsIds: createdIntervalsIds,
+      localIds: createdLocalIds
+    });
+    writePlanRegistry(userId, registry);
+    setLocalRefreshTrigger(prev => prev + 1);
+
+    return {
+      total: itemsList.length,
+      intervalsCount: createdIntervalsIds.length,
+      localCount: createdLocalIds.length,
+      errors,
+      blockKey: resolvedBlockKey
+    };
+  }, [intervalsId, intervalsKey, userId]);
+
+  /**
+   * Jednim klikom briše sve treninge određenog bloka plana iz lokalnog kalendara i s Intervals.icu.
+   */
+  const handleDeletePlanBlock = useCallback(async (blockKey, { onProgress } = {}) => {
+    if (!blockKey) return { deletedLocal: 0, deletedIntervals: 0, errors: [] };
+
+    const registry = readPlanRegistry(userId);
+    const entry = registry.find(item => item.blockKey === blockKey);
+
+    const storageKey = `ai_trener_scheduled_workouts_${userId || 'guest'}`;
+    let localScheduled = [];
+    try {
+      localScheduled = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    } catch {
+      localScheduled = [];
+    }
+
+    const localIdSet = new Set((entry?.localIds || []).map(String));
+    const beforeLen = localScheduled.length;
+    localScheduled = localScheduled.filter(w => !localIdSet.has(String(w.id)) && w.blockKey !== blockKey);
+    const deletedLocal = beforeLen - localScheduled.length;
+    localStorage.setItem(storageKey, JSON.stringify(localScheduled));
+
+    let deletedIntervals = 0;
+    let errors = [];
+    const intervalsIds = entry?.intervalsIds || [];
+    if (intervalsIds.length > 0 && intervalsId && intervalsKey) {
+      const idSet = new Set(intervalsIds.map(String));
+      setRawEvents(prev => prev.filter(e => !idSet.has(String(e.id))));
+      const res = await deleteEventsBatch(intervalsId, intervalsKey, intervalsIds, { onProgress, delayMs: 120 });
+      deletedIntervals = res.deleted.length;
+      errors = res.errors;
+    }
+
+    writePlanRegistry(userId, registry.filter(item => item.blockKey !== blockKey));
+    setLocalRefreshTrigger(prev => prev + 1);
+
+    return { deletedLocal, deletedIntervals, errors };
   }, [intervalsId, intervalsKey, userId]);
 
   return {
@@ -1457,6 +1714,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     athleteInfo,
     isLoading,
     error,
+    planRegistry,
     fetchWorkouts,
     handlePair,
     handleUnpair,
@@ -1464,6 +1722,8 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     handleDeleteCompletedActivity,
     handleRescheduleWorkout,
     handleUpdateWorkout,
-    handleCreateWorkout
+    handleCreateWorkout,
+    handleCreatePlanBatch,
+    handleDeletePlanBlock
   };
 }

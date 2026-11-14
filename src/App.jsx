@@ -24,6 +24,7 @@ import { useProfileSync } from './hooks/useProfileSync';
 import { useIntervalsData } from './hooks/useIntervalsData';
 import { handleIntervalsOAuthCallback } from './services/intervalsOAuth';
 import { extractIntervalsAthleteMetrics } from './services/intervalsApi';
+import { parseIsoLocal } from './utils/plannerUtils';
 
 const DEFAULT_GUEST_PROFILE = {
   username: 'Gost Vozač', weight: 75.9, ftp: 200, thresholdHr: 160, maxHr: 180,
@@ -61,7 +62,7 @@ export default function App() {
 
   const [athleteProfile, setAthleteProfile] = useProfileSync(DEFAULT_GUEST_PROFILE, currentUserId);
 
-  const { workouts, wellnessData, intervalsConnected, athleteInfo, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout } = useIntervalsData(intervalsId, intervalsKey, currentUserId, { ftp: athleteProfile?.ftp });
+  const { workouts, wellnessData, intervalsConnected, athleteInfo, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, planRegistry, handleCreatePlanBatch, handleDeletePlanBlock } = useIntervalsData(intervalsId, intervalsKey, currentUserId, { ftp: athleteProfile?.ftp });
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [authNotice, setAuthNotice] = useState(null);
@@ -282,6 +283,23 @@ export default function App() {
   }, []);
 
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [plannerLaunchRequest, setPlannerLaunchRequest] = useState(null);
+
+  const openAIPlanner = (options = {}) => {
+    setPlannerLaunchRequest({
+      nonce: Date.now(),
+      openWizard: Boolean(options?.openWizard),
+      prefill: options?.prefill || null
+    });
+    handleTabChange('aiCoach');
+  };
+
+  const openCalendarAtDate = (dateIso) => {
+    if (dateIso) {
+      setCurrentDate(parseIsoLocal(dateIso));
+    }
+    handleTabChange('calendar');
+  };
 
   // Sinkronizacija imena i parametara s Intervals.icu profila kad je povezan
   useEffect(() => {
@@ -739,6 +757,8 @@ export default function App() {
                 intervalsId={intervalsId}
                 intervalsKey={intervalsKey}
                 userId={currentUserId}
+                intervalsConnected={intervalsConnected}
+                onOpenAIPlanner={openAIPlanner}
               />
             )}
 
@@ -762,11 +782,19 @@ export default function App() {
             {activeTab === 'aiCoach' && (
               <AICoachTab
                 profile={athleteProfile}
+                setProfile={setAthleteProfile}
                 workouts={workouts}
                 wellnessData={wellnessData}
                 userId={currentUserId}
+                intervalsConnected={intervalsConnected}
                 onAddWorkoutToCalendar={handleCreateWorkout}
+                onCreatePlanBatch={handleCreatePlanBatch}
+                onDeletePlanBlock={handleDeletePlanBlock}
+                planRegistry={planRegistry}
                 onStartWorkoutInTrainer={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
+                onNavigateToCalendar={openCalendarAtDate}
+                plannerLaunchRequest={plannerLaunchRequest}
+                onConsumePlannerLaunchRequest={() => setPlannerLaunchRequest(null)}
               />
             )}
 

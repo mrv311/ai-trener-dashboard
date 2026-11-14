@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical, Bike, Upload, PenLine } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical, Bike, Upload, PenLine, Trophy, Sparkles, ArrowLeft, Flag } from 'lucide-react';
+import { parseIsoLocal, diffDaysIso, formatShortHrDate, getLocalIsoToday, EVENT_TYPE_OPTIONS } from '../utils/plannerUtils';
 import { DndContext, pointerWithin, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
@@ -21,6 +22,7 @@ const formatDur = (mins) => {
 };
 
 const getCardBg = (sc) => {
+  if (sc === 'race') return "bg-amber-950/30 border-amber-400/45 hover:border-amber-400/80 border";
   if (sc === 'green') return "bg-emerald-950/25 border-emerald-500/25 hover:border-emerald-500/45 border";
   if (sc === 'yellow') return "bg-amber-950/25 border-amber-500/25 hover:border-amber-500/45 border";
   if (sc === 'red') return "bg-rose-950/25 border-rose-500/25 hover:border-rose-500/45 border";
@@ -31,6 +33,7 @@ const getCardBg = (sc) => {
 };
 
 const getTopCol = (sc) => {
+  if (sc === 'race') return "bg-amber-400";
   if (sc === 'green') return "bg-emerald-400";
   if (sc === 'yellow') return "bg-amber-400";
   if (sc === 'red') return "bg-rose-500";
@@ -170,22 +173,37 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
         {compact ? (
           // Compact: just title + duration + status icon
           <div className="flex items-center gap-1.5 w-full">
-            <span className="text-[9px] font-bold text-zinc-300 truncate flex-1">{w.title}</span>
-            <span className="text-[9px] font-mono telemetry-num text-zinc-400 shrink-0">{formatDur(w.duration)}</span>
+            {['RACE_A', 'RACE_B', 'RACE_C'].includes(w.eventCategory) && (
+              <Trophy className="w-3 h-3 text-amber-400 shrink-0" />
+            )}
+            <span className={`text-[9px] font-bold truncate flex-1 ${['RACE_A', 'RACE_B', 'RACE_C'].includes(w.eventCategory) ? 'text-amber-200' : 'text-zinc-300'}`}>{w.title}</span>
+            {!['RACE_A', 'RACE_B', 'RACE_C'].includes(w.eventCategory) && (
+              <span className="text-[9px] font-mono telemetry-num text-zinc-400 shrink-0">{formatDur(w.duration)}</span>
+            )}
             {w.statusColor === 'green' && <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />}
             {w.statusColor === 'red-missed' && <XCircle className="w-3 h-3 text-rose-500 shrink-0" />}
           </div>
-        ) : (
+        ) : (() => {
+          const isRace = ['RACE_A', 'RACE_B', 'RACE_C'].includes(w.eventCategory);
+          const racePriorityLabel = w.eventCategory === 'RACE_A' ? 'CILJ A' : w.eventCategory === 'RACE_B' ? 'EVENT B' : 'EVENT C';
+          return (
           <div className="flex flex-col gap-1 w-full">
             {/* Header: Sport icon, duration, actions */}
             <div className="flex justify-between items-center w-full gap-1">
-              <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-mono font-bold telemetry-num uppercase tracking-wider">
-                <Bike className={`${isDesktop ? 'w-3 h-3 text-zinc-500' : 'w-4 h-4 text-zinc-400'}`} />
-                <span title={w.plannedDuration ? `Plan: ${formatDur(w.plannedDuration)}` : ''}>
-                  {formatDur(w.duration)}
-                  {!isDesktop && w.plannedDuration && <span className="text-zinc-600 text-[9px] ml-1">/ {formatDur(w.plannedDuration)}</span>}
-                </span>
-              </div>
+              {isRace ? (
+                <div className="flex items-center gap-1.5 text-amber-300 text-[10px] font-mono font-bold uppercase tracking-wider">
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{racePriorityLabel}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-mono font-bold telemetry-num uppercase tracking-wider">
+                  <Bike className={`${isDesktop ? 'w-3 h-3 text-zinc-500' : 'w-4 h-4 text-zinc-400'}`} />
+                  <span title={w.plannedDuration ? `Plan: ${formatDur(w.plannedDuration)}` : ''}>
+                    {formatDur(w.duration)}
+                    {!isDesktop && w.plannedDuration && <span className="text-zinc-600 text-[9px] ml-1">/ {formatDur(w.plannedDuration)}</span>}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center gap-1 shrink-0 ml-1" onPointerDown={(e) => { }}>
                 {w.actId && w.eventId && (
                   <button
@@ -213,7 +231,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
                     className="text-zinc-500 hover:text-rose-400 rounded p-0.5 transition-opacity md:opacity-0 md:group-hover/wcard:opacity-100"
-                    title="Obriši planirani trening"
+                    title={isRace ? 'Obriši event' : 'Obriši planirani trening'}
                   >
                     <Trash2 className={`${isDesktop ? 'w-3 h-3' : 'w-4 h-4'}`} />
                   </button>
@@ -234,7 +252,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                     <Trash2 className={`${isDesktop ? 'w-3 h-3' : 'w-4 h-4'}`} />
                   </button>
                 )}
-                {!w.isCompleted && onSelectWorkout && (
+                {!w.isCompleted && !isRace && onSelectWorkout && (
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
@@ -249,7 +267,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               </div>
             </div>
             {/* Title */}
-            <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} text-zinc-100 leading-snug line-clamp-2`}>
+            <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} ${isRace ? 'text-amber-100' : 'text-zinc-100'} leading-snug line-clamp-2`}>
               {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-600 group-hover/wcard:text-zinc-400 align-middle pointer-events-none transition-colors" />}
               {w.title}
             </div>
@@ -262,54 +280,67 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               </div>
             )}
             {/* Metrics */}
-            <div className="flex flex-col gap-1 mt-1.5">
-              <div className="flex items-center gap-1.5 flex-wrap font-mono telemetry-num">
-                {w.isCompleted ? (
-                  // Odrađeni trening: TSS ostvareni / planirani + postotak u boji kartice
-                  <>
-                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">TSS</span>
-                    <span className="text-xs font-bold text-zinc-100">{w.tss > 0 ? w.tss : '-'}</span>
-                    {w.plannedTss > 0 && (
-                      <>
-                        <span className="text-[9px] text-zinc-600">/</span>
-                        <span className="text-xs text-zinc-500">{w.plannedTss}</span>
-                      </>
-                    )}
-                    {w.plannedTss > 0 && w.tss > 0 && (
-                      <span className={`text-[9px] font-bold ml-auto px-1 rounded ${w.statusColor === 'green' ? 'text-emerald-400 bg-emerald-500/10' :
-                        w.statusColor === 'yellow' ? 'text-amber-400 bg-amber-500/10' :
-                          w.statusColor === 'red' ? 'text-rose-400 bg-rose-500/10' :
-                            'text-zinc-400 bg-zinc-800'
-                        }`}>
-                        {Math.round((w.tss / w.plannedTss) * 100)}%
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  // Planirani trening: samo planirani TSS
-                  <>
-                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">PLAN TSS</span>
-                    <span className="text-xs font-bold text-zinc-300">{w.plannedTss > 0 ? w.plannedTss : '-'}</span>
-                  </>
+            {isRace ? (
+              <div className="flex flex-col gap-1 mt-1">
+                {(w.descriptionText || w.category) && (
+                  <span className="text-[10px] text-amber-200/80 leading-tight line-clamp-2">
+                    {w.descriptionText || w.category}
+                  </span>
                 )}
               </div>
-              {w.intervalDescription && (
-                <span className="text-[10px] font-mono text-zinc-400/85 leading-tight line-clamp-1">{w.intervalDescription}</span>
-              )}
-              {w.category && w.difficulty_score && (
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="bg-zinc-950 text-zinc-300 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-zinc-800">{w.category}</span>
-                  <span className="text-volt-400 font-mono telemetry-num text-[10px] font-bold">LVL {w.difficulty_score.toFixed(1)}</span>
+            ) : (
+              <>
+                <div className="flex flex-col gap-1 mt-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap font-mono telemetry-num">
+                    {w.isCompleted ? (
+                      // Odrađeni trening: TSS ostvareni / planirani + postotak u boji kartice
+                      <>
+                        <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">TSS</span>
+                        <span className="text-xs font-bold text-zinc-100">{w.tss > 0 ? w.tss : '-'}</span>
+                        {w.plannedTss > 0 && (
+                          <>
+                            <span className="text-[9px] text-zinc-600">/</span>
+                            <span className="text-xs text-zinc-500">{w.plannedTss}</span>
+                          </>
+                        )}
+                        {w.plannedTss > 0 && w.tss > 0 && (
+                          <span className={`text-[9px] font-bold ml-auto px-1 rounded ${w.statusColor === 'green' ? 'text-emerald-400 bg-emerald-500/10' :
+                            w.statusColor === 'yellow' ? 'text-amber-400 bg-amber-500/10' :
+                              w.statusColor === 'red' ? 'text-rose-400 bg-rose-500/10' :
+                                'text-zinc-400 bg-zinc-800'
+                            }`}>
+                            {Math.round((w.tss / w.plannedTss) * 100)}%
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      // Planirani trening: samo planirani TSS
+                      <>
+                        <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">PLAN TSS</span>
+                        <span className="text-xs font-bold text-zinc-300">{w.plannedTss > 0 ? w.plannedTss : '-'}</span>
+                      </>
+                    )}
+                  </div>
+                  {w.intervalDescription && (
+                    <span className="text-[10px] font-mono text-zinc-400/85 leading-tight line-clamp-1">{w.intervalDescription}</span>
+                  )}
+                  {w.category && w.difficulty_score && (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="bg-zinc-950 text-zinc-300 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-zinc-800">{w.category}</span>
+                      <span className="text-volt-400 font-mono telemetry-num text-[10px] font-bold">LVL {w.difficulty_score.toFixed(1)}</span>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            {/* Graph */}
-            <WorkoutGraph
-              workoutDoc={w.workout_doc || w.steps}
-              isCompleted={w.isCompleted || w.status === 'completed'}
-            />
+                {/* Graph */}
+                <WorkoutGraph
+                  workoutDoc={w.workout_doc || w.steps}
+                  isCompleted={w.isCompleted || w.status === 'completed'}
+                />
+              </>
+            )}
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
@@ -454,7 +485,7 @@ function DragOverlayCard({ workout, activeWidth }) {
 // ============================================================
 // CalendarTab
 // ============================================================
-export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile, intervalsId, intervalsKey, userId }) {
+export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile, intervalsId, intervalsKey, userId, intervalsConnected = false, onOpenAIPlanner }) {
   const cy = currentDate.getFullYear();
   const cm = currentDate.getMonth();
   const [activeId, setActiveId] = useState(null);
@@ -462,7 +493,14 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const [activeWidth, setActiveWidth] = useState(0);
   const [editingWorkout, setEditingWorkout] = useState(null);
   const [viewingActivity, setViewingActivity] = useState(null);
+  const [viewingRace, setViewingRace] = useState(null);
   const [selectedDateForNew, setSelectedDateForNew] = useState(null);
+  const [newModalMode, setNewModalMode] = useState('menu'); // 'menu' | 'race'
+  const [raceTitle, setRaceTitle] = useState('');
+  const [raceCategory, setRaceCategory] = useState('RACE_A');
+  const [raceType, setRaceType] = useState(EVENT_TYPE_OPTIONS[0].id);
+  const [raceNotes, setRaceNotes] = useState('');
+  const [isSavingRace, setIsSavingRace] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [pickerMonth, setPickerMonth] = useState(cm);
@@ -470,6 +508,96 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const monthPickerRef = useRef(null);
   const fileInputRef = useRef(null);
   const activityFileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!selectedDateForNew) {
+      setNewModalMode('menu');
+      setRaceTitle('');
+      setRaceNotes('');
+      setRaceCategory('RACE_A');
+      setRaceType(EVENT_TYPE_OPTIONS[0].id);
+    }
+  }, [selectedDateForNew]);
+
+  const handleOpenWorkoutOrRace = useCallback((w) => {
+    if (['RACE_A', 'RACE_B', 'RACE_C'].includes(w?.eventCategory)) {
+      setViewingRace(w);
+    } else {
+      setEditingWorkout(w);
+    }
+  }, []);
+
+  const upcomingGoal = useMemo(() => {
+    const todayIso = getLocalIsoToday();
+    const upcomingRaces = (workouts || [])
+      .filter(w => ['RACE_A', 'RACE_B'].includes(w.eventCategory) && w.date >= todayIso)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    if (upcomingRaces.length > 0) {
+      const next = upcomingRaces[0];
+      return {
+        title: next.title,
+        date: next.date,
+        daysLeft: diffDaysIso(todayIso, next.date),
+        priority: next.eventCategory
+      };
+    }
+
+    if (profile?.goalDate && profile.goalDate >= todayIso) {
+      return {
+        title: profile.primaryGoal || 'Ciljni Event',
+        date: profile.goalDate,
+        daysLeft: diffDaysIso(todayIso, profile.goalDate),
+        priority: 'RACE_A'
+      };
+    }
+
+    return null;
+  }, [workouts, profile?.goalDate, profile?.primaryGoal]);
+
+  const handleCreateRaceEvent = async (launchPlanner = false) => {
+    if (!selectedDateForNew || !handleCreateWorkout) return;
+    const cleanTitle = raceTitle.trim();
+    if (!cleanTitle) return;
+
+    setIsSavingRace(true);
+    const savedDate = selectedDateForNew;
+    const payload = {
+      title: cleanTitle,
+      date: savedDate,
+      category: raceType,
+      eventCategory: raceCategory,
+      duration: 0,
+      tss: 0,
+      steps: [],
+      descriptionText: [raceType, raceNotes.trim()].filter(Boolean).join(' • '),
+      isLocal: true
+    };
+
+    try {
+      const res = await handleCreateWorkout(payload);
+      if (res && res.success === false) {
+        alert('Greška pri spremanju eventa: ' + (res.error || 'Nepoznata greška'));
+        return;
+      }
+      setSelectedDateForNew(null);
+      if (launchPlanner && onOpenAIPlanner) {
+        onOpenAIPlanner({
+          openWizard: true,
+          prefill: {
+            goalMode: 'event',
+            goalTitle: cleanTitle,
+            eventDate: savedDate,
+            eventPriority: raceCategory,
+            notes: raceNotes.trim(),
+            skipAddEvent: true
+          }
+        });
+      }
+    } finally {
+      setIsSavingRace(false);
+    }
+  };
 
   // Sync picker with currentDate when it changes externally
   useEffect(() => {
@@ -814,6 +942,84 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         onAddWorkoutToCalendar={handleCreateWorkout}
         onStartWorkoutInTrainer={onSelectWorkout}
       />
+      {/* Modal za detalje Race / Ciljnog Eventa */}
+      {viewingRace && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setViewingRace(null)}>
+          <div className="carbon-panel rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4 relative border border-amber-400/35" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setViewingRace(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition-colors">
+              <XCircle className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                <Trophy className="w-3.5 h-3.5" />
+                {viewingRace.eventCategory === 'RACE_A' ? 'Glavni Cilj (A)' : viewingRace.eventCategory === 'RACE_B' ? 'Sekundarni Event (B)' : 'Event (C)'}
+              </span>
+              <span className="text-xs font-mono text-zinc-400">{formatShortHrDate(viewingRace.date)} ({viewingRace.date})</span>
+            </div>
+
+            <div>
+              <h2 className="text-xl font-bold text-white leading-snug">{viewingRace.title}</h2>
+              {(viewingRace.descriptionText || viewingRace.category) && (
+                <p className="text-xs text-zinc-300 mt-1.5 leading-relaxed">
+                  {viewingRace.descriptionText || viewingRace.category}
+                </p>
+              )}
+              {(() => {
+                const daysLeft = diffDaysIso(getLocalIsoToday(), viewingRace.date);
+                return daysLeft >= 0 ? (
+                  <p className="text-xs text-amber-300 font-semibold mt-2">
+                    {daysLeft === 0 ? 'Event je danas!' : `Preostalo još ${daysLeft} dana do starta`}
+                  </p>
+                ) : null;
+              })()}
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              {onOpenAIPlanner && viewingRace.date >= getLocalIsoToday() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = viewingRace;
+                    setViewingRace(null);
+                    onOpenAIPlanner({
+                      openWizard: true,
+                      prefill: {
+                        goalMode: 'event',
+                        goalTitle: target.title,
+                        eventDate: target.date,
+                        eventPriority: target.eventCategory || 'RACE_A',
+                        notes: target.descriptionText || '',
+                        skipAddEvent: true
+                      }
+                    });
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-volt-400 hover:bg-volt-300 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Izradi AI plan priprema do ovog eventa
+                </button>
+              )}
+
+              {handleDeleteLocalActivity && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const idToDelete = viewingRace.id;
+                    setViewingRace(null);
+                    await handleDeleteLocalActivity(idToDelete);
+                  }}
+                  className="w-full py-2 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/25 font-semibold text-xs flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Obriši event iz kalendara
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedDateForNew && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setSelectedDateForNew(null)}>
           <div className="carbon-panel rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-3.5 relative" onClick={e => e.stopPropagation()}>
@@ -822,61 +1028,181 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             </button>
             <div>
               <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400">{selectedDateForNew}</span>
-              <h2 className="text-xl font-display font-bold uppercase tracking-wide text-zinc-100">Dodaj u Kalendar</h2>
+              <h2 className="text-xl font-display font-bold uppercase tracking-wide text-zinc-100">
+                {newModalMode === 'race' ? 'Ciljni Event / Utrka' : 'Dodaj u Kalendar'}
+              </h2>
             </div>
 
-            <button
-              onClick={handleManualCreate}
-              className="flex items-center gap-3.5 w-full p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/50 transition-all group"
-            >
-              <div className="bg-volt-400/10 border border-volt-400/25 p-2.5 rounded-lg text-volt-400 group-hover:bg-volt-400 group-hover:text-zinc-950 transition-colors">
-                <PenLine className="w-5 h-5" />
-              </div>
-              <div className="flex flex-col text-left">
-                <span className="font-bold text-sm text-zinc-100">Ručni unos treninga</span>
-                <span className="text-xs text-zinc-500">Kreiraj strukturirani trening (npr. - 10m 65%)</span>
-              </div>
-            </button>
+            {newModalMode === 'race' ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                    Naziv utrke ili cilja *
+                  </label>
+                  <input
+                    type="text"
+                    value={raceTitle}
+                    onChange={(e) => setRaceTitle(e.target.value)}
+                    placeholder="Npr. Gran Fondo Zagreb, Učka..."
+                    autoFocus
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
 
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-3.5 w-full p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-sky-500/50 transition-all group"
-            >
-              <div className="bg-sky-500/10 border border-sky-500/25 p-2.5 rounded-lg text-sky-400 group-hover:bg-sky-500 group-hover:text-zinc-950 transition-colors">
-                <Upload className="w-5 h-5" />
-              </div>
-              <div className="flex flex-col text-left">
-                <span className="font-bold text-sm text-zinc-100">Uvezi recept datoteku</span>
-                <span className="text-xs font-mono text-zinc-500">.ZWO · .ERG</span>
-              </div>
-            </button>
-            <input
-              type="file"
-              accept=".zwo,.erg"
-              ref={fileInputRef}
-              style={{ display: 'none' }}
-              onChange={handleFileUpload}
-            />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Prioritet
+                    </label>
+                    <select
+                      value={raceCategory}
+                      onChange={(e) => setRaceCategory(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                    >
+                      <option value="RACE_A">Cilj A (Glavna)</option>
+                      <option value="RACE_B">Event B (Sekundarni)</option>
+                      <option value="RACE_C">Trening C</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Disciplina
+                    </label>
+                    <select
+                      value={raceType}
+                      onChange={(e) => setRaceType(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                    >
+                      {EVENT_TYPE_OPTIONS.map(opt => (
+                        <option key={opt.id} value={opt.id}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-            <button
-              onClick={() => activityFileInputRef.current?.click()}
-              className="flex items-center gap-3.5 w-full p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 transition-all group"
-            >
-              <div className="bg-emerald-500/10 border border-emerald-500/25 p-2.5 rounded-lg text-emerald-400 group-hover:bg-emerald-500 group-hover:text-zinc-950 transition-colors">
-                <Activity className="w-5 h-5" />
+                <div>
+                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                    Distanca / napomena (opcionalno)
+                  </label>
+                  <input
+                    type="text"
+                    value={raceNotes}
+                    onChange={(e) => setRaceNotes(e.target.value)}
+                    placeholder="Npr. 125 km, 2100 m uspona"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                {intervalsConnected && (
+                  <p className="text-[10px] text-sky-400">
+                    Event će se automatski sinkronizirati i s tvojim Intervals.icu kalendarom.
+                  </p>
+                )}
+
+                <div className="space-y-2 pt-1">
+                  {onOpenAIPlanner && (
+                    <button
+                      type="button"
+                      disabled={!raceTitle.trim() || isSavingRace}
+                      onClick={() => handleCreateRaceEvent(true)}
+                      className="w-full py-2.5 px-3 rounded-xl bg-volt-400 hover:bg-volt-300 disabled:opacity-50 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      {isSavingRace ? 'Spremanje...' : 'Spremi & Izradi AI Plan do eventa'}
+                    </button>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewModalMode('menu')}
+                      disabled={isSavingRace}
+                      className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 flex items-center gap-1"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      Natrag
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!raceTitle.trim() || isSavingRace}
+                      onClick={() => handleCreateRaceEvent(false)}
+                      className="flex-1 py-2 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-50 border border-amber-500/35 text-amber-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Flag className="w-3.5 h-3.5" />
+                      Spremi samo Event
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col text-left">
-                <span className="font-bold text-sm text-zinc-100">Odrađena aktivnost</span>
-                <span className="text-xs font-mono text-zinc-500">.FIT · .TCX telemetrija</span>
-              </div>
-            </button>
-            <input
-              type="file"
-              accept=".fit,.tcx"
-              ref={activityFileInputRef}
-              style={{ display: 'none' }}
-              onChange={handleActivityFileUpload}
-            />
+            ) : (
+              <>
+                <button
+                  onClick={() => setNewModalMode('race')}
+                  className="flex items-center gap-3.5 w-full p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-amber-400/50 transition-all group"
+                >
+                  <div className="bg-amber-500/10 border border-amber-500/25 p-2.5 rounded-lg text-amber-400 group-hover:bg-amber-400 group-hover:text-zinc-950 transition-colors">
+                    <Trophy className="w-5 h-5" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="font-bold text-sm text-zinc-100">Ciljni Event / Utrka</span>
+                    <span className="text-xs text-zinc-500">Upiši utrku i planiraj pripreme do cilja</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={handleManualCreate}
+                  className="flex items-center gap-3.5 w-full p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/50 transition-all group"
+                >
+                  <div className="bg-volt-400/10 border border-volt-400/25 p-2.5 rounded-lg text-volt-400 group-hover:bg-volt-400 group-hover:text-zinc-950 transition-colors">
+                    <PenLine className="w-5 h-5" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="font-bold text-sm text-zinc-100">Ručni unos treninga</span>
+                    <span className="text-xs text-zinc-500">Kreiraj strukturirani trening (npr. - 10m 65%)</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-3.5 w-full p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-sky-500/50 transition-all group"
+                >
+                  <div className="bg-sky-500/10 border border-sky-500/25 p-2.5 rounded-lg text-sky-400 group-hover:bg-sky-500 group-hover:text-zinc-950 transition-colors">
+                    <Upload className="w-5 h-5" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="font-bold text-sm text-zinc-100">Uvezi recept datoteku</span>
+                    <span className="text-xs font-mono text-zinc-500">.ZWO · .ERG</span>
+                  </div>
+                </button>
+                <input
+                  type="file"
+                  accept=".zwo,.erg"
+                  ref={fileInputRef}
+                  style={{ display: 'none' }}
+                  onChange={handleFileUpload}
+                />
+
+                <button
+                  onClick={() => activityFileInputRef.current?.click()}
+                  className="flex items-center gap-3.5 w-full p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-emerald-500/50 transition-all group"
+                >
+                  <div className="bg-emerald-500/10 border border-emerald-500/25 p-2.5 rounded-lg text-emerald-400 group-hover:bg-emerald-500 group-hover:text-zinc-950 transition-colors">
+                    <Activity className="w-5 h-5" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="font-bold text-sm text-zinc-100">Odrađena aktivnost</span>
+                    <span className="text-xs font-mono text-zinc-500">.FIT · .TCX telemetrija</span>
+                  </div>
+                </button>
+                <input
+                  type="file"
+                  accept=".fit,.tcx"
+                  ref={activityFileInputRef}
+                  style={{ display: 'none' }}
+                  onChange={handleActivityFileUpload}
+                />
+              </>
+            )}
           </div>
         </div>
       )}
@@ -994,31 +1320,61 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
           )}
         </div>
 
-        {/* Week navigation */}
-        <div className="flex items-stretch bg-zinc-900 rounded-lg p-1 border border-zinc-800 gap-1">
-          <button
-            onClick={goWeekBack}
-            title="Prošli tjedan (-7 dana)"
-            className="px-2 py-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors flex flex-col items-center justify-center gap-0.5 group/nav"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-zinc-500 group-hover/nav:text-zinc-300 leading-none">-1 tjedan</span>
-          </button>
-          <button
-            onClick={goToday}
-            title="Idi na današnji tjedan"
-            className="px-3 py-1 hover:bg-zinc-800 rounded text-[11px] font-mono font-bold text-volt-400 uppercase tracking-wider transition-colors flex flex-col items-center justify-center border-x border-zinc-800/80"
-          >
-            <span>Danas</span>
-          </button>
-          <button
-            onClick={goWeekForward}
-            title="Sljedeći tjedan (+7 dana)"
-            className="px-2 py-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors flex flex-col items-center justify-center gap-0.5 group/nav"
-          >
-            <ChevronRight className="w-4 h-4" />
-            <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-zinc-500 group-hover/nav:text-zinc-300 leading-none">+1 tjedan</span>
-          </button>
+        {/* Desna grupa akcija: Cilj countdown + AI Planer + Week navigation */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {upcomingGoal && (
+            <button
+              type="button"
+              onClick={() => setCurrentDate(parseIsoLocal(upcomingGoal.date))}
+              title={`Skok na ciljni event: ${upcomingGoal.title} (${upcomingGoal.date})`}
+              className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-200 text-xs transition-colors"
+            >
+              <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="font-semibold truncate max-w-[140px]">{upcomingGoal.title}</span>
+              <span className="font-mono font-bold text-amber-400">
+                {upcomingGoal.daysLeft === 0 ? 'DANAS' : `${upcomingGoal.daysLeft}d`}
+              </span>
+            </button>
+          )}
+
+          {onOpenAIPlanner && (
+            <button
+              type="button"
+              onClick={() => onOpenAIPlanner({ openWizard: false })}
+              title="Otvori AI Planer treninga"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-volt-400/15 hover:bg-volt-400/25 border border-volt-400/35 text-volt-400 text-xs font-bold transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">AI Planer</span>
+            </button>
+          )}
+
+          {/* Week navigation */}
+          <div className="flex items-stretch bg-zinc-900 rounded-lg p-1 border border-zinc-800 gap-1">
+            <button
+              onClick={goWeekBack}
+              title="Prošli tjedan (-7 dana)"
+              className="px-2 py-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors flex flex-col items-center justify-center gap-0.5 group/nav"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-zinc-500 group-hover/nav:text-zinc-300 leading-none">-1 tjedan</span>
+            </button>
+            <button
+              onClick={goToday}
+              title="Idi na današnji tjedan"
+              className="px-3 py-1 hover:bg-zinc-800 rounded text-[11px] font-mono font-bold text-volt-400 uppercase tracking-wider transition-colors flex flex-col items-center justify-center border-x border-zinc-800/80"
+            >
+              <span>Danas</span>
+            </button>
+            <button
+              onClick={goWeekForward}
+              title="Sljedeći tjedan (+7 dana)"
+              className="px-2 py-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors flex flex-col items-center justify-center gap-0.5 group/nav"
+            >
+              <ChevronRight className="w-4 h-4" />
+              <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-zinc-500 group-hover/nav:text-zinc-300 leading-none">+1 tjedan</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1045,7 +1401,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             handleDeleteLocalActivity={handleDeleteLocalActivity}
             handleDeleteCompletedActivity={handleDeleteCompletedActivity}
             onViewActivity={setViewingActivity}
-            onEditWorkout={setEditingWorkout}
+            onEditWorkout={handleOpenWorkoutOrRace}
             onAddWorkoutClick={setSelectedDateForNew}
           />
         ))}
@@ -1241,7 +1597,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       handlePair={handlePair}
                       handleDeleteLocalActivity={handleDeleteLocalActivity}
                       handleDeleteCompletedActivity={handleDeleteCompletedActivity}
-                      onEditWorkout={setEditingWorkout}
+                      onEditWorkout={handleOpenWorkoutOrRace}
                       onViewActivity={setViewingActivity}
                       onAddWorkoutClick={setSelectedDateForNew}
                       compact={false}

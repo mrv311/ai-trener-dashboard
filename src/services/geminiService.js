@@ -7,6 +7,12 @@
 import { compileKnowledgeBasePrompt } from './aiKnowledgeBase';
 import { buildAthleteContextPrompt, findExactHistoricalRecord } from './historyService';
 import { getAttachmentFromLocalDB } from './aiFilesStorage';
+import {
+  WEEKDAY_DEFS,
+  addDaysIso,
+  getMondayOfWeekIso,
+  summarizeWeeklySchedule
+} from '../utils/plannerUtils';
 
 const STORAGE_KEY_CUSTOM_API_KEY = 'ergvibe_custom_gemini_key';
 const STORAGE_KEY_ANALYSES_CACHE = 'ergvibe_ai_workout_analyses_v1';
@@ -911,6 +917,358 @@ Napomena za jedinice: 'durationMinutes' je OBAVEZNO cijeli broj minuta (npr. 60 
     console.error('[geminiService] JSON parse error:', err, rawJsonText);
     throw new Error('AI nije vratio valjani JSON format plana. Pokušaj ponovno.');
   }
+}
+
+/**
+ * Korak 1 dvofaznog planera: Generira cjelokupni makrociklus (faze i tjedne sažetke)
+ * do datuma ciljnog eventa ili za zadani broj fitness tjedana.
+ */
+export async function generateMacrocycleBlueprint({
+  goalMode = 'fitness',
+  goalTitle = 'Podizanje FTP-a',
+  eventDate = null,
+  eventType = '',
+  eventPriority = 'RACE_A',
+  eventDistanceKm = '',
+  eventElevationM = '',
+  totalWeeks = 8,
+  startDate,
+  weeklySchedule,
+  methodology = 'auto',
+  experience = '',
+  riderType = '',
+  weakness = '',
+  notes = '',
+  athleteProfile,
+  liveWorkouts = [],
+  wellnessData = {},
+  model = 'gemini-3.8-flash',
+  userId = null
+}) {
+  const safeWeeks = Math.max(1, Math.min(40, Number(totalWeeks) || 4));
+  const baseMondayIso = getMondayOfWeekIso(startDate || new Date().toISOString().slice(0, 10));
+  const scheduleSummary = summarizeWeeklySchedule(weeklySchedule);
+
+  const athleteContextPrompt = await buildAthleteContextPrompt({
+    athleteProfile,
+    liveWorkouts,
+    wellnessData,
+    userId
+  });
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
+
+  const eventLines = goalMode === 'event'
+    ? [
+        `- Način plana: PRIPREMA ZA EVENT / UTRKU`,
+        `- Naziv eventa: ${goalTitle}`,
+        `- Datum eventa: ${eventDate} (Prioritet: ${eventPriority})`,
+        eventType ? `- Tip eventa: ${eventType}` : null,
+        eventDistanceKm ? `- Udaljenost: ${eventDistanceKm} km` : null,
+        eventElevationM ? `- Visinska razlika: ${eventElevationM} m` : null
+      ].filter(Boolean).join('\n')
+    : [
+        `- Način plana: OPĆI FITNESS I NAPREDAK`,
+        `- Glavni cilj: ${goalTitle}`
+      ].join('\n');
+
+  const methodologyInstruction = methodology && methodology !== 'auto'
+    ? `Sportaš je zatražio metodologiju: "${methodology}". Poštuj je.`
+    : `Odaberi i preporuči optimalnu trenersku metodologiju (npr. Polarizirani 80/20, Piramidalni / Sweet Spot ili Coggan Threshold) s obzirom na cilj, iskustvo i raspoložive sate sportaša.`;
+
+  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
+
+### ZADATAK ARHITEKTA MAKROCIKLUSA:
+Izradi cjelokupni dugoročni plan periodizacije (MAKROCIKLUS) u trajanju od točno ${safeWeeks} tjedana počevši od tjedna koji započinje u ponedjeljak ${baseMondayIso}.
+U ovoj fazi NE generiraj detaljne intervale pojedinačnih treninga — fokus je na fazama, progresiji opterećenja (TSS), tjednom oporavku (svaki 3. ili 4. tjedan rasterećenja ako ima >= 4 tjedna) i pravilnom taperu ako postoji event.
+
+PARAMETRI UPITNIKA SPORTAŠA:
+${eventLines}
+- Trajanje plana: ${safeWeeks} tjedana
+- Dostupno dana tjedno: ${scheduleSummary.workoutsPerWeek}x tjedno (~${scheduleSummary.hoursPerWeek} h/tjedno)
+${experience ? `- Iskustvo: ${experience} god.` : ''}
+${riderType ? `- Profil vozača: ${riderType}` : ''}
+${weakness ? `- Fokus / Slabost za poboljšati: ${weakness}` : ''}
+${notes ? `- Dodatne napomene: ${notes}` : ''}
+
+RASPORED DANA SPORTAŠA:
+${scheduleSummary.promptText}
+
+${methodologyInstruction}
+
+VAŽNO: Vrati ISKLJUČIVO valjani JSON objekt bez markdown backtick oznaka:
+{
+  "planTitle": "Kratki motivirajući naziv ciklusa",
+  "recommendedMethodology": "Odabrana metodologija",
+  "methodologyReason": "Kratko objašnjenje (1-2 rečenice) zašto ova metodologija odgovara sportašu i cilju",
+  "summary": "Sažetak cijelog plana i očekivanog napretka",
+  "physiologicalRationale": "Fiziološko obrazloženje periodizacije u kontekstu trenutnog CTL/TSB i cilja",
+  "phases": [
+    {
+      "name": "Baza 1 — Aerobna izgradnja",
+      "phaseType": "base | build | peak | taper | race",
+      "weekFrom": 1,
+      "weekTo": 4,
+      "focus": "Kratki opis fokusa faze",
+      "weeklyHours": 6.0
+    }
+  ],
+  "weeks": [
+    {
+      "weekNumber": 1,
+      "phaseType": "base | build | peak | taper | race",
+      "phaseLabel": "Baza 1",
+      "focus": "Konkretan fokus ovog tjedna",
+      "targetHours": 6.0,
+      "targetTss": 320,
+      "keySessions": ["Sweet Spot 3x10m", "Duga Z2 vožnja"],
+      "isRecoveryWeek": false
+    }
+  ]
+}
+Niz "weeks" MORA sadržavati točno ${safeWeeks} elemenata (weekNumber od 1 do ${safeWeeks}).`;
+
+  const rawJsonText = await callGeminiApi({
+    systemInstruction,
+    contents: [{ role: 'user', parts: [{ text: `Kreiraj makrociklus (${safeWeeks} tjedana) za cilj: ${goalTitle}` }] }],
+    model,
+    temperature: 0.25,
+    responseMimeType: 'application/json'
+  });
+
+  let parsed;
+  try {
+    const cleanJson = rawJsonText.replace(/```json\s*|```/g, '').trim();
+    parsed = JSON.parse(cleanJson);
+  } catch (err) {
+    console.error('[geminiService] Macrocycle JSON parse error:', err, rawJsonText);
+    throw new Error('AI nije vratio valjani JSON makrociklusa. Pokušaj ponovno.');
+  }
+
+  const rawWeeks = Array.isArray(parsed?.weeks) ? parsed.weeks : [];
+  const normalizedWeeks = [];
+  for (let w = 1; w <= safeWeeks; w++) {
+    const found = rawWeeks.find(item => Number(item?.weekNumber) === w) || rawWeeks[w - 1] || {};
+    const wkStart = addDaysIso(baseMondayIso, (w - 1) * 7);
+    const wkEnd = addDaysIso(wkStart, 6);
+    normalizedWeeks.push({
+      weekNumber: w,
+      startDate: wkStart,
+      endDate: wkEnd,
+      phaseType: found.phaseType || (w === safeWeeks && goalMode === 'event' ? 'race' : 'base'),
+      phaseLabel: found.phaseLabel || `Tjedan ${w}`,
+      focus: found.focus || 'Kontinuirani razvoj kondicije',
+      targetHours: Number(found.targetHours) > 0 ? Number(found.targetHours) : scheduleSummary.hoursPerWeek,
+      targetTss: Number(found.targetTss) > 0 ? Math.round(Number(found.targetTss)) : Math.round(scheduleSummary.hoursPerWeek * 55),
+      keySessions: Array.isArray(found.keySessions) ? found.keySessions.slice(0, 4) : [],
+      isRecoveryWeek: Boolean(found.isRecoveryWeek)
+    });
+  }
+
+  return {
+    planId: `plan_${Date.now()}`,
+    goalMode,
+    goalTitle,
+    eventDate: goalMode === 'event' ? eventDate : null,
+    eventType: goalMode === 'event' ? eventType : '',
+    eventPriority: goalMode === 'event' ? eventPriority : null,
+    startDate: startDate || baseMondayIso,
+    baseMondayIso,
+    totalWeeks: safeWeeks,
+    planTitle: parsed?.planTitle || `${goalTitle} (${safeWeeks} tj.)`,
+    recommendedMethodology: parsed?.recommendedMethodology || (methodology !== 'auto' ? methodology : 'Piramidalni / Polarizirani'),
+    methodologyReason: parsed?.methodologyReason || '',
+    summary: parsed?.summary || '',
+    physiologicalRationale: parsed?.physiologicalRationale || '',
+    phases: Array.isArray(parsed?.phases) ? parsed.phases : [],
+    weeks: normalizedWeeks,
+    generatedAt: new Date().toISOString()
+  };
+}
+
+/**
+ * Korak 2 dvofaznog planera: Generira detaljne strukturirane treninge za jedan blok (2–4 tjedna)
+ * strogo poštujući korisnikove odabrane dane u tjednu i maksimalno trajanje po danu.
+ */
+export async function generatePlanBlockWorkouts({
+  blueprint,
+  weekFrom = 1,
+  weekTo = 4,
+  weeklySchedule,
+  minWorkoutDate = null,
+  notes = '',
+  athleteProfile,
+  liveWorkouts = [],
+  wellnessData = {},
+  model = 'gemini-3.8-flash',
+  userId = null
+}) {
+  if (!blueprint || !Array.isArray(blueprint.weeks)) {
+    throw new Error('Nedostaje makrociklus za generiranje bloka treninga.');
+  }
+
+  const targetWeeks = blueprint.weeks.filter(
+    w => w.weekNumber >= weekFrom && w.weekNumber <= weekTo
+  );
+  if (targetWeeks.length === 0) {
+    throw new Error('Odabrani blok nema definiranih tjedana u makrociklusu.');
+  }
+
+  const scheduleSummary = summarizeWeeklySchedule(weeklySchedule);
+  if (scheduleSummary.activeDays.length === 0) {
+    throw new Error('Moraš odabrati barem jedan trening dan u tjednu.');
+  }
+
+  const athleteContextPrompt = await buildAthleteContextPrompt({
+    athleteProfile,
+    liveWorkouts,
+    wellnessData,
+    userId
+  });
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
+
+  const weeksBrief = targetWeeks.map(w =>
+    `- Tjedan ${w.weekNumber} (${w.startDate} do ${w.endDate}) | Faza: ${w.phaseLabel} (${w.phaseType}) | Fokus: ${w.focus} | Cilj: ~${w.targetHours}h, ~${w.targetTss} TSS${w.isRecoveryWeek ? ' [TJEDAN OPORAVKA]' : ''}${w.keySessions?.length ? ` | Ključni treninzi: ${w.keySessions.join(', ')}` : ''}`
+  ).join('\n');
+
+  const eventConstraint = blueprint.goalMode === 'event' && blueprint.eventDate
+    ? `VAŽNO ZA EVENT: Ciljni event "${blueprint.goalTitle}" je dana ${blueprint.eventDate}. Ako taj datum pada u ovaj blok, na sam dan ${blueprint.eventDate} NE generiraj trening (tamo stoji utrka!), a dan prije eventualno kratki "Openers" trening (30-40 min s 2-3 kratka aktivacijska skoka). Također ne generiraj treninge nakon ${blueprint.eventDate}.`
+    : '';
+
+  const minDateConstraint = minWorkoutDate
+    ? `Početni datum od kojeg sportaš kreće je ${minWorkoutDate} — za Tjedan 1 generiraj samo aktivne dane na ili nakon ${minWorkoutDate}.`
+    : '';
+
+  const allowedDayKeys = scheduleSummary.activeDays.map(d => d.key);
+
+  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
+
+### ZADATAK GENERATORA BLOKA TRENINGA:
+Generiraj detaljne, strukturirane biciklističke treninge za BLOK (Tjedni ${weekFrom}–${weekTo}) iz postojećeg makrociklusa "${blueprint.planTitle}".
+Metodologija: ${blueprint.recommendedMethodology || 'Piramidalni / Polarizirani'}.
+${notes ? `Dodatne napomene sportaša: "${notes}"` : ''}
+
+TJEDNI U OVOM BLOKU:
+${weeksBrief}
+
+STROGI RASPORED DANA I MAKSIMALNOG TRAJANJA (POŠTUJ TOČNO):
+${scheduleSummary.promptText}
+Dozvoljeni ključevi dana ("dayKey") su ISKLJUČIVO: ${allowedDayKeys.join(', ')}.
+Za svaki dan poštuj maksimalno navedeno trajanje u minutama (+/- 10 min, nikada znatno duže od limita tog dana).
+${eventConstraint}
+${minDateConstraint}
+
+VAŽNO: Odgovor MORA biti ISKLJUČIVO valjani JSON objekt bez markdown backtick oznaka:
+{
+  "blockSummary": "Kratki opis ovog bloka (2 rečenice)",
+  "weeks": [
+    {
+      "weekNumber": ${weekFrom},
+      "theme": "Fokus tjedna",
+      "targetTss": 320,
+      "workouts": [
+        {
+          "dayKey": "tue",
+          "dayName": "Utorak",
+          "title": "Sweet Spot 3x10",
+          "category": "SweetSpot | Endurance | Tempo | Threshold | VO2max | Recovery | Anaerobic",
+          "durationMinutes": 60,
+          "estimatedTss": 62,
+          "coachNote": "Fiziološki cilj i savjet za izvedbu",
+          "intervalsCode": "- 10m 55-70% Zagrijavanje\\n3x\\n- 10m 90% Sweet Spot\\n- 4m 50% Oporavak\\n- 8m 50% Hlađenje",
+          "steps": [
+            { "name": "Zagrijavanje", "duration": 600, "power": 62 },
+            { "name": "Sweet Spot 1", "duration": 600, "power": 90 },
+            { "name": "Oporavak", "duration": 240, "power": 50 }
+          ]
+        }
+      ]
+    }
+  ]
+}
+Pravila za jedinice: 'durationMinutes' je cijeli broj MINUTA (npr. 60, NIKAKO 3600). U 'steps' je 'duration' u SEKUNDAMA, a 'power' u % FTP-a. Zbroj trajanja koraka u 'intervalsCode' mora odgovarati 'durationMinutes'.`;
+
+  const rawJsonText = await callGeminiApi({
+    systemInstruction,
+    contents: [{ role: 'user', parts: [{ text: `Generiraj detaljne treninge za Tjedne ${weekFrom}–${weekTo} plana "${blueprint.planTitle}".` }] }],
+    model,
+    temperature: 0.25,
+    responseMimeType: 'application/json'
+  });
+
+  let parsed;
+  try {
+    const cleanJson = rawJsonText.replace(/```json\s*|```/g, '').trim();
+    parsed = JSON.parse(cleanJson);
+  } catch (err) {
+    console.error('[geminiService] Block workouts JSON parse error:', err, rawJsonText);
+    throw new Error('AI nije vratio valjani JSON format za blok treninga. Pokušaj ponovno.');
+  }
+
+  const dayMap = Object.fromEntries(WEEKDAY_DEFS.map(d => [d.key, d]));
+  const rawWeeks = Array.isArray(parsed?.weeks) ? parsed.weeks : [];
+
+  const normalizedWeeks = targetWeeks.map((metaWk, idx) => {
+    const aiWk = rawWeeks.find(w => Number(w?.weekNumber) === metaWk.weekNumber) || rawWeeks[idx] || {};
+    const aiWorkouts = Array.isArray(aiWk.workouts) ? aiWk.workouts : [];
+
+    const normalizedWorkouts = [];
+    const usedDates = new Set();
+
+    aiWorkouts.forEach((wo) => {
+      let dayKey = String(wo?.dayKey || '').toLowerCase().trim();
+      if (!dayMap[dayKey] && wo?.dayName) {
+        const lowerName = String(wo.dayName).toLowerCase();
+        const matched = WEEKDAY_DEFS.find(d => lowerName.startsWith(d.short.toLowerCase()) || lowerName.includes(d.name.toLowerCase().slice(0, 3)));
+        if (matched) dayKey = matched.key;
+      }
+
+      const dayDef = dayMap[dayKey];
+      if (!dayDef) return;
+      if (!weeklySchedule?.[dayKey]?.enabled) return;
+
+      const exactDate = addDaysIso(metaWk.startDate, dayDef.index);
+      if (minWorkoutDate && exactDate < minWorkoutDate) return;
+      if (blueprint.goalMode === 'event' && blueprint.eventDate && exactDate >= blueprint.eventDate) return;
+      if (usedDates.has(exactDate)) return;
+      usedDates.add(exactDate);
+
+      normalizedWorkouts.push({
+        dayKey,
+        dayName: dayDef.name,
+        date: exactDate,
+        title: wo.title || 'AI Trening',
+        category: wo.category || 'Endurance',
+        durationMinutes: Math.max(20, Math.min(360, Number(wo.durationMinutes) || weeklySchedule[dayKey].minutes || 60)),
+        estimatedTss: Math.max(10, Math.round(Number(wo.estimatedTss) || 50)),
+        coachNote: wo.coachNote || wo.description || '',
+        intervalsCode: wo.intervalsCode || '',
+        steps: Array.isArray(wo.steps) ? wo.steps : null
+      });
+    });
+
+    normalizedWorkouts.sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      weekNumber: metaWk.weekNumber,
+      startDate: metaWk.startDate,
+      endDate: metaWk.endDate,
+      phaseType: metaWk.phaseType,
+      phaseLabel: metaWk.phaseLabel,
+      theme: aiWk.theme || metaWk.focus,
+      targetTss: Number(aiWk.targetTss) || metaWk.targetTss,
+      isRecoveryWeek: metaWk.isRecoveryWeek,
+      workouts: normalizedWorkouts
+    };
+  });
+
+  return {
+    blockKey: `${weekFrom}-${weekTo}`,
+    weekFrom,
+    weekTo,
+    blockSummary: parsed?.blockSummary || '',
+    weeks: normalizedWeeks,
+    generatedAt: new Date().toISOString()
+  };
 }
 
 /**
