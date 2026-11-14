@@ -261,7 +261,7 @@ export default function TrainingPlannerView({
       const blocks = chunkWeeksIntoBlocks(enrichedBlueprint.totalWeeks, 4);
       const firstBlock = blocks[0];
 
-      setGenerationStage('block');
+      setGenerationStage('block1');
 
       const firstBlockData = await generatePlanBlockWorkouts({
         blueprint: enrichedBlueprint,
@@ -269,6 +269,7 @@ export default function TrainingPlannerView({
         weekTo: firstBlock.weekTo,
         weeklySchedule: formData.weeklySchedule,
         minWorkoutDate: formData.startDate,
+        prioritizeCustomSources: Boolean(formData.prioritizeCustomSources),
         notes: formData.notes,
         athleteProfile: { ...profile, ...formData },
         liveWorkouts: workouts,
@@ -315,6 +316,7 @@ export default function TrainingPlannerView({
         weekTo: blockMeta.weekTo,
         weeklySchedule: schedule,
         minWorkoutDate: minDate,
+        prioritizeCustomSources: Boolean(questionnaire?.prioritizeCustomSources),
         notes: questionnaire?.notes || '',
         athleteProfile: profile,
         liveWorkouts: workouts,

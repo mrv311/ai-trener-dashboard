@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Flag, Activity, Calendar, Clock, Sparkles, ArrowRight, ArrowLeft,
-  AlertCircle, Loader2, Trophy, Gauge, X
+  AlertCircle, Loader2, Trophy, Gauge, X, BookOpen
 } from 'lucide-react';
+import { getCustomKnowledgeSources } from '../../services/aiKnowledgeBase';
 import {
   WEEKDAY_DEFS,
   DURATION_TIERS,
@@ -38,6 +39,39 @@ const WEAKNESS_PRESETS = [
   'VO2 Max i kratki napadi',
   'Izdržljivost preko 3h (Z2)',
   'Oporavak između intervala'
+];
+
+const METHODOLOGY_OPTIONS = [
+  {
+    id: 'auto',
+    label: 'AI Preporuka (Automatski)',
+    desc: 'AI odabire optimalni model prema cilju, satima i trenutnom umoru (CTL/TSB)'
+  },
+  {
+    id: 'Polarizirani 80/20 (Seiler)',
+    label: 'Polarizirani 80/20 (Seiler)',
+    desc: '~80% lagana Z2 vožnja ispod LT1 + ~20% jaki VO2max / Threshold intervali'
+  },
+  {
+    id: 'Piramidalni / Sweet Spot',
+    label: 'Piramidalni / Sweet Spot',
+    desc: 'Z2 baza + fokus na Sweet Spot (88–94% FTP) i Tempo — odlično za 4–8h/tj.'
+  },
+  {
+    id: 'VO2 Max Fokus (Intenzivni blok)',
+    label: 'VO2 Max Fokus',
+    desc: 'Klasični VO2max blok (5x3m, 4x4m @ 108–118%, 30/15s) uz čisti Z2 oporavak'
+  },
+  {
+    id: 'Coggan Threshold Fokus',
+    label: 'Coggan Threshold / FTP',
+    desc: 'Specifično podizanje laktatnog praga (95–105% FTP, 2x20m, Over-Under)'
+  },
+  {
+    id: 'Joe Friel Periodizacija',
+    label: 'Joe Friel Periodizacija',
+    desc: 'Progresivni ciklusi opterećenja (3:1 tjedan rasterećenja) i vrhunac forme za cilj'
+  }
 ];
 
 export default function PlanQuestionnaire({
@@ -101,6 +135,9 @@ export default function PlanQuestionnaire({
   const [riderType, setRiderType] = useState(profile?.riderType || 'all-rounder');
   const [weakness, setWeakness] = useState(profile?.weakness || '');
   const [methodology, setMethodology] = useState('auto');
+  const [methodologyTouched, setMethodologyTouched] = useState(false);
+  const customSources = useMemo(() => getCustomKnowledgeSources(), []);
+  const [prioritizeCustomSources, setPrioritizeCustomSources] = useState(false);
   const [notes, setNotes] = useState(initialPrefill?.notes || '');
   const [validationError, setValidationError] = useState(null);
 
@@ -233,6 +270,10 @@ export default function PlanQuestionnaire({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (step < 3) {
+      handleNext();
+      return;
+    }
     if (!validateStep1() || !validateStep2()) return;
 
     try {
@@ -259,6 +300,7 @@ export default function PlanQuestionnaire({
       riderType,
       weakness: weakness.trim(),
       methodology,
+      prioritizeCustomSources: customSources.length > 0 && prioritizeCustomSources,
       notes: notes.trim()
     });
   };
@@ -326,7 +368,7 @@ export default function PlanQuestionnaire({
           {[
             { num: 1, label: 'Cilj' },
             { num: 2, label: 'Raspored' },
-            { num: 3, label: 'Profil' }
+            { num: 3, label: 'Metodologija & Profil' }
           ].map(item => {
             const active = step === item.num;
             const passed = step > item.num;
@@ -566,7 +608,12 @@ export default function PlanQuestionnaire({
                       <button
                         key={g.id}
                         type="button"
-                        onClick={() => setFitnessGoal(g.id)}
+                        onClick={() => {
+                          setFitnessGoal(g.id);
+                          if (!methodologyTouched && g.id.toLowerCase().includes('vo2')) {
+                            setMethodology('VO2 Max Fokus (Intenzivni blok)');
+                          }
+                        }}
                         className={`p-2.5 rounded-lg border text-left transition-all ${
                           fitnessGoal === g.id
                             ? 'bg-volt-400/12 border-volt-400/50 text-volt-300'
@@ -794,6 +841,63 @@ export default function PlanQuestionnaire({
               </span>
             </div>
 
+            {/* Trenerska metodologija — istaknuti odabir na Koraku 3 */}
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                  Trenerska metodologija treninga *
+                </label>
+                <span className="text-[10px] text-zinc-500">Odaberi pristup po kojem AI slaže plan i intervale</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {METHODOLOGY_OPTIONS.map(opt => {
+                  const selected = methodology === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setMethodology(opt.id);
+                        setMethodologyTouched(true);
+                      }}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        selected
+                          ? 'bg-volt-400/12 border-volt-400/60 shadow-sm'
+                          : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className={`text-xs font-bold leading-tight ${selected ? 'text-volt-300' : 'text-zinc-100'}`}>
+                        {opt.label}
+                      </div>
+                      <div className="text-[11px] text-zinc-400 mt-1 leading-snug">
+                        {opt.desc}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {customSources.length > 0 && (
+                <label className="mt-3 flex items-start gap-2.5 p-3 rounded-xl bg-sky-950/25 border border-sky-500/30 cursor-pointer hover:border-sky-500/50 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={prioritizeCustomSources}
+                    onChange={(e) => setPrioritizeCustomSources(e.target.checked)}
+                    className="accent-sky-400 w-4 h-4 rounded mt-0.5 shrink-0"
+                  />
+                  <div className="text-xs leading-snug">
+                    <div className="font-bold text-sky-200 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+                      Daj prednost mojim dodanim izvorima iz Baze znanja ({customSources.length})
+                    </div>
+                    <div className="text-[11px] text-sky-300/75 mt-0.5">
+                      Izvori: {customSources.slice(0, 3).map(s => s.title).join(', ')}{customSources.length > 3 ? ` +${customSources.length - 3}` : ''}
+                    </div>
+                  </div>
+                </label>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
@@ -824,25 +928,11 @@ export default function PlanQuestionnaire({
                 <select
                   value={riderType}
                   onChange={(e) => setRiderType(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-xs font-bold text-zinc-200 focus:border-volt-400 outline-none mb-2"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-xs font-bold text-zinc-200 focus:border-volt-400 outline-none"
                 >
                   {RIDER_TYPE_OPTIONS.map(opt => (
                     <option key={opt.id} value={opt.id}>{opt.label}</option>
                   ))}
-                </select>
-
-                <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Trenerska metodologija
-                </label>
-                <select
-                  value={methodology}
-                  onChange={(e) => setMethodology(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-xs font-bold text-zinc-200 focus:border-volt-400 outline-none"
-                >
-                  <option value="auto">Automatski — AI bira optimalnu (Preporučeno)</option>
-                  <option value="Polarizirani 80/20 (Seiler)">Polarizirani 80/20 (Seiler)</option>
-                  <option value="Piramidalni / Sweet Spot">Piramidalni / Sweet Spot</option>
-                  <option value="Coggan Threshold Fokus">Coggan Threshold Fokus</option>
                 </select>
               </div>
             </div>

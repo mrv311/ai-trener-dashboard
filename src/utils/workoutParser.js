@@ -333,6 +333,37 @@ export const parseWorkoutDoc = (workoutDoc, ftp = 200) => {
   return null;
 };
 
+const isCooldownOrWarmupLine = (line = '') =>
+  /\b(hlađ\w*|hlad\w*|cool\s*-?\s*down|zagrijav\w*|warm\s*-?\s*up|opušta\w*)\b/i.test(String(line));
+
+/**
+ * Sigurno parsira trajanje koraka iz početka linije (prije opisa/oznake koraka)
+ * kako tekstualne oznake poput "(30/15s)" ili "(1h ukupno)" ne bi udvostručile trajanje.
+ */
+function parseStepDurationSeconds(cleanLine = '') {
+  const withoutDash = String(cleanLine).replace(/^\s*-\s*/, '').trim();
+  if (!withoutDash) return 0;
+
+  // Ako postoji broj s jedinicom prije % ili W, analiziraj samo prefiks do prvog % / W
+  const metricIdx = withoutDash.search(/\d+(?:\.\d+)?\s*(?:%|w\b)/i);
+  const candidate = metricIdx > 0 ? withoutDash.slice(0, metricIdx).trim() : withoutDash;
+
+  const colonMatch = candidate.match(/\b(\d+):(\d{2})\b/);
+  if (colonMatch) {
+    return parseInt(colonMatch[1], 10) * 60 + parseInt(colonMatch[2], 10);
+  }
+
+  let secs = 0;
+  const hMatch = candidate.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)(?![a-zA-Z])/i);
+  const mMatch = candidate.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins)(?![a-zA-Z])/i);
+  const sMatch = candidate.match(/(\d+(?:\.\d+)?)\s*(?:s|sec|secs)(?![a-zA-Z])/i);
+
+  if (hMatch) secs += Math.round(parseFloat(hMatch[1]) * 3600);
+  if (mMatch) secs += Math.round(parseFloat(mMatch[1]) * 60);
+  if (sMatch) secs += Math.round(parseFloat(sMatch[1]));
+  return secs;
+}
+
 export const parseIntervalsCode = (code, ftp = 200) => {
   if (!code || typeof code !== 'string') {
     return { duration: 0, tss: 0, np: 0, blocks: [], allSteps: [], zones: { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, ss: 0 } };
@@ -380,7 +411,7 @@ export const parseIntervalsCode = (code, ftp = 200) => {
 
     if (pureMultiplierMatch) {
       flushRepeatBuffer();
-      activeRepeatCount = Math.min(50, Math.max(1, parseInt(pureMultiplierMatch[1], 10)));
+      activeRepeatCount = Math.min(30, Math.max(1, parseInt(pureMultiplierMatch[1], 10)));
       return;
     }
 
@@ -389,25 +420,17 @@ export const parseIntervalsCode = (code, ftp = 200) => {
       if (currentBlock.steps.length > 0) blocks.push(currentBlock);
       currentBlock = { name: cleanLine, steps: [] };
       if (headerMultiplierMatch) {
-        activeRepeatCount = Math.min(50, Math.max(1, parseInt(headerMultiplierMatch[1], 10)));
+        activeRepeatCount = Math.min(30, Math.max(1, parseInt(headerMultiplierMatch[1], 10)));
       }
       return;
     }
 
-    // Parsiranje trajanja koraka (podržava 1m20s, 1m 20s, 1:20, 90s, 1.5m, 1h20m)
-    let secs = 0;
-    const colonMatch = cleanLine.match(/\b(\d+):(\d{2})\b/);
-    if (colonMatch) {
-      secs = parseInt(colonMatch[1], 10) * 60 + parseInt(colonMatch[2], 10);
-    } else {
-      const hMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)(?![a-zA-Z])/i);
-      const mMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins)(?![a-zA-Z])/i);
-      const sMatch = cleanLine.match(/(\d+(?:\.\d+)?)\s*(?:s|sec|secs)(?![a-zA-Z])/i);
-
-      if (hMatch) secs += Math.round(parseFloat(hMatch[1]) * 3600);
-      if (mMatch) secs += Math.round(parseFloat(mMatch[1]) * 60);
-      if (sMatch) secs += Math.round(parseFloat(sMatch[1]));
+    // Zaštita: ako je AI zaboravio prazan red nakon Nx bloka prije Hlađenja / Zagrijavanja, zatvori blok
+    if (activeRepeatCount > 1 && pendingRepeatSteps.length >= 1 && isCooldownOrWarmupLine(cleanLine)) {
+      flushRepeatBuffer();
     }
+
+    const secs = parseStepDurationSeconds(cleanLine);
 
     let powerMin = 0, powerMax = 0, powerAvg = 0;
     // Podržava 65-75%, 65%-75%, 65% - 75%, 65-75% FTP, ramp 65-75%
@@ -1062,4 +1085,97 @@ function parseERG(ergText) {
     category,
     steps: mergedSteps
   };
+}
+
+/**
+ * Pretvara strukturirani niz koraka u Intervals.icu tekstualni kod.
+ */
+export function stepsToIntervalsCode(steps) {
+  if (!Array.isArray(steps) || steps.length === 0) return '';
+  return steps.map(st => {
+    const sec = Math.max(10, Math.round(Number(st.duration) || 60));
+    const mins = Math.floor(sec / 60);
+    const remSec = Math.round(sec % 60);
+    let durStr = '';
+    if (mins > 0 && remSec === 0) durStr = `${mins}m`;
+    else if (mins > 0 && remSec > 0) durStr = `${mins}m${remSec}s`;
+    else durStr = `${remSec}s`;
+
+    let pwrStr = '50%';
+    if (typeof st.power === 'string' && st.power.trim()) {
+      pwrStr = st.power.includes('%') ? st.power.trim() : `${st.power.trim()}%`;
+    } else {
+      const norm = resolveStepPowerPct(st);
+      pwrStr = norm.min !== norm.max ? `${norm.min}-${norm.max}%` : `${norm.avg}%`;
+    }
+
+    const rawLabel = st.name
+      ? String(st.name).trim()
+      : (st.text
+        ? String(st.text)
+            .replace(/^\s*-\s*/, '')
+            .replace(/^(?:\d+:\d{2}|(?:\d+(?:\.\d+)?\s*(?:h|hr|hrs|m|min|mins|s|sec|secs)\s*)+)\s*(?:ramp\s*)?(?:\d+(?:\.\d+)?\s*(?:%?\s*-\s*\d+(?:\.\d+)?\s*)?(?:%|w)\s*(?:FTP)?\s*)?/i, '')
+            .trim()
+        : '');
+    const label = rawLabel ? ` ${rawLabel}` : '';
+    return `- ${durStr} ${pwrStr}${label}`;
+  }).join('\n');
+}
+
+/**
+ * Proširuje "Nx" blokove s više koraka u eksplicitni niz koraka
+ * kako bi ErgVibe parser i Intervals.icu tekst bili 100% usklađeni.
+ */
+export function normalizeIntervalsWorkoutText(rawCode = '') {
+  if (!rawCode || typeof rawCode !== 'string') return '';
+  const lines = rawCode.split(/\r?\n/);
+  const output = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+    const isStepLine = trimmed.startsWith('-') || /^\d+:\d{2}/.test(trimmed) || /^\d+\s*(?:h|hr|hrs|m|min|mins|s|sec|secs)(?![a-zA-Z])/i.test(trimmed);
+    const pureRepMatch = trimmed.match(/^(\d+)\s*x\s*:?$/i);
+    const headerRepMatch = !pureRepMatch && !isStepLine && !trimmed.includes('%') ? trimmed.match(/\b(\d+)\s*x\b/i) : null;
+    const repMatch = pureRepMatch || headerRepMatch;
+
+    if (repMatch) {
+      const reps = Math.min(30, Math.max(1, parseInt(repMatch[1], 10)));
+      if (headerRepMatch) {
+        const cleanHeader = trimmed.replace(/\b\d+\s*x\b/i, '').trim();
+        if (cleanHeader) output.push(cleanHeader);
+      }
+      const blockSteps = [];
+      let j = i + 1;
+      while (j < lines.length) {
+        const nextLine = lines[j].trim();
+        if (!nextLine) {
+          j++;
+          break;
+        }
+        const nextIsStep = nextLine.startsWith('-') || /^\d+:\d{2}/.test(nextLine) || /^\d+\s*(?:h|hr|hrs|m|min|mins|s|sec|secs)(?![a-zA-Z])/i.test(nextLine);
+        if (!nextIsStep) {
+          break;
+        }
+        if (blockSteps.length >= 1 && isCooldownOrWarmupLine(nextLine)) {
+          break;
+        }
+        blockSteps.push(nextLine.startsWith('-') ? nextLine : `- ${nextLine}`);
+        j++;
+      }
+
+      if (blockSteps.length > 0) {
+        for (let r = 0; r < reps; r++) {
+          blockSteps.forEach(s => output.push(s));
+        }
+        i = j;
+        continue;
+      }
+    }
+
+    output.push(lines[i]);
+    i++;
+  }
+
+  return output.join('\n').trim();
 }

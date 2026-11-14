@@ -1,81 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { CalendarPlus, Play, Check, Clock, Activity } from 'lucide-react';
-import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty, resolveStepPowerPct } from '../../utils/workoutParser';
+import {
+  parseIntervalsCode,
+  categorizeWorkout,
+  calculateCategoryDifficulty,
+  stepsToIntervalsCode,
+  normalizeIntervalsWorkoutText
+} from '../../utils/workoutParser';
 
-/**
- * Pretvara strukturirani niz koraka (npr. iz AI JSON plana) u Intervals.icu tekstualni kod.
- */
-export function stepsToIntervalsCode(steps) {
-  if (!Array.isArray(steps) || steps.length === 0) return '';
-  return steps.map(st => {
-    const sec = st.duration || 60;
-    const mins = Math.floor(sec / 60);
-    const remSec = Math.round(sec % 60);
-    let durStr = '';
-    if (mins > 0 && remSec === 0) durStr = `${mins}m`;
-    else if (mins > 0 && remSec > 0) durStr = `${mins}m${remSec}s`;
-    else durStr = `${remSec}s`;
-
-    let pwrStr = '50%';
-    if (typeof st.power === 'string' && st.power.trim()) {
-      pwrStr = st.power.includes('%') ? st.power : `${st.power}%`;
-    } else {
-      const norm = resolveStepPowerPct(st);
-      pwrStr = norm.min !== norm.max ? `${norm.min}-${norm.max}%` : `${norm.avg}%`;
-    }
-
-    const label = st.name || st.text ? ` ${st.name || st.text}` : '';
-    return `- ${durStr} ${pwrStr}${label}`;
-  }).join('\n');
-}
-
-/**
- * Proširuje "3x" blokove s više koraka (npr. radni interval + odmor) u eksplicitni niz koraka
- * kako bi ErgVibe parser i Intervals.icu tekst bili 100% usklađeni.
- */
-export function normalizeIntervalsWorkoutText(rawCode = '') {
-  if (!rawCode || typeof rawCode !== 'string') return '';
-  const lines = rawCode.split(/\r?\n/);
-  const output = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const trimmed = lines[i].trim();
-    const repMatch = trimmed.match(/^(\d+)\s*x\s*$/i);
-
-    if (repMatch) {
-      const reps = Math.min(30, Math.max(1, parseInt(repMatch[1], 10)));
-      const blockSteps = [];
-      let j = i + 1;
-      while (j < lines.length) {
-        const nextLine = lines[j].trim();
-        if (!nextLine) {
-          j++;
-          break;
-        }
-        if (nextLine.startsWith('-') || /^\d+\s*[hms]/i.test(nextLine)) {
-          blockSteps.push(nextLine.startsWith('-') ? nextLine : `- ${nextLine}`);
-          j++;
-        } else {
-          break;
-        }
-      }
-
-      if (blockSteps.length > 0) {
-        for (let r = 0; r < reps; r++) {
-          blockSteps.forEach(s => output.push(s));
-        }
-        i = j;
-        continue;
-      }
-    }
-
-    output.push(lines[i]);
-    i++;
-  }
-
-  return output.join('\n').trim();
-}
+export { stepsToIntervalsCode, normalizeIntervalsWorkoutText };
 
 /**
  * Gradi standardni ErgVibe workout objekt spreman za handleCreateWorkout ili TrainerTab.

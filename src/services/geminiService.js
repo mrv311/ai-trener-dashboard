@@ -13,6 +13,11 @@ import {
   getMondayOfWeekIso,
   summarizeWeeklySchedule
 } from '../utils/plannerUtils';
+import {
+  parseIntervalsCode,
+  stepsToIntervalsCode,
+  normalizeIntervalsWorkoutText
+} from '../utils/workoutParser';
 
 const STORAGE_KEY_CUSTOM_API_KEY = 'ergvibe_custom_gemini_key';
 const STORAGE_KEY_ANALYSES_CACHE = 'ergvibe_ai_workout_analyses_v1';
@@ -923,6 +928,111 @@ Napomena za jedinice: 'durationMinutes' je OBAVEZNO cijeli broj minuta (npr. 60 
  * Korak 1 dvofaznog planera: Generira cjelokupni makrociklus (faze i tjedne sažetke)
  * do datuma ciljnog eventa ili za zadani broj fitness tjedana.
  */
+/**
+ * Sigurno validira, popravlja i ograničava trajanje jednog generiranog treninga iz AI plana
+ * kako greška u Intervals.icu sintaksi (npr. nezatvoren Nx blok) nikad ne bi napuhala trajanje.
+ */
+function sanitizePlannedWorkout(wo, dayMaxMinutes, ftp = 200) {
+  const dayLimit = Math.max(30, Number(dayMaxMinutes) || 60);
+  const maxAllowed = Math.max(dayLimit + 15, Math.round(dayLimit * 1.15));
+
+  const tryParseCode = (codeStr) => {
+    if (!codeStr || typeof codeStr !== 'string') return null;
+    const expanded = normalizeIntervalsWorkoutText(codeStr);
+    const parsed = parseIntervalsCode(expanded, ftp);
+    if (!parsed || !parsed.duration || parsed.duration <= 0) return null;
+    return {
+      parsed,
+      mins: Math.round(parsed.duration / 60),
+      rawMatchesExpanded: Math.round((parseIntervalsCode(codeStr, ftp)?.duration || 0) / 60) === Math.round(parsed.duration / 60)
+    };
+  };
+
+  let chosen = tryParseCode(wo?.intervalsCode);
+
+  // Ako je intervalsCode neispravan ili znatno premašuje limit dana, provjeri niz `steps`
+  if ((!chosen || chosen.mins > maxAllowed) && Array.isArray(wo?.steps) && wo.steps.length > 0) {
+    const codeFromSteps = stepsToIntervalsCode(wo.steps);
+    const fromSteps = tryParseCode(codeFromSteps);
+    if (fromSteps && (!chosen || (fromSteps.mins <= maxAllowed && chosen.mins > maxAllowed))) {
+      chosen = { ...fromSteps, cleanCode: codeFromSteps, rawMatchesExpanded: true };
+    }
+  }
+
+  // Ako trajanje i dalje premašuje dozvoljeni limit dana, skrati višak koraka/ponavljanja čuvajući zagrijavanje i hlađenje
+  if (chosen && chosen.mins > maxAllowed && chosen.parsed.allSteps.length > 0) {
+    const targetSec = dayLimit * 60;
+    const steps = [...chosen.parsed.allSteps];
+    const warmup = steps.length >= 3 ? steps[0] : null;
+    const lastStep = steps.length >= 3 ? steps[steps.length - 1] : null;
+    const hasCooldown = Boolean(lastStep && (lastStep.power || 0) <= 62 && steps.length >= 3);
+    const cooldown = hasCooldown ? { ...lastStep, duration: Math.min(lastStep.duration || 300, 600) } : null;
+
+    const coreStart = warmup ? 1 : 0;
+    const coreEnd = cooldown ? steps.length - 1 : steps.length;
+    const middle = steps.slice(coreStart, coreEnd);
+
+    const fixedSec = (warmup?.duration || 0) + (cooldown?.duration || 0);
+    const availableMiddleSec = Math.max(600, targetSec - fixedSec);
+    const keptMiddle = [];
+    let middleAcc = 0;
+
+    for (const st of middle) {
+      if (middleAcc + (st.duration || 0) <= availableMiddleSec) {
+        keptMiddle.push(st);
+        middleAcc += (st.duration || 0);
+      } else if (keptMiddle.length === 0 && (st.duration || 0) > availableMiddleSec) {
+        keptMiddle.push({ ...st, duration: availableMiddleSec });
+        middleAcc = availableMiddleSec;
+        break;
+      } else {
+        break;
+      }
+    }
+
+    const rebuiltSteps = [
+      ...(warmup ? [warmup] : []),
+      ...keptMiddle,
+      ...(cooldown ? [cooldown] : [])
+    ];
+    const rebuiltCode = stepsToIntervalsCode(rebuiltSteps);
+    const rebuiltParsed = tryParseCode(rebuiltCode);
+    if (rebuiltParsed) {
+      chosen = { ...rebuiltParsed, cleanCode: rebuiltCode, rawMatchesExpanded: true };
+    }
+  }
+
+  // Krajnji sigurnosni fallback ako AI nije vratio valjane korake
+  if (!chosen) {
+    const fallbackMins = Math.max(30, Math.min(dayLimit, Number(wo?.durationMinutes) || dayLimit));
+    const cat = String(wo?.category || 'Endurance').toLowerCase();
+    let fallbackCode = '';
+    if (cat.includes('vo2')) {
+      const workReps = fallbackMins >= 60 ? 5 : 4;
+      const warmupMin = 12;
+      const cdMin = Math.max(6, fallbackMins - warmupMin - workReps * 6);
+      fallbackCode = `- ${warmupMin}m 55-70% Zagrijavanje\n\n${workReps}x\n- 3m 115% VO2 Max\n- 3m 50% Oporavak\n\n- ${cdMin}m 50% Hlađenje`;
+    } else if (cat.includes('threshold') || cat.includes('prag')) {
+      const warmupMin = 12;
+      const cdMin = Math.max(6, fallbackMins - warmupMin - 24);
+      fallbackCode = `- ${warmupMin}m 55-70% Zagrijavanje\n\n2x\n- 10m 98% Prag (FTP)\n- 4m 50% Oporavak\n\n- ${cdMin}m 50% Hlađenje`;
+    } else {
+      const mainMin = Math.max(20, fallbackMins - 15);
+      fallbackCode = `- 10m 55% Zagrijavanje\n- ${mainMin}m 65% Z2 Aerobna baza\n- 5m 50% Hlađenje`;
+    }
+    chosen = { ...tryParseCode(fallbackCode), cleanCode: fallbackCode, rawMatchesExpanded: true };
+  }
+
+  const finalCode = (chosen.cleanCode || (chosen.rawMatchesExpanded ? String(wo.intervalsCode || '').trim() : stepsToIntervalsCode(chosen.parsed.allSteps)));
+
+  return {
+    durationMinutes: Math.max(20, chosen.mins),
+    estimatedTss: Math.max(10, Math.round(chosen.parsed.tss || Number(wo?.estimatedTss) || 50)),
+    intervalsCode: finalCode,
+    steps: chosen.parsed.allSteps
+  };
+}
+
 export async function generateMacrocycleBlueprint({
   goalMode = 'fitness',
   goalTitle = 'Podizanje FTP-a',
@@ -935,6 +1045,7 @@ export async function generateMacrocycleBlueprint({
   startDate,
   weeklySchedule,
   methodology = 'auto',
+  prioritizeCustomSources = false,
   experience = '',
   riderType = '',
   weakness = '',
@@ -971,9 +1082,18 @@ export async function generateMacrocycleBlueprint({
         `- Glavni cilj: ${goalTitle}`
       ].join('\n');
 
-  const methodologyInstruction = methodology && methodology !== 'auto'
-    ? `Sportaš je zatražio metodologiju: "${methodology}". Poštuj je.`
-    : `Odaberi i preporuči optimalnu trenersku metodologiju (npr. Polarizirani 80/20, Piramidalni / Sweet Spot ili Coggan Threshold) s obzirom na cilj, iskustvo i raspoložive sate sportaša.`;
+  const isVo2BlockIntent = String(methodology).toLowerCase().includes('vo2') || (goalMode === 'fitness' && String(goalTitle).toLowerCase().includes('vo2'));
+  const methodologyInstruction = [
+    methodology && methodology !== 'auto'
+      ? `Sportaš je IZRIČITO odabrao metodologiju: "${methodology}". Strogo se drži te metodologije.`
+      : `Odaberi i preporuči optimalnu trenersku metodologiju (npr. Polarizirani 80/20, Piramidalni / Sweet Spot, VO2 Max Fokus ili Coggan Threshold) s obzirom na cilj, iskustvo i raspoložive sate sportaša.`,
+    isVo2BlockIntent && safeWeeks <= 8
+      ? `BUDUĆI DA SPORTAŠ ŽELI VO2 MAX BLOK (${safeWeeks} tj.): NEMOJ prve 3 tjedne trošiti samo na laganu Bazu! Odmah kreni u ciljani VO2max razvoj (build/peak progresija s 1-2 klasična VO2max treninga tjedno + Z2 vožnje između, uz tjedan rasterećenja svaki 3. ili 4. tjedan).`
+      : null,
+    prioritizeCustomSources
+      ? `VAŽAN PRIORITET IZVORA: Sportaš je označio da ovaj plan PRIMARNO temeljiš na njegovim vlastitim dodanim izvorima iz sekcije "DODATNA KORISNIČKA LITERATURA I BILJEŠKE" (ako postoje u bazi znanja iznad). U obrazloženju kratko navedi kako si primijenio te izvore.`
+      : null
+  ].filter(Boolean).join('\n');
 
   const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
 
@@ -1095,6 +1215,7 @@ export async function generatePlanBlockWorkouts({
   weekTo = 4,
   weeklySchedule,
   minWorkoutDate = null,
+  prioritizeCustomSources = false,
   notes = '',
   athleteProfile,
   liveWorkouts = [],
@@ -1118,6 +1239,7 @@ export async function generatePlanBlockWorkouts({
     throw new Error('Moraš odabrati barem jedan trening dan u tjednu.');
   }
 
+  const ftp = Number(athleteProfile?.ftp) || 200;
   const athleteContextPrompt = await buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
@@ -1145,6 +1267,7 @@ export async function generatePlanBlockWorkouts({
 ### ZADATAK GENERATORA BLOKA TRENINGA:
 Generiraj detaljne, strukturirane biciklističke treninge za BLOK (Tjedni ${weekFrom}–${weekTo}) iz postojećeg makrociklusa "${blueprint.planTitle}".
 Metodologija: ${blueprint.recommendedMethodology || 'Piramidalni / Polarizirani'}.
+${prioritizeCustomSources ? 'PRIORITET IZVORA: Koristi primarno protokole i principe iz sportaševe DODATNE KORISNIČKE LITERATURE I BILJEŠKI iz baze znanja iznad.' : ''}
 ${notes ? `Dodatne napomene sportaša: "${notes}"` : ''}
 
 TJEDNI U OVOM BLOKU:
@@ -1153,9 +1276,28 @@ ${weeksBrief}
 STROGI RASPORED DANA I MAKSIMALNOG TRAJANJA (POŠTUJ TOČNO):
 ${scheduleSummary.promptText}
 Dozvoljeni ključevi dana ("dayKey") su ISKLJUČIVO: ${allowedDayKeys.join(', ')}.
-Za svaki dan poštuj maksimalno navedeno trajanje u minutama (+/- 10 min, nikada znatno duže od limita tog dana).
+Ukupno trajanje SVAKOG treninga (zagrijavanje + SVA ponavljanja intervala + hlađenje) NE SMIJE premašiti max trajanje tog dana!
 ${eventConstraint}
 ${minDateConstraint}
+
+### KANONSKI BICIKLISTIČKI TRENING PROTOKOLI (KORISTI PROVJERENE STRUKTURE):
+- **VO2 Max (klasični intervali, Z5 108–122% FTP):**
+  * 5x3m @ 112–118% FTP (odmor 3m @ 50% FTP) -> idealno za 55-65 min dan
+  * 4x4m @ 110–115% FTP (odmor 4m @ 50% FTP) -> idealno za 60-65 min dan
+  * 5x4m @ 108–114% FTP (odmor 3m30s @ 50% FTP) -> za 70-80 min dan
+  * Rønnestad mikro-intervali: 2 seta x 8-10x (30s @ 120% / 15s @ 50%) s 5m @ 55% odmora između setova
+  * 4x5m @ 106–112% FTP -> za 80-90 min dan
+- **Sweet Spot (88–94% FTP):** 3x10m, 3x12m, 2x20m (odmor 4-5m @ 50-55%).
+- **Threshold / Prag (95–103% FTP):** 3x10m, 4x8m, 2x20m (odmor 4-5m @ 50%).
+- **Endurance / Z2 (58–72% FTP):** stabilan aerobni blok nakon zagrijavanja i prije hlađenja, BEZ besmislenih skokova u Z4/Z5 usred laganog treninga.
+- **Recovery / Oporavak:** 30–50m kontinuirano u 45–55% FTP.
+
+### STROGA PRAVILA ZA \`intervalsCode\` (INTERVALS.ICU SINTAKSA):
+1. Svaki \`Nx\` blok ponavljanja MORA imati **PRAZAN RED (\\n\\n) PRIJE I POSLIJE SEBE**, inače će parser pomnožiti i Hlađenje puta N!
+2. NIKADA ne stavljaj ugniježđeni \`Nx\` unutar \`Mx\`. Ako trening ima 2 seta mikro-intervala, napiši Set 1 (\`8x\`), prazan red, \`- 5m 55% Odmor između setova\`, prazan red, Set 2 (\`8x\`), prazan red, \`- 10m 50% Hlađenje\`.
+3. Primjer ISPRAVNOG VO2max treninga (~55 min):
+"- 12m 55-70% Zagrijavanje\\n\\n5x\\n- 3m 115% VO2 Max\\n- 3m 50% Oporavak\\n\\n- 13m 50% Hlađenje"
+4. \`steps\` niz ostavi prazan \`[]\` ili usklađen s \`intervalsCode\` — primarni izvor istine za parser je valjani \`intervalsCode\` s praznim redovima oko \`Nx\`!
 
 VAŽNO: Odgovor MORA biti ISKLJUČIVO valjani JSON objekt bez markdown backtick oznaka:
 {
@@ -1169,23 +1311,18 @@ VAŽNO: Odgovor MORA biti ISKLJUČIVO valjani JSON objekt bez markdown backtick 
         {
           "dayKey": "tue",
           "dayName": "Utorak",
-          "title": "Sweet Spot 3x10",
-          "category": "SweetSpot | Endurance | Tempo | Threshold | VO2max | Recovery | Anaerobic",
-          "durationMinutes": 60,
-          "estimatedTss": 62,
+          "title": "VO2 Max 5x3m",
+          "category": "VO2max | SweetSpot | Endurance | Tempo | Threshold | Recovery | Anaerobic",
+          "durationMinutes": 55,
+          "estimatedTss": 64,
           "coachNote": "Fiziološki cilj i savjet za izvedbu",
-          "intervalsCode": "- 10m 55-70% Zagrijavanje\\n3x\\n- 10m 90% Sweet Spot\\n- 4m 50% Oporavak\\n- 8m 50% Hlađenje",
-          "steps": [
-            { "name": "Zagrijavanje", "duration": 600, "power": 62 },
-            { "name": "Sweet Spot 1", "duration": 600, "power": 90 },
-            { "name": "Oporavak", "duration": 240, "power": 50 }
-          ]
+          "intervalsCode": "- 12m 55-70% Zagrijavanje\\n\\n5x\\n- 3m 115% VO2 Max\\n- 3m 50% Oporavak\\n\\n- 13m 50% Hlađenje"
         }
       ]
     }
   ]
 }
-Pravila za jedinice: 'durationMinutes' je cijeli broj MINUTA (npr. 60, NIKAKO 3600). U 'steps' je 'duration' u SEKUNDAMA, a 'power' u % FTP-a. Zbroj trajanja koraka u 'intervalsCode' mora odgovarati 'durationMinutes'.`;
+Pravila za jedinice: 'durationMinutes' je cijeli broj MINUTA (npr. 55, NIKAKO u sekundama), i zbroj svih koraka u 'intervalsCode' MORA odgovarati 'durationMinutes' te biti <= max minuta za taj dan.`;
 
   const rawJsonText = await callGeminiApi({
     systemInstruction,
@@ -1232,17 +1369,19 @@ Pravila za jedinice: 'durationMinutes' je cijeli broj MINUTA (npr. 60, NIKAKO 36
       if (usedDates.has(exactDate)) return;
       usedDates.add(exactDate);
 
+      const sanitized = sanitizePlannedWorkout(wo, weeklySchedule[dayKey].minutes, ftp);
+
       normalizedWorkouts.push({
         dayKey,
         dayName: dayDef.name,
         date: exactDate,
         title: wo.title || 'AI Trening',
         category: wo.category || 'Endurance',
-        durationMinutes: Math.max(20, Math.min(360, Number(wo.durationMinutes) || weeklySchedule[dayKey].minutes || 60)),
-        estimatedTss: Math.max(10, Math.round(Number(wo.estimatedTss) || 50)),
+        durationMinutes: sanitized.durationMinutes,
+        estimatedTss: sanitized.estimatedTss,
         coachNote: wo.coachNote || wo.description || '',
-        intervalsCode: wo.intervalsCode || '',
-        steps: Array.isArray(wo.steps) ? wo.steps : null
+        intervalsCode: sanitized.intervalsCode,
+        steps: sanitized.steps
       });
     });
 
