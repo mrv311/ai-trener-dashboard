@@ -363,6 +363,19 @@ export default function TrainingPlannerView({
     }
   };
 
+  const createProgressHandler = (mode, fallbackTotal, buildMessage) => (progressArg, legacyTotal) => {
+    const isObj = progressArg && typeof progressArg === 'object';
+    const done = Number(isObj ? progressArg.done : progressArg) || 0;
+    const total = Math.max(1, Number(isObj ? progressArg.total : (legacyTotal ?? fallbackTotal)) || 1);
+    const currentName = isObj && progressArg.currentName ? String(progressArg.currentName) : '';
+    setSyncProgress({
+      mode,
+      done,
+      total,
+      message: buildMessage({ done, total, currentName })
+    });
+  };
+
   const handleSyncActiveBlock = async () => {
     if (!activeBlockData || !activeBlockMeta || !blueprint || !onCreatePlanBatch) return;
 
@@ -372,21 +385,19 @@ export default function TrainingPlannerView({
       // Ako je odabrana zamjena prethodnih AI blokova koji se preklapaju
       if (collisionMode === 'replace' && overlappingRegistryBlocks.length > 0 && onDeletePlanBlock) {
         for (const oldBlock of overlappingRegistryBlocks) {
+          const oldTotal = Math.max(1, (oldBlock.localIds?.length || 0) + (oldBlock.intervalsIds?.length || 0));
           setSyncProgress({
             mode: 'delete',
             done: 0,
-            total: Math.max(1, (oldBlock.localIds?.length || 0) + (oldBlock.intervalsIds?.length || 0)),
+            total: oldTotal,
             message: `Uklanjanje starog bloka (${oldBlock.title})...`
           });
           await onDeletePlanBlock(oldBlock.blockKey, {
-            onProgress: (done, total) => {
-              setSyncProgress({
-                mode: 'delete',
-                done,
-                total: Math.max(1, total),
-                message: `Uklanjanje prethodnog bloka (${done}/${total})...`
-              });
-            }
+            onProgress: createProgressHandler(
+              'delete',
+              oldTotal,
+              ({ done, total }) => `Uklanjanje prethodnog bloka (${done}/${total})...`
+            )
           });
         }
       }
@@ -443,16 +454,16 @@ export default function TrainingPlannerView({
         startDate: activeBlockDateRange.start,
         endDate: activeBlockDateRange.end,
         syncToIntervals: useIntervals,
-        onProgress: (done, total) => {
-          setSyncProgress({
-            mode: 'add',
-            done,
-            total,
-            message: useIntervals
-              ? `Slanje na Intervals.icu (${done}/${total})...`
-              : `Spremanje u kalendar (${done}/${total})...`
-          });
-        }
+        onProgress: createProgressHandler(
+          'add',
+          workoutPayloads.length,
+          ({ done, total, currentName }) => {
+            const label = currentName ? `: ${currentName}` : '';
+            return useIntervals
+              ? `Slanje na Intervals.icu (${done}/${total})${label}`
+              : `Spremanje u kalendar (${done}/${total})${label}`;
+          }
+        )
       });
 
       setSyncProgress(null);
@@ -488,23 +499,21 @@ export default function TrainingPlannerView({
   const handleRemoveSyncedBlock = async () => {
     if (!activeSyncedRecord || !onDeletePlanBlock) return;
     setSyncStatus(null);
+    const deleteTotal = Math.max(1, (activeSyncedRecord.localIds?.length || 0) + (activeSyncedRecord.intervalsIds?.length || 0));
     setSyncProgress({
       mode: 'delete',
       done: 0,
-      total: Math.max(1, (activeSyncedRecord.localIds?.length || 0) + (activeSyncedRecord.intervalsIds?.length || 0)),
+      total: deleteTotal,
       message: 'Uklanjanje sinkroniziranog bloka iz Kalendara...'
     });
 
     try {
       const res = await onDeletePlanBlock(activeSyncedRecord.blockKey, {
-        onProgress: (done, total) => {
-          setSyncProgress({
-            mode: 'delete',
-            done,
-            total: Math.max(1, total),
-            message: `Brisanje stavki (${done}/${total})...`
-          });
-        }
+        onProgress: createProgressHandler(
+          'delete',
+          deleteTotal,
+          ({ done, total }) => `Brisanje stavki (${done}/${total})...`
+        )
       });
       setSyncProgress(null);
       setSyncStatus({
