@@ -512,12 +512,12 @@ export default function AICoachTab({
   };
 
   return (
-    <div className="max-w-6xl mx-auto flex flex-col gap-5 short:md:gap-3 animate-in fade-in pb-8 short:md:pb-3">
+    <div className="w-full max-w-6xl mx-auto flex-1 min-h-0 h-full flex flex-col gap-2.5 md:gap-3 short:md:gap-2 animate-in fade-in overflow-hidden px-1 md:px-2 pt-1 pb-1">
       {/* GORNJI HEADER + SUB-NAVIGATION */}
-      <div className="carbon-panel rounded-xl p-4 md:p-5 short:p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-4 short:gap-2.5">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-lg bg-volt-400/15 border border-volt-400/40 text-volt-400 flex items-center justify-center shrink-0">
-            <Bot className="w-6 h-6" />
+      <div className="carbon-panel rounded-xl p-3 md:px-4 md:py-3 short:p-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 short:gap-2 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-volt-400/15 border border-volt-400/40 text-volt-400 flex items-center justify-center shrink-0">
+            <Bot className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -613,8 +613,8 @@ export default function AICoachTab({
           1. SUB-TAB: AI KONZULTACIJE (CHAT)
          ===================================================================== */}
       {subTab === 'chat' && (
-        <div className="carbon-panel rounded-xl flex flex-col h-[calc(100dvh-250px)] md:h-[calc(100dvh-195px)] short:md:h-[calc(100dvh-145px)] min-h-[400px] max-h-[780px] overflow-hidden">
-          <div className="px-5 py-3 border-b border-zinc-800/80 bg-zinc-950/60 flex items-center justify-between">
+        <div className="carbon-panel rounded-xl flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="px-4 py-2 border-b border-zinc-800/80 bg-zinc-950/60 flex items-center justify-between shrink-0">
             <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-zinc-400">
               TELEMETRIJSKA KONZOLA · PITAJ O TRENINZIMA, ZONAMA ILI ZATRAŽI INTERVALNI TRENING
             </span>
@@ -629,28 +629,31 @@ export default function AICoachTab({
             )}
           </div>
 
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-4 custom-scrollbar">
+          <div
+            ref={chatContainerRef}
+            className={`flex-1 min-h-0 ${messages.length === 0 && !isSendingChat ? 'overflow-hidden p-3 md:p-4' : 'overflow-y-auto p-4 md:p-5'} flex flex-col gap-3 custom-scrollbar`}
+          >
             {messages.length === 0 && !isSendingChat && (
-              <div className="my-auto flex flex-col items-center py-4 md:py-8 text-center max-w-2xl mx-auto w-full">
-                <div className="p-4 rounded-xl bg-volt-400/10 border border-volt-400/30 text-volt-400 mb-4">
-                  <Sparkles className="w-8 h-8" />
+              <div className="my-auto flex flex-col items-center justify-center py-1 text-center max-w-2xl mx-auto w-full">
+                <div className="p-2.5 rounded-xl bg-volt-400/10 border border-volt-400/30 text-volt-400 mb-2">
+                  <Sparkles className="w-5 h-5" />
                 </div>
-                <h3 className="text-lg font-display font-bold uppercase tracking-wide text-zinc-100 mb-1">
+                <h3 className="text-base md:text-lg font-display font-bold uppercase tracking-wide text-zinc-100 mb-1">
                   Spreman za analizu, {profile?.username || 'Vozač'}
                 </h3>
-                <p className="text-xs md:text-sm text-zinc-400 mb-6">
+                <p className="text-xs text-zinc-400 mb-3 max-w-xl leading-relaxed">
                   Učitao sam vaše dostupne treninge, trenutni FTP (<span className="font-mono font-bold text-volt-400">{ftp} W</span>) i kalendar. Možete zalijepiti sliku bilo kojeg treninga (<span className="font-mono text-volt-300">Ctrl+V</span> / spajalica) za automatsku konverziju u trenažer, ili odabrati brza pitanja:
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full text-left">
                   {QUICK_PROMPTS.map((qp, idx) => (
                     <button
                       key={idx}
                       type="button"
                       onClick={() => sendMessage(qp)}
-                      className="p-3.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/40 text-xs text-zinc-300 hover:text-zinc-100 font-medium transition-all flex items-start gap-2.5 group"
+                      className="p-2.5 md:p-3 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/40 text-xs text-zinc-300 hover:text-zinc-100 font-medium transition-all flex items-start gap-2 group"
                     >
-                      <Zap className="w-4 h-4 text-volt-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                      <Zap className="w-3.5 h-3.5 text-volt-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
                       <span>{qp}</span>
                     </button>
                   ))}
@@ -778,7 +781,7 @@ export default function AICoachTab({
               e.preventDefault();
               sendMessage();
             }}
-            className="p-3 md:p-4 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center gap-2.5"
+            className="p-2.5 md:p-3 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center gap-2.5 shrink-0"
           >
             <input
               type="file"
@@ -792,7 +795,7 @@ export default function AICoachTab({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isSendingChat || isUploadingFile}
-              className="p-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-volt-400/40 text-zinc-400 hover:text-volt-400 transition-all shrink-0 flex items-center justify-center cursor-pointer disabled:opacity-40"
+              className="p-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-volt-400/40 text-zinc-400 hover:text-volt-400 transition-all shrink-0 flex items-center justify-center cursor-pointer disabled:opacity-40"
               title="Priloži sliku ili PDF (Zwift/Garmin/TR grafikon, laktati, spiroergometrija...)"
             >
               {isUploadingFile ? (
@@ -808,12 +811,12 @@ export default function AICoachTab({
               onPaste={handlePaste}
               disabled={isSendingChat}
               placeholder={pendingAttachments.length > 0 ? "Opiši upute ili klikni 'Pretvori sliku u workout' iznad..." : "Postavi pitanje ili priloži sliku/PDF (možeš zalijepiti sliku i s Ctrl+V)..."}
-              className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-volt-400 outline-none disabled:opacity-50"
+              className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-volt-400 outline-none disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={isSendingChat || (!chatInput.trim() && pendingAttachments.length === 0)}
-              className="px-5 py-3 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-40 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm flex items-center gap-2 transition-all shadow-volt-glow shrink-0"
+              className="px-5 py-2.5 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-40 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm flex items-center gap-2 transition-all shadow-volt-glow shrink-0"
             >
               {isSendingChat ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               <span className="hidden sm:inline">Pošalji</span>
@@ -826,35 +829,38 @@ export default function AICoachTab({
           2. SUB-TAB: GENERATOR TRENING PLANA
          ===================================================================== */}
       {subTab === 'planner' && (
-        <TrainingPlannerView
-          profile={profile}
-          setProfile={setProfile}
-          workouts={workouts}
-          wellnessData={wellnessData}
-          userId={userId}
-          intervalsConnected={intervalsConnected}
-          selectedModel={selectedModel}
-          initialPrefill={plannerLaunchRequest?.prefill || null}
-          forceOpenWizard={Boolean(plannerLaunchRequest?.openWizard)}
-          plannerLaunchRequest={plannerLaunchRequest}
-          onClearPrefill={onConsumePlannerLaunchRequest}
-          onAddWorkoutToCalendar={onAddWorkoutToCalendar}
-          onCreatePlanBatch={onCreatePlanBatch}
-          onDeletePlanBlock={onDeletePlanBlock}
-          onDeletePlanBlocks={onDeletePlanBlocks}
-          planRegistry={planRegistry}
-          onStartWorkoutInTrainer={onStartWorkoutInTrainer}
-          onNavigateToCalendar={onNavigateToCalendar}
-          onAnalyzePlanInCoach={onAnalyzePlanInCoach}
-          onGeneratingChange={setIsGeneratingPlan}
-        />
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-0.5 pb-4">
+          <TrainingPlannerView
+            profile={profile}
+            setProfile={setProfile}
+            workouts={workouts}
+            wellnessData={wellnessData}
+            userId={userId}
+            intervalsConnected={intervalsConnected}
+            selectedModel={selectedModel}
+            initialPrefill={plannerLaunchRequest?.prefill || null}
+            forceOpenWizard={Boolean(plannerLaunchRequest?.openWizard)}
+            plannerLaunchRequest={plannerLaunchRequest}
+            onClearPrefill={onConsumePlannerLaunchRequest}
+            onAddWorkoutToCalendar={onAddWorkoutToCalendar}
+            onCreatePlanBatch={onCreatePlanBatch}
+            onDeletePlanBlock={onDeletePlanBlock}
+            onDeletePlanBlocks={onDeletePlanBlocks}
+            planRegistry={planRegistry}
+            onStartWorkoutInTrainer={onStartWorkoutInTrainer}
+            onNavigateToCalendar={onNavigateToCalendar}
+            onAnalyzePlanInCoach={onAnalyzePlanInCoach}
+            onGeneratingChange={setIsGeneratingPlan}
+          />
+        </div>
       )}
 
       {/* =====================================================================
           3. SUB-TAB: BAZA ZNANJA & POVIJEST TRENINGA
          ===================================================================== */}
       {subTab === 'knowledge' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-0.5 pb-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Lijeva strana: Povijest treninga */}
           <div className="lg:col-span-7 carbon-panel rounded-xl p-5 md:p-6 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-4">
@@ -1374,6 +1380,7 @@ export default function AICoachTab({
                 );
               })}
             </div>
+          </div>
           </div>
         </div>
       )}

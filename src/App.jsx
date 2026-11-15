@@ -754,8 +754,8 @@ export default function App() {
           </div>
         )}
 
-        <main ref={mainContentRef} className={`flex-1 min-h-0 ${['trainer', 'calendar'].includes(activeTab) ? `overflow-hidden p-1 md:p-2 short:p-1.5 ${activeTab === 'trainer' && isTrainerFullscreen ? 'pb-1.5' : 'pb-16 md:pb-2 short:md:pb-1.5'}` : 'overflow-auto p-3 md:p-6 short:p-3 pb-20 md:pb-6 short:md:pb-3'} bg-zinc-950 bg-telemetry-grid relative flex flex-col`}>
-          <div className={`relative z-10 w-full ${['trainer', 'calendar'].includes(activeTab) ? 'flex-1 flex flex-col min-h-0 h-full' : ''}`}>
+        <main ref={mainContentRef} className={`flex-1 min-h-0 ${['trainer', 'calendar', 'aiCoach'].includes(activeTab) ? `overflow-hidden p-1 md:p-2 short:p-1.5 ${activeTab === 'trainer' && isTrainerFullscreen ? 'pb-1.5' : 'pb-16 md:pb-2 short:md:pb-1.5'}` : 'overflow-auto p-3 md:p-6 short:p-3 pb-20 md:pb-6 short:md:pb-3'} bg-zinc-950 bg-telemetry-grid relative flex flex-col`}>
+          <div className={`relative z-10 w-full ${['trainer', 'calendar', 'aiCoach'].includes(activeTab) ? 'flex-1 flex flex-col min-h-0 h-full' : ''}`}>
             {activeTab === 'calendar' && (
               <CalendarTab
                 currentDate={currentDate} setCurrentDate={setCurrentDate}
