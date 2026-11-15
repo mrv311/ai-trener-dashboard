@@ -262,16 +262,20 @@ export default function PlanQuestionnaire({
     return true;
   };
 
-  const handleNext = () => {
+  const handleNext = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (step === 1 && !validateStep1()) return;
     if (step === 2 && !validateStep2()) return;
     setStep(s => Math.min(3, s + 1));
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (step < 3) {
-      handleNext();
+      handleNext(e);
       return;
     }
     if (!validateStep1() || !validateStep2()) return;
@@ -349,7 +353,7 @@ export default function PlanQuestionnaire({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="carbon-panel rounded-xl overflow-hidden">
+    <form onSubmit={(e) => e.preventDefault()} className="carbon-panel rounded-xl overflow-hidden">
       {/* Zaglavlje wizarda i indikatori koraka */}
       <div className="px-5 py-4 md:px-6 border-b border-zinc-800 bg-zinc-950/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -1014,6 +1018,7 @@ export default function PlanQuestionnaire({
         <div className="flex items-center gap-2">
           {step < 3 ? (
             <button
+              key="wizard-next-btn"
               type="button"
               onClick={handleNext}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs shadow-volt-glow transition-all"
@@ -1022,7 +1027,9 @@ export default function PlanQuestionnaire({
             </button>
           ) : (
             <button
-              type="submit"
+              key="wizard-submit-btn"
+              type="button"
+              onClick={handleSubmit}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs shadow-volt-glow transition-all"
             >
               <Sparkles className="w-4 h-4" /> Izradi AI Plan &amp; Blok 1
