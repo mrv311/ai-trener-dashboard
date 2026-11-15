@@ -101,7 +101,7 @@ const getSourceBadgeMeta = (src) => {
 // ============================================================
 // WorkoutGraph (Final Solid Visuals Fix)
 // ============================================================
-const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted }) {
+const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted, expanded = false }) {
   const intensityArray = useMemo(() => {
     return extractIntensityData(workoutDoc);
   }, [workoutDoc]);
@@ -111,7 +111,7 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted 
   const displayData = intensityArray;
 
   return (
-    <div className="relative flex items-end h-9 w-full mt-2 bg-zinc-950/90 rounded border border-zinc-800/80 overflow-hidden px-[1px] pt-1">
+    <div className={`relative flex items-end ${expanded ? 'h-14 mt-2.5' : 'h-9 mt-2'} w-full bg-zinc-950/90 rounded border border-zinc-800/80 overflow-hidden px-[1px] pt-1`}>
       {displayData.map((val, i) => {
         const zone = getZoneFromFtpPercent(val);
         const heightPercent = Math.min((val / 150) * 100, 100);
@@ -137,8 +137,9 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted 
 // ============================================================
 // WorkoutCard
 // ============================================================
-const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, isCurrentMonth, compact }) {
+const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, isCurrentMonth, compact, expanded = false }) {
   const canDrag = isDesktop && isDraggable(w);
+  const isExpandedCard = expanded && isDesktop && !compact;
 
   const { attributes, listeners, setNodeRef } = useDraggable({
     id: w.id,
@@ -166,10 +167,10 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           }
         }
       }}
-      className={`workout-card-element group/wcard rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : 'min-h-[96px]'} transition-all duration-150 ${getCardBg(w.statusColor)} ${isDragging ? 'opacity-20 border-dashed border-2 border-volt-400' : 'cursor-pointer'} ${canDrag && !isDragging ? 'hover:border-volt-400/40' : ''}`}
+      className={`workout-card-element group/wcard rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : (isExpandedCard ? 'min-h-[152px]' : 'min-h-[96px]')} transition-all duration-150 ${getCardBg(w.statusColor)} ${isDragging ? 'opacity-20 border-dashed border-2 border-volt-400' : 'cursor-pointer'} ${canDrag && !isDragging ? 'hover:border-volt-400/40' : ''}`}
     >
       <div className={`h-[2px] w-full shrink-0 ${getTopCol(w.statusColor)}`} />
-      <div className={`${isDesktop ? (compact ? 'p-1.5' : 'p-2.5') : 'p-3.5'} flex flex-col justify-between flex-1`}>
+      <div className={`${isDesktop ? (compact ? 'p-1.5' : (isExpandedCard ? 'p-3.5' : 'p-2.5')) : 'p-3.5'} flex flex-col justify-between flex-1`}>
         {compact ? (
           // Compact: just title + duration + status icon
           <div className="flex items-center gap-1.5 w-full">
@@ -200,7 +201,9 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                   <Bike className={`${isDesktop ? 'w-3 h-3 text-zinc-500' : 'w-4 h-4 text-zinc-400'}`} />
                   <span title={w.plannedDuration ? `Plan: ${formatDur(w.plannedDuration)}` : ''}>
                     {formatDur(w.duration)}
-                    {!isDesktop && w.plannedDuration && <span className="text-zinc-600 text-[9px] ml-1">/ {formatDur(w.plannedDuration)}</span>}
+                    {((!isDesktop && w.plannedDuration) || (isExpandedCard && w.plannedDuration && w.isCompleted)) && (
+                      <span className={`text-zinc-600 ${isExpandedCard ? 'text-[10px]' : 'text-[9px]'} ml-1`}>/ {formatDur(w.plannedDuration)}</span>
+                    )}
                   </span>
                 </div>
               )}
@@ -267,7 +270,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               </div>
             </div>
             {/* Title */}
-            <div className={`font-bold ${isDesktop ? 'text-xs' : 'text-sm'} ${isRace ? 'text-amber-100' : 'text-zinc-100'} leading-snug line-clamp-2`}>
+            <div className={`font-bold ${isExpandedCard ? 'text-[13px] leading-snug line-clamp-3' : `${isDesktop ? 'text-xs' : 'text-sm'} leading-snug line-clamp-2`} ${isRace ? 'text-amber-100' : 'text-zinc-100'}`}>
               {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-600 group-hover/wcard:text-zinc-400 align-middle pointer-events-none transition-colors" />}
               {w.title}
             </div>
@@ -290,17 +293,17 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               </div>
             ) : (
               <>
-                <div className="flex flex-col gap-1 mt-1.5">
+                <div className="flex flex-col gap-1.5 mt-1.5">
                   <div className="flex items-center gap-1.5 flex-wrap font-mono telemetry-num">
                     {w.isCompleted ? (
                       // Odrađeni trening: TSS ostvareni / planirani + postotak u boji kartice
                       <>
                         <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">TSS</span>
-                        <span className="text-xs font-bold text-zinc-100">{w.tss > 0 ? w.tss : '-'}</span>
+                        <span className={`${isExpandedCard ? 'text-sm' : 'text-xs'} font-bold text-zinc-100`}>{w.tss > 0 ? w.tss : '-'}</span>
                         {w.plannedTss > 0 && (
                           <>
                             <span className="text-[9px] text-zinc-600">/</span>
-                            <span className="text-xs text-zinc-500">{w.plannedTss}</span>
+                            <span className={`${isExpandedCard ? 'text-sm' : 'text-xs'} text-zinc-500`}>{w.plannedTss}</span>
                           </>
                         )}
                         {w.plannedTss > 0 && w.tss > 0 && (
@@ -317,12 +320,24 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                       // Planirani trening: samo planirani TSS
                       <>
                         <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">PLAN TSS</span>
-                        <span className="text-xs font-bold text-zinc-300">{w.plannedTss > 0 ? w.plannedTss : '-'}</span>
+                        <span className={`${isExpandedCard ? 'text-sm' : 'text-xs'} font-bold text-zinc-300`}>{w.plannedTss > 0 ? w.plannedTss : '-'}</span>
                       </>
                     )}
                   </div>
-                  {w.intervalDescription && (
-                    <span className="text-[10px] font-mono text-zinc-400/85 leading-tight line-clamp-1">{w.intervalDescription}</span>
+                  {isExpandedCard ? (
+                    w.intervalDescription ? (
+                      <span className="text-[11px] font-mono text-zinc-300 bg-zinc-950/80 border border-zinc-800/80 rounded px-2 py-1.5 leading-relaxed line-clamp-3">
+                        {w.intervalDescription}
+                      </span>
+                    ) : w.descriptionText ? (
+                      <span className="text-[11px] text-zinc-400/90 leading-snug line-clamp-2">
+                        {w.descriptionText}
+                      </span>
+                    ) : null
+                  ) : (
+                    w.intervalDescription && (
+                      <span className="text-[10px] font-mono text-zinc-400/85 leading-tight line-clamp-1">{w.intervalDescription}</span>
+                    )
                   )}
                   {w.category && w.difficulty_score && (
                     <div className="flex items-center gap-1.5 mt-0.5">
@@ -335,6 +350,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                 <WorkoutGraph
                   workoutDoc={w.workout_doc || w.steps}
                   isCompleted={w.isCompleted || w.status === 'completed'}
+                  expanded={isExpandedCard}
                 />
               </>
             )}
@@ -348,7 +364,29 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
 // ============================================================
 // CalendarDay
 // ============================================================
-const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [], onPlanMarkerClick, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, compact, onAddWorkoutClick }) {
+const MONTH_SHORT_UPPER = ['SIJ', 'VELJ', 'OŽU', 'TRA', 'SVI', 'LIP', 'SRP', 'KOL', 'RUJ', 'LIS', 'STU', 'PRO'];
+
+function formatLocalDateIso(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getMondayDateObj(dateInput) {
+  let d;
+  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+    const [y, m, day] = dateInput.split('-').map(Number);
+    d = new Date(y, m - 1, day);
+  } else {
+    d = new Date(dateInput);
+  }
+  d.setHours(0, 0, 0, 0);
+  const dow = d.getDay();
+  const diff = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [], onPlanMarkerClick, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, compact, showMonthSplitBg = false, expanded = false, onAddWorkoutClick }) {
   const { isOver, setNodeRef } = useDroppable({ id: dObj.dateStr });
 
   if (!isDesktop) {
@@ -356,6 +394,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
     const dayOfWeek = dayNames[(new Date(dObj.dateStr).getDay() + 6) % 7];
     return (
       <div
+        data-mobile-date={dObj.dateStr}
         className={`p-4 flex flex-col cursor-pointer bg-zinc-900/80 ${isTdy ? 'border-l-2 border-l-volt-400 bg-volt-400/[0.03]' : ''}`}
         onClick={(e) => {
           if (e.target.closest('.workout-card-element, .plan-marker-element')) return;
@@ -366,7 +405,13 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
       >
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-2">
-            <span className={`text-sm font-mono telemetry-num font-bold ${isTdy ? 'text-volt-400' : 'text-zinc-200'}`}>{dObj.day}.</span>
+            {dObj.day === 1 && typeof dObj.month === 'number' ? (
+              <span className="bg-volt-400/15 text-volt-300 border border-volt-400/35 px-1.5 py-0.5 rounded font-mono text-[10px] font-bold uppercase tracking-wider">
+                1. {MONTH_SHORT_UPPER[dObj.month]}{dObj.month === 0 ? ` '${String(dObj.year).slice(-2)}` : ''}
+              </span>
+            ) : (
+              <span className={`text-sm font-mono telemetry-num font-bold ${isTdy ? 'text-volt-400' : 'text-zinc-200'}`}>{dObj.day}.</span>
+            )}
             <span className="text-xs font-mono font-bold text-zinc-500 uppercase tracking-wider">{dayOfWeek}</span>
             {isTdy && <span className="text-[9px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-volt-400/15 text-volt-400 border border-volt-400/30">DANAS</span>}
           </div>
@@ -414,12 +459,14 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
     );
   }
 
+  const isExpandedDay = expanded && !compact;
+
   return (
     <div
       ref={setNodeRef}
       className={`flex flex-col group relative transition-all duration-150 cursor-pointer hover:bg-zinc-900/90
-        ${compact ? 'p-1.5' : 'p-2.5'}
-        ${dObj.isCurrentMonth ? 'bg-zinc-950/75' : 'bg-zinc-950'}
+        ${compact ? 'p-1.5' : (isExpandedDay ? 'p-3.5' : 'p-2.5')}
+        ${showMonthSplitBg ? (dObj.month % 2 === 0 ? 'bg-zinc-950/75' : 'bg-zinc-950/95') : (dObj.isCurrentMonth ? 'bg-zinc-950/75' : 'bg-zinc-950')}
         ${isTdy ? 'border-t-2 border-t-volt-400 bg-volt-400/[0.025]' : ''}
         ${isOver ? 'bg-volt-400/10 ring-1 ring-volt-400/60 ring-inset' : ''}
       `}
@@ -430,16 +477,38 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
         }
       }}
     >
-      <div className={`flex justify-between items-center ${compact ? 'mb-1' : 'mb-2.5'}`}>
+      <div className={`flex justify-between items-center gap-1 flex-wrap ${compact ? 'mb-1' : (isExpandedDay ? 'mb-3.5 pb-2 border-b border-zinc-800/60' : 'mb-2.5')}`}>
         <div className="flex items-center gap-1.5">
-          <span className={`font-mono telemetry-num font-bold text-xs ${isTdy ? 'text-volt-400' : (dObj.isCurrentMonth ? 'text-zinc-200' : 'text-zinc-600')}`}>{dObj.day}</span>
+          {dObj.day === 1 && typeof dObj.month === 'number' ? (
+            <span className={`bg-volt-400/15 text-volt-300 border border-volt-400/35 px-1.5 py-0.5 rounded font-mono ${isExpandedDay ? 'text-[11px]' : 'text-[10px]'} font-bold uppercase tracking-wider`}>
+              1. {MONTH_SHORT_UPPER[dObj.month]}{dObj.month === 0 ? ` '${String(dObj.year).slice(-2)}` : ''}
+            </span>
+          ) : (
+            <>
+              <span className={`font-mono telemetry-num font-bold ${isExpandedDay ? 'text-sm sm:text-base' : 'text-xs'} ${isTdy ? 'text-volt-400' : (showMonthSplitBg || dObj.isCurrentMonth ? 'text-zinc-200' : 'text-zinc-600')}`}>
+                {dObj.day}{isExpandedDay ? '.' : ''}
+              </span>
+              {isExpandedDay && typeof dObj.month === 'number' && (
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500">
+                  {MONTH_SHORT_UPPER[dObj.month]}
+                </span>
+              )}
+            </>
+          )}
           {isTdy && !compact && (
             <span className="text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-volt-400/15 text-volt-400 border border-volt-400/30">
               DANAS
             </span>
           )}
         </div>
-        {!compact && dWell && (
+        {!compact && isExpandedDay && dWell && (
+          <div className="flex flex-wrap gap-1.5 text-[11px] font-mono telemetry-num font-bold text-zinc-400">
+            {dWell.restingHR && <span className="flex items-center text-rose-400/90 bg-zinc-900/90 border border-zinc-800/80 px-1.5 py-0.5 rounded"><Heart className="w-3 h-3 mr-1" fill="currentColor" />{dWell.restingHR}</span>}
+            {dWell.hrv && <span className="flex items-center text-sky-400/90 bg-zinc-900/90 border border-zinc-800/80 px-1.5 py-0.5 rounded" title="HRV"><Activity className="w-3 h-3 mr-1" />{Math.round(dWell.hrv)}</span>}
+            {dWell.sleep && <span className="flex items-center text-indigo-400/90 bg-zinc-900/90 border border-zinc-800/80 px-1.5 py-0.5 rounded"><Moon className="w-3 h-3 mr-1" fill="currentColor" />{dWell.sleep}</span>}
+          </div>
+        )}
+        {!compact && !isExpandedDay && dWell && (
           <div className="flex gap-1.5 text-[10px] font-mono telemetry-num font-bold text-zinc-500">
             {dWell.restingHR && <span className="flex items-center text-rose-400/85"><Heart className="w-2.5 h-2.5 mr-0.5" fill="currentColor" />{dWell.restingHR}</span>}
             {dWell.hrv && <span className="flex items-center text-sky-400/85" title="HRV"><Activity className="w-2.5 h-2.5 mr-0.5" />{Math.round(dWell.hrv)}</span>}
@@ -453,7 +522,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
           </div>
         )}
       </div>
-      <div className={`flex-1 overflow-y-auto pr-0.5 custom-scrollbar ${compact ? 'space-y-1' : 'space-y-2'}`}>
+      <div className={`flex-1 overflow-y-auto pr-0.5 custom-scrollbar ${compact ? 'space-y-1' : (isExpandedDay ? 'space-y-2.5' : 'space-y-2')}`}>
         {dPlans.map(plan => (
           <button
             key={plan.id}
@@ -465,7 +534,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
             }}
             title={`AI Plan: ${plan.title} — klikni za opcije (Analiziraj, Izmijeni, Obriši)`}
             className={`plan-marker-element w-full text-left rounded-lg overflow-hidden border border-volt-400/50 bg-volt-400/12 hover:bg-volt-400/20 hover:border-volt-400 transition-all cursor-pointer ${
-              compact ? 'px-1.5 py-1' : 'p-2'
+              compact ? 'px-1.5 py-1' : (isExpandedDay ? 'p-2.5' : 'p-2')
             }`}
           >
             <div className="flex items-center justify-between gap-1">
@@ -479,7 +548,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
                 </span>
               )}
             </div>
-            <div className="text-[11px] font-bold text-zinc-100 truncate mt-1 leading-tight">
+            <div className={`${isExpandedDay ? 'text-xs' : 'text-[11px]'} font-bold text-zinc-100 truncate mt-1 leading-tight`}>
               {plan.title}
             </div>
             {!compact && (
@@ -504,8 +573,14 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
             onEditWorkout={compact ? null : onEditWorkout}
             onViewActivity={onViewActivity}
             compact={compact}
+            expanded={isExpandedDay}
           />
         ))}
+        {isExpandedDay && dWorks.length === 0 && dPlans.length === 0 && (
+          <div className="h-full min-h-[140px] flex items-center justify-center rounded-lg border border-dashed border-zinc-800/70 group-hover:border-zinc-700 text-zinc-600 group-hover:text-zinc-400 transition-colors px-3 py-6 text-center">
+            <span className="text-[11px] font-mono uppercase tracking-wider">Dan odmora · + Dodaj trening</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -543,6 +618,365 @@ function DragOverlayCard({ workout, activeWidth }) {
 }
 
 // ============================================================
+// CalendarWeekRow (Memoized 7-day + Summary week row)
+// ============================================================
+const CalendarWeekRow = React.memo(function CalendarWeekRow({
+  days,
+  isActive,
+  isContinuous,
+  isSingleWeek = false,
+  todayStr,
+  workoutsByDate,
+  planMarkersByDate,
+  wellnessData,
+  activeId,
+  onPlanMarkerClick,
+  onSelectWorkout,
+  handleUnpair,
+  handlePair,
+  handleDeleteLocalActivity,
+  handleDeleteCompletedActivity,
+  onViewActivity,
+  onEditWorkout,
+  onAddWorkoutClick,
+}) {
+  let aT_cycle = 0; let pT_cycle = 0; let aD = 0; let pD = 0;
+  let aT_other = 0; let pT_other = 0; let aD_other = 0; let pD_other = 0;
+
+  const dayWorkouts = days.map((dObj) => {
+    const dWorks = workoutsByDate[dObj.dateStr] || [];
+    dWorks.forEach(w => {
+      const actTssVal = Math.max(0, Math.round(Number(w.tss) || 0));
+      const planTssVal = Math.max(0, Math.round(Number(w.plannedTss ?? w.tss) || 0));
+      const actDurVal = Math.max(0, Math.round(Number(w.duration) || 0));
+      const planDurVal = Math.max(0, Math.round(Number(w.plannedDuration ?? w.duration) || 0));
+
+      if (w.isCompleted) {
+        if (w.category !== 'OTHER') {
+          aT_cycle += actTssVal;
+          aD += actDurVal;
+          if (w.plannedTss != null && Number(w.plannedTss) > 0) {
+            pT_cycle += Math.round(Number(w.plannedTss));
+          }
+          if (w.plannedDuration != null && Number(w.plannedDuration) > 0) {
+            pD += Math.round(Number(w.plannedDuration));
+          }
+        } else {
+          aT_other += actTssVal;
+          aD_other += actDurVal;
+          if (w.plannedTss != null && Number(w.plannedTss) > 0) {
+            pT_other += Math.round(Number(w.plannedTss));
+          }
+          if (w.plannedDuration != null && Number(w.plannedDuration) > 0) {
+            pD_other += Math.round(Number(w.plannedDuration));
+          }
+        }
+      } else {
+        if (w.category !== 'OTHER') {
+          pT_cycle += planTssVal;
+          pD += planDurVal;
+        } else {
+          pT_other += planTssVal;
+          pD_other += planDurVal;
+        }
+      }
+    });
+    return dWorks;
+  });
+
+  // Week label: date range
+  const wStart = days[0];
+  const wEnd = days[6];
+  const mn = ["Sij", "Velj", "Ožu", "Tra", "Svi", "Lip", "Srp", "Kol", "Ruj", "Lis", "Stu", "Pro"];
+  const weekRangeLabel = wStart.month === wEnd.month
+    ? `${wStart.day}–${wEnd.day} ${mn[wStart.month]}`
+    : `${wStart.day} ${mn[wStart.month]} – ${wEnd.day} ${mn[wEnd.month]}`;
+
+  const weekStartStr = wStart.dateStr;
+  const weekEndStr = wEnd.dateStr;
+  const hasFirstOfMonth = days.some((d) => d.day === 1);
+  const isPastWeek = weekEndStr < todayStr;
+  const isFutureWeek = weekStartStr > todayStr;
+  const isCurrentCalendarWeek = !isPastWeek && !isFutureWeek;
+
+  // CTL/ATL/TSB — Projekcija na kraju tjedna (nedjelja)
+  let endCtl = null, endAtl = null, endTsb = null;
+  for (let di = 6; di >= 0; di--) {
+    const wd = wellnessData?.[days[di].dateStr];
+    if (wd && wd.ctl != null) {
+      endCtl = Math.round(Number(wd.ctl));
+      endAtl = Math.round(Number(wd.atl));
+      endTsb = endCtl - endAtl;
+      break;
+    }
+  }
+
+  // CTL/ATL/TSB — Trenutno stanje (do današnjeg dana)
+  let currentCtl = null, currentAtl = null, currentTsb = null;
+  if (!isFutureWeek) {
+    for (let di = 6; di >= 0; di--) {
+      if (days[di].dateStr <= todayStr) {
+        const wd = wellnessData?.[days[di].dateStr];
+        if (wd && (wd.actualCtl != null || wd.ctl != null)) {
+          const cRaw = isPastWeek ? wd.ctl : (wd.actualCtl ?? wd.ctl);
+          const aRaw = isPastWeek ? wd.atl : (wd.actualAtl ?? wd.atl);
+          currentCtl = Math.round(Number(cRaw));
+          currentAtl = Math.round(Number(aRaw));
+          currentTsb = currentCtl - currentAtl;
+          break;
+        }
+      }
+    }
+  }
+
+  const todayWell = wellnessData?.[todayStr];
+  const showWeekProjection = isCurrentCalendarWeek && (weekEndStr > todayStr || Boolean(todayWell?.hasUncompletedToday));
+
+  // Prikaz: za tekući tjedan u tijeku uvijek prikaži "trenutno (projekcija u ned)", za budući "(projekcija)", za prošli "konačno"
+  const renderMetric = (curr, plan) => {
+    if (curr != null && plan != null && (showWeekProjection || curr !== plan)) {
+      return `${curr} (${plan})`;
+    }
+    if (curr != null) return `${curr}`;
+    if (plan != null) return `(${plan})`;
+    return null;
+  };
+
+  const displayCtl = renderMetric(currentCtl, endCtl);
+  const displayAtl = renderMetric(currentAtl, endAtl);
+
+  const formatSigned = (v) => (v > 0 ? `+${v}` : `${v}`);
+  const displayTsb = () => {
+    if (currentTsb != null && endTsb != null && (showWeekProjection || currentTsb !== endTsb)) {
+      return `${formatSigned(currentTsb)} (${formatSigned(endTsb)})`;
+    }
+    if (currentTsb != null) return formatSigned(currentTsb);
+    if (endTsb != null) return `(${formatSigned(endTsb)})`;
+    return null;
+  };
+  const renderedTsb = displayTsb();
+  const colorTsbVal = currentTsb != null ? currentTsb : endTsb;
+
+  // Ramp Rate — CTL na kraju prošlog tjedna (nedjelja prije ovog ponedjeljka) u odnosu na trenutni / projicirani nedjeljni CTL
+  let prevWeekCtl = null;
+  const mondayDate = new Date(days[0].year, days[0].month, days[0].day);
+  for (let di = 6; di >= 0; di--) {
+    const prevDate = new Date(mondayDate);
+    prevDate.setDate(prevDate.getDate() - 7 + di);
+    const prevDateStr = formatLocalDateIso(prevDate);
+    const pwd = wellnessData?.[prevDateStr];
+    if (pwd && pwd.ctl != null) {
+      prevWeekCtl = Math.round(Number(pwd.ctl));
+      break;
+    }
+  }
+
+  const currentRamp = currentCtl != null && prevWeekCtl != null ? currentCtl - prevWeekCtl : null;
+  const endRamp = endCtl != null && prevWeekCtl != null ? endCtl - prevWeekCtl : null;
+
+  const displayRamp = () => {
+    if (currentRamp != null && endRamp != null && (showWeekProjection || currentRamp !== endRamp)) {
+      return `${formatSigned(currentRamp)} (${formatSigned(endRamp)})`;
+    }
+    if (currentRamp != null) return formatSigned(currentRamp);
+    if (endRamp != null) return `(${formatSigned(endRamp)})`;
+    return null;
+  };
+  const renderedRamp = displayRamp();
+  const colorRampVal = endRamp != null && isFutureWeek ? endRamp : (currentRamp != null ? currentRamp : endRamp);
+
+  const getTsbColor = (tsb) => {
+    if (tsb == null) return 'text-zinc-600';
+    if (tsb > 25) return 'text-amber-400';
+    if (tsb >= 5) return 'text-emerald-400';
+    if (tsb >= -10) return 'text-zinc-400';
+    return 'text-rose-400';
+  };
+  const getRampColor = (rr) => {
+    if (rr == null) return 'text-zinc-600';
+    if (rr > 8) return 'text-orange-400';
+    if (rr >= 3) return 'text-emerald-400';
+    if (rr >= 0) return 'text-zinc-400';
+    if (rr >= -5) return 'text-sky-400';
+    return 'text-rose-400';
+  };
+
+  const hasCycle = aT_cycle > 0 || pT_cycle > 0 || aD > 0 || pD > 0;
+  const mainActualDur = hasCycle ? aD : aD_other;
+  const mainPlannedDur = hasCycle ? pD : pD_other;
+  const mainActualTss = hasCycle ? aT_cycle : aT_other;
+  const mainPlannedTss = hasCycle ? pT_cycle : pT_other;
+
+  const durPctRaw = mainPlannedDur > 0 ? Math.round((mainActualDur / mainPlannedDur) * 100) : (mainActualDur > 0 ? 100 : 0);
+  const durBarPct = Math.min(100, durPctRaw);
+  const tssPctRaw = mainPlannedTss > 0 ? Math.round((mainActualTss / mainPlannedTss) * 100) : (mainActualTss > 0 ? 100 : 0);
+  const tssBarPct = Math.min(100, tssPctRaw);
+
+  const pmcHeaderLabel = showWeekProjection
+    ? 'PMC · DANAS (NED)'
+    : isFutureWeek
+    ? 'PMC · PROJEKCIJA'
+    : 'PMC FORMA';
+
+  const emphasizeSummary = isContinuous ? isCurrentCalendarWeek : isActive;
+  const readableSummary = isContinuous || isActive;
+
+  return (
+    <div
+      data-week-monday={weekStartStr}
+      data-has-month-start={hasFirstOfMonth ? 'true' : undefined}
+      className={`grid grid-cols-8 gap-[1px] transition-all
+        ${hasFirstOfMonth && isContinuous ? 'border-t-2 border-t-zinc-700/90' : ''}
+        ${isContinuous
+          ? `shrink-0 min-h-[146px] opacity-100 ${isCurrentCalendarWeek ? 'ring-1 ring-inset ring-volt-400/45 bg-volt-400/[0.015]' : ''}`
+          : (isSingleWeek
+              ? 'flex-1 min-h-[420px] ring-1 ring-inset ring-volt-400/35'
+              : `shrink-0 ${isActive
+                  ? 'min-h-[168px] ring-1 ring-inset ring-volt-400/35'
+                  : 'min-h-[112px] opacity-65 hover:opacity-90'}`)
+        }`}
+    >
+      {days.map((dObj, di) => (
+        <CalendarDay
+          key={dObj.dateStr}
+          dObj={dObj}
+          dWorks={dayWorkouts[di]}
+          dPlans={planMarkersByDate[dObj.dateStr]}
+          onPlanMarkerClick={onPlanMarkerClick}
+          isTdy={dObj.dateStr === todayStr}
+          dWell={wellnessData?.[dObj.dateStr]}
+          isDesktop={true}
+          todayStr={todayStr}
+          activeId={activeId}
+          onSelectWorkout={onSelectWorkout}
+          handleUnpair={handleUnpair}
+          handlePair={handlePair}
+          handleDeleteLocalActivity={handleDeleteLocalActivity}
+          handleDeleteCompletedActivity={handleDeleteCompletedActivity}
+          onEditWorkout={onEditWorkout}
+          onViewActivity={onViewActivity}
+          onAddWorkoutClick={onAddWorkoutClick}
+          compact={false}
+          showMonthSplitBg={isContinuous}
+          expanded={isSingleWeek}
+        />
+      ))}
+
+      {/* Week summary column */}
+      <div className={`${isSingleWeek ? 'p-4' : 'p-3'} flex flex-col justify-start border-l border-zinc-800 text-right font-mono telemetry-num
+        ${emphasizeSummary ? 'bg-zinc-900/90' : (isContinuous ? 'bg-zinc-900/60' : 'bg-zinc-950/90')}`}
+      >
+        <div className="mb-2.5">
+          {(isContinuous || isSingleWeek) && isCurrentCalendarWeek && (
+            <div className="mb-1 flex justify-end">
+              <span className="text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-volt-400/15 text-volt-400 border border-volt-400/30">
+                OVAJ TJEDAN
+              </span>
+            </div>
+          )}
+          <p className={`${isSingleWeek ? 'text-xs' : 'text-[10px]'} font-bold uppercase tracking-wider ${emphasizeSummary ? 'text-volt-400' : (readableSummary ? 'text-zinc-300' : 'text-zinc-500')}`}>
+            {weekRangeLabel}
+          </p>
+        </div>
+        <div className={`${isSingleWeek ? 'space-y-3.5' : 'space-y-2.5'} w-full`}>
+          <div>
+            <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-0.5">
+              <span className={readableSummary ? 'text-zinc-400' : 'text-zinc-600'}>VRIJEME</span>
+              {mainPlannedDur > 0 && <span className={durPctRaw >= 90 ? 'text-volt-400' : 'text-zinc-500'}>{durPctRaw}%</span>}
+            </div>
+            <div className="flex items-center justify-end gap-1 text-[11px]" title="Odrađeno / Planirano vrijeme">
+              <Clock className={`w-3 h-3 mr-auto ${emphasizeSummary ? 'text-volt-400' : (readableSummary ? 'text-zinc-400' : 'text-zinc-600')}`} />
+              <span className={`font-bold ${readableSummary ? 'text-zinc-100' : 'text-zinc-400'}`}>{formatDur(mainActualDur)}</span>
+              <span className="text-zinc-700">/</span>
+              <span className="text-zinc-500">{formatDur(mainPlannedDur)}</span>
+            </div>
+            <div className={`${isSingleWeek ? 'h-1.5' : 'h-1'} w-full bg-zinc-950 border border-zinc-800/80 rounded-full overflow-hidden mt-1`}>
+              <div
+                className={`h-full transition-all duration-500 ${emphasizeSummary ? 'bg-volt-400' : (isContinuous ? 'bg-volt-400/60' : 'bg-zinc-500')}`}
+                style={{ width: `${durBarPct}%` }}
+              />
+            </div>
+          </div>
+
+          <div className={`pt-2 border-t ${readableSummary ? 'border-zinc-800' : 'border-zinc-800/60'}`}>
+            <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-0.5">
+              <span className={readableSummary ? 'text-zinc-400' : 'text-zinc-600'}>TSS LOAD</span>
+              {mainPlannedTss > 0 && <span className={tssPctRaw >= 90 ? 'text-volt-400' : 'text-zinc-500'}>{tssPctRaw}%</span>}
+            </div>
+            <div className="flex items-center justify-end gap-1 text-[11px]" title="Odrađeni TSS / Planirani TSS">
+              {hasCycle ? (
+                <Bike className={`w-3 h-3 mr-auto ${readableSummary ? 'text-zinc-400' : 'text-zinc-600'}`} />
+              ) : (
+                <Activity className={`w-3 h-3 mr-auto ${readableSummary ? 'text-zinc-400' : 'text-zinc-600'}`} />
+              )}
+              <span className={`font-bold ${readableSummary ? 'text-zinc-100' : 'text-zinc-400'}`}>{mainActualTss}</span>
+              <span className="text-zinc-700">/</span>
+              <span className="text-zinc-500">{mainPlannedTss}</span>
+            </div>
+            <div className={`${isSingleWeek ? 'h-1.5' : 'h-1'} w-full bg-zinc-950 border border-zinc-800/80 rounded-full overflow-hidden mt-1`}>
+              <div
+                className={`h-full transition-all duration-500 ${emphasizeSummary ? 'bg-volt-400' : (isContinuous ? 'bg-volt-400/60' : 'bg-zinc-500')}`}
+                style={{ width: `${tssBarPct}%` }}
+              />
+            </div>
+            {hasCycle && (aT_other > 0 || pT_other > 0) && (
+              <div className="flex items-center justify-end gap-1 text-[10px] mt-1" title="Ostali sportovi TSS (ulazi u PMC projekciju)">
+                <Activity className="w-2.5 h-2.5 mr-auto text-zinc-500" />
+                <span className="font-bold text-zinc-300">{aT_other}</span>
+                <span className="text-zinc-700">/</span>
+                <span className="text-zinc-500">{pT_other}</span>
+              </div>
+            )}
+          </div>
+
+          {/* CTL / ATL / TSB blok s projekcijom u zagradama */}
+          {(displayCtl != null || displayAtl != null) && (
+            <div
+              className={`pt-2 border-t ${readableSummary ? 'border-zinc-800' : 'border-zinc-800/60'}`}
+              title={showWeekProjection ? 'Prvi broj = trenutno stanje danas · (u zagradi) = projekcija na kraju tjedna u nedjelju prema planu' : 'Projekcija / stanje kondicije na kraju tjedna'}
+            >
+              <p className={`text-[9px] font-bold uppercase tracking-widest mb-1 ${emphasizeSummary ? 'text-sky-400' : (isContinuous ? 'text-sky-400/75' : 'text-zinc-600')}`}>
+                {pmcHeaderLabel}
+              </p>
+              <div className="flex flex-col gap-0.5 items-end text-[11px]">
+                {displayCtl != null && (
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-zinc-500 text-[10px] font-bold">CTL</span>
+                    <span className={`font-bold ${readableSummary ? 'text-sky-400' : 'text-zinc-400'}`}>{displayCtl}</span>
+                  </div>
+                )}
+                {displayAtl != null && (
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-zinc-500 text-[10px] font-bold">ATL</span>
+                    <span className={`font-bold ${readableSummary ? 'text-purple-400' : 'text-zinc-400'}`}>{displayAtl}</span>
+                  </div>
+                )}
+                {renderedTsb != null && (
+                  <div className="flex items-center justify-between w-full mt-0.5 px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800/80">
+                    <span className="text-zinc-500 text-[10px] font-bold">TSB</span>
+                    <span className={`font-bold ${getTsbColor(colorTsbVal)}`}>
+                      {renderedTsb}
+                    </span>
+                  </div>
+                )}
+                {renderedRamp != null && (
+                  <div className="flex items-center justify-between w-full mt-0.5 px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800/80" title="Ramp Rate: tjedna promjena CTL-a (optimalno +3 do +8)">
+                    <span className="text-zinc-500 text-[10px] font-bold">RR</span>
+                    <span className={`font-bold ${getRampColor(colorRampVal)}`}>
+                      {renderedRamp}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ============================================================
 // CalendarTab
 // ============================================================
 export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile, intervalsId, intervalsKey, userId, intervalsConnected = false, planRegistry = [], onDeletePlanBlock, onDeletePlanBlocks, onOpenAIPlanner, onAnalyzePlanInCoach }) {
@@ -569,9 +1003,40 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [pickerMonth, setPickerMonth] = useState(cm);
   const [pickerYear, setPickerYear] = useState(cy);
+  const [viewMode, setViewMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ergvibe_calendar_view_mode');
+      return saved === 'threeWeeks' || saved === 'oneWeek' ? saved : 'continuous';
+    } catch {
+      return 'continuous';
+    }
+  });
   const monthPickerRef = useRef(null);
   const fileInputRef = useRef(null);
   const activityFileInputRef = useRef(null);
+  const desktopScrollRef = useRef(null);
+  const mobileScrollRef = useRef(null);
+  const isProgrammaticScrollRef = useRef(false);
+  const scrollReleaseTimerRef = useRef(null);
+  const scrollRafRef = useRef(null);
+  const hasInitialContinuousScrollRef = useRef(false);
+  const [windowAnchorDate, setWindowAnchorDate] = useState(() => getMondayDateObj(currentDate));
+  const [visibleMondayIso, setVisibleMondayIso] = useState(() => formatLocalDateIso(getMondayDateObj(currentDate)));
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ergvibe_calendar_view_mode', viewMode);
+    } catch {
+      // ignore storage errors
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollReleaseTimerRef.current) clearTimeout(scrollReleaseTimerRef.current);
+      if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedDateForNew) {
@@ -758,19 +1223,29 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     return () => document.removeEventListener('mousedown', handler);
   }, [showMonthPicker]);
 
-  const goWeekBack = () => {
-    const d = new Date(currentDate);
-    d.setDate(d.getDate() - 7);
-    setCurrentDate(d);
-  };
+  const currentMondayDate = useMemo(() => getMondayDateObj(currentDate), [currentDate]);
+  const currentMondayIso = useMemo(() => formatLocalDateIso(currentMondayDate), [currentMondayDate]);
 
-  const goWeekForward = () => {
-    const d = new Date(currentDate);
-    d.setDate(d.getDate() + 7);
-    setCurrentDate(d);
-  };
+  useEffect(() => {
+    const anchorMs = getMondayDateObj(windowAnchorDate).getTime();
+    const targetMs = currentMondayDate.getTime();
+    const diffWeeks = Math.round((targetMs - anchorMs) / (7 * 24 * 60 * 60 * 1000));
+    if (diffWeeks < -12 || diffWeeks > 18) {
+      setWindowAnchorDate(currentMondayDate);
+    }
+  }, [currentMondayDate, windowAnchorDate]);
 
-  const goToday = () => setCurrentDate(new Date());
+  const buildWeekFromMonday = useCallback((mondayRef, offsetWeeks, activeMonth) => {
+    const monday = new Date(mondayRef);
+    monday.setDate(mondayRef.getDate() + offsetWeeks * 7);
+    monday.setHours(0, 0, 0, 0);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const dateStr = formatLocalDateIso(d);
+      return { day: d.getDate(), dateStr, month: d.getMonth(), year: d.getFullYear(), isCurrentMonth: d.getMonth() === activeMonth };
+    });
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -782,37 +1257,153 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
   // Build a 7-day week (Mon–Sun) offset by N weeks from currentDate
   const buildWeek = useCallback((offsetWeeks) => {
-    const dow = currentDate.getDay();
-    const diff = dow === 0 ? -6 : 1 - dow;
-    const monday = new Date(currentDate);
-    monday.setDate(currentDate.getDate() + diff + offsetWeeks * 7);
-    monday.setHours(0, 0, 0, 0);
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      return { day: d.getDate(), dateStr, month: d.getMonth(), year: d.getFullYear(), isCurrentMonth: d.getMonth() === currentDate.getMonth() };
-    });
-  }, [currentDate]);
+    return buildWeekFromMonday(currentMondayDate, offsetWeeks, cm);
+  }, [buildWeekFromMonday, currentMondayDate, cm]);
 
   const prevWeek = useMemo(() => buildWeek(-1), [buildWeek]);
   const currentWeek = useMemo(() => buildWeek(0), [buildWeek]);
   const nextWeek = useMemo(() => buildWeek(1), [buildWeek]);
 
-  const threeWeeks = [
+  const threeWeeks = useMemo(() => [
     { days: prevWeek, isActive: false },
     { days: currentWeek, isActive: true },
     { days: nextWeek, isActive: false },
-  ];
+  ], [prevWeek, currentWeek, nextWeek]);
 
-  // Month picker sync — use the month of Monday of current week
-  const weekStartMonth = currentWeek[0].month;
-  const weekStartYear = currentWeek[0].year;
+  const oneWeekList = useMemo(() => [
+    { days: currentWeek, isActive: true },
+  ], [currentWeek]);
 
-  // Header label: month(s) and year of the active week
+  const continuousWeeks = useMemo(() => {
+    const anchor = getMondayDateObj(windowAnchorDate);
+    const anchorMonth = anchor.getMonth();
+    const weeks = [];
+    for (let offset = -16; offset <= 24; offset++) {
+      weeks.push({ days: buildWeekFromMonday(anchor, offset, anchorMonth), isActive: false });
+    }
+    return weeks;
+  }, [windowAnchorDate, buildWeekFromMonday]);
+
+  const scrollToWeekMonday = useCallback((targetMondayIso, behavior = 'smooth', targetDateIso = null) => {
+    const releaseMs = behavior === 'smooth' ? 550 : 60;
+    isProgrammaticScrollRef.current = true;
+    if (scrollReleaseTimerRef.current) {
+      clearTimeout(scrollReleaseTimerRef.current);
+    }
+    scrollReleaseTimerRef.current = setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+    }, releaseMs);
+
+    setVisibleMondayIso(targetMondayIso);
+
+    requestAnimationFrame(() => {
+      const container = desktopScrollRef.current;
+      if (container) {
+        const row = container.querySelector(`[data-week-monday="${targetMondayIso}"]`);
+        if (row) {
+          const containerRect = container.getBoundingClientRect();
+          const rowRect = row.getBoundingClientRect();
+          const targetTop = Math.max(0, container.scrollTop + (rowRect.top - containerRect.top) - 36);
+          container.scrollTo({ top: targetTop, behavior });
+        }
+      }
+
+      const mobileContainer = mobileScrollRef.current;
+      if (mobileContainer) {
+        const mTarget = targetDateIso || targetMondayIso;
+        const mEl = mobileContainer.querySelector(`[data-mobile-date="${mTarget}"]`);
+        if (mEl) {
+          const mRect = mobileContainer.getBoundingClientRect();
+          const elRect = mEl.getBoundingClientRect();
+          const mTop = Math.max(0, mobileContainer.scrollTop + (elRect.top - mRect.top) - 12);
+          mobileContainer.scrollTo({ top: mTop, behavior });
+        }
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (viewMode !== 'continuous') {
+      hasInitialContinuousScrollRef.current = false;
+      return;
+    }
+    const behavior = hasInitialContinuousScrollRef.current ? 'smooth' : 'auto';
+    hasInitialContinuousScrollRef.current = true;
+    scrollToWeekMonday(currentMondayIso, behavior, formatLocalDateIso(currentDate));
+  }, [viewMode, currentMondayIso, currentDate, continuousWeeks, scrollToWeekMonday]);
+
+  const handleDesktopScroll = useCallback(() => {
+    if (viewMode !== 'continuous' || isProgrammaticScrollRef.current) return;
+    if (scrollRafRef.current) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const container = desktopScrollRef.current;
+      if (!container || isProgrammaticScrollRef.current) return;
+
+      const containerTop = container.getBoundingClientRect().top;
+      const rows = container.querySelectorAll('[data-week-monday]');
+      let chosenMonday = null;
+      for (const row of rows) {
+        const rect = row.getBoundingClientRect();
+        if (rect.bottom > containerTop + 44) {
+          chosenMonday = row.getAttribute('data-week-monday');
+          break;
+        }
+      }
+      if (chosenMonday) {
+        setVisibleMondayIso((prev) => (prev === chosenMonday ? prev : chosenMonday));
+      }
+    });
+  }, [viewMode]);
+
+  const handleViewModeChange = useCallback((nextMode) => {
+    if (nextMode === viewMode) return;
+    if ((nextMode === 'threeWeeks' || nextMode === 'oneWeek') && viewMode === 'continuous') {
+      setCurrentDate(getMondayDateObj(visibleMondayIso));
+    }
+    setViewMode(nextMode);
+  }, [viewMode, visibleMondayIso, setCurrentDate]);
+
+  const goWeekBack = () => {
+    const d = viewMode === 'continuous'
+      ? getMondayDateObj(visibleMondayIso)
+      : new Date(currentDate);
+    d.setDate(d.getDate() - 7);
+    setCurrentDate(d);
+  };
+
+  const goWeekForward = () => {
+    const d = viewMode === 'continuous'
+      ? getMondayDateObj(visibleMondayIso)
+      : new Date(currentDate);
+    d.setDate(d.getDate() + 7);
+    setCurrentDate(d);
+  };
+
+  const goToday = () => {
+    const now = new Date();
+    setCurrentDate(now);
+    if (viewMode === 'continuous') {
+      scrollToWeekMonday(formatLocalDateIso(getMondayDateObj(now)), 'smooth', formatLocalDateIso(now));
+    }
+  };
+
+  const activeHeaderWeek = useMemo(() => {
+    if (viewMode === 'continuous') {
+      const found = continuousWeeks.find((w) => w.days[0]?.dateStr === visibleMondayIso);
+      if (found) return found.days;
+    }
+    return currentWeek;
+  }, [viewMode, continuousWeeks, visibleMondayIso, currentWeek]);
+
+  // Month picker sync — use the month of Monday of visible / active week
+  const weekStartMonth = activeHeaderWeek[0].month;
+  const weekStartYear = activeHeaderWeek[0].year;
+
+  // Header label: month(s) and year of the visible / active week
   const headerLabel = useMemo(() => {
-    const start = currentWeek[0];
-    const end = currentWeek[6];
+    const start = activeHeaderWeek[0];
+    const end = activeHeaderWeek[6];
     const mn = ["siječnja", "veljače", "ožujka", "travnja", "svibnja", "lipnja", "srpnja", "kolovoza", "rujna", "listopada", "studenog", "prosinca"];
     const mnKratki = ["Sij", "Velj", "Ožu", "Tra", "Svi", "Lip", "Srp", "Kol", "Ruj", "Lis", "Stu", "Pro"];
 
@@ -826,7 +1417,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     }
     // Ista godina, različiti mjeseci: "28. tra – 4. svi 2026"
     return `${start.day}. ${mnKratki[start.month]} – ${end.day}. ${mnKratki[end.month]} ${end.year}`;
-  }, [currentWeek]);
+  }, [activeHeaderWeek]);
 
   // Keep picker in sync with week start
   useEffect(() => {
@@ -850,12 +1441,22 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     const cur = new Date(startDate);
     while (cur <= endDate) {
       const d = new Date(cur);
-      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      days.push({ day: d.getDate(), dateStr, isCurrentMonth: d.getMonth() === cm2 });
+      const dateStr = formatLocalDateIso(d);
+      days.push({ day: d.getDate(), dateStr, month: d.getMonth(), year: d.getFullYear(), isCurrentMonth: d.getMonth() === cm2 });
       cur.setDate(cur.getDate() + 1);
     }
     return days;
   }, [weekStartYear, weekStartMonth]);
+
+  const mobileDays = useMemo(() => {
+    if (viewMode === 'continuous') {
+      return continuousWeeks.flatMap((w) => w.days);
+    }
+    if (viewMode === 'oneWeek') {
+      return currentWeek;
+    }
+    return calDays.filter((d) => d.isCurrentMonth);
+  }, [viewMode, continuousWeeks, currentWeek, calDays]);
 
   const workoutsByDate = useMemo(() => {
     const map = {};
@@ -1712,7 +2313,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         </div>
 
         {/* Desna grupa akcija: Cilj countdown + AI Planer + Week navigation */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3">
           {upcomingGoal && (
             <button
               type="button"
@@ -1739,6 +2340,46 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               <span className="hidden sm:inline">AI Planer</span>
             </button>
           )}
+
+          {/* View mode toggle */}
+          <div className="flex items-stretch bg-zinc-900 rounded-lg p-1 border border-zinc-800 gap-0.5">
+            <button
+              type="button"
+              onClick={() => handleViewModeChange('continuous')}
+              title="Kontinuirani skrol kalendar (TrainerRoad stil)"
+              className={`px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-[11px] font-mono font-bold transition-colors ${
+                viewMode === 'continuous'
+                  ? 'bg-volt-400/15 text-volt-400 border border-volt-400/35'
+                  : 'text-zinc-400 hover:text-zinc-200 border border-transparent'
+              }`}
+            >
+              Kontinuirano
+            </button>
+            <button
+              type="button"
+              onClick={() => handleViewModeChange('threeWeeks')}
+              title="Klasični prikaz 3 tjedna"
+              className={`px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-[11px] font-mono font-bold transition-colors ${
+                viewMode === 'threeWeeks'
+                  ? 'bg-volt-400/15 text-volt-400 border border-volt-400/35'
+                  : 'text-zinc-400 hover:text-zinc-200 border border-transparent'
+              }`}
+            >
+              3 Tjedna
+            </button>
+            <button
+              type="button"
+              onClick={() => handleViewModeChange('oneWeek')}
+              title="Detaljni prikaz jednog tjedna"
+              className={`px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-[11px] font-mono font-bold transition-colors ${
+                viewMode === 'oneWeek'
+                  ? 'bg-volt-400/15 text-volt-400 border border-volt-400/35'
+                  : 'text-zinc-400 hover:text-zinc-200 border border-transparent'
+              }`}
+            >
+              1 Tjedan
+            </button>
+          </div>
 
           {/* Week navigation */}
           <div className="flex items-stretch bg-zinc-900 rounded-lg p-1 border border-zinc-800 gap-1">
@@ -1775,8 +2416,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         </div>
       </div>
 
-      <div className="flex md:hidden flex-col bg-zinc-950 gap-[1px] flex-1 overflow-y-auto">
-        {calDays.filter(d => d.isCurrentMonth).map((dObj) => (
+      <div ref={mobileScrollRef} className="flex md:hidden flex-col bg-zinc-950 gap-[1px] flex-1 overflow-y-auto">
+        {mobileDays.map((dObj) => (
           <CalendarDay
             key={dObj.dateStr}
             dObj={dObj}
@@ -1807,324 +2448,39 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="hidden md:flex flex-1 flex-col bg-zinc-800 border-l border-zinc-800 gap-[1px] overflow-y-auto">
-          {threeWeeks.map(({ days, isActive }, wi) => {
-            let aT_cycle = 0; let pT_cycle = 0; let aD = 0; let pD = 0;
-            let aT_other = 0; let pT_other = 0; let aD_other = 0; let pD_other = 0;
-            
-            // Week label: date range
-            const wStart = days[0];
-            const wEnd = days[6];
-            const mn = ["Sij", "Velj", "Ožu", "Tra", "Svi", "Lip", "Srp", "Kol", "Ruj", "Lis", "Stu", "Pro"];
-            const weekRangeLabel = wStart.month === wEnd.month
-              ? `${wStart.day}–${wEnd.day} ${mn[wStart.month]}`
-              : `${wStart.day} ${mn[wStart.month]} – ${wEnd.day} ${mn[wEnd.month]}`;
-
-            const weekStartStr = wStart.dateStr;
-            const weekEndStr = wEnd.dateStr;
-            const isPastWeek = weekEndStr < todayStr;
-            const isFutureWeek = weekStartStr > todayStr;
-            const isCurrentCalendarWeek = !isPastWeek && !isFutureWeek;
-
-            // CTL/ATL/TSB — Projekcija na kraju tjedna (nedjelja)
-            let endCtl = null, endAtl = null, endTsb = null;
-            for (let di = 6; di >= 0; di--) {
-              const wd = wellnessData?.[days[di].dateStr];
-              if (wd && wd.ctl != null) {
-                endCtl = Math.round(Number(wd.ctl));
-                endAtl = Math.round(Number(wd.atl));
-                endTsb = endCtl - endAtl;
-                break;
-              }
-            }
-
-            // CTL/ATL/TSB — Trenutno stanje (do današnjeg dana)
-            let currentCtl = null, currentAtl = null, currentTsb = null;
-            if (!isFutureWeek) {
-              for (let di = 6; di >= 0; di--) {
-                if (days[di].dateStr <= todayStr) {
-                  const wd = wellnessData?.[days[di].dateStr];
-                  if (wd && (wd.actualCtl != null || wd.ctl != null)) {
-                    const cRaw = isPastWeek ? wd.ctl : (wd.actualCtl ?? wd.ctl);
-                    const aRaw = isPastWeek ? wd.atl : (wd.actualAtl ?? wd.atl);
-                    currentCtl = Math.round(Number(cRaw));
-                    currentAtl = Math.round(Number(aRaw));
-                    currentTsb = currentCtl - currentAtl;
-                    break;
-                  }
-                }
-              }
-            }
-
-            const todayWell = wellnessData?.[todayStr];
-            const showWeekProjection = isCurrentCalendarWeek && (weekEndStr > todayStr || Boolean(todayWell?.hasUncompletedToday));
-
-            // Prikaz: za tekući tjedan u tijeku uvijek prikaži "trenutno (projekcija u ned)", za budući "(projekcija)", za prošli "konačno"
-            const renderMetric = (curr, plan) => {
-              if (curr != null && plan != null && (showWeekProjection || curr !== plan)) {
-                return `${curr} (${plan})`;
-              }
-              if (curr != null) return `${curr}`;
-              if (plan != null) return `(${plan})`;
-              return null;
-            };
-
-            const displayCtl = renderMetric(currentCtl, endCtl);
-            const displayAtl = renderMetric(currentAtl, endAtl);
-            
-            const formatSigned = (v) => (v > 0 ? `+${v}` : `${v}`);
-            const displayTsb = () => {
-              if (currentTsb != null && endTsb != null && (showWeekProjection || currentTsb !== endTsb)) {
-                return `${formatSigned(currentTsb)} (${formatSigned(endTsb)})`;
-              }
-              if (currentTsb != null) return formatSigned(currentTsb);
-              if (endTsb != null) return `(${formatSigned(endTsb)})`;
-              return null;
-            };
-            const renderedTsb = displayTsb();
-            const colorTsbVal = currentTsb != null ? currentTsb : endTsb;
-
-            // Ramp Rate — CTL na kraju prošlog tjedna (nedjelja prije ovog ponedjeljka) u odnosu na trenutni / projicirani nedjeljni CTL
-            let prevWeekCtl = null;
-            const mondayDate = new Date(days[0].year, days[0].month, days[0].day);
-            for (let di = 6; di >= 0; di--) {
-              const prevDate = new Date(mondayDate);
-              prevDate.setDate(prevDate.getDate() - 7 + di);
-              const prevDateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
-              const pwd = wellnessData?.[prevDateStr];
-              if (pwd && pwd.ctl != null) {
-                prevWeekCtl = Math.round(Number(pwd.ctl));
-                break;
-              }
-            }
-            
-            const currentRamp = currentCtl != null && prevWeekCtl != null ? currentCtl - prevWeekCtl : null;
-            const endRamp = endCtl != null && prevWeekCtl != null ? endCtl - prevWeekCtl : null;
-            
-            const displayRamp = () => {
-              if (currentRamp != null && endRamp != null && (showWeekProjection || currentRamp !== endRamp)) {
-                return `${formatSigned(currentRamp)} (${formatSigned(endRamp)})`;
-              }
-              if (currentRamp != null) return formatSigned(currentRamp);
-              if (endRamp != null) return `(${formatSigned(endRamp)})`;
-              return null;
-            };
-            const renderedRamp = displayRamp();
-            const colorRampVal = endRamp != null && isFutureWeek ? endRamp : (currentRamp != null ? currentRamp : endRamp);
-
-            const getTsbColor = (tsb) => {
-              if (tsb == null) return 'text-zinc-600';
-              if (tsb > 25) return 'text-amber-400';
-              if (tsb >= 5) return 'text-emerald-400';
-              if (tsb >= -10) return 'text-zinc-400';
-              return 'text-rose-400';
-            };
-            const getRampColor = (rr) => {
-              if (rr == null) return 'text-zinc-600';
-              if (rr > 8) return 'text-orange-400';  // agresivan ramp — rizik
-              if (rr >= 3) return 'text-emerald-400'; // optimalan ramp
-              if (rr >= 0) return 'text-zinc-400';    // umjeren / neutralan
-              if (rr >= -5) return 'text-sky-400';    // lagani taper
-              return 'text-rose-400';                  // agresivan taper / pad
-            };
-
-            return (
-              <div
-                key={wi}
-                className={`grid grid-cols-8 gap-[1px] shrink-0 transition-all
-                  ${isActive
-                    ? 'min-h-[168px] ring-1 ring-inset ring-volt-400/35'
-                    : 'min-h-[112px] opacity-65 hover:opacity-90'
-                  }`}
-              >
-                {days.map((dObj) => {
-                  const dWorks = workoutsByDate[dObj.dateStr] || [];
-                  dWorks.forEach(w => {
-                    const actTssVal = Math.max(0, Math.round(Number(w.tss) || 0));
-                    const planTssVal = Math.max(0, Math.round(Number(w.plannedTss ?? w.tss) || 0));
-                    const actDurVal = Math.max(0, Math.round(Number(w.duration) || 0));
-                    const planDurVal = Math.max(0, Math.round(Number(w.plannedDuration ?? w.duration) || 0));
-
-                    if (w.isCompleted) {
-                      if (w.category !== 'OTHER') {
-                        aT_cycle += actTssVal;
-                        aD += actDurVal;
-                        if (w.plannedTss != null && Number(w.plannedTss) > 0) {
-                          pT_cycle += Math.round(Number(w.plannedTss));
-                        }
-                        if (w.plannedDuration != null && Number(w.plannedDuration) > 0) {
-                          pD += Math.round(Number(w.plannedDuration));
-                        }
-                      } else {
-                        aT_other += actTssVal;
-                        aD_other += actDurVal;
-                        if (w.plannedTss != null && Number(w.plannedTss) > 0) {
-                          pT_other += Math.round(Number(w.plannedTss));
-                        }
-                        if (w.plannedDuration != null && Number(w.plannedDuration) > 0) {
-                          pD_other += Math.round(Number(w.plannedDuration));
-                        }
-                      }
-                    } else {
-                      if (w.category !== 'OTHER') {
-                        pT_cycle += planTssVal;
-                        pD += planDurVal;
-                      } else {
-                        pT_other += planTssVal;
-                        pD_other += planDurVal;
-                      }
-                    }
-                  });
-                  return (
-                    <CalendarDay
-                      key={dObj.dateStr}
-                      dObj={dObj}
-                      dWorks={dWorks}
-                      dPlans={planMarkersByDate[dObj.dateStr]}
-                      onPlanMarkerClick={handleOpenPlanMarker}
-                      isTdy={dObj.dateStr === todayStr}
-                      dWell={wellnessData?.[dObj.dateStr]}
-                      isDesktop={true}
-                      todayStr={todayStr}
-                      activeId={activeId}
-                      onSelectWorkout={onSelectWorkout}
-                      handleUnpair={handleUnpair}
-                      handlePair={handlePair}
-                      handleDeleteLocalActivity={handleDeleteLocalActivity}
-                      handleDeleteCompletedActivity={handleDeleteCompletedActivity}
-                      onEditWorkout={handleOpenWorkoutOrRace}
-                      onViewActivity={setViewingActivity}
-                      onAddWorkoutClick={setSelectedDateForNew}
-                      compact={false}
-                    />
-                  );
-                })}
-
-                {/* Week summary column */}
-                {(() => {
-                  const hasCycle = aT_cycle > 0 || pT_cycle > 0 || aD > 0 || pD > 0;
-                  const mainActualDur = hasCycle ? aD : aD_other;
-                  const mainPlannedDur = hasCycle ? pD : pD_other;
-                  const mainActualTss = hasCycle ? aT_cycle : aT_other;
-                  const mainPlannedTss = hasCycle ? pT_cycle : pT_other;
-
-                  const durPctRaw = mainPlannedDur > 0 ? Math.round((mainActualDur / mainPlannedDur) * 100) : (mainActualDur > 0 ? 100 : 0);
-                  const durBarPct = Math.min(100, durPctRaw);
-                  const tssPctRaw = mainPlannedTss > 0 ? Math.round((mainActualTss / mainPlannedTss) * 100) : (mainActualTss > 0 ? 100 : 0);
-                  const tssBarPct = Math.min(100, tssPctRaw);
-
-                  const pmcHeaderLabel = showWeekProjection
-                    ? 'PMC · DANAS (NED)'
-                    : isFutureWeek
-                    ? 'PMC · PROJEKCIJA'
-                    : 'PMC FORMA';
-
-                  return (
-                    <div className={`p-3 flex flex-col justify-start border-l border-zinc-800 text-right font-mono telemetry-num
-                      ${isActive ? 'bg-zinc-900/90' : 'bg-zinc-950/90'}`}
-                    >
-                      <p className={`text-[10px] font-bold uppercase tracking-wider mb-2.5 ${isActive ? 'text-volt-400' : 'text-zinc-500'}`}>
-                        {weekRangeLabel}
-                      </p>
-                      <div className="space-y-2.5 w-full">
-                        <div>
-                          <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-0.5">
-                            <span className={isActive ? 'text-zinc-400' : 'text-zinc-600'}>VRIJEME</span>
-                            {mainPlannedDur > 0 && <span className={durPctRaw >= 90 ? 'text-volt-400' : 'text-zinc-500'}>{durPctRaw}%</span>}
-                          </div>
-                          <div className="flex items-center justify-end gap-1 text-[11px]" title="Odrađeno / Planirano vrijeme">
-                            <Clock className={`w-3 h-3 mr-auto ${isActive ? 'text-volt-400' : 'text-zinc-600'}`} />
-                            <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{formatDur(mainActualDur)}</span>
-                            <span className="text-zinc-700">/</span>
-                            <span className="text-zinc-500">{formatDur(mainPlannedDur)}</span>
-                          </div>
-                          <div className="h-1 w-full bg-zinc-950 border border-zinc-800/80 rounded-full overflow-hidden mt-1">
-                            <div
-                              className={`h-full transition-all duration-500 ${isActive ? 'bg-volt-400' : 'bg-zinc-500'}`}
-                              style={{ width: `${durBarPct}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        <div className={`pt-2 border-t ${isActive ? 'border-zinc-800' : 'border-zinc-800/60'}`}>
-                          <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-0.5">
-                            <span className={isActive ? 'text-zinc-400' : 'text-zinc-600'}>TSS LOAD</span>
-                            {mainPlannedTss > 0 && <span className={tssPctRaw >= 90 ? 'text-volt-400' : 'text-zinc-500'}>{tssPctRaw}%</span>}
-                          </div>
-                          <div className="flex items-center justify-end gap-1 text-[11px]" title="Odrađeni TSS / Planirani TSS">
-                            {hasCycle ? (
-                              <Bike className={`w-3 h-3 mr-auto ${isActive ? 'text-zinc-400' : 'text-zinc-600'}`} />
-                            ) : (
-                              <Activity className={`w-3 h-3 mr-auto ${isActive ? 'text-zinc-400' : 'text-zinc-600'}`} />
-                            )}
-                            <span className={`font-bold ${isActive ? 'text-zinc-100' : 'text-zinc-400'}`}>{mainActualTss}</span>
-                            <span className="text-zinc-700">/</span>
-                            <span className="text-zinc-500">{mainPlannedTss}</span>
-                          </div>
-                          <div className="h-1 w-full bg-zinc-950 border border-zinc-800/80 rounded-full overflow-hidden mt-1">
-                            <div
-                              className={`h-full transition-all duration-500 ${isActive ? 'bg-volt-400' : 'bg-zinc-500'}`}
-                              style={{ width: `${tssBarPct}%` }}
-                            />
-                          </div>
-                          {hasCycle && (aT_other > 0 || pT_other > 0) && (
-                            <div className="flex items-center justify-end gap-1 text-[10px] mt-1" title="Ostali sportovi TSS (ulazi u PMC projekciju)">
-                              <Activity className="w-2.5 h-2.5 mr-auto text-zinc-500" />
-                              <span className="font-bold text-zinc-300">{aT_other}</span>
-                              <span className="text-zinc-700">/</span>
-                              <span className="text-zinc-500">{pT_other}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* CTL / ATL / TSB blok s projekcijom u zagradama */}
-                        {(displayCtl != null || displayAtl != null) && (
-                          <div
-                            className={`pt-2 border-t ${isActive ? 'border-zinc-800' : 'border-zinc-800/60'}`}
-                            title={showWeekProjection ? 'Prvi broj = trenutno stanje danas · (u zagradi) = projekcija na kraju tjedna u nedjelju prema planu' : 'Projekcija / stanje kondicije na kraju tjedna'}
-                          >
-                            <p className={`text-[9px] font-bold uppercase tracking-widest mb-1 ${isActive ? 'text-sky-400' : 'text-zinc-600'}`}>
-                              {pmcHeaderLabel}
-                            </p>
-                            <div className="flex flex-col gap-0.5 items-end text-[11px]">
-                              {displayCtl != null && (
-                                <div className="flex items-center justify-between w-full">
-                                  <span className="text-zinc-500 text-[10px] font-bold">CTL</span>
-                                  <span className={`font-bold ${isActive ? 'text-sky-400' : 'text-zinc-400'}`}>{displayCtl}</span>
-                                </div>
-                              )}
-                              {displayAtl != null && (
-                                <div className="flex items-center justify-between w-full">
-                                  <span className="text-zinc-500 text-[10px] font-bold">ATL</span>
-                                  <span className={`font-bold ${isActive ? 'text-purple-400' : 'text-zinc-400'}`}>{displayAtl}</span>
-                                </div>
-                              )}
-                              {renderedTsb != null && (
-                                <div className="flex items-center justify-between w-full mt-0.5 px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800/80">
-                                  <span className="text-zinc-500 text-[10px] font-bold">TSB</span>
-                                  <span className={`font-bold ${getTsbColor(colorTsbVal)}`}>
-                                    {renderedTsb}
-                                  </span>
-                                </div>
-                              )}
-                              {renderedRamp != null && (
-                                <div className="flex items-center justify-between w-full mt-0.5 px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800/80" title="Ramp Rate: tjedna promjena CTL-a (optimalno +3 do +8)">
-                                  <span className="text-zinc-500 text-[10px] font-bold">RR</span>
-                                  <span className={`font-bold ${getRampColor(colorRampVal)}`}>
-                                    {renderedRamp}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            );
-          })}
+        <div
+          ref={desktopScrollRef}
+          onScroll={handleDesktopScroll}
+          className="hidden md:flex flex-1 flex-col bg-zinc-800 border-l border-zinc-800 gap-[1px] overflow-y-auto relative"
+        >
+          {(viewMode === 'continuous'
+            ? continuousWeeks
+            : viewMode === 'oneWeek'
+            ? oneWeekList
+            : threeWeeks
+          ).map(({ days, isActive }) => (
+            <CalendarWeekRow
+              key={days[0].dateStr}
+              days={days}
+              isActive={isActive}
+              isContinuous={viewMode === 'continuous'}
+              isSingleWeek={viewMode === 'oneWeek'}
+              todayStr={todayStr}
+              workoutsByDate={workoutsByDate}
+              planMarkersByDate={planMarkersByDate}
+              wellnessData={wellnessData}
+              activeId={activeId}
+              onPlanMarkerClick={handleOpenPlanMarker}
+              onSelectWorkout={onSelectWorkout}
+              handleUnpair={handleUnpair}
+              handlePair={handlePair}
+              handleDeleteLocalActivity={handleDeleteLocalActivity}
+              handleDeleteCompletedActivity={handleDeleteCompletedActivity}
+              onViewActivity={setViewingActivity}
+              onEditWorkout={handleOpenWorkoutOrRace}
+              onAddWorkoutClick={setSelectedDateForNew}
+            />
+          ))}
         </div>
 
         <DragOverlay
