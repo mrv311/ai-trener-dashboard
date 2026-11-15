@@ -3,6 +3,16 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --accent-glow-alpha: 0.28;
+    --accent-glow-sub-alpha: 0.18;
+  }
+
+  :root[data-glow="quiet"] {
+    --accent-glow-alpha: 0;
+    --accent-glow-sub-alpha: 0;
+  }
+
   :root,
   [data-theme="volt"] {
     /* Smjer A (Zadano): Carbon & Acid Volt — usklađeno s logotipom kazete */
@@ -12,6 +22,46 @@
     --accent-600: 101 163 13;  /* #65a30d */
     --accent-950: 26 46 5;     /* #1a2e05 */
     --accent-hex: #a3e635;
+  }
+
+  [data-theme="titanium"] {
+    /* Titanium Champagne: topla prigušena titanijumsko-zlatna nijansa */
+    --accent-300: 237 212 154; /* #edd49a */
+    --accent-400: 214 178 110; /* #d6b26e */
+    --accent-500: 186 149 82;  /* #ba9552 */
+    --accent-600: 152 117 57;  /* #987539 */
+    --accent-950: 42 32 14;    /* #2a200e */
+    --accent-hex: #d6b26e;
+  }
+
+  [data-theme="emerald"] {
+    /* Sage Emerald: čista, smirena smaragdna telemetrija */
+    --accent-300: 110 231 183; /* #6ee7b7 */
+    --accent-400: 52 211 153;  /* #34d399 */
+    --accent-500: 16 185 129;  /* #10b981 */
+    --accent-600: 5 150 105;   /* #059669 */
+    --accent-950: 6 46 35;     /* #062e23 */
+    --accent-hex: #34d399;
+  }
+
+  [data-theme="amber"] {
+    /* Copper Amber: topli instrumentni jantar / bakar */
+    --accent-300: 252 211 77;  /* #fcd34d */
+    --accent-400: 245 158 11;  /* #f59e0b */
+    --accent-500: 217 119 6;   /* #d97706 */
+    --accent-600: 180 83 9;    /* #b45309 */
+    --accent-950: 48 24 5;     /* #301805 */
+    --accent-hex: #f59e0b;
+  }
+
+  [data-theme="platinum"] {
+    /* Monochrome Platinum: minimalistička srebrno-metalik tema */
+    --accent-300: 250 250 250; /* #fafafa */
+    --accent-400: 228 228 231; /* #e4e4e7 */
+    --accent-500: 161 161 170; /* #a1a1aa */
+    --accent-600: 113 113 122; /* #71717a */
+    --accent-950: 24 24 27;    /* #18181b */
+    --accent-hex: #fafafa;
   }
 
   [data-theme="corsa"] {

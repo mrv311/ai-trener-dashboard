@@ -25,6 +25,7 @@ import { useIntervalsData } from './hooks/useIntervalsData';
 import { handleIntervalsOAuthCallback } from './services/intervalsOAuth';
 import { extractIntervalsAthleteMetrics } from './services/intervalsApi';
 import { parseIsoLocal } from './utils/plannerUtils';
+import { VALID_UI_THEME_IDS } from './utils/themeConfig';
 
 const DEFAULT_GUEST_PROFILE = {
   username: 'Gost Vozač', weight: 75.9, ftp: 200, thresholdHr: 160, maxHr: 180,
@@ -49,6 +50,7 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useLocalStorage('sidebarCollapsed', false);
   const [uiTheme, setUiTheme] = useLocalStorage('ergvibe_ui_theme', 'volt');
+  const [uiQuietGlow, setUiQuietGlow] = useLocalStorage('ergvibe_ui_quiet_glow', false);
   const [isTrainerPlaying, setIsTrainerPlaying] = useState(false);
   const [isTrainerFullscreen, setIsTrainerFullscreen] = useState(false);
 
@@ -249,12 +251,12 @@ export default function App() {
   const onboardingKey = currentUserId ? `ergvibe_onboarding_done_${currentUserId}` : 'ergvibe_onboarding_done_guest';
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useLocalStorage(onboardingKey, false);
 
-  // Primijeni odabranu temu akcenta na <html>
+  // Primijeni odabranu temu akcenta i razinu sjaja na <html>
   useEffect(() => {
-    const validThemes = ['volt', 'corsa', 'aero'];
-    const active = validThemes.includes(uiTheme) ? uiTheme : 'volt';
+    const active = VALID_UI_THEME_IDS.includes(uiTheme) ? uiTheme : 'volt';
     document.documentElement.setAttribute('data-theme', active);
-  }, [uiTheme]);
+    document.documentElement.setAttribute('data-glow', uiQuietGlow ? 'quiet' : 'vivid');
+  }, [uiTheme, uiQuietGlow]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session }, error }) => {
@@ -841,6 +843,8 @@ export default function App() {
                 athleteInfo={athleteInfo}
                 uiTheme={uiTheme}
                 setUiTheme={setUiTheme}
+                uiQuietGlow={uiQuietGlow}
+                setUiQuietGlow={setUiQuietGlow}
                 onOpenAuthModal={() => setShowAuthModal(true)}
                 onOpenOnboarding={() => setShowOnboardingModal(true)}
                 onNavigateToCalendar={() => handleTabChange('calendar')}

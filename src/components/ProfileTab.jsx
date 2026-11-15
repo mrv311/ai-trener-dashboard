@@ -6,30 +6,7 @@ import {
 } from 'lucide-react';
 import ActivityDetailModal from './ActivityDetailModal';
 import { extractIntervalsAthleteMetrics } from '../services/intervalsApi';
-
-const UI_THEMES = [
-  {
-    id: 'volt',
-    name: 'Carbon & Acid Volt',
-    tag: 'ZADANO',
-    desc: 'Fluorescentna trkaća zelena maksimalnog kontrasta na karbonskoj podlozi.',
-    swatch: '#a3e635'
-  },
-  {
-    id: 'corsa',
-    name: 'Atelier Corsa',
-    tag: 'UTRKA',
-    desc: 'Talijanska natjecateljska crveno-narančasta za agresivan trkaći kokpit.',
-    swatch: '#ff4d1c'
-  },
-  {
-    id: 'aero',
-    name: 'Stealth Aero',
-    tag: 'AERO',
-    desc: 'Hladna ledeno-plava telemetrija inspirirana zračnim tunelom.',
-    swatch: '#38bdf8'
-  }
-];
+import { UI_THEMES } from '../utils/themeConfig';
 
 export default function ProfileTab({ 
   profile, 
@@ -45,7 +22,9 @@ export default function ProfileTab({
   onOpenOnboarding,
   onNavigateToCalendar,
   uiTheme = 'volt',
-  setUiTheme
+  setUiTheme,
+  uiQuietGlow = false,
+  setUiQuietGlow
 }) {
   const [formData, setFormData] = useState({
     username: profile?.username || 'Odvažni Vozač',
@@ -319,7 +298,7 @@ export default function ProfileTab({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {UI_THEMES.map((themeItem) => {
               const active = uiTheme === themeItem.id;
               return (
@@ -327,23 +306,26 @@ export default function ProfileTab({
                   key={themeItem.id}
                   type="button"
                   onClick={() => setUiTheme(themeItem.id)}
-                  className={`text-left p-4 rounded-lg border transition-all flex flex-col gap-2 ${
+                  className={`text-left p-3.5 rounded-lg border transition-all flex flex-col gap-2 ${
                     active
                       ? 'bg-zinc-950 border-volt-400 shadow-volt-glow'
                       : 'bg-zinc-950/60 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/70'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       <span
                         className="w-4 h-4 rounded-sm border border-white/20 shrink-0"
-                        style={{ backgroundColor: themeItem.swatch, boxShadow: `0 0 10px ${themeItem.swatch}66` }}
+                        style={{
+                          backgroundColor: themeItem.swatch,
+                          boxShadow: uiQuietGlow ? 'none' : `0 0 10px ${themeItem.swatch}66`
+                        }}
                       />
-                      <span className="font-display font-bold uppercase tracking-wide text-sm text-zinc-100">
+                      <span className="font-display font-bold uppercase tracking-wide text-sm text-zinc-100 truncate">
                         {themeItem.name}
                       </span>
                     </div>
-                    <span className={`font-mono text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                    <span className={`font-mono text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${
                       active
                         ? 'bg-volt-400/15 text-volt-400 border-volt-400/40'
                         : 'bg-zinc-900 text-zinc-500 border-zinc-800'
@@ -358,6 +340,53 @@ export default function ProfileTab({
               );
             })}
           </div>
+
+          {setUiQuietGlow && (
+            <div className="pt-2 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={uiQuietGlow}
+                onClick={() => setUiQuietGlow(prev => !prev)}
+                className="flex items-center gap-3 text-left cursor-pointer select-none group"
+              >
+                <span
+                  className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors border shrink-0 ${
+                    uiQuietGlow
+                      ? 'bg-volt-400 border-volt-400'
+                      : 'bg-zinc-800 border-zinc-700 group-hover:border-zinc-600'
+                  }`}
+                >
+                  <span
+                    className={`block w-3.5 h-3.5 rounded-full transition-transform ${
+                      uiQuietGlow ? 'translate-x-5 bg-zinc-950' : 'translate-x-0.5 bg-zinc-300'
+                    }`}
+                  />
+                </span>
+                <div>
+                  <div className="text-xs font-bold text-zinc-200">
+                    Mat način rada (bez neonskog sjaja)
+                  </div>
+                  <div className="text-[11px] text-zinc-400">
+                    Uklanja glow odsjaje oko aktivnih gumbi i kartica za mirniji cjelodnevni pregled.
+                  </div>
+                </div>
+              </button>
+
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 shrink-0">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Pregled:</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-volt-400 text-zinc-950 shadow-volt-glow">
+                  CTA GUMB
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-volt-400/15 text-volt-400 border border-volt-400/35">
+                  OZNAKA
+                </span>
+                <span className="text-xs font-mono telemetry-num font-bold text-volt-400">
+                  {formData.ftp || 250} W
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

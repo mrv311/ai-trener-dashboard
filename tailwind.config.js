@@ -51,7 +51,7 @@ export default {
         'spin-flywheel': 'spin 8s linear infinite',
       },
       boxShadow: {
-        'volt-glow': '0 8px 24px -6px rgb(var(--accent-400) / 0.28), 0 2px 8px -2px rgb(var(--accent-400) / 0.18)',
+        'volt-glow': '0 8px 24px -6px rgb(var(--accent-400) / var(--accent-glow-alpha, 0.28)), 0 2px 8px -2px rgb(var(--accent-400) / var(--accent-glow-sub-alpha, 0.18))',
         'hardware': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 4px 14px -2px rgba(0, 0, 0, 0.55)',
         'soft-card': '0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 2px 6px -2px rgba(0, 0, 0, 0.35)',
       }
