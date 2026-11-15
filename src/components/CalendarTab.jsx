@@ -101,7 +101,7 @@ const getSourceBadgeMeta = (src) => {
 // ============================================================
 // WorkoutGraph (Final Solid Visuals Fix)
 // ============================================================
-const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted, expanded = false }) {
+const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted, expanded = false, dense = false }) {
   const intensityArray = useMemo(() => {
     return extractIntensityData(workoutDoc);
   }, [workoutDoc]);
@@ -111,7 +111,7 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted,
   const displayData = intensityArray;
 
   return (
-    <div className={`relative flex items-end ${expanded ? 'h-14 mt-2.5' : 'h-9 mt-2'} w-full bg-zinc-950/90 rounded border border-zinc-800/80 overflow-hidden px-[1px] pt-1`}>
+    <div className={`relative flex items-end ${expanded ? 'h-14 mt-2.5' : (dense ? 'h-6 mt-1' : 'h-9 mt-2')} w-full bg-zinc-950/90 rounded border border-zinc-800/80 overflow-hidden px-[1px] pt-1`}>
       {displayData.map((val, i) => {
         const zone = getZoneFromFtpPercent(val);
         const heightPercent = Math.min((val / 150) * 100, 100);
@@ -137,9 +137,10 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted,
 // ============================================================
 // WorkoutCard
 // ============================================================
-const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, isCurrentMonth, compact, expanded = false }) {
+const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, isCurrentMonth, compact, expanded = false, dense = false }) {
   const canDrag = isDesktop && isDraggable(w);
   const isExpandedCard = expanded && isDesktop && !compact;
+  const isDenseCard = dense && isDesktop && !compact && !isExpandedCard;
 
   const { attributes, listeners, setNodeRef } = useDraggable({
     id: w.id,
@@ -167,10 +168,10 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           }
         }
       }}
-      className={`workout-card-element group/wcard rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : (isExpandedCard ? 'min-h-[152px]' : 'min-h-[96px]')} transition-all duration-150 ${getCardBg(w.statusColor)} ${isDragging ? 'opacity-20 border-dashed border-2 border-volt-400' : 'cursor-pointer'} ${canDrag && !isDragging ? 'hover:border-volt-400/40' : ''}`}
+      className={`workout-card-element group/wcard rounded-lg flex flex-col overflow-hidden ${compact ? 'min-h-[40px]' : (isExpandedCard ? 'min-h-[152px]' : (isDenseCard ? 'min-h-0' : 'min-h-[96px]'))} transition-all duration-150 ${getCardBg(w.statusColor)} ${isDragging ? 'opacity-20 border-dashed border-2 border-volt-400' : 'cursor-pointer'} ${canDrag && !isDragging ? 'hover:border-volt-400/40' : ''}`}
     >
       <div className={`h-[2px] w-full shrink-0 ${getTopCol(w.statusColor)}`} />
-      <div className={`${isDesktop ? (compact ? 'p-1.5' : (isExpandedCard ? 'p-3.5' : 'p-2.5')) : 'p-3.5'} flex flex-col justify-between flex-1`}>
+      <div className={`${isDesktop ? (compact ? 'p-1.5' : (isExpandedCard ? 'p-3.5' : (isDenseCard ? 'p-1.5' : 'p-2.5'))) : 'p-3.5'} flex flex-col justify-between flex-1`}>
         {compact ? (
           // Compact: just title + duration + status icon
           <div className="flex items-center gap-1.5 w-full">
@@ -188,7 +189,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
           const isRace = ['RACE_A', 'RACE_B', 'RACE_C'].includes(w.eventCategory);
           const racePriorityLabel = w.eventCategory === 'RACE_A' ? 'CILJ A' : w.eventCategory === 'RACE_B' ? 'EVENT B' : 'EVENT C';
           return (
-          <div className="flex flex-col gap-1 w-full">
+          <div className={`flex flex-col ${isDenseCard ? 'gap-0.5' : 'gap-1'} w-full`}>
             {/* Header: Sport icon, duration, actions */}
             <div className="flex justify-between items-center w-full gap-1">
               {isRace ? (
@@ -270,11 +271,11 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               </div>
             </div>
             {/* Title */}
-            <div className={`font-bold ${isExpandedCard ? 'text-[13px] leading-snug line-clamp-3' : `${isDesktop ? 'text-xs' : 'text-sm'} leading-snug line-clamp-2`} ${isRace ? 'text-amber-100' : 'text-zinc-100'}`}>
+            <div className={`font-bold ${isExpandedCard ? 'text-[13px] leading-snug line-clamp-3' : (isDenseCard ? 'text-[11px] leading-tight line-clamp-1' : `${isDesktop ? 'text-xs' : 'text-sm'} leading-snug line-clamp-2`)} ${isRace ? 'text-amber-100' : 'text-zinc-100'}`}>
               {canDrag && <GripVertical className="inline-block w-3 h-3 mr-0.5 -ml-1 text-zinc-600 group-hover/wcard:text-zinc-400 align-middle pointer-events-none transition-colors" />}
               {w.title}
             </div>
-            {sourceMeta && (
+            {sourceMeta && !isDenseCard && (
               <div className="flex items-center">
                 <span className={`inline-flex items-center gap-1 text-[8px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${sourceMeta.cls}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${sourceMeta.dot}`} />
@@ -284,13 +285,62 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
             )}
             {/* Metrics */}
             {isRace ? (
-              <div className="flex flex-col gap-1 mt-1">
+              <div className={`flex flex-col gap-1 ${isDenseCard ? 'mt-0.5' : 'mt-1'}`}>
                 {(w.descriptionText || w.category) && (
-                  <span className="text-[10px] text-amber-200/80 leading-tight line-clamp-2">
+                  <span className={`text-[10px] text-amber-200/80 leading-tight ${isDenseCard ? 'line-clamp-1' : 'line-clamp-2'}`}>
                     {w.descriptionText || w.category}
                   </span>
                 )}
               </div>
+            ) : isDenseCard ? (
+              <>
+                <div className="flex flex-col gap-0.5 mt-0.5">
+                  <div className="flex items-center justify-between gap-1 font-mono telemetry-num">
+                    <div className="flex items-center gap-1 min-w-0">
+                      {w.isCompleted ? (
+                        <>
+                          <span className="text-[8px] text-zinc-500 font-bold uppercase">TSS</span>
+                          <span className="text-[11px] font-bold text-zinc-100">{w.tss > 0 ? w.tss : '-'}</span>
+                          {w.plannedTss > 0 && (
+                            <>
+                              <span className="text-[8px] text-zinc-600">/</span>
+                              <span className="text-[11px] text-zinc-500">{w.plannedTss}</span>
+                            </>
+                          )}
+                          {w.plannedTss > 0 && w.tss > 0 && (
+                            <span className={`text-[8px] font-bold px-1 rounded ${w.statusColor === 'green' ? 'text-emerald-400 bg-emerald-500/10' :
+                              w.statusColor === 'yellow' ? 'text-amber-400 bg-amber-500/10' :
+                                w.statusColor === 'red' ? 'text-rose-400 bg-rose-500/10' :
+                                  'text-zinc-400 bg-zinc-800'
+                              }`}>
+                              {Math.round((w.tss / w.plannedTss) * 100)}%
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-[8px] text-zinc-500 font-bold uppercase">PLAN</span>
+                          <span className="text-[11px] font-bold text-zinc-300">{w.plannedTss > 0 ? `${w.plannedTss} TSS` : '-'}</span>
+                        </>
+                      )}
+                    </div>
+                    {w.category && w.difficulty_score && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="bg-zinc-950 text-zinc-300 text-[8px] font-bold px-1 py-0.5 rounded border border-zinc-800">{w.category}</span>
+                        <span className="text-volt-400 text-[9px] font-bold">{w.difficulty_score.toFixed(1)}</span>
+                      </div>
+                    )}
+                  </div>
+                  {w.intervalDescription && (
+                    <span className="text-[9px] font-mono text-zinc-400/85 leading-tight line-clamp-1">{w.intervalDescription}</span>
+                  )}
+                </div>
+                <WorkoutGraph
+                  workoutDoc={w.workout_doc || w.steps}
+                  isCompleted={w.isCompleted || w.status === 'completed'}
+                  dense={true}
+                />
+              </>
             ) : (
               <>
                 <div className="flex flex-col gap-1.5 mt-1.5">
@@ -386,7 +436,7 @@ function getMondayDateObj(dateInput) {
   return d;
 }
 
-const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [], onPlanMarkerClick, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, compact, showMonthSplitBg = false, expanded = false, onAddWorkoutClick }) {
+const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [], onPlanMarkerClick, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, compact, showMonthSplitBg = false, expanded = false, dense = false, onAddWorkoutClick }) {
   const { isOver, setNodeRef } = useDroppable({ id: dObj.dateStr });
 
   if (!isDesktop) {
@@ -460,12 +510,13 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
   }
 
   const isExpandedDay = expanded && !compact;
+  const isDenseDay = dense && !compact && !isExpandedDay;
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col group relative transition-all duration-150 cursor-pointer hover:bg-zinc-900/90
-        ${compact ? 'p-1.5' : (isExpandedDay ? 'p-3.5' : 'p-2.5')}
+      className={`flex flex-col group relative min-h-0 overflow-hidden transition-all duration-150 cursor-pointer hover:bg-zinc-900/90
+        ${compact || isDenseDay ? 'p-1.5' : (isExpandedDay ? 'p-3.5' : 'p-2.5')}
         ${showMonthSplitBg ? (dObj.month % 2 === 0 ? 'bg-zinc-950/75' : 'bg-zinc-950/95') : (dObj.isCurrentMonth ? 'bg-zinc-950/75' : 'bg-zinc-950')}
         ${isTdy ? 'border-t-2 border-t-volt-400 bg-volt-400/[0.025]' : ''}
         ${isOver ? 'bg-volt-400/10 ring-1 ring-volt-400/60 ring-inset' : ''}
@@ -477,7 +528,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
         }
       }}
     >
-      <div className={`flex justify-between items-center gap-1 flex-wrap ${compact ? 'mb-1' : (isExpandedDay ? 'mb-3.5 pb-2 border-b border-zinc-800/60' : 'mb-2.5')}`}>
+      <div className={`flex justify-between items-center gap-1 flex-wrap shrink-0 ${compact || isDenseDay ? 'mb-1' : (isExpandedDay ? 'mb-3.5 pb-2 border-b border-zinc-800/60' : 'mb-2.5')}`}>
         <div className="flex items-center gap-1.5">
           {dObj.day === 1 && typeof dObj.month === 'number' ? (
             <span className={`bg-volt-400/15 text-volt-300 border border-volt-400/35 px-1.5 py-0.5 rounded font-mono ${isExpandedDay ? 'text-[11px]' : 'text-[10px]'} font-bold uppercase tracking-wider`}>
@@ -522,7 +573,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
           </div>
         )}
       </div>
-      <div className={`flex-1 overflow-y-auto pr-0.5 custom-scrollbar ${compact ? 'space-y-1' : (isExpandedDay ? 'space-y-2.5' : 'space-y-2')}`}>
+      <div className={`flex-1 min-h-0 overflow-y-auto pr-0.5 custom-scrollbar ${compact || isDenseDay ? 'space-y-1' : (isExpandedDay ? 'space-y-2.5' : 'space-y-2')}`}>
         {dPlans.map(plan => (
           <button
             key={plan.id}
@@ -534,7 +585,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
             }}
             title={`AI Plan: ${plan.title} — klikni za opcije (Analiziraj, Izmijeni, Obriši)`}
             className={`plan-marker-element w-full text-left rounded-lg overflow-hidden border border-volt-400/50 bg-volt-400/12 hover:bg-volt-400/20 hover:border-volt-400 transition-all cursor-pointer ${
-              compact ? 'px-1.5 py-1' : (isExpandedDay ? 'p-2.5' : 'p-2')
+              compact ? 'px-1.5 py-1' : (isExpandedDay ? 'p-2.5' : (isDenseDay ? 'px-2 py-1' : 'p-2'))
             }`}
           >
             <div className="flex items-center justify-between gap-1">
@@ -551,7 +602,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
             <div className={`${isExpandedDay ? 'text-xs' : 'text-[11px]'} font-bold text-zinc-100 truncate mt-1 leading-tight`}>
               {plan.title}
             </div>
-            {!compact && (
+            {!compact && !isDenseDay && (
               <div className="text-[9px] font-mono text-zinc-400 truncate mt-0.5">
                 {plan.methodology ? plan.methodology : 'Početak plana'} • opcije
               </div>
@@ -574,6 +625,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
             onViewActivity={onViewActivity}
             compact={compact}
             expanded={isExpandedDay}
+            dense={isDenseDay}
           />
         ))}
         {isExpandedDay && dWorks.length === 0 && dPlans.length === 0 && (
@@ -818,6 +870,7 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
     ? 'PMC · PROJEKCIJA'
     : 'PMC FORMA';
 
+  const isThreeWeekMode = !isContinuous && !isSingleWeek;
   const emphasizeSummary = isContinuous ? isCurrentCalendarWeek : isActive;
   const readableSummary = isContinuous || isActive;
 
@@ -831,9 +884,9 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
           ? `shrink-0 min-h-[146px] opacity-100 ${isCurrentCalendarWeek ? 'ring-1 ring-inset ring-volt-400/45 bg-volt-400/[0.015]' : ''}`
           : (isSingleWeek
               ? 'flex-1 min-h-[420px] ring-1 ring-inset ring-volt-400/35'
-              : `shrink-0 ${isActive
-                  ? 'min-h-[168px] ring-1 ring-inset ring-volt-400/35'
-                  : 'min-h-[112px] opacity-65 hover:opacity-90'}`)
+              : (isActive
+                  ? 'flex-[1.15] min-h-0 overflow-hidden ring-1 ring-inset ring-volt-400/35'
+                  : 'flex-1 min-h-0 overflow-hidden opacity-75 hover:opacity-95'))
         }`}
     >
       {days.map((dObj, di) => (
@@ -859,14 +912,15 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
           compact={false}
           showMonthSplitBg={isContinuous}
           expanded={isSingleWeek}
+          dense={isThreeWeekMode}
         />
       ))}
 
       {/* Week summary column */}
-      <div className={`${isSingleWeek ? 'p-4' : 'p-3'} flex flex-col justify-start border-l border-zinc-800 text-right font-mono telemetry-num
+      <div className={`${isSingleWeek ? 'p-4' : (isThreeWeekMode ? 'p-2' : 'p-3')} min-h-0 overflow-y-auto custom-scrollbar flex flex-col justify-start border-l border-zinc-800 text-right font-mono telemetry-num
         ${emphasizeSummary ? 'bg-zinc-900/90' : (isContinuous ? 'bg-zinc-900/60' : 'bg-zinc-950/90')}`}
       >
-        <div className="mb-2.5">
+        <div className={isThreeWeekMode ? 'mb-1' : 'mb-2.5'}>
           {(isContinuous || isSingleWeek) && isCurrentCalendarWeek && (
             <div className="mb-1 flex justify-end">
               <span className="text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-volt-400/15 text-volt-400 border border-volt-400/30">
@@ -874,23 +928,23 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
               </span>
             </div>
           )}
-          <p className={`${isSingleWeek ? 'text-xs' : 'text-[10px]'} font-bold uppercase tracking-wider ${emphasizeSummary ? 'text-volt-400' : (readableSummary ? 'text-zinc-300' : 'text-zinc-500')}`}>
+          <p className={`${isSingleWeek ? 'text-xs' : (isThreeWeekMode ? 'text-[9px]' : 'text-[10px]')} font-bold uppercase tracking-wider ${emphasizeSummary ? 'text-volt-400' : (readableSummary ? 'text-zinc-300' : 'text-zinc-500')}`}>
             {weekRangeLabel}
           </p>
         </div>
-        <div className={`${isSingleWeek ? 'space-y-3.5' : 'space-y-2.5'} w-full`}>
+        <div className={`${isSingleWeek ? 'space-y-3.5' : (isThreeWeekMode ? 'space-y-1.5' : 'space-y-2.5')} w-full`}>
           <div>
-            <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-0.5">
+            <div className={`flex items-center justify-between text-[9px] font-bold uppercase tracking-wider ${isThreeWeekMode ? '' : 'mb-0.5'}`}>
               <span className={readableSummary ? 'text-zinc-400' : 'text-zinc-600'}>VRIJEME</span>
               {mainPlannedDur > 0 && <span className={durPctRaw >= 90 ? 'text-volt-400' : 'text-zinc-500'}>{durPctRaw}%</span>}
             </div>
-            <div className="flex items-center justify-end gap-1 text-[11px]" title="Odrađeno / Planirano vrijeme">
+            <div className={`flex items-center justify-end gap-1 ${isThreeWeekMode ? 'text-[10px]' : 'text-[11px]'}`} title="Odrađeno / Planirano vrijeme">
               <Clock className={`w-3 h-3 mr-auto ${emphasizeSummary ? 'text-volt-400' : (readableSummary ? 'text-zinc-400' : 'text-zinc-600')}`} />
               <span className={`font-bold ${readableSummary ? 'text-zinc-100' : 'text-zinc-400'}`}>{formatDur(mainActualDur)}</span>
               <span className="text-zinc-700">/</span>
               <span className="text-zinc-500">{formatDur(mainPlannedDur)}</span>
             </div>
-            <div className={`${isSingleWeek ? 'h-1.5' : 'h-1'} w-full bg-zinc-950 border border-zinc-800/80 rounded-full overflow-hidden mt-1`}>
+            <div className={`${isSingleWeek ? 'h-1.5' : 'h-1'} w-full bg-zinc-950 border border-zinc-800/80 rounded-full overflow-hidden ${isThreeWeekMode ? 'mt-0.5' : 'mt-1'}`}>
               <div
                 className={`h-full transition-all duration-500 ${emphasizeSummary ? 'bg-volt-400' : (isContinuous ? 'bg-volt-400/60' : 'bg-zinc-500')}`}
                 style={{ width: `${durBarPct}%` }}
@@ -898,12 +952,12 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
             </div>
           </div>
 
-          <div className={`pt-2 border-t ${readableSummary ? 'border-zinc-800' : 'border-zinc-800/60'}`}>
-            <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-0.5">
+          <div className={`${isThreeWeekMode ? 'pt-1' : 'pt-2'} border-t ${readableSummary ? 'border-zinc-800' : 'border-zinc-800/60'}`}>
+            <div className={`flex items-center justify-between text-[9px] font-bold uppercase tracking-wider ${isThreeWeekMode ? '' : 'mb-0.5'}`}>
               <span className={readableSummary ? 'text-zinc-400' : 'text-zinc-600'}>TSS LOAD</span>
               {mainPlannedTss > 0 && <span className={tssPctRaw >= 90 ? 'text-volt-400' : 'text-zinc-500'}>{tssPctRaw}%</span>}
             </div>
-            <div className="flex items-center justify-end gap-1 text-[11px]" title="Odrađeni TSS / Planirani TSS">
+            <div className={`flex items-center justify-end gap-1 ${isThreeWeekMode ? 'text-[10px]' : 'text-[11px]'}`} title="Odrađeni TSS / Planirani TSS">
               {hasCycle ? (
                 <Bike className={`w-3 h-3 mr-auto ${readableSummary ? 'text-zinc-400' : 'text-zinc-600'}`} />
               ) : (
@@ -913,14 +967,14 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
               <span className="text-zinc-700">/</span>
               <span className="text-zinc-500">{mainPlannedTss}</span>
             </div>
-            <div className={`${isSingleWeek ? 'h-1.5' : 'h-1'} w-full bg-zinc-950 border border-zinc-800/80 rounded-full overflow-hidden mt-1`}>
+            <div className={`${isSingleWeek ? 'h-1.5' : 'h-1'} w-full bg-zinc-950 border border-zinc-800/80 rounded-full overflow-hidden ${isThreeWeekMode ? 'mt-0.5' : 'mt-1'}`}>
               <div
                 className={`h-full transition-all duration-500 ${emphasizeSummary ? 'bg-volt-400' : (isContinuous ? 'bg-volt-400/60' : 'bg-zinc-500')}`}
                 style={{ width: `${tssBarPct}%` }}
               />
             </div>
             {hasCycle && (aT_other > 0 || pT_other > 0) && (
-              <div className="flex items-center justify-end gap-1 text-[10px] mt-1" title="Ostali sportovi TSS (ulazi u PMC projekciju)">
+              <div className={`flex items-center justify-end gap-1 ${isThreeWeekMode ? 'text-[9px] mt-0.5' : 'text-[10px] mt-1'}`} title="Ostali sportovi TSS (ulazi u PMC projekciju)">
                 <Activity className="w-2.5 h-2.5 mr-auto text-zinc-500" />
                 <span className="font-bold text-zinc-300">{aT_other}</span>
                 <span className="text-zinc-700">/</span>
@@ -932,37 +986,37 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
           {/* CTL / ATL / TSB blok s projekcijom u zagradama */}
           {(displayCtl != null || displayAtl != null) && (
             <div
-              className={`pt-2 border-t ${readableSummary ? 'border-zinc-800' : 'border-zinc-800/60'}`}
+              className={`${isThreeWeekMode ? 'pt-1' : 'pt-2'} border-t ${readableSummary ? 'border-zinc-800' : 'border-zinc-800/60'}`}
               title={showWeekProjection ? 'Prvi broj = trenutno stanje danas · (u zagradi) = projekcija na kraju tjedna u nedjelju prema planu' : 'Projekcija / stanje kondicije na kraju tjedna'}
             >
-              <p className={`text-[9px] font-bold uppercase tracking-widest mb-1 ${emphasizeSummary ? 'text-sky-400' : (isContinuous ? 'text-sky-400/75' : 'text-zinc-600')}`}>
+              <p className={`text-[9px] font-bold uppercase tracking-widest ${isThreeWeekMode ? 'mb-0.5' : 'mb-1'} ${emphasizeSummary ? 'text-sky-400' : (isContinuous ? 'text-sky-400/75' : 'text-zinc-600')}`}>
                 {pmcHeaderLabel}
               </p>
-              <div className="flex flex-col gap-0.5 items-end text-[11px]">
+              <div className={isThreeWeekMode ? 'grid grid-cols-2 gap-x-1.5 gap-y-0.5 text-[10px]' : 'flex flex-col gap-0.5 items-end text-[11px]'}>
                 {displayCtl != null && (
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-zinc-500 text-[10px] font-bold">CTL</span>
-                    <span className={`font-bold ${readableSummary ? 'text-sky-400' : 'text-zinc-400'}`}>{displayCtl}</span>
+                  <div className="flex items-center justify-between w-full gap-1">
+                    <span className={`text-zinc-500 ${isThreeWeekMode ? 'text-[9px]' : 'text-[10px]'} font-bold`}>CTL</span>
+                    <span className={`font-bold whitespace-nowrap ${readableSummary ? 'text-sky-400' : 'text-zinc-400'}`}>{displayCtl}</span>
                   </div>
                 )}
                 {displayAtl != null && (
-                  <div className="flex items-center justify-between w-full">
-                    <span className="text-zinc-500 text-[10px] font-bold">ATL</span>
-                    <span className={`font-bold ${readableSummary ? 'text-purple-400' : 'text-zinc-400'}`}>{displayAtl}</span>
+                  <div className="flex items-center justify-between w-full gap-1">
+                    <span className={`text-zinc-500 ${isThreeWeekMode ? 'text-[9px]' : 'text-[10px]'} font-bold`}>ATL</span>
+                    <span className={`font-bold whitespace-nowrap ${readableSummary ? 'text-purple-400' : 'text-zinc-400'}`}>{displayAtl}</span>
                   </div>
                 )}
                 {renderedTsb != null && (
-                  <div className="flex items-center justify-between w-full mt-0.5 px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800/80">
-                    <span className="text-zinc-500 text-[10px] font-bold">TSB</span>
-                    <span className={`font-bold ${getTsbColor(colorTsbVal)}`}>
+                  <div className={`flex items-center justify-between w-full gap-1 ${isThreeWeekMode ? 'px-1 py-0.5' : 'mt-0.5 px-1.5 py-0.5'} rounded bg-zinc-950 border border-zinc-800/80`}>
+                    <span className={`text-zinc-500 ${isThreeWeekMode ? 'text-[9px]' : 'text-[10px]'} font-bold`}>TSB</span>
+                    <span className={`font-bold whitespace-nowrap ${getTsbColor(colorTsbVal)}`}>
                       {renderedTsb}
                     </span>
                   </div>
                 )}
                 {renderedRamp != null && (
-                  <div className="flex items-center justify-between w-full mt-0.5 px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800/80" title="Ramp Rate: tjedna promjena CTL-a (optimalno +3 do +8)">
-                    <span className="text-zinc-500 text-[10px] font-bold">RR</span>
-                    <span className={`font-bold ${getRampColor(colorRampVal)}`}>
+                  <div className={`flex items-center justify-between w-full gap-1 ${isThreeWeekMode ? 'px-1 py-0.5' : 'mt-0.5 px-1.5 py-0.5'} rounded bg-zinc-950 border border-zinc-800/80`} title="Ramp Rate: tjedna promjena CTL-a (optimalno +3 do +8)">
+                    <span className={`text-zinc-500 ${isThreeWeekMode ? 'text-[9px]' : 'text-[10px]'} font-bold`}>RR</span>
+                    <span className={`font-bold whitespace-nowrap ${getRampColor(colorRampVal)}`}>
                       {renderedRamp}
                     </span>
                   </div>
@@ -2451,7 +2505,9 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         <div
           ref={desktopScrollRef}
           onScroll={handleDesktopScroll}
-          className="hidden md:flex flex-1 flex-col bg-zinc-800 border-l border-zinc-800 gap-[1px] overflow-y-auto relative"
+          className={`hidden md:flex flex-1 flex-col bg-zinc-800 border-l border-zinc-800 gap-[1px] min-h-0 relative ${
+            viewMode === 'threeWeeks' ? 'overflow-hidden' : 'overflow-y-auto'
+          }`}
         >
           {(viewMode === 'continuous'
             ? continuousWeeks
