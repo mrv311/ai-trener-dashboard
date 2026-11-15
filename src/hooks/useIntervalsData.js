@@ -1,14 +1,16 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   fetchIntervalsData,
   updateEventDate,
   updateEventDetails,
   createEvent,
   createEventsBatch,
+  deleteEvent,
   deleteEventsBatch
 } from '../services/intervalsApi';
 import { supabase } from '../services/supabaseClient';
 import { parseWorkoutDoc, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
+import { isRestDayWorkout } from '../utils/plannerUtils';
 
 const formatLocalDate = (d = new Date()) => {
   const yr = d.getFullYear();
@@ -281,6 +283,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
   const [supabaseActivities, setSupabaseActivities] = useState([]);
   const [intervalsConnected, setIntervalsConnected] = useState(false);
   const [athleteInfo, setAthleteInfo] = useState(null);
+  const cleanedRestEventIdsRef = useRef(new Set());
 
   // Ako se uklone kljuÄŤevi, odmah ugasi vezu i oÄŤisti athleteInfo
   useEffect(() => {
@@ -409,6 +412,44 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     fetchWorkouts();
   }, [fetchWorkouts]);
 
+  // Automatski ukloni eventualne stare "Potpuni odmor" / "Rest day" WORKOUT evente iz Intervals.icu
+  useEffect(() => {
+    if (!intervalsConnected || !intervalsId || !intervalsKey || rawEvents.length === 0) return;
+
+    const restEventsToClean = rawEvents.filter(ev => {
+      if (!ev || ev.category !== 'WORKOUT' || ev.id == null) return false;
+      const cleanupKey = `${intervalsId}:${ev.id}`;
+      if (cleanedRestEventIdsRef.current.has(cleanupKey)) return false;
+      return isRestDayWorkout(ev);
+    });
+
+    if (restEventsToClean.length === 0) return;
+
+    const targetIds = new Set();
+    restEventsToClean.forEach(ev => {
+      cleanedRestEventIdsRef.current.add(`${intervalsId}:${ev.id}`);
+      targetIds.add(String(ev.id));
+    });
+
+    setRawEvents(prev => prev.filter(e => !targetIds.has(String(e.id))));
+
+    let cancelled = false;
+    (async () => {
+      for (const ev of restEventsToClean) {
+        if (cancelled) return;
+        try {
+          await deleteEvent(intervalsId, intervalsKey, ev.id);
+        } catch (err) {
+          console.warn('[useIntervalsData] Greška pri uklanjanju lažnog rest-day eventa s Intervals.icu:', err);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [intervalsConnected, intervalsId, intervalsKey, rawEvents]);
+
   // Listeneri za lokalna ažuriranja (Knjižnica, upload .FIT/.TCX, preimenovanje aktivnosti)
   useEffect(() => {
     const handleTitleUpdate = (event) => {
@@ -463,7 +504,14 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
 
     const rawLocalScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
     let needsLocalFix = false;
-    const localScheduled = rawLocalScheduled.map(item => {
+    const filteredLocalScheduled = rawLocalScheduled.filter(item => {
+      if (isRestDayWorkout(item)) {
+        needsLocalFix = true;
+        return false;
+      }
+      return true;
+    });
+    const localScheduled = filteredLocalScheduled.map(item => {
       let d = item.duration;
       let s = item.duration_seconds;
       let fixed = false;
@@ -499,6 +547,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     rawEvents.forEach(e => {
       if (!PLANNED_EVENT_CATEGORIES.has(e.category)) return;
       if (isRaceEventCategory(e.category)) return;
+      if (isRestDayWorkout(e)) return;
       const date = e.start_date_local?.split('T')[0];
       if (!date) return;
       if (!eventsByDate.has(date)) eventsByDate.set(date, []);
@@ -970,6 +1019,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     // 2. Dodaj preostale planirane evente iz Intervals.icu (WORKOUT i RACE_A/B/C)
     rawEvents.forEach(ev => {
       if (!PLANNED_EVENT_CATEGORIES.has(ev.category) || consumedEvents.has(ev.id)) return;
+      if (isRestDayWorkout(ev)) return;
 
       const evDate = ev.start_date_local ? ev.start_date_local.split('T')[0] : '';
       if (!evDate) return;

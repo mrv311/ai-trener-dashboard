@@ -11,7 +11,8 @@ import {
   WEEKDAY_DEFS,
   addDaysIso,
   getMondayOfWeekIso,
-  summarizeWeeklySchedule
+  summarizeWeeklySchedule,
+  isRestDayWorkout
 } from '../utils/plannerUtils';
 import {
   parseIntervalsCode,
@@ -917,7 +918,16 @@ Napomena za jedinice: 'durationMinutes' je OBAVEZNO cijeli broj minuta (npr. 60 
 
   try {
     const cleanJson = rawJsonText.replace(/```json\s*|```/g, '').trim();
-    return JSON.parse(cleanJson);
+    const parsedPlan = JSON.parse(cleanJson);
+    if (Array.isArray(parsedPlan?.weeks)) {
+      parsedPlan.weeks = parsedPlan.weeks.map(wk => ({
+        ...wk,
+        workouts: Array.isArray(wk?.workouts)
+          ? wk.workouts.filter(wo => !isRestDayWorkout(wo))
+          : []
+      }));
+    }
+    return parsedPlan;
   } catch (err) {
     console.error('[geminiService] JSON parse error:', err, rawJsonText);
     throw new Error('AI nije vratio valjani JSON format plana. Pokušaj ponovno.');
@@ -1314,6 +1324,7 @@ ${weeksBrief}
 STROGI RASPORED DANA I MAKSIMALOG TRAJANJA (POŠTUJ TOČNO):
 ${scheduleSummary.promptText}
 Dozvoljeni ključevi dana ("dayKey") su ISKLJUČIVO: ${allowedDayKeys.join(', ')}.
+NIKADA ne generiraj stavku za "Potpuni odmor", "Dan odmora" ili "Rest day" u nizu "workouts"! Dani odmora ne smiju biti u nizu "workouts" (čak i ako je dan označen kao dostupan, ako za taj dan predviđaš potpuni odmor bez vožnje, izostavi ga iz "workouts").
 Ukupno trajanje SVAKOG treninga (zagrijavanje + SVA ponavljanja intervala + hlađenje) NE SMIJE premašiti max trajanje tog dana!
 ${eventConstraint}
 ${minDateConstraint}
@@ -1383,6 +1394,7 @@ Pravila za jedinice: 'durationMinutes' je cijeli broj MINUTA (npr. 55, NIKAKO u 
       const dayDef = dayMap[dayKey];
       if (!dayDef) return;
       if (!weeklySchedule?.[dayKey]?.enabled) return;
+      if (isRestDayWorkout(wo) || (wo?.durationMinutes != null && Number(wo.durationMinutes) <= 0 && !String(wo?.intervalsCode || '').trim())) return;
 
       const exactDate = addDaysIso(metaWk.startDate, dayDef.index);
       if (minWorkoutDate && exactDate < minWorkoutDate) return;

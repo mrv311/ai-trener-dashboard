@@ -190,16 +190,100 @@ export function formatShortHrDate(dateIso) {
   return `${dt.getDate()}. ${months[dt.getMonth()]}`;
 }
 
+const REST_EVENT_CATEGORIES = new Set(['REST', 'ODMOR', 'DAY_OFF', 'NOTE', 'HOLIDAY', 'SICK']);
+const RACE_EVENT_CATEGORIES = new Set(['RACE_A', 'RACE_B', 'RACE_C']);
+
+/**
+ * Prepoznaje stavke koje predstavljaju potpuni dan odmora (bez treninga)
+ * kako se ne bi tretirale kao neodrađeni treninzi u planu ili kalendaru.
+ * Ne zahvaća stvarne treninge aktivnog oporavka (npr. "Aktivni oporavak", "Z1 oporavak").
+ */
+export function isRestDayWorkout(item) {
+  if (!item || typeof item !== 'object') return false;
+  if (item.isCompleted || item.status === 'completed') return false;
+
+  const evCat = String(item.eventCategory || '').trim().toUpperCase();
+  const cat = String(item.category || '').trim().toUpperCase();
+  if (RACE_EVENT_CATEGORIES.has(evCat) || RACE_EVENT_CATEGORIES.has(cat)) return false;
+  if (REST_EVENT_CATEGORIES.has(evCat) || REST_EVENT_CATEGORIES.has(cat)) return true;
+
+  const rawTitle = String(item.title ?? item.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (rawTitle) {
+    const strippedTitle = rawTitle
+      .replace(/^(?:ponedjeljak|utorak|srijeda|četvrtak|cetvrtak|petak|subota|nedjelja|pon|uto|sri|čet|cet|pet|sub|ned)\s*[-–:|]\s*/i, '')
+      .replace(/[.!?]+$/g, '')
+      .trim();
+
+    const hasActiveRideHint = /\b(aktivn\w*|active|z[12]|vožnj\w*|voznj\w*|ride|spin)\b/i.test(strippedTitle);
+    const matchesRestPhrase =
+      /\bpotpun[ioa]?\s+odmor\b/i.test(strippedTitle) ||
+      /\bdan\s+(?:za\s+)?odmor(?:a)?\b/i.test(strippedTitle) ||
+      /\bdani?\s+odmora\b/i.test(strippedTitle) ||
+      /\bslobodan\s+dan\b/i.test(strippedTitle) ||
+      /\bpasivn[ioa]?\s+odmor\b/i.test(strippedTitle) ||
+      /\bbez\s+treninga\b/i.test(strippedTitle) ||
+      /\b(?:complete|full|total)\s+rest\b/i.test(strippedTitle) ||
+      /\brest[\s-]+day\b/i.test(strippedTitle) ||
+      /\bday[\s-]+off\b/i.test(strippedTitle) ||
+      /\boff[\s-]+day\b/i.test(strippedTitle) ||
+      /^(?:odmor|rest|off|rest\s*\/\s*off)$/i.test(strippedTitle);
+
+    if (matchesRestPhrase && !hasActiveRideHint) {
+      return true;
+    }
+  }
+
+  const hasExplicitZeroDuration =
+    (item.durationMinutes != null && Number(item.durationMinutes) <= 0) ||
+    (item.duration != null && Number(item.duration) <= 0 && item.moving_time == null && item.duration_seconds == null);
+  const resolvedTss = Number(item.estimatedTss ?? item.tss ?? item.icu_training_load ?? item.plannedTss ?? 0);
+  const hasStepsArray = Array.isArray(item.steps) && item.steps.length > 0;
+  const codeCandidate = item.intervalsCode ?? item.workout_doc;
+  const hasCodeSteps = typeof codeCandidate === 'string' && codeCandidate.trim().length > 0;
+
+  if (hasExplicitZeroDuration && resolvedTss <= 0 && !hasStepsArray && !hasCodeSteps) {
+    return true;
+  }
+
+  return false;
+}
+
 export function getPlanStorageKey(userId) {
   return `ergvibe_ai_macro_plan_v2_${userId || 'guest'}`;
 }
 
 export function loadSavedPlan(userId) {
   try {
-    const raw = localStorage.getItem(getPlanStorageKey(userId));
+    const key = getPlanStorageKey(userId);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed?.blueprint ? parsed : null;
+    if (!parsed?.blueprint) return null;
+
+    let changed = false;
+    if (parsed.blocks && typeof parsed.blocks === 'object') {
+      Object.values(parsed.blocks).forEach(block => {
+        if (!Array.isArray(block?.weeks)) return;
+        block.weeks.forEach(week => {
+          if (!Array.isArray(week?.workouts)) return;
+          const filtered = week.workouts.filter(w => !isRestDayWorkout(w));
+          if (filtered.length !== week.workouts.length) {
+            week.workouts = filtered;
+            changed = true;
+          }
+        });
+      });
+    }
+
+    if (changed) {
+      try {
+        localStorage.setItem(key, JSON.stringify(parsed));
+      } catch {
+        // ignore quota errors
+      }
+    }
+
+    return parsed;
   } catch {
     return null;
   }
