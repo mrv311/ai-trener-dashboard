@@ -71,13 +71,19 @@ export default function AICoachTab({
   onAddWorkoutToCalendar,
   onCreatePlanBatch,
   onDeletePlanBlock,
+  onDeletePlanBlocks,
   planRegistry = [],
   onStartWorkoutInTrainer,
   onNavigateToCalendar,
   plannerLaunchRequest = null,
-  onConsumePlannerLaunchRequest
+  onConsumePlannerLaunchRequest,
+  coachLaunchRequest = null,
+  onConsumeCoachLaunchRequest,
+  onAnalyzePlanInCoach
 }) {
-  const [subTab, setSubTab] = useState(() => (plannerLaunchRequest ? 'planner' : 'chat')); // 'chat' | 'planner' | 'knowledge'
+  const [subTab, setSubTab] = useState(() => (
+    coachLaunchRequest ? 'chat' : (plannerLaunchRequest ? 'planner' : 'chat')
+  )); // 'chat' | 'planner' | 'knowledge'
   const [selectedModel, setSelectedModel] = useState('gemini-3.8-flash');
   const [showCreatorModal, setShowCreatorModal] = useState(false);
   const [includeCoachArchive, setIncludeCoachArchiveState] = useState(() => getHistoryOptions(userId).includeBaseHistory);
@@ -318,6 +324,17 @@ export default function AICoachTab({
       setIsSendingChat(false);
     }
   };
+
+  const lastHandledCoachNonceRef = useRef(null);
+
+  useEffect(() => {
+    if (!coachLaunchRequest?.nonce || !coachLaunchRequest?.prompt) return;
+    if (lastHandledCoachNonceRef.current === coachLaunchRequest.nonce) return;
+    lastHandledCoachNonceRef.current = coachLaunchRequest.nonce;
+    setSubTab('chat');
+    onConsumeCoachLaunchRequest?.();
+    sendMessage(coachLaunchRequest.prompt);
+  }, [coachLaunchRequest]);
 
   const handleClearChat = async () => {
     if (messages.length > 0 && !window.confirm('Očistiti trenutni razgovor i sve priložene datoteke s AI Trenerom?')) return;
@@ -819,13 +836,16 @@ export default function AICoachTab({
           selectedModel={selectedModel}
           initialPrefill={plannerLaunchRequest?.prefill || null}
           forceOpenWizard={Boolean(plannerLaunchRequest?.openWizard)}
+          plannerLaunchRequest={plannerLaunchRequest}
           onClearPrefill={onConsumePlannerLaunchRequest}
           onAddWorkoutToCalendar={onAddWorkoutToCalendar}
           onCreatePlanBatch={onCreatePlanBatch}
           onDeletePlanBlock={onDeletePlanBlock}
+          onDeletePlanBlocks={onDeletePlanBlocks}
           planRegistry={planRegistry}
           onStartWorkoutInTrainer={onStartWorkoutInTrainer}
           onNavigateToCalendar={onNavigateToCalendar}
+          onAnalyzePlanInCoach={onAnalyzePlanInCoach}
           onGeneratingChange={setIsGeneratingPlan}
         />
       )}

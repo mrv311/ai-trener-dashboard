@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical, Bike, Upload, PenLine, Trophy, Sparkles, ArrowLeft, Flag } from 'lucide-react';
-import { parseIsoLocal, diffDaysIso, formatShortHrDate, getLocalIsoToday, EVENT_TYPE_OPTIONS } from '../utils/plannerUtils';
+import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical, Bike, Upload, PenLine, Trophy, Sparkles, ArrowLeft, Flag, Layers, MessageSquare, Loader2 } from 'lucide-react';
+import { parseIsoLocal, diffDaysIso, formatShortHrDate, getLocalIsoToday, EVENT_TYPE_OPTIONS, loadSavedPlan, clearSavedPlan, buildCalendarPlanMarkers, buildPlanAnalysisPrompt } from '../utils/plannerUtils';
 import { DndContext, pointerWithin, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
@@ -348,7 +348,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
 // ============================================================
 // CalendarDay
 // ============================================================
-const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, compact, onAddWorkoutClick }) {
+const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [], onPlanMarkerClick, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, compact, onAddWorkoutClick }) {
   const { isOver, setNodeRef } = useDroppable({ id: dObj.dateStr });
 
   if (!isDesktop) {
@@ -358,7 +358,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
       <div
         className={`p-4 flex flex-col cursor-pointer bg-zinc-900/80 ${isTdy ? 'border-l-2 border-l-volt-400 bg-volt-400/[0.03]' : ''}`}
         onClick={(e) => {
-          if (e.target.closest('.workout-card-element')) return;
+          if (e.target.closest('.workout-card-element, .plan-marker-element')) return;
           if (onAddWorkoutClick) {
             onAddWorkoutClick(dObj.dateStr);
           }
@@ -379,6 +379,31 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
           )}
         </div>
         <div className="flex flex-col gap-2">
+          {dPlans.map(plan => (
+            <button
+              key={plan.id}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPlanMarkerClick?.(plan);
+              }}
+              className="plan-marker-element w-full text-left rounded-lg px-3 py-2 bg-volt-400/12 hover:bg-volt-400/20 border border-volt-400/45 transition-all flex items-center justify-between gap-2"
+            >
+              <div className="min-w-0 flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-volt-400 text-zinc-950 text-[9px] font-mono font-black uppercase tracking-wider shrink-0">
+                  <Layers className="w-2.5 h-2.5" />
+                  PLAN
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-volt-200 truncate">{plan.title}</div>
+                  <div className="text-[10px] text-zinc-400 truncate">
+                    {plan.methodology || 'Početak AI plana'} • {plan.totalWorkouts} treninga
+                  </div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-volt-400 shrink-0" />
+            </button>
+          ))}
           {dWorks.length > 0 ? dWorks.map(w => (
             <WorkoutCard key={w.id} w={w} isDesktop={false} isDragging={false} onSelectWorkout={onSelectWorkout} handleUnpair={handleUnpair} handlePair={handlePair} handleDeleteLocalActivity={handleDeleteLocalActivity} handleDeleteCompletedActivity={handleDeleteCompletedActivity} onEditWorkout={onEditWorkout} onViewActivity={onViewActivity} />
           )) : (
@@ -399,7 +424,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
         ${isOver ? 'bg-volt-400/10 ring-1 ring-volt-400/60 ring-inset' : ''}
       `}
       onClick={(e) => {
-        if (e.target.closest('.workout-card-element')) return;
+        if (e.target.closest('.workout-card-element, .plan-marker-element')) return;
         if (onAddWorkoutClick) {
           onAddWorkoutClick(dObj.dateStr);
         }
@@ -429,6 +454,41 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, isTdy, dWell
         )}
       </div>
       <div className={`flex-1 overflow-y-auto pr-0.5 custom-scrollbar ${compact ? 'space-y-1' : 'space-y-2'}`}>
+        {dPlans.map(plan => (
+          <button
+            key={plan.id}
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPlanMarkerClick?.(plan);
+            }}
+            title={`AI Plan: ${plan.title} — klikni za opcije (Analiziraj, Izmijeni, Obriši)`}
+            className={`plan-marker-element w-full text-left rounded-lg overflow-hidden border border-volt-400/50 bg-volt-400/12 hover:bg-volt-400/20 hover:border-volt-400 transition-all cursor-pointer ${
+              compact ? 'px-1.5 py-1' : 'p-2'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="inline-flex items-center gap-1 text-[9px] font-mono font-black uppercase tracking-wider text-zinc-950 bg-volt-400 px-1.5 py-0.5 rounded">
+                <Layers className="w-2.5 h-2.5" />
+                AI PLAN
+              </span>
+              {!compact && plan.totalWorkouts > 0 && (
+                <span className="text-[9px] font-mono font-bold text-volt-300">
+                  {plan.completedCount}/{plan.totalWorkouts}
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] font-bold text-zinc-100 truncate mt-1 leading-tight">
+              {plan.title}
+            </div>
+            {!compact && (
+              <div className="text-[9px] font-mono text-zinc-400 truncate mt-0.5">
+                {plan.methodology ? plan.methodology : 'Početak plana'} • opcije
+              </div>
+            )}
+          </button>
+        ))}
         {dWorks.map(w => (
           <WorkoutCard
             key={w.id}
@@ -485,7 +545,7 @@ function DragOverlayCard({ workout, activeWidth }) {
 // ============================================================
 // CalendarTab
 // ============================================================
-export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile, intervalsId, intervalsKey, userId, intervalsConnected = false, onOpenAIPlanner }) {
+export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile, intervalsId, intervalsKey, userId, intervalsConnected = false, planRegistry = [], onDeletePlanBlock, onDeletePlanBlocks, onOpenAIPlanner, onAnalyzePlanInCoach }) {
   const cy = currentDate.getFullYear();
   const cm = currentDate.getMonth();
   const [activeId, setActiveId] = useState(null);
@@ -494,6 +554,10 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const [editingWorkout, setEditingWorkout] = useState(null);
   const [viewingActivity, setViewingActivity] = useState(null);
   const [viewingRace, setViewingRace] = useState(null);
+  const [viewingPlanMarker, setViewingPlanMarker] = useState(null);
+  const [planActionConfirmMode, setPlanActionConfirmMode] = useState(null); // null | 'block' | 'plan'
+  const [planActionProgress, setPlanActionProgress] = useState(null);
+  const [planActionError, setPlanActionError] = useState(null);
   const [selectedDateForNew, setSelectedDateForNew] = useState(null);
   const [newModalMode, setNewModalMode] = useState('menu'); // 'menu' | 'race'
   const [raceTitle, setRaceTitle] = useState('');
@@ -554,6 +618,83 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
     return null;
   }, [workouts, profile?.goalDate, profile?.primaryGoal]);
+
+  const planMarkersByDate = useMemo(() => {
+    const savedPlan = loadSavedPlan(userId);
+    const list = buildCalendarPlanMarkers({
+      planRegistry,
+      savedPlan,
+      workouts
+    });
+    const map = {};
+    list.forEach(marker => {
+      if (!map[marker.markerDate]) map[marker.markerDate] = [];
+      map[marker.markerDate].push(marker);
+    });
+    return map;
+  }, [planRegistry, userId, workouts]);
+
+  const handleOpenPlanMarker = useCallback((marker) => {
+    setPlanActionConfirmMode(null);
+    setPlanActionError(null);
+    setPlanActionProgress(null);
+    setViewingPlanMarker(marker);
+  }, []);
+
+  const handleExecutePlanDeletion = async (mode) => {
+    if (!viewingPlanMarker || planActionProgress) return;
+    setPlanActionError(null);
+
+    const target = viewingPlanMarker;
+    const keysToDelete = mode === 'block' ? [target.primaryBlockKey] : target.blockKeys;
+    const totalCount = Math.max(
+      1,
+      mode === 'block'
+        ? (target.blocks[0]?.localIds?.length || 0) + (target.blocks[0]?.intervalsIds?.length || 0)
+        : target.localCount + target.intervalsCount
+    );
+
+    setPlanActionProgress({
+      done: 0,
+      total: totalCount,
+      message: mode === 'block'
+        ? 'Uklanjanje bloka iz Kalendara i Intervals.icu...'
+        : 'Brisanje plana i treninga iz Kalendara...'
+    });
+
+    try {
+      const onProgress = ({ done, total, currentName }) => {
+        setPlanActionProgress({
+          done: Number(done) || 0,
+          total: Math.max(1, Number(total) || totalCount),
+          message: currentName
+            ? `Brisanje (${done}/${total}): ${currentName}`
+            : `Brisanje stavki (${done}/${total})...`
+        });
+      };
+
+      if (mode === 'block' && onDeletePlanBlock) {
+        await onDeletePlanBlock(target.primaryBlockKey, { onProgress });
+      } else if (onDeletePlanBlocks) {
+        await onDeletePlanBlocks(keysToDelete, { onProgress });
+      } else if (onDeletePlanBlock) {
+        for (const k of keysToDelete) {
+          await onDeletePlanBlock(k, { onProgress });
+        }
+      }
+
+      if (mode === 'plan' && target.planId) {
+        clearSavedPlan(userId, target.planId);
+      }
+
+      setPlanActionProgress(null);
+      setPlanActionConfirmMode(null);
+      setViewingPlanMarker(null);
+    } catch (err) {
+      setPlanActionProgress(null);
+      setPlanActionError(err?.message || 'Greška pri brisanju plana.');
+    }
+  };
 
   const handleCreateRaceEvent = async (launchPlanner = false) => {
     if (!selectedDateForNew || !handleCreateWorkout) return;
@@ -1020,6 +1161,256 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         </div>
       )}
 
+      {/* Modal za oznaku AI plana na danu početka */}
+      {viewingPlanMarker && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
+          onClick={() => !planActionProgress && setViewingPlanMarker(null)}
+        >
+          <div
+            className="carbon-panel rounded-2xl shadow-2xl w-full max-w-lg p-6 flex flex-col gap-4 relative border border-volt-400/40"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {!planActionProgress && (
+              <button
+                type="button"
+                onClick={() => setViewingPlanMarker(null)}
+                className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition-colors"
+                title="Zatvori"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2 pr-6">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-volt-400/15 text-volt-400 border border-volt-400/35">
+                <Layers className="w-3.5 h-3.5" />
+                AI Plan Treninga
+              </span>
+              {viewingPlanMarker.methodology && (
+                <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-200 border border-zinc-700">
+                  {viewingPlanMarker.methodology}
+                </span>
+              )}
+              {viewingPlanMarker.intervalsCount > 0 && (
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  Intervals.icu ({viewingPlanMarker.intervalsCount})
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <h2 className="text-xl font-bold text-white leading-snug">{viewingPlanMarker.title}</h2>
+              <div className="text-xs font-mono text-zinc-400 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>
+                  Početak: <strong className="text-zinc-200">{formatShortHrDate(viewingPlanMarker.startDate)}</strong>
+                  {viewingPlanMarker.endDate && viewingPlanMarker.endDate !== viewingPlanMarker.startDate
+                    ? ` – ${formatShortHrDate(viewingPlanMarker.endDate)}`
+                    : ''}
+                </span>
+                {viewingPlanMarker.totalWeeks && (
+                  <span>• {viewingPlanMarker.totalWeeks} tjedana</span>
+                )}
+              </div>
+              {viewingPlanMarker.summary && (
+                <p className="text-xs text-zinc-300 leading-relaxed line-clamp-3 pt-1">
+                  {viewingPlanMarker.summary}
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="p-2.5 rounded-xl bg-zinc-950/90 border border-zinc-800">
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Treninzi</div>
+                <div className="text-sm font-mono font-bold text-white mt-0.5">
+                  {viewingPlanMarker.completedCount}/{viewingPlanMarker.totalWorkouts}
+                  <span className="text-[10px] font-normal text-zinc-400 ml-1">odrađeno</span>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-zinc-950/90 border border-zinc-800">
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Planirano TSS</div>
+                <div className="text-sm font-mono font-bold text-volt-400 mt-0.5">
+                  ~{viewingPlanMarker.totalPlannedTss}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-zinc-950/90 border border-zinc-800">
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Blokovi</div>
+                <div className="text-sm font-mono font-bold text-zinc-200 mt-0.5">
+                  {viewingPlanMarker.blocks.length} u kalendaru
+                </div>
+              </div>
+            </div>
+
+            {planActionError && (
+              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/35 text-xs text-rose-200">
+                {planActionError}
+              </div>
+            )}
+
+            {planActionProgress && (
+              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
+                <div className="flex items-center justify-between text-xs text-zinc-200">
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                    {planActionProgress.message}
+                  </span>
+                  <span className="font-mono text-zinc-400">
+                    {planActionProgress.done}/{planActionProgress.total}
+                  </span>
+                </div>
+                <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-rose-500 transition-all duration-200"
+                    style={{ width: `${Math.round((planActionProgress.done / Math.max(1, planActionProgress.total)) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {planActionConfirmMode ? (
+              <div className="p-4 rounded-xl bg-rose-950/30 border border-rose-500/35 space-y-3">
+                <div className="text-xs font-bold text-rose-200">
+                  {planActionConfirmMode === 'block'
+                    ? `Potvrdi uklanjanje Bloka (${viewingPlanMarker.blocks[0]?.title || viewingPlanMarker.title}) iz kalendara?`
+                    : 'Potvrdi trajno brisanje cijelog plana?'}
+                </div>
+                <p className="text-[11px] text-zinc-300 leading-relaxed">
+                  {planActionConfirmMode === 'block'
+                    ? 'Svi nesinkronizirani i Intervals.icu treninzi iz prvog sinkroniziranog bloka bit će uklonjeni iz kalendara, dok makrociklus ostaje spremljen u AI Planeru.'
+                    : viewingPlanMarker.hasSavedBlueprint
+                    ? `Brišu se svi sinkronizirani treninzi iz kalendara${viewingPlanMarker.intervalsCount > 0 ? ' (uključujući Intervals.icu)' : ''} i cijeli spremljeni plan iz AI Planera.`
+                    : `Brišu se svi sinkronizirani treninzi ovog plana iz lokalnog kalendara${viewingPlanMarker.intervalsCount > 0 ? ' i s Intervals.icu' : ''}.`}
+                </p>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={Boolean(planActionProgress)}
+                    onClick={() => setPlanActionConfirmMode(null)}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-colors disabled:opacity-50"
+                  >
+                    Odustani
+                  </button>
+                  <button
+                    type="button"
+                    disabled={Boolean(planActionProgress)}
+                    onClick={() => handleExecutePlanDeletion(planActionConfirmMode)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {planActionConfirmMode === 'block' ? 'Ukloni blok' : 'Trajno obriši plan'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 pt-1">
+                {onAnalyzePlanInCoach && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = viewingPlanMarker;
+                      setViewingPlanMarker(null);
+                      const prompt = buildPlanAnalysisPrompt({
+                        planTitle: target.title,
+                        methodology: target.methodology,
+                        totalWeeks: target.totalWeeks,
+                        startDate: target.startDate,
+                        endDate: target.endDate,
+                        goalTitle: target.goalTitle,
+                        eventDate: target.eventDate,
+                        summary: target.summary,
+                        workoutsInCalendar: target.workouts
+                      });
+                      onAnalyzePlanInCoach(prompt);
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl bg-volt-400 hover:bg-volt-300 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Analiziraj plan s AI Trenerom
+                  </button>
+                )}
+
+                {onOpenAIPlanner && viewingPlanMarker.hasSavedBlueprint && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = viewingPlanMarker;
+                        setViewingPlanMarker(null);
+                        onOpenAIPlanner({
+                          openWizard: false,
+                          focusBlockKey: target.primaryBlockKey
+                        });
+                      }}
+                      className="py-2.5 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <PenLine className="w-3.5 h-3.5 text-volt-400" />
+                      Izmijeni u AI Planeru
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = viewingPlanMarker;
+                        setViewingPlanMarker(null);
+                        onOpenAIPlanner({
+                          openWizard: false,
+                          focusBlockKey: target.primaryBlockKey,
+                          openFeedback: true
+                        });
+                      }}
+                      className="py-2.5 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
+                      Komentiraj AI treneru
+                    </button>
+                  </div>
+                )}
+
+                {onOpenAIPlanner && !viewingPlanMarker.hasSavedBlueprint && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewingPlanMarker(null);
+                      onOpenAIPlanner({ openWizard: true });
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 font-semibold text-xs flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <PenLine className="w-3.5 h-3.5 text-volt-400" />
+                    Izradi novi plan u AI Planeru
+                  </button>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {viewingPlanMarker.hasSavedBlueprint && (onDeletePlanBlock || onDeletePlanBlocks) && (
+                    <button
+                      type="button"
+                      onClick={() => setPlanActionConfirmMode('block')}
+                      className="py-2 px-3 rounded-xl bg-zinc-900 hover:bg-rose-500/15 text-rose-300 border border-rose-500/25 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {viewingPlanMarker.blocks.length > 1 ? 'Ukloni 1. blok iz kalendara' : 'Ukloni samo iz kalendara'}
+                    </button>
+                  )}
+
+                  {(onDeletePlanBlock || onDeletePlanBlocks) && (
+                    <button
+                      type="button"
+                      onClick={() => setPlanActionConfirmMode('plan')}
+                      className={`py-2 px-3 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 border border-rose-500/35 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors ${
+                        !viewingPlanMarker.hasSavedBlueprint ? 'sm:col-span-2' : ''
+                      }`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Obriši cijeli plan
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {selectedDateForNew && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setSelectedDateForNew(null)}>
           <div className="carbon-panel rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-3.5 relative" onClick={e => e.stopPropagation()}>
@@ -1390,6 +1781,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             key={dObj.dateStr}
             dObj={dObj}
             dWorks={workoutsByDate[dObj.dateStr] || []}
+            dPlans={planMarkersByDate[dObj.dateStr]}
+            onPlanMarkerClick={handleOpenPlanMarker}
             isTdy={dObj.dateStr === todayStr}
             dWell={wellnessData[dObj.dateStr]}
             isDesktop={false}
@@ -1587,6 +1980,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       key={dObj.dateStr}
                       dObj={dObj}
                       dWorks={dWorks}
+                      dPlans={planMarkersByDate[dObj.dateStr]}
+                      onPlanMarkerClick={handleOpenPlanMarker}
                       isTdy={dObj.dateStr === todayStr}
                       dWell={wellnessData?.[dObj.dateStr]}
                       isDesktop={true}

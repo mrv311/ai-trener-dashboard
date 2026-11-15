@@ -62,7 +62,7 @@ export default function App() {
 
   const [athleteProfile, setAthleteProfile] = useProfileSync(DEFAULT_GUEST_PROFILE, currentUserId);
 
-  const { workouts, wellnessData, intervalsConnected, athleteInfo, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, planRegistry, handleCreatePlanBatch, handleDeletePlanBlock } = useIntervalsData(intervalsId, intervalsKey, currentUserId, { ftp: athleteProfile?.ftp });
+  const { workouts, wellnessData, intervalsConnected, athleteInfo, isLoading, error, fetchWorkouts, handlePair, handleUnpair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, planRegistry, handleCreatePlanBatch, handleDeletePlanBlock, handleDeletePlanBlocks } = useIntervalsData(intervalsId, intervalsKey, currentUserId, { ftp: athleteProfile?.ftp });
 
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [authNotice, setAuthNotice] = useState(null);
@@ -284,12 +284,24 @@ export default function App() {
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [plannerLaunchRequest, setPlannerLaunchRequest] = useState(null);
+  const [coachLaunchRequest, setCoachLaunchRequest] = useState(null);
 
   const openAIPlanner = (options = {}) => {
     setPlannerLaunchRequest({
       nonce: Date.now(),
       openWizard: Boolean(options?.openWizard),
-      prefill: options?.prefill || null
+      prefill: options?.prefill || null,
+      focusBlockKey: options?.focusBlockKey || null,
+      openFeedback: Boolean(options?.openFeedback)
+    });
+    handleTabChange('aiCoach');
+  };
+
+  const openAICoachAnalysis = (prompt) => {
+    if (!prompt || !String(prompt).trim()) return;
+    setCoachLaunchRequest({
+      nonce: Date.now(),
+      prompt: String(prompt).trim()
     });
     handleTabChange('aiCoach');
   };
@@ -758,7 +770,11 @@ export default function App() {
                 intervalsKey={intervalsKey}
                 userId={currentUserId}
                 intervalsConnected={intervalsConnected}
+                planRegistry={planRegistry}
+                onDeletePlanBlock={handleDeletePlanBlock}
+                onDeletePlanBlocks={handleDeletePlanBlocks}
                 onOpenAIPlanner={openAIPlanner}
+                onAnalyzePlanInCoach={openAICoachAnalysis}
               />
             )}
 
@@ -790,11 +806,15 @@ export default function App() {
                 onAddWorkoutToCalendar={handleCreateWorkout}
                 onCreatePlanBatch={handleCreatePlanBatch}
                 onDeletePlanBlock={handleDeletePlanBlock}
+                onDeletePlanBlocks={handleDeletePlanBlocks}
                 planRegistry={planRegistry}
                 onStartWorkoutInTrainer={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
                 onNavigateToCalendar={openCalendarAtDate}
                 plannerLaunchRequest={plannerLaunchRequest}
                 onConsumePlannerLaunchRequest={() => setPlannerLaunchRequest(null)}
+                coachLaunchRequest={coachLaunchRequest}
+                onConsumeCoachLaunchRequest={() => setCoachLaunchRequest(null)}
+                onAnalyzePlanInCoach={openAICoachAnalysis}
               />
             )}
 

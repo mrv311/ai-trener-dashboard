@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Calendar, Trophy, Flag, Sparkles, CheckCircle2, AlertTriangle,
   Trash2, RefreshCw, ChevronRight, Loader2, ExternalLink, Info,
@@ -14,7 +14,11 @@ import {
   diffDaysIso,
   addDaysIso,
   formatShortHrDate,
-  getMondayOfWeekIso
+  getMondayOfWeekIso,
+  getPlanStorageKey,
+  loadSavedPlan,
+  clearSavedPlan,
+  buildPlanAnalysisPrompt
 } from '../../utils/plannerUtils';
 import {
   generateMacrocycleBlueprint,
@@ -23,21 +27,6 @@ import {
 } from '../../services/geminiService';
 import { AIWorkoutCard, buildErgVibeWorkoutObject } from '../ai/AIMarkdown';
 import PlanQuestionnaire from './PlanQuestionnaire';
-
-function getPlanStorageKey(userId) {
-  return `ergvibe_ai_macro_plan_v2_${userId || 'guest'}`;
-}
-
-function loadSavedPlan(userId) {
-  try {
-    const raw = localStorage.getItem(getPlanStorageKey(userId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed?.blueprint ? parsed : null;
-  } catch {
-    return null;
-  }
-}
 
 export default function TrainingPlannerView({
   profile,
@@ -49,13 +38,16 @@ export default function TrainingPlannerView({
   selectedModel,
   initialPrefill = null,
   forceOpenWizard = false,
+  plannerLaunchRequest = null,
   onClearPrefill,
   onAddWorkoutToCalendar,
   onCreatePlanBatch,
   onDeletePlanBlock,
+  onDeletePlanBlocks,
   planRegistry = [],
   onStartWorkoutInTrainer,
   onNavigateToCalendar,
+  onAnalyzePlanInCoach,
   onGeneratingChange
 }) {
   const todayIso = getLocalIsoToday();
@@ -82,6 +74,13 @@ export default function TrainingPlannerView({
   const [editingWorkoutKey, setEditingWorkoutKey] = useState(null);
   const [workoutFeedbackText, setWorkoutFeedbackText] = useState('');
   const [revisingWorkoutKey, setRevisingWorkoutKey] = useState(null);
+
+  // Plan deletion state
+  const [showDeletePlanConfirm, setShowDeletePlanConfirm] = useState(false);
+  const [deleteAlsoCalendar, setDeleteAlsoCalendar] = useState(true);
+  const [isDeletingPlan, setIsDeletingPlan] = useState(false);
+  const [planDeletedNotice, setPlanDeletedNotice] = useState('');
+  const lastHandledLaunchNonceRef = useRef(null);
 
   // Sync panel state
   const [syncToIntervals, setSyncToIntervals] = useState(intervalsConnected);
@@ -112,14 +111,34 @@ export default function TrainingPlannerView({
   }, [forceOpenWizard, initialPrefill]);
 
   useEffect(() => {
+    if (!plannerLaunchRequest?.nonce) return;
+    if (lastHandledLaunchNonceRef.current === plannerLaunchRequest.nonce) return;
+    lastHandledLaunchNonceRef.current = plannerLaunchRequest.nonce;
+
+    if (!plannerLaunchRequest.openWizard && !plannerLaunchRequest.prefill) {
+      setShowWizard(false);
+      if (plannerLaunchRequest.focusBlockKey) {
+        const subKey = plannerLaunchRequest.focusBlockKey.includes(':')
+          ? plannerLaunchRequest.focusBlockKey.split(':')[1]
+          : plannerLaunchRequest.focusBlockKey;
+        if (subKey) setActiveBlockKey(subKey);
+      }
+      if (plannerLaunchRequest.openFeedback) {
+        setShowBlockFeedbackBox(true);
+      }
+      onClearPrefill?.();
+    }
+  }, [plannerLaunchRequest, onClearPrefill]);
+
+  useEffect(() => {
     if (intervalsConnected) {
       setSyncToIntervals(true);
     }
   }, [intervalsConnected]);
 
   useEffect(() => {
-    onGeneratingChange?.(isGenerating || isGeneratingBlock || Boolean(revisingWorkoutKey));
-  }, [isGenerating, isGeneratingBlock, revisingWorkoutKey, onGeneratingChange]);
+    onGeneratingChange?.(isGenerating || isGeneratingBlock || Boolean(revisingWorkoutKey) || isDeletingPlan);
+  }, [isGenerating, isGeneratingBlock, revisingWorkoutKey, isDeletingPlan, onGeneratingChange]);
 
   const persistPlan = (nextPlan) => {
     setSavedPlan(nextPlan);
@@ -154,6 +173,11 @@ export default function TrainingPlannerView({
     if (!registryBlockKey) return null;
     return planRegistry.find(p => p.blockKey === registryBlockKey) || null;
   }, [planRegistry, registryBlockKey]);
+
+  const syncedPlanBlocksForCurrentPlan = useMemo(() => {
+    if (!blueprint?.planId) return [];
+    return planRegistry.filter(p => p.planId === blueprint.planId);
+  }, [planRegistry, blueprint?.planId]);
 
   const isEventInCalendar = useMemo(() => {
     if (!blueprint || blueprint.goalMode !== 'event' || !blueprint.eventDate) return false;
@@ -236,6 +260,7 @@ export default function TrainingPlannerView({
     setIsGenerating(true);
     setGenError(null);
     setSyncStatus(null);
+    setPlanDeletedNotice('');
     setGenerationStage('blueprint');
 
     // Sačuvaj podatke o cilju i profilu u korisnički profil
@@ -562,10 +587,23 @@ export default function TrainingPlannerView({
           : `Spremanje treninga u ErgVibe Kalendar...`
       });
 
+      const firstWorkoutDate = workoutsToSync
+        .map(w => w.date)
+        .filter(Boolean)
+        .sort()[0] || activeBlockDateRange.start;
+
       const result = await onCreatePlanBatch(workoutPayloads, {
         planId: blueprint.planId,
         blockKey: registryBlockKey,
         blockTitle: `${blueprint.planTitle} • Blok ${activeBlockMeta.blockIndex} (Tj. ${activeBlockMeta.weekFrom}–${activeBlockMeta.weekTo})`,
+        planTitle: blueprint.planTitle,
+        planStartDate: blueprint.startDate || questionnaire?.startDate || activeBlockDateRange.start,
+        methodology: blueprint.recommendedMethodology || '',
+        totalWeeks: blueprint.totalWeeks || null,
+        blockIndex: activeBlockMeta.blockIndex,
+        firstWorkoutDate,
+        goalTitle: blueprint.goalTitle || '',
+        eventDate: blueprint.eventDate || '',
         startDate: activeBlockDateRange.start,
         endDate: activeBlockDateRange.end,
         syncToIntervals: useIntervals,
@@ -644,10 +682,131 @@ export default function TrainingPlannerView({
     }
   };
 
+  const handleDeleteEntirePlan = async () => {
+    if (!blueprint || isDeletingPlan) return;
+    setIsDeletingPlan(true);
+    setGenError(null);
+    setSyncStatus(null);
+
+    try {
+      let calStats = null;
+      if (deleteAlsoCalendar && syncedPlanBlocksForCurrentPlan.length > 0) {
+        const blockKeys = syncedPlanBlocksForCurrentPlan.map(b => b.blockKey);
+        const totalItems = syncedPlanBlocksForCurrentPlan.reduce(
+          (sum, b) => sum + (b.localIds?.length || 0) + (b.intervalsIds?.length || 0),
+          0
+        );
+        const totalCount = Math.max(1, totalItems);
+        setSyncProgress({
+          mode: 'delete',
+          done: 0,
+          total: totalCount,
+          message: 'Uklanjanje sinkroniziranih treninga plana iz Kalendara...'
+        });
+
+        if (onDeletePlanBlocks) {
+          calStats = await onDeletePlanBlocks(blockKeys, {
+            onProgress: createProgressHandler(
+              'delete',
+              totalCount,
+              ({ done, total }) => `Brisanje treninga (${done}/${total})...`
+            )
+          });
+        } else if (onDeletePlanBlock) {
+          let deletedLocal = 0;
+          let deletedIntervals = 0;
+          const errors = [];
+          for (const key of blockKeys) {
+            const res = await onDeletePlanBlock(key);
+            deletedLocal += res?.deletedLocal || 0;
+            deletedIntervals += res?.deletedIntervals || 0;
+            if (res?.errors?.length) errors.push(...res.errors);
+          }
+          calStats = { deletedLocal, deletedIntervals, errors };
+        }
+        setSyncProgress(null);
+      }
+
+      const deletedTitle = blueprint.planTitle;
+      clearSavedPlan(userId);
+      setSavedPlan(null);
+      setActiveBlockKey('1-4');
+      setShowDeletePlanConfirm(false);
+      setShowBlockFeedbackBox(false);
+      setBlockFeedbackText('');
+      setEditingWorkoutKey(null);
+      setWorkoutFeedbackText('');
+      setShowWizard(true);
+
+      if (calStats) {
+        setPlanDeletedNotice(
+          `Plan "${deletedTitle}" je obrisan (uklonjeno ${calStats.deletedLocal} lokalnih i ${calStats.deletedIntervals} Intervals.icu stavki).`
+        );
+      } else {
+        setPlanDeletedNotice(`Plan "${deletedTitle}" je obrisan iz AI Planera.`);
+      }
+    } catch (err) {
+      setSyncProgress(null);
+      setGenError(err?.message || 'Greška pri brisanju plana.');
+    } finally {
+      setIsDeletingPlan(false);
+    }
+  };
+
+  const handleAnalyzeCurrentPlan = () => {
+    if (!blueprint || !onAnalyzePlanInCoach) return;
+    const blockWorkoutsList = [];
+    Object.values(generatedBlocks || {}).forEach(blk => {
+      (blk?.weeks || []).forEach(wk => {
+        (wk?.workouts || []).forEach(wo => {
+          blockWorkoutsList.push({
+            date: wo.date,
+            title: wo.title,
+            duration: wo.durationMinutes,
+            plannedDuration: wo.durationMinutes,
+            tss: wo.estimatedTss,
+            plannedTss: wo.estimatedTss,
+            category: wo.category || 'WORKOUT',
+            isCompleted: false
+          });
+        });
+      });
+    });
+
+    const prompt = buildPlanAnalysisPrompt({
+      planTitle: blueprint.planTitle,
+      methodology: blueprint.recommendedMethodology,
+      totalWeeks: blueprint.totalWeeks,
+      startDate: blueprint.startDate,
+      endDate: blueprint.endDate,
+      goalTitle: blueprint.goalTitle,
+      eventDate: blueprint.eventDate,
+      summary: blueprint.summary,
+      workoutsInCalendar: blockWorkoutsList
+    });
+    onAnalyzePlanInCoach(prompt);
+  };
+
   // --- VIEW 1: WIZARD UPITNIK ---
   if (showWizard || !blueprint) {
     return (
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar space-y-4">
+        {planDeletedNotice && (
+          <div className="max-w-4xl mx-auto p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/35 text-xs text-emerald-200 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{planDeletedNotice}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPlanDeletedNotice('')}
+              className="text-emerald-300/70 hover:text-emerald-100 p-0.5"
+              title="Zatvori"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <PlanQuestionnaire
           initialPrefill={initialPrefill}
           profile={profile}
@@ -757,16 +916,44 @@ export default function TrainingPlannerView({
                 </button>
               )}
 
+              {onAnalyzePlanInCoach && (
+                <button
+                  type="button"
+                  disabled={isGenerating || isGeneratingBlock || Boolean(revisingWorkoutKey) || isDeletingPlan}
+                  onClick={handleAnalyzeCurrentPlan}
+                  title="Pošalji ovaj plan na detaljnu analizu AI Treneru"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 transition-colors disabled:opacity-50"
+                >
+                  <Activity className="w-3.5 h-3.5" />
+                  Analiziraj s AI
+                </button>
+              )}
+
               <button
                 type="button"
+                disabled={isGenerating || isGeneratingBlock || Boolean(revisingWorkoutKey) || isDeletingPlan}
                 onClick={() => {
                   setGenError(null);
                   setShowWizard(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-volt-400/15 hover:bg-volt-400/25 text-volt-400 border border-volt-400/30 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-volt-400/15 hover:bg-volt-400/25 text-volt-400 border border-volt-400/30 transition-colors disabled:opacity-50"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 Novi plan / Upitnik
+              </button>
+
+              <button
+                type="button"
+                disabled={isGenerating || isGeneratingBlock || Boolean(revisingWorkoutKey) || isSyncBusy || isDeletingPlan}
+                onClick={() => {
+                  setDeleteAlsoCalendar(syncedPlanBlocksForCurrentPlan.length > 0);
+                  setShowDeletePlanConfirm(true);
+                }}
+                title="Obriši cijeli stvoreni plan"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-colors disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Obriši plan
               </button>
             </div>
           </div>
@@ -1507,6 +1694,115 @@ export default function TrainingPlannerView({
           </>
         )}
       </div>
+
+      {/* Modal za potvrdu brisanja cijelog plana */}
+      {showDeletePlanConfirm && blueprint && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
+          onClick={() => !isDeletingPlan && setShowDeletePlanConfirm(false)}
+        >
+          <div
+            className="bg-zinc-900 border border-rose-500/35 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-4 h-4 text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Obriši stvoreni plan?</h3>
+                  <p className="text-xs text-zinc-400 line-clamp-1">{blueprint.planTitle}</p>
+                </div>
+              </div>
+              {!isDeletingPlan && (
+                <button
+                  type="button"
+                  onClick={() => setShowDeletePlanConfirm(false)}
+                  className="text-zinc-500 hover:text-zinc-200 p-1"
+                  title="Zatvori"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              Ova radnja trajno briše makrociklus i sve generirane blokove iz AI Planera. Nakon brisanja možeš odmah izraditi novi plan.
+            </p>
+
+            {syncedPlanBlocksForCurrentPlan.length > 0 && (() => {
+              const totalLoc = syncedPlanBlocksForCurrentPlan.reduce((s, b) => s + (b.localIds?.length || 0), 0);
+              const totalInt = syncedPlanBlocksForCurrentPlan.reduce((s, b) => s + (b.intervalsIds?.length || 0), 0);
+              return (
+                <label className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-950/25 border border-rose-500/25 text-xs text-zinc-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={deleteAlsoCalendar}
+                    onChange={(e) => setDeleteAlsoCalendar(e.target.checked)}
+                    disabled={isDeletingPlan}
+                    className="mt-0.5 accent-rose-500 w-4 h-4 rounded shrink-0"
+                  />
+                  <span>
+                    Ukloni i sinkronizirane treninge iz Kalendara ({syncedPlanBlocksForCurrentPlan.length} blok(a)
+                    {totalInt > 0 ? ` • ${totalInt} na Intervals.icu` : ''}
+                    {totalLoc > 0 ? ` • ${totalLoc} lokalno` : ''}).
+                  </span>
+                </label>
+              );
+            })()}
+
+            {isDeletingPlan && syncProgress && (
+              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
+                <div className="flex items-center justify-between text-xs text-zinc-200">
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                    {syncProgress.message}
+                  </span>
+                  <span className="font-mono text-zinc-400">
+                    {syncProgress.done}/{syncProgress.total}
+                  </span>
+                </div>
+                <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-rose-500 transition-all duration-200"
+                    style={{ width: `${Math.round((syncProgress.done / Math.max(1, syncProgress.total)) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isDeletingPlan}
+                onClick={() => setShowDeletePlanConfirm(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-colors disabled:opacity-50"
+              >
+                Odustani
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingPlan}
+                onClick={handleDeleteEntirePlan}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-colors disabled:opacity-50"
+              >
+                {isDeletingPlan ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Brišem plan...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Trajno obriši plan
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

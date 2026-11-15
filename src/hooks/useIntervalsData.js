@@ -1534,6 +1534,14 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       planId,
       blockKey,
       blockTitle = 'AI Trenažni Blok',
+      planTitle = '',
+      planStartDate = '',
+      methodology = '',
+      totalWeeks = null,
+      blockIndex = null,
+      firstWorkoutDate = '',
+      goalTitle = '',
+      eventDate = '',
       startDate = '',
       endDate = '',
       syncToIntervals = true,
@@ -1642,13 +1650,21 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       localStorage.setItem(storageKey, JSON.stringify(localScheduled));
     }
 
-    // Zabilježi u registar planova radi mogućnosti brisanja ili zamjene cijelog bloka jednim klikom
+    // Zabilježi u registar planova radi mogućnosti brisanja ili zamjene cijelog bloka/plana jednim klikom
     const resolvedBlockKey = blockKey || `block_${Date.now()}`;
     const registry = readPlanRegistry(userId).filter(entry => entry.blockKey !== resolvedBlockKey);
     registry.push({
       blockKey: resolvedBlockKey,
       planId: planId || null,
       title: blockTitle,
+      planTitle: planTitle || undefined,
+      planStartDate: planStartDate || undefined,
+      methodology: methodology || undefined,
+      totalWeeks: totalWeeks || undefined,
+      blockIndex: blockIndex || undefined,
+      firstWorkoutDate: firstWorkoutDate || undefined,
+      goalTitle: goalTitle || undefined,
+      eventDate: eventDate || undefined,
       startDate,
       endDate,
       createdAt: new Date().toISOString(),
@@ -1668,13 +1684,17 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
   }, [intervalsId, intervalsKey, userId]);
 
   /**
-   * Jednim klikom briše sve treninge određenog bloka plana iz lokalnog kalendara i s Intervals.icu.
+   * Jednim klikom briše sve treninge za jedan ili više blokova plana iz lokalnog kalendara i s Intervals.icu.
    */
-  const handleDeletePlanBlock = useCallback(async (blockKey, { onProgress } = {}) => {
-    if (!blockKey) return { deletedLocal: 0, deletedIntervals: 0, errors: [] };
+  const handleDeletePlanBlocks = useCallback(async (blockKeys = [], { onProgress } = {}) => {
+    const targetKeys = Array.from(new Set((Array.isArray(blockKeys) ? blockKeys : []).filter(Boolean)));
+    if (targetKeys.length === 0) {
+      return { deletedLocal: 0, deletedIntervals: 0, errors: [] };
+    }
 
+    const targetKeySet = new Set(targetKeys);
     const registry = readPlanRegistry(userId);
-    const entry = registry.find(item => item.blockKey === blockKey);
+    const matchingEntries = registry.filter(item => targetKeySet.has(item.blockKey));
 
     const storageKey = `ai_trener_scheduled_workouts_${userId || 'guest'}`;
     let localScheduled = [];
@@ -1684,28 +1704,51 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       localScheduled = [];
     }
 
-    const localIdSet = new Set((entry?.localIds || []).map(String));
+    const localIdSet = new Set();
+    const intervalsIds = [];
+    const seenIntervalsIds = new Set();
+
+    matchingEntries.forEach(entry => {
+      (entry?.localIds || []).forEach(id => localIdSet.add(String(id)));
+      (entry?.intervalsIds || []).forEach(id => {
+        const sId = String(id);
+        if (!seenIntervalsIds.has(sId)) {
+          seenIntervalsIds.add(sId);
+          intervalsIds.push(sId);
+        }
+      });
+    });
+
     const beforeLen = localScheduled.length;
-    localScheduled = localScheduled.filter(w => !localIdSet.has(String(w.id)) && w.blockKey !== blockKey);
+    localScheduled = localScheduled.filter(
+      w => !localIdSet.has(String(w.id)) && !targetKeySet.has(w.blockKey)
+    );
     const deletedLocal = beforeLen - localScheduled.length;
     localStorage.setItem(storageKey, JSON.stringify(localScheduled));
 
     let deletedIntervals = 0;
     let errors = [];
-    const intervalsIds = entry?.intervalsIds || [];
     if (intervalsIds.length > 0 && intervalsId && intervalsKey) {
-      const idSet = new Set(intervalsIds.map(String));
+      const idSet = new Set(intervalsIds);
       setRawEvents(prev => prev.filter(e => !idSet.has(String(e.id))));
       const res = await deleteEventsBatch(intervalsId, intervalsKey, intervalsIds, { onProgress, delayMs: 120 });
       deletedIntervals = res.deleted.length;
       errors = res.errors;
     }
 
-    writePlanRegistry(userId, registry.filter(item => item.blockKey !== blockKey));
+    writePlanRegistry(userId, registry.filter(item => !targetKeySet.has(item.blockKey)));
     setLocalRefreshTrigger(prev => prev + 1);
 
     return { deletedLocal, deletedIntervals, errors };
   }, [intervalsId, intervalsKey, userId]);
+
+  /**
+   * Jednim klikom briše sve treninge određenog bloka plana iz lokalnog kalendara i s Intervals.icu.
+   */
+  const handleDeletePlanBlock = useCallback(async (blockKey, options = {}) => {
+    if (!blockKey) return { deletedLocal: 0, deletedIntervals: 0, errors: [] };
+    return handleDeletePlanBlocks([blockKey], options);
+  }, [handleDeletePlanBlocks]);
 
   return {
     workouts,
@@ -1724,6 +1767,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     handleUpdateWorkout,
     handleCreateWorkout,
     handleCreatePlanBatch,
-    handleDeletePlanBlock
+    handleDeletePlanBlock,
+    handleDeletePlanBlocks
   };
 }

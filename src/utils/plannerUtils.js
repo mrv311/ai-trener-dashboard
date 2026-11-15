@@ -189,3 +189,194 @@ export function formatShortHrDate(dateIso) {
   const months = ['sij', 'velj', 'ožu', 'tra', 'svi', 'lip', 'srp', 'kol', 'ruj', 'lis', 'stu', 'pro'];
   return `${dt.getDate()}. ${months[dt.getMonth()]}`;
 }
+
+export function getPlanStorageKey(userId) {
+  return `ergvibe_ai_macro_plan_v2_${userId || 'guest'}`;
+}
+
+export function loadSavedPlan(userId) {
+  try {
+    const raw = localStorage.getItem(getPlanStorageKey(userId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.blueprint ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearSavedPlan(userId, expectedPlanId = null) {
+  try {
+    const key = getPlanStorageKey(userId);
+    if (expectedPlanId) {
+      const existing = loadSavedPlan(userId);
+      if (existing?.blueprint?.planId && existing.blueprint.planId !== expectedPlanId) {
+        return false;
+      }
+    }
+    localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Gradi bogati AI prompt za analizu trenutnog ili sinkroniziranog plana treninga.
+ */
+export function buildPlanAnalysisPrompt({
+  planTitle,
+  methodology,
+  totalWeeks,
+  startDate,
+  endDate,
+  goalTitle,
+  eventDate,
+  summary,
+  workoutsInCalendar = []
+}) {
+  const sorted = [...workoutsInCalendar].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const completed = sorted.filter(w => w.isCompleted);
+  const upcoming = sorted.filter(w => !w.isCompleted);
+  const totalPlannedTss = sorted.reduce((acc, w) => acc + (Number(w.plannedTss || w.tss) || 0), 0);
+
+  const previewLines = sorted.slice(0, 28).map(w => {
+    const status = w.isCompleted ? 'ODRAĐENO' : (w.statusColor === 'red-missed' ? 'PROPUŠTENO' : 'PLANIRANO');
+    const dur = Math.round(Number(w.plannedDuration || w.duration) || 0);
+    const tss = Math.round(Number(w.plannedTss || w.tss) || 0);
+    return `- ${w.date} [${status}]: ${w.title} (${dur}m, ~${tss} TSS, kat: ${w.category || 'WORKOUT'})`;
+  });
+
+  return [
+    `Molim te napravi detaljnu trenersku analizu mog plana treninga "${planTitle || 'AI Plan Treninga'}".`,
+    methodology ? `• Metodologija: ${methodology}` : null,
+    totalWeeks ? `• Trajanje makrociklusa: ${totalWeeks} tjedana` : null,
+    startDate ? `• Početak plana u kalendaru: ${startDate}${endDate ? ` do ${endDate}` : ''}` : null,
+    goalTitle ? `• Cilj: ${goalTitle}${eventDate ? ` (${eventDate})` : ''}` : null,
+    summary ? `• Sažetak plana: ${summary}` : null,
+    sorted.length > 0
+      ? `• Stavke u kalendaru: ${sorted.length} treninga (${completed.length} odrađeno, ${upcoming.length} nadolazećih, ukupno ~${Math.round(totalPlannedTss)} TSS)`
+      : null,
+    previewLines.length > 0
+      ? `\nRaspored treninga:\n${previewLines.join('\n')}${sorted.length > 28 ? `\n... i još ${sorted.length - 28} treninga` : ''}`
+      : null,
+    '\nOcijeni konkretno:',
+    '1. Je li progresija opterećenja (TSS / volumen) i omjer intenziteta i Z2 oporavka optimalan za moj trenutni CTL/ATL/TSB i cilj?',
+    '2. Ima li u planu nerealnih, preteških ili loše raspoređenih treninga za pametni trenažer?',
+    '3. Što bi konkretno prilagodio ili poboljšao u idućim treninzima / blokovima?'
+  ].filter(Boolean).join('\n');
+}
+
+/**
+ * Grupira sinkronizirane blokove iz registra planova po planu i određuje prvi dan
+ * na kalendaru za prikaz interaktivne oznake plana.
+ */
+export function buildCalendarPlanMarkers({ planRegistry = [], savedPlan = null, workouts = [] }) {
+  if (!Array.isArray(planRegistry) || planRegistry.length === 0) return [];
+
+  const groups = new Map();
+  planRegistry.forEach(entry => {
+    if (!entry?.blockKey) return;
+    const key = entry.planId || entry.blockKey;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(entry);
+  });
+
+  const markers = [];
+
+  groups.forEach((rawEntries, groupKey) => {
+    const entries = [...rawEntries].sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+    const earliestEntry = entries[0];
+    const entryPlanId = earliestEntry.planId || null;
+
+    const blockKeys = entries.map(e => e.blockKey);
+    const blockKeySet = new Set(blockKeys);
+    const localIdSet = new Set();
+    const intervalsIdSet = new Set();
+
+    entries.forEach(e => {
+      (e.localIds || []).forEach(id => localIdSet.add(String(id)));
+      (e.intervalsIds || []).forEach(id => intervalsIdSet.add(String(id)));
+    });
+
+    const startDates = entries.map(e => e.startDate).filter(Boolean).sort();
+    const endDates = entries.map(e => e.endDate).filter(Boolean).sort();
+    const earliestBlockStart = startDates[0] || '';
+    const latestBlockEnd = endDates[endDates.length - 1] || earliestBlockStart;
+
+    const matchingWorkouts = (workouts || []).filter(w => {
+      if (!w) return false;
+      const wId = String(w.id || '');
+      const rawLocalId = wId.replace(/^local-/, '');
+      const rawEventLocalId = String(w.eventId || '').replace(/^local-/, '');
+      const rawEvId = String(w.eventId || wId.replace(/^ev-/, ''));
+      return (
+        (entryPlanId && w.planId === entryPlanId) ||
+        (w.blockKey && blockKeySet.has(w.blockKey)) ||
+        (wId.startsWith('local-') && localIdSet.has(rawLocalId)) ||
+        (String(w.eventId || '').startsWith('local-') && localIdSet.has(rawEventLocalId)) ||
+        intervalsIdSet.has(rawEvId)
+      );
+    });
+
+    const nonRaceWorkouts = matchingWorkouts
+      .filter(w => !['RACE_A', 'RACE_B', 'RACE_C'].includes(w.eventCategory))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    const firstLiveWorkoutDate = nonRaceWorkouts[0]?.date || '';
+    const savedBlueprintMatch = savedPlan?.blueprint && entryPlanId && savedPlan.blueprint.planId === entryPlanId
+      ? savedPlan.blueprint
+      : null;
+
+    const candidatePlanStart = savedBlueprintMatch?.startDate || earliestEntry.planStartDate || '';
+    const isCandidateWithinBlocks = candidatePlanStart && (
+      (!earliestBlockStart || candidatePlanStart >= earliestBlockStart) &&
+      (!latestBlockEnd || candidatePlanStart <= latestBlockEnd)
+    );
+
+    const markerDate = (isCandidateWithinBlocks ? candidatePlanStart : '')
+      || firstLiveWorkoutDate
+      || earliestEntry.firstWorkoutDate
+      || earliestBlockStart;
+
+    if (!markerDate) return;
+
+    const cleanTitle = savedBlueprintMatch?.planTitle
+      || earliestEntry.planTitle
+      || String(earliestEntry.title || 'AI Plan Treninga').split(' • Blok ')[0];
+
+    const primaryBlockSubKey = earliestEntry.blockKey.includes(':')
+      ? earliestEntry.blockKey.split(':')[1]
+      : earliestEntry.blockKey;
+
+    markers.push({
+      id: groupKey,
+      planId: entryPlanId,
+      title: cleanTitle,
+      methodology: savedBlueprintMatch?.recommendedMethodology || earliestEntry.methodology || '',
+      totalWeeks: savedBlueprintMatch?.totalWeeks || earliestEntry.totalWeeks || null,
+      summary: savedBlueprintMatch?.summary || '',
+      goalTitle: savedBlueprintMatch?.goalTitle || earliestEntry.goalTitle || '',
+      eventDate: savedBlueprintMatch?.eventDate || earliestEntry.eventDate || '',
+      markerDate,
+      startDate: markerDate,
+      endDate: latestBlockEnd || savedBlueprintMatch?.endDate || markerDate,
+      blockKeys,
+      primaryBlockKey: earliestEntry.blockKey,
+      primaryBlockSubKey,
+      blocks: entries,
+      hasSavedBlueprint: Boolean(savedBlueprintMatch),
+      intervalsCount: entries.reduce((sum, e) => sum + (e.intervalsIds?.length || 0), 0),
+      localCount: entries.reduce((sum, e) => sum + (e.localIds?.length || 0), 0),
+      workouts: nonRaceWorkouts,
+      totalWorkouts: nonRaceWorkouts.length,
+      completedCount: nonRaceWorkouts.filter(w => w.isCompleted).length,
+      upcomingCount: nonRaceWorkouts.filter(w => !w.isCompleted).length,
+      totalPlannedTss: Math.round(
+        nonRaceWorkouts.reduce((sum, w) => sum + (Number(w.plannedTss || w.tss) || 0), 0)
+      )
+    });
+  });
+
+  return markers.sort((a, b) => a.markerDate.localeCompare(b.markerDate));
+}
