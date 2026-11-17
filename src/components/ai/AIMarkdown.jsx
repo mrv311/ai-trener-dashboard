@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CalendarPlus, Play, Check, Clock, Activity } from 'lucide-react';
+import { CalendarPlus, Play, Check, Clock, Activity, Dumbbell } from 'lucide-react';
 import {
   parseIntervalsCode,
   categorizeWorkout,
@@ -7,6 +7,7 @@ import {
   stepsToIntervalsCode,
   normalizeIntervalsWorkoutText
 } from '../../utils/workoutParser';
+import { isCyclingType, isStrengthType, canRunInTrainer, getWorkoutSportKind, getSportLabel } from '../../utils/sportTypes';
 
 export { stepsToIntervalsCode, normalizeIntervalsWorkoutText };
 
@@ -16,13 +17,47 @@ export { stepsToIntervalsCode, normalizeIntervalsWorkoutText };
 export function buildErgVibeWorkoutObject({
   title = 'AI Trening',
   category = '',
+  type = 'ride',
   intervalsCode = '',
   steps,
   durationMinutes,
   estimatedTss,
+  descriptionText = '',
+  coachNote = '',
   date,
   ftp = 270
 }) {
+  const isNonCycling = Boolean((type && !isCyclingType(type)) || isStrengthType(category));
+  const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
+  if (isNonCycling) {
+    let durMin = Number(durationMinutes) || 45;
+    if (durMin >= 600 && durMin % 60 === 0) durMin = Math.round(durMin / 60);
+    else if (durMin > 1440) durMin = Math.round(durMin / 60);
+    durMin = Math.max(0, Math.round(durMin));
+    const resolvedTss = Math.max(0, Math.round(Number(estimatedTss) || Math.round(durMin * 0.65)));
+    const notes = String(descriptionText || coachNote || intervalsCode || '').trim();
+
+    return {
+      id: `local-ai_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      date: date || tomorrowIso,
+      title: title.trim() || 'Trening snage',
+      duration: durMin,
+      duration_seconds: durMin * 60,
+      plannedDuration: durMin,
+      plannedTss: resolvedTss,
+      tss: resolvedTss,
+      description: notes,
+      descriptionText: notes,
+      workout_doc: null,
+      allSteps: [],
+      steps: [],
+      category: 'OTHER',
+      difficulty_score: null,
+      type: type || 'strength'
+    };
+  }
+
   let effectiveCode = intervalsCode;
   if (!effectiveCode && Array.isArray(steps) && steps.length > 0) {
     effectiveCode = stepsToIntervalsCode(steps);
@@ -71,7 +106,6 @@ export function buildErgVibeWorkoutObject({
 
   const resolvedCategory = category || categorizeWorkout(enrichedSteps) || 'Endurance';
   const diffScore = calculateCategoryDifficulty(enrichedSteps, resolvedCategory);
-  const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   const resolvedTss = Math.max(5, Math.round(parsed.tss || estimatedTss || (durationMin * 0.75)));
 
   return {
@@ -89,7 +123,7 @@ export function buildErgVibeWorkoutObject({
     steps: enrichedSteps,
     category: resolvedCategory,
     difficulty_score: diffScore,
-    type: 'ride'
+    type: type || 'ride'
   };
 }
 
@@ -115,10 +149,12 @@ export function AIWorkoutCard({
 
   let title = structuredWorkout?.title || 'AI Preporučeni Trening';
   let category = structuredWorkout?.category || '';
+  let type = structuredWorkout?.type || 'ride';
   let stepsCode = structuredWorkout?.intervalsCode || '';
   let stepsArray = structuredWorkout?.steps || null;
   let durationMinutes = structuredWorkout?.durationMinutes || null;
   let estimatedTss = structuredWorkout?.estimatedTss || null;
+  let descriptionText = structuredWorkout?.descriptionText || structuredWorkout?.coachNote || '';
 
   if (rawBlock && !structuredWorkout) {
     const trimmed = rawBlock.trim();
@@ -128,8 +164,12 @@ export function AIWorkoutCard({
         const parsedJson = JSON.parse(trimmed);
         if (parsedJson.title) title = parsedJson.title;
         if (parsedJson.category) category = parsedJson.category;
+        if (parsedJson.type) type = parsedJson.type;
         if (parsedJson.durationMinutes) durationMinutes = parsedJson.durationMinutes;
         if (parsedJson.estimatedTss) estimatedTss = parsedJson.estimatedTss;
+        if (parsedJson.descriptionText || parsedJson.description) {
+          descriptionText = parsedJson.descriptionText || parsedJson.description;
+        }
         if (Array.isArray(parsedJson.steps)) {
           stepsArray = parsedJson.steps;
           stepsCode = stepsToIntervalsCode(parsedJson.steps);
@@ -149,6 +189,7 @@ export function AIWorkoutCard({
         const t = l.trim();
         if (/^TITLE:/i.test(t)) title = t.replace(/^TITLE:\s*/i, '').trim();
         else if (/^CATEGORY:/i.test(t)) category = t.replace(/^CATEGORY:\s*/i, '').trim();
+        else if (/^TYPE:/i.test(t)) type = t.replace(/^TYPE:\s*/i, '').trim();
         else if (/^DURATION:/i.test(t)) {
           const rawDurStr = t.replace(/^DURATION:\s*/i, '').replace(/m(in)?/i, '').trim();
           const parsedD = parseInt(rawDurStr, 10);
@@ -172,15 +213,20 @@ export function AIWorkoutCard({
     return buildErgVibeWorkoutObject({
       title,
       category,
+      type,
       intervalsCode: stepsCode,
       steps: stepsArray,
       durationMinutes,
       estimatedTss,
+      descriptionText,
+      coachNote: structuredWorkout?.coachNote || '',
       date: targetDate,
       ftp
     });
-  }, [title, category, stepsCode, stepsArray, durationMinutes, estimatedTss, targetDate, ftp]);
+  }, [title, category, type, stepsCode, stepsArray, durationMinutes, estimatedTss, descriptionText, structuredWorkout?.coachNote, targetDate, ftp]);
 
+  const sportKind = getWorkoutSportKind(built);
+  const isNonCycling = sportKind !== 'ride' && sportKind !== 'race';
   const totalSec = built.allSteps.reduce((s, x) => s + (x.duration || 0), 0) || 1;
 
   const handleAdd = async () => {
@@ -195,13 +241,25 @@ export function AIWorkoutCard({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/30">
-              {built.category}
-            </span>
+            {isNonCycling ? (
+              <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                <Dumbbell className="w-3 h-3" />
+                {getSportLabel(sportKind)}
+              </span>
+            ) : (
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/30">
+                {built.category}
+              </span>
+            )}
             <h4 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-sm md:text-base">{built.title}</h4>
           </div>
           {structuredWorkout?.coachNote && (
-            <p className="text-xs text-zinc-400 mt-1">{structuredWorkout.coachNote}</p>
+            <p className="text-xs text-zinc-400 mt-1 whitespace-pre-line">{structuredWorkout.coachNote}</p>
+          )}
+          {isNonCycling && built.descriptionText && built.descriptionText !== structuredWorkout?.coachNote && (
+            <p className="text-xs text-zinc-300 mt-1.5 whitespace-pre-line bg-zinc-950/70 border border-zinc-800/80 rounded-lg px-2.5 py-2">
+              {built.descriptionText}
+            </p>
           )}
         </div>
         <div className="flex items-center gap-2 text-xs font-mono font-bold text-zinc-200 telemetry-num shrink-0">
@@ -215,7 +273,7 @@ export function AIWorkoutCard({
       </div>
 
       {/* Vizualni profil intervala */}
-      {built.allSteps.length > 0 && (
+      {!isNonCycling && built.allSteps.length > 0 && (
         <div className="relative h-16 w-full bg-zinc-950 bg-telemetry-grid rounded-lg px-1.5 pt-2 pb-1 flex items-end gap-[1px] border border-zinc-800/90 mb-3 overflow-hidden">
           <div
             className="absolute inset-x-0 border-t border-dashed border-volt-400/35 pointer-events-none z-10"
@@ -262,7 +320,7 @@ export function AIWorkoutCard({
           </div>
         )}
 
-        {onStartInTrainer && built.allSteps.length > 0 && (
+        {onStartInTrainer && built.allSteps.length > 0 && canRunInTrainer(built) && (
           <button
             type="button"
             onClick={() => onStartInTrainer(built)}

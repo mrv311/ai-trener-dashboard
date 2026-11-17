@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2, Upload, Trash2, Sparkles } from 'lucide-react';
+import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2, Upload, Trash2, Sparkles, Dumbbell, Footprints, Waves, FileText } from 'lucide-react';
 import { downloadActivityFitFile, getActivityStreams, updateActivityName } from '../services/intervalsApi';
 import { calculateEF, calculateVI, calculateCogganMetrics, calculateAerobicDecoupling } from '../utils/performanceMetrics';
 import { exportFITFromStream } from '../utils/exportUtils';
@@ -7,6 +7,16 @@ import { supabase } from '../services/supabaseClient';
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { parseFitFile, validateFitFile, calculateTSS } from '../utils/fitParser';
 import WorkoutAIAnalysisPanel from './ai/WorkoutAIAnalysisPanel';
+import { getWorkoutSportKind, getSportLabel } from '../utils/sportTypes';
+
+const renderModalSportIcon = (sportKind, className) => {
+  switch (sportKind) {
+    case 'strength': return <Dumbbell className={className} />;
+    case 'run': return <Footprints className={className} />;
+    case 'swim': return <Waves className={className} />;
+    default: return <Activity className={className} />;
+  }
+};
 
 const formatDur = (mins) => {
   if (!mins) return '-';
@@ -567,10 +577,15 @@ export default function ActivityDetailModal({
   const ef = calculateEF(actualNp, actualAvgHr);
   const vi = calculateVI(actualNp, actualAvgPower);
 
+  const sportKind = getWorkoutSportKind(activity);
+  const isNonCycling = sportKind !== 'ride' && sportKind !== 'race';
+  const isStrength = sportKind === 'strength';
+
   // Detekcija "prazne" aktivnosti (nema power podataka)
   const hasNoPowerData = !actualAvgPower && !actualNp && (!streamsData || streamsData.length === 0);
   const isExternalActivity = activity.workout_source === 'external' || supabaseMetrics?.workout_source === 'external';
-  const needsFitUpload = hasNoPowerData && isExternalActivity;
+  const needsFitUpload = !isNonCycling && hasNoPowerData && isExternalActivity;
+  const hideCyclingTelemetry = isNonCycling && hasNoPowerData;
 
   // Compliance calculations
   let tssColor = "text-zinc-100"; let tssBgColor = "bg-zinc-800/50";
@@ -607,7 +622,7 @@ export default function ActivityDetailModal({
           <div className="min-w-0 flex-1 pr-3">
             {isEditingTitle ? (
               <div className="flex items-center gap-2">
-                <Activity className="w-5 h-5 text-volt-400 shrink-0" />
+                {renderModalSportIcon(sportKind, `w-5 h-5 shrink-0 ${isStrength ? 'text-violet-400' : 'text-volt-400'}`)}
                 <input
                   ref={titleInputRef}
                   type="text"
@@ -639,13 +654,20 @@ export default function ActivityDetailModal({
                 onClick={handleStartEditTitle}
                 title="Klikni za promjenu naziva"
               >
-                <Activity className="w-5 h-5 text-volt-400 shrink-0" />
+                {renderModalSportIcon(sportKind, `w-5 h-5 shrink-0 ${isStrength ? 'text-violet-400' : 'text-volt-400'}`)}
                 <span className="truncate">{displayTitle || "Detalji aktivnosti"}</span>
                 <Pencil className="w-3.5 h-3.5 text-zinc-600 group-hover/title:text-volt-400 transition-colors shrink-0" />
               </h2>
             )}
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <p className="text-xs font-mono text-zinc-400">{activity.date}</p>
+              {isNonCycling && (
+                <span className={`text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                  isStrength ? 'bg-violet-500/15 text-violet-300 border-violet-500/30' : 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                }`}>
+                  {getSportLabel(sportKind)}
+                </span>
+              )}
               {dataSource && (
                 <span className={`text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${dataSource === 'supabase' ? 'bg-violet-500/10 text-violet-300 border-violet-500/25' : 'bg-sky-500/10 text-sky-300 border-sky-500/25'}`}>
                   {dataSource === 'supabase' ? 'LOKALNA TELEMETRIJA' : 'INTERVALS.ICU'}
@@ -705,111 +727,155 @@ export default function ActivityDetailModal({
           )}
 
           {/* Glavne Metrike - Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
-              <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><Zap className="w-3 h-3 text-volt-400" /> Normalized Pwr</span>
-              <span className="text-3xl font-display font-bold telemetry-num text-zinc-100">{actualNp || '-'} <span className="text-xs font-mono text-zinc-500">W</span></span>
+          {hideCyclingTelemetry ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
+                <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-violet-400" /> Trajanje
+                </span>
+                <span className="text-3xl font-display font-bold telemetry-num text-zinc-100">
+                  {actualDur ? formatDur(actualDur) : '-'}
+                </span>
+              </div>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
+                <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1">
+                  <Zap className="w-3 h-3 text-amber-400" /> TSS Load
+                </span>
+                <span className="text-3xl font-display font-bold telemetry-num text-violet-300">
+                  {actualTss > 0 ? actualTss : '-'}
+                </span>
+              </div>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center col-span-2 sm:col-span-1">
+                <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1">
+                  <Heart className="w-3 h-3 text-rose-500" /> Average HR
+                </span>
+                <span className="text-3xl font-display font-bold telemetry-num text-zinc-200">
+                  {actualAvgHr || '-'} <span className="text-xs font-mono text-zinc-500">bpm</span>
+                </span>
+              </div>
             </div>
-            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
-              <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><BarChart2 className="w-3 h-3 text-sky-400" /> Average Pwr</span>
-              <span className="text-3xl font-display font-bold telemetry-num text-zinc-200">{actualAvgPower || '-'} <span className="text-xs font-mono text-zinc-500">W</span></span>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
+                <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><Zap className="w-3 h-3 text-volt-400" /> Normalized Pwr</span>
+                <span className="text-3xl font-display font-bold telemetry-num text-zinc-100">{actualNp || '-'} <span className="text-xs font-mono text-zinc-500">W</span></span>
+              </div>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
+                <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><BarChart2 className="w-3 h-3 text-sky-400" /> Average Pwr</span>
+                <span className="text-3xl font-display font-bold telemetry-num text-zinc-200">{actualAvgPower || '-'} <span className="text-xs font-mono text-zinc-500">W</span></span>
+              </div>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
+                <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><TrendingUp className="w-3 h-3 text-amber-400" /> Max Power</span>
+                <span className="text-3xl font-display font-bold telemetry-num text-zinc-200">{actualMaxPower || '-'} <span className="text-xs font-mono text-zinc-500">W</span></span>
+              </div>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
+                <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><Heart className="w-3 h-3 text-rose-500" /> Average HR</span>
+                <span className="text-3xl font-display font-bold telemetry-num text-zinc-200">{actualAvgHr || '-'} <span className="text-xs font-mono text-zinc-500">bpm</span></span>
+              </div>
             </div>
-            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
-              <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><TrendingUp className="w-3 h-3 text-amber-400" /> Max Power</span>
-              <span className="text-3xl font-display font-bold telemetry-num text-zinc-200">{actualMaxPower || '-'} <span className="text-xs font-mono text-zinc-500">W</span></span>
+          )}
+
+          {/* Bilješke / Raspored vježbi za ne-biciklističke treninge */}
+          {isNonCycling && activity.descriptionText && (
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-2">
+              <h3 className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-[0.18em] flex items-center gap-2">
+                <FileText className="w-4 h-4 text-violet-400" />
+                {isStrength ? 'Raspored vježbi / Podsjetnik' : 'Bilješke treninga'}
+              </h3>
+              <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">
+                {activity.descriptionText}
+              </p>
             </div>
-            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
-              <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1"><Heart className="w-3 h-3 text-rose-500" /> Average HR</span>
-              <span className="text-3xl font-display font-bold telemetry-num text-zinc-200">{actualAvgHr || '-'} <span className="text-xs font-mono text-zinc-500">bpm</span></span>
-            </div>
-          </div>
+          )}
 
           {/* Performance Chart */}
-          <div className="bg-zinc-950 bg-telemetry-grid border border-zinc-800 rounded-xl p-5">
-            <h3 className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-[0.18em] mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-volt-400" /> Telemetrija Snage</h3>
-            <div className="h-64 w-full relative">
-              {isLoadingStreams ? (
-                <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm font-medium">Dohvaćanje podataka...</div>
-              ) : streamsData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={streamsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="powerZones" x1="0" y1="1" x2="0" y2="0">
-                        {/* Y-axis ide od 0 dolje do 1 gore za gradient */}
-                        <stop offset="0%" stopColor="#64748b" stopOpacity={0.6} /> {/* Z1 Slate */}
-                        <stop offset={`${z1}%`} stopColor="#64748b" stopOpacity={0.6} />
+          {!hideCyclingTelemetry && (
+            <div className="bg-zinc-950 bg-telemetry-grid border border-zinc-800 rounded-xl p-5">
+              <h3 className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-[0.18em] mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-volt-400" /> Telemetrija Snage</h3>
+              <div className="h-64 w-full relative">
+                {isLoadingStreams ? (
+                  <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm font-medium">Dohvaćanje podataka...</div>
+                ) : streamsData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={streamsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="powerZones" x1="0" y1="1" x2="0" y2="0">
+                          {/* Y-axis ide od 0 dolje do 1 gore za gradient */}
+                          <stop offset="0%" stopColor="#64748b" stopOpacity={0.6} /> {/* Z1 Slate */}
+                          <stop offset={`${z1}%`} stopColor="#64748b" stopOpacity={0.6} />
 
-                        <stop offset={`${z1}%`} stopColor="#10b981" stopOpacity={0.6} /> {/* Z2 Emerald */}
-                        <stop offset={`${z2}%`} stopColor="#10b981" stopOpacity={0.6} />
+                          <stop offset={`${z1}%`} stopColor="#10b981" stopOpacity={0.6} /> {/* Z2 Emerald */}
+                          <stop offset={`${z2}%`} stopColor="#10b981" stopOpacity={0.6} />
 
-                        <stop offset={`${z2}%`} stopColor="#fbbf24" stopOpacity={0.6} /> {/* Z3 Amber */}
-                        <stop offset={`${z3}%`} stopColor="#fbbf24" stopOpacity={0.6} />
+                          <stop offset={`${z2}%`} stopColor="#fbbf24" stopOpacity={0.6} /> {/* Z3 Amber */}
+                          <stop offset={`${z3}%`} stopColor="#fbbf24" stopOpacity={0.6} />
 
-                        <stop offset={`${z3}%`} stopColor="#f97316" stopOpacity={0.6} /> {/* Z4 Orange */}
-                        <stop offset={`${z4}%`} stopColor="#f97316" stopOpacity={0.6} />
+                          <stop offset={`${z3}%`} stopColor="#f97316" stopOpacity={0.6} /> {/* Z4 Orange */}
+                          <stop offset={`${z4}%`} stopColor="#f97316" stopOpacity={0.6} />
 
-                        <stop offset={`${z4}%`} stopColor="#f43f5e" stopOpacity={0.6} /> {/* Z5 Rose */}
-                        <stop offset={`${z5}%`} stopColor="#f43f5e" stopOpacity={0.6} />
+                          <stop offset={`${z4}%`} stopColor="#f43f5e" stopOpacity={0.6} /> {/* Z5 Rose */}
+                          <stop offset={`${z5}%`} stopColor="#f43f5e" stopOpacity={0.6} />
 
-                        <stop offset={`${z5}%`} stopColor="#a855f7" stopOpacity={0.6} /> {/* Z6 Purple */}
-                        <stop offset={`${z6}%`} stopColor="#a855f7" stopOpacity={0.6} />
+                          <stop offset={`${z5}%`} stopColor="#a855f7" stopOpacity={0.6} /> {/* Z6 Purple */}
+                          <stop offset={`${z6}%`} stopColor="#a855f7" stopOpacity={0.6} />
 
-                        <stop offset={`${z6}%`} stopColor="#d946ef" stopOpacity={0.6} /> {/* Z7 Fuchsia */}
-                        <stop offset="100%" stopColor="#d946ef" stopOpacity={0.6} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                    <XAxis
-                      dataKey="time"
-                      tickFormatter={formatSeconds}
-                      stroke="#52525b"
-                      tick={{ fill: '#71717a', fontSize: 10 }}
-                      minTickGap={30}
-                    />
-                    <YAxis
-                      yAxisId="left"
-                      stroke="#52525b"
-                      tick={{ fill: '#71717a', fontSize: 10 }}
-                      domain={[0, 'dataMax']}
-                    />
-                    <RechartsTooltip
-                      contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '12px' }}
-                      itemStyle={{ color: '#e4e4e7' }}
-                      labelFormatter={formatSeconds}
-                      formatter={(value, name) => {
-                        if (name === 'watts') return [<span className="font-bold text-amber-500">{value} W</span>, 'Snaga'];
-                        if (name === 'hr') return [<span className="font-bold text-rose-500">{value} bpm</span>, 'Puls'];
-                        return [value, name];
-                      }}
-                    />
-                    <Area yAxisId="left" type="linear" dataKey="watts" stroke="#f59e0b" strokeWidth={1.5} fill="url(#powerZones)" isAnimationActive={false} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 border border-dashed border-zinc-800 rounded-lg">
-                  {needsFitUpload ? (
-                    <>
-                      <Upload className="w-8 h-8 text-zinc-600" />
-                      <p className="text-zinc-500 font-medium text-sm">Uploadaj .FIT datoteku za prikaz grafa</p>
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-bold border border-amber-500/20 transition-colors"
-                      >
-                        <Upload className="w-3.5 h-3.5" /> Odaberi .FIT datoteku
-                      </button>
-                    </>
-                  ) : (
-                    <p className="text-zinc-600 font-medium text-sm">Graf nije dostupan (nema podataka)</p>
-                  )}
-                </div>
-              )}
+                          <stop offset={`${z6}%`} stopColor="#d946ef" stopOpacity={0.6} /> {/* Z7 Fuchsia */}
+                          <stop offset="100%" stopColor="#d946ef" stopOpacity={0.6} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                      <XAxis
+                        dataKey="time"
+                        tickFormatter={formatSeconds}
+                        stroke="#52525b"
+                        tick={{ fill: '#71717a', fontSize: 10 }}
+                        minTickGap={30}
+                      />
+                      <YAxis
+                        yAxisId="left"
+                        stroke="#52525b"
+                        tick={{ fill: '#71717a', fontSize: 10 }}
+                        domain={[0, 'dataMax']}
+                      />
+                      <RechartsTooltip
+                        contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '8px', color: '#e4e4e7', fontSize: '12px' }}
+                        itemStyle={{ color: '#e4e4e7' }}
+                        labelFormatter={formatSeconds}
+                        formatter={(value, name) => {
+                          if (name === 'watts') return [<span className="font-bold text-amber-500">{value} W</span>, 'Snaga'];
+                          if (name === 'hr') return [<span className="font-bold text-rose-500">{value} bpm</span>, 'Puls'];
+                          return [value, name];
+                        }}
+                      />
+                      <Area yAxisId="left" type="linear" dataKey="watts" stroke="#f59e0b" strokeWidth={1.5} fill="url(#powerZones)" isAnimationActive={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 border border-dashed border-zinc-800 rounded-lg">
+                    {needsFitUpload ? (
+                      <>
+                        <Upload className="w-8 h-8 text-zinc-600" />
+                        <p className="text-zinc-500 font-medium text-sm">Uploadaj .FIT datoteku za prikaz grafa</p>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-bold border border-amber-500/20 transition-colors"
+                        >
+                          <Upload className="w-3.5 h-3.5" /> Odaberi .FIT datoteku
+                        </button>
+                      </>
+                    ) : (
+                      <p className="text-zinc-600 font-medium text-sm">Graf nije dostupan (nema podataka)</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Usporedba i Advanced Metrics */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-            <div className="flex flex-col gap-3">
+            <div className={`flex flex-col gap-3 ${hideCyclingTelemetry ? 'md:col-span-2' : ''}`}>
               <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">Plan vs Realizacija</h3>
               <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
                 <table className="w-full text-left text-sm whitespace-nowrap font-mono telemetry-num">
@@ -847,70 +913,74 @@ export default function ActivityDetailModal({
               </div>
             </div>
 
-            <div className="flex flex-col gap-3">
-              <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">Kategorizacija</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
-                  <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Zona fokusa</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-lg font-display font-bold uppercase text-zinc-100">{activity.category || 'N/A'}</span>
+            {!hideCyclingTelemetry && (
+              <>
+                <div className="flex flex-col gap-3">
+                  <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">Kategorizacija</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
+                      <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Zona fokusa</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-lg font-display font-bold uppercase text-zinc-100">{activity.category || 'N/A'}</span>
+                      </div>
+                    </div>
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
+                      <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Težina (LVL)</span>
+                      <div className="flex items-baseline gap-1.5 font-mono telemetry-num">
+                        <span className="text-2xl font-display font-bold text-volt-400">{activity.difficulty_score ? activity.difficulty_score.toFixed(1) : '-'}</span>
+                        <span className="text-xs text-zinc-500">/ 10</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
-                  <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Težina (LVL)</span>
-                  <div className="flex items-baseline gap-1.5 font-mono telemetry-num">
-                    <span className="text-2xl font-display font-bold text-volt-400">{activity.difficulty_score ? activity.difficulty_score.toFixed(1) : '-'}</span>
-                    <span className="text-xs text-zinc-500">/ 10</span>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            <div className="flex flex-col gap-3 md:col-span-2">
-              <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">Napredne Metrike</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
-                  <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Variability Index (VI)</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-display font-bold telemetry-num text-zinc-100">{vi || '-'}</span>
-                    <span className="text-[11px] font-mono text-zinc-500">NP / Avg Pwr</span>
-                  </div>
-                  <div className="text-[10px] text-zinc-500 mt-1">
-                    {vi > 1.1 ? "Neravnomjeran napor (intervali, MTB)" : vi > 1.0 ? "Umjereno ravnomjerno" : "Vrlo glatko (ERG / TT)"}
+                <div className="flex flex-col gap-3 md:col-span-2">
+                  <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">Napredne Metrike</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
+                      <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Variability Index (VI)</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-display font-bold telemetry-num text-zinc-100">{vi || '-'}</span>
+                        <span className="text-[11px] font-mono text-zinc-500">NP / Avg Pwr</span>
+                      </div>
+                      <div className="text-[10px] text-zinc-500 mt-1">
+                        {vi > 1.1 ? "Neravnomjeran napor (intervali, MTB)" : vi > 1.0 ? "Umjereno ravnomjerno" : "Vrlo glatko (ERG / TT)"}
+                      </div>
+                    </div>
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
+                      <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Efficiency Factor (EF)</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-display font-bold telemetry-num text-sky-400">{ef || '-'}</span>
+                        <span className="text-[11px] font-mono text-zinc-500">NP / Avg HR</span>
+                      </div>
+                      <div className="text-[10px] text-zinc-500 mt-1">
+                        Pokazatelj aerobne efikasnosti pogona
+                      </div>
+                    </div>
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
+                      <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Aerobic Decoupling (Pw:HR)</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className={`text-2xl font-display font-bold telemetry-num ${
+                          decouplingInfo?.decoupling != null
+                            ? decouplingInfo.decoupling <= 5 ? 'text-volt-400' : 'text-amber-400'
+                            : 'text-zinc-100'
+                        }`}>
+                          {decouplingInfo?.decoupling != null ? `${decouplingInfo.decoupling}%` : '-'}
+                        </span>
+                        <span className="text-[11px] font-mono text-zinc-500">Drift</span>
+                      </div>
+                      <div className="text-[10px] text-zinc-500 mt-1">
+                        {decouplingInfo?.decoupling != null
+                          ? decouplingInfo.decoupling <= 5
+                            ? `Stabilna baza (${decouplingInfo.efFirst} → ${decouplingInfo.efSecond})`
+                            : `Kardijalni drift / intervali (${decouplingInfo.efFirst} → ${decouplingInfo.efSecond})`
+                          : 'Zahtijeva snagu i puls (>10 min)'}
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
-                  <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Efficiency Factor (EF)</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-display font-bold telemetry-num text-sky-400">{ef || '-'}</span>
-                    <span className="text-[11px] font-mono text-zinc-500">NP / Avg HR</span>
-                  </div>
-                  <div className="text-[10px] text-zinc-500 mt-1">
-                    Pokazatelj aerobne efikasnosti pogona
-                  </div>
-                </div>
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
-                  <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Aerobic Decoupling (Pw:HR)</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className={`text-2xl font-display font-bold telemetry-num ${
-                      decouplingInfo?.decoupling != null
-                        ? decouplingInfo.decoupling <= 5 ? 'text-volt-400' : 'text-amber-400'
-                        : 'text-zinc-100'
-                    }`}>
-                      {decouplingInfo?.decoupling != null ? `${decouplingInfo.decoupling}%` : '-'}
-                    </span>
-                    <span className="text-[11px] font-mono text-zinc-500">Drift</span>
-                  </div>
-                  <div className="text-[10px] text-zinc-500 mt-1">
-                    {decouplingInfo?.decoupling != null
-                      ? decouplingInfo.decoupling <= 5
-                        ? `Stabilna baza (${decouplingInfo.efFirst} → ${decouplingInfo.efSecond})`
-                        : `Kardijalni drift / intervali (${decouplingInfo.efFirst} → ${decouplingInfo.efSecond})`
-                      : 'Zahtijeva snagu i puls (>10 min)'}
-                  </div>
-                </div>
-              </div>
-            </div>
+              </>
+            )}
 
           </div>
 

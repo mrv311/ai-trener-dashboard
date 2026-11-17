@@ -552,10 +552,13 @@ export default function TrainingPlannerView({
         buildErgVibeWorkoutObject({
           title: w.title,
           category: w.category || 'Endurance',
+          type: w.type || 'ride',
           intervalsCode: w.intervalsCode,
           steps: w.steps,
           durationMinutes: w.durationMinutes,
           estimatedTss: w.estimatedTss,
+          descriptionText: w.descriptionText || '',
+          coachNote: w.coachNote || '',
           date: w.date,
           ftp
         })
@@ -1667,9 +1670,11 @@ export default function TrainingPlannerView({
                                 structuredWorkout={{
                                   title: w.title,
                                   category: w.category || 'Endurance',
+                                  type: w.type || 'ride',
                                   date: w.date,
                                   durationMinutes: w.durationMinutes,
                                   estimatedTss: w.estimatedTss,
+                                  descriptionText: w.descriptionText,
                                   coachNote: w.coachNote,
                                   intervalsCode: w.intervalsCode,
                                   steps: w.steps

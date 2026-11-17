@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Pencil, Eye, Database, Check } from 'lucide-react';
+import { X, Save, Pencil, Eye, Database, Check, Dumbbell, Bike, Footprints, Waves, Activity, Clock, Zap, FileText } from 'lucide-react';
 import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty, resolveStepPowerPct } from '../utils/workoutParser';
 import { supabase } from '../services/supabaseClient';
+import { getWorkoutSportKind, getSportLabel } from '../utils/sportTypes';
 
 
 // ============================================================
@@ -341,12 +342,26 @@ function StatBox({ label, value, sub, className = '' }) {
 }
 
 
+function renderEditorSportIcon(sportKind, className) {
+  switch (sportKind) {
+    case 'strength': return <Dumbbell className={className} />;
+    case 'run': return <Footprints className={className} />;
+    case 'swim': return <Waves className={className} />;
+    case 'other': return <Activity className={className} />;
+    default: return <Bike className={className} />;
+  }
+}
+
 // ============================================================
 // MAIN MODAL
 // ============================================================
 export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, isLoading, userFtp }) {
   const [title, setTitle] = useState('');
   const [code, setCode] = useState('');
+  const [workoutType, setWorkoutType] = useState('ride');
+  const [durationMinutes, setDurationMinutes] = useState('0');
+  const [estimatedTss, setEstimatedTss] = useState('0');
+  const [hasExplicitTypeSwitch, setHasExplicitTypeSwitch] = useState(false);
   const [mode, setMode] = useState('view'); // 'view' | 'edit'
   const [isSavingToLibrary, setIsSavingToLibrary] = useState(false);
   const [librarySaveSuccess, setLibrarySaveSuccess] = useState(false);
@@ -355,20 +370,94 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
 
   useEffect(() => {
     if (workout && isOpen) {
+      const initialKind = getWorkoutSportKind(workout);
+      const initialNonCycling = initialKind !== 'ride' && initialKind !== 'race';
       setTitle(workout.title || '');
-      // Dohvat koda iz različitih mogućih izvora (JSON ili Array pretvaramo u tekst)
-      const workoutData = workout.workout_doc || workout.steps || '';
-      setCode(workoutDocToCode(workoutData, ftp));
-      setMode('view');
+      setWorkoutType(workout.type || (initialNonCycling ? initialKind : 'ride'));
+      setHasExplicitTypeSwitch(false);
+      setDurationMinutes(String(Number(workout.plannedDuration ?? workout.duration) || 0));
+      setEstimatedTss(String(Number(workout.plannedTss ?? workout.tss) || 0));
+      if (initialNonCycling) {
+        const initialNotes =
+          workout.descriptionText ||
+          (typeof workout.workout_doc === 'string' ? workout.workout_doc : '') ||
+          workout.description ||
+          '';
+        setCode(initialNotes);
+      } else {
+        const workoutData = workout.workout_doc || workout.steps || '';
+        setCode(workoutDocToCode(workoutData, ftp));
+      }
+      setMode(workout.isNewDraft ? 'edit' : 'view');
     }
-  }, [workout, isOpen]);
+  }, [workout, isOpen, ftp]);
 
-  const stats = useMemo(() => parseIntervalsCode(code, ftp), [code, ftp]);
+  const effectiveSportKind = useMemo(() => {
+    if (!workout) return 'ride';
+    return getWorkoutSportKind({
+      ...workout,
+      type: workoutType,
+      title,
+      isNewDraft: Boolean(workout.isNewDraft || hasExplicitTypeSwitch)
+    });
+  }, [workout, workoutType, title, hasExplicitTypeSwitch]);
+
+  const isNonCycling = effectiveSportKind !== 'ride' && effectiveSportKind !== 'race';
+  const isStrength = effectiveSportKind === 'strength';
+
+  const stats = useMemo(
+    () => (isNonCycling ? { duration: 0, tss: 0, np: 0, avgPower: 0, variability: 1, workKj: 0, ifFactor: 0, blocks: [], allSteps: [], zones: { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0, z6: 0, ss: 0 } } : parseIntervalsCode(code, ftp)),
+    [code, ftp, isNonCycling]
+  );
 
   if (!isOpen || !workout) return null;
 
+  const canSwitchSport = Boolean(
+    workout.isNewDraft ||
+    (!workout.steps?.length && !stats.allSteps?.length && (effectiveSportKind === 'ride' || isStrength))
+  );
+
+  const handleSwitchSport = (nextType) => {
+    setHasExplicitTypeSwitch(true);
+    setWorkoutType(nextType);
+    if (nextType === 'strength') {
+      if (!title.trim() || title.trim() === 'Novi Trening') setTitle('Trening snage');
+      if (!Number(durationMinutes)) setDurationMinutes('45');
+      if (!Number(estimatedTss)) setEstimatedTss('35');
+      setCode('');
+    } else {
+      if (!title.trim() || title.trim() === 'Trening snage') setTitle('Novi Trening');
+      setCode('');
+    }
+  };
+
   // ===== KLJUČNA PROMJENA =====
   const handleSave = () => {
+    if (isNonCycling) {
+      const cleanDur = Math.max(0, Math.round(Number(durationMinutes) || 0));
+      const cleanTss = Math.max(0, Math.round(Number(estimatedTss) || 0));
+      const cleanNotes = code.trim();
+      const resolvedTitle = title.trim() || (isStrength ? 'Trening snage' : getSportLabel(effectiveSportKind));
+
+      onSave({
+        ...workout,
+        title: resolvedTitle,
+        description: cleanNotes,
+        descriptionText: cleanNotes,
+        allSteps: [],
+        steps: [],
+        workout_doc: null,
+        tss: cleanTss,
+        plannedTss: cleanTss,
+        duration: cleanDur,
+        plannedDuration: cleanDur,
+        type: workoutType || (isStrength ? 'strength' : effectiveSportKind),
+        category: 'OTHER',
+        difficulty_score: null
+      });
+      return;
+    }
+
     const computedCategory = stats.allSteps?.length > 0 ? (categorizeWorkout(stats.allSteps) || workout.category || 'WORKOUT') : (workout.category || 'WORKOUT');
     const computedDifficulty = stats.allSteps?.length > 0 ? calculateCategoryDifficulty(stats.allSteps, computedCategory) : (workout.difficulty_score ?? null);
 
@@ -380,7 +469,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
       allSteps: stats.allSteps,
       tss: stats.tss,        // Preračunati TSS
       duration: Math.round(stats.duration / 60), // Trajanje u minutama
-      type: workout.type || 'ride',
+      type: workoutType || workout.type || 'ride',
       intensityFactor: stats.ifFactor,
       plannedDuration: Math.round(stats.duration / 60),
       plannedTss: stats.tss,
@@ -390,6 +479,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
   };
 
   const handleSaveToLibrary = async () => {
+    if (isNonCycling) return;
     try {
       setIsSavingToLibrary(true);
       const category = categorizeWorkout(stats.allSteps) || 'Ostalo';
@@ -418,8 +508,11 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
   };
   // ==============================
 
-  const totalSecs = stats.duration || 0;
-  const intensityPct = stats.np > 0 && ftp > 0 ? Math.round((stats.np / ftp) * 100) : 0;
+  const nonCyclingDurMin = Math.max(0, Math.round(Number(durationMinutes) || 0));
+  const nonCyclingTssVal = Math.max(0, Math.round(Number(estimatedTss) || 0));
+  const totalSecs = isNonCycling ? nonCyclingDurMin * 60 : (stats.duration || 0);
+  const displayTss = isNonCycling ? nonCyclingTssVal : (stats.tss || 0);
+  const intensityPct = !isNonCycling && stats.np > 0 && ftp > 0 ? Math.round((stats.np / ftp) * 100) : 0;
 
   // Informacije o datumu treninga
   const workoutDate = workout.date ? new Date(workout.date) : null;
@@ -434,19 +527,55 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={onClose}>
       <div
-        className="carbon-panel rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]"
+        className={`carbon-panel rounded-2xl shadow-2xl w-full ${isNonCycling ? 'max-w-2xl' : 'max-w-4xl'} overflow-hidden flex flex-col max-h-[90vh]`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ============ HEADER ============ */}
         <div className="flex justify-between items-start px-5 py-4 border-b border-zinc-800 bg-zinc-950" onKeyDown={e => e.stopPropagation()}>
-          <div className="flex flex-col gap-0.5 min-w-0 flex-1 pr-3">
+          <div className="flex flex-col gap-1.5 min-w-0 flex-1 pr-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                isStrength
+                  ? 'bg-violet-500/15 text-violet-300 border-violet-500/30'
+                  : isNonCycling
+                  ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                  : 'bg-volt-400/10 text-volt-400 border-volt-400/25'
+              }`}>
+                {renderEditorSportIcon(effectiveSportKind, 'w-3 h-3')}
+                {getSportLabel(effectiveSportKind)}
+              </span>
+
+              {canSwitchSport && mode === 'edit' && (
+                <div className="inline-flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 text-[10px] font-mono font-bold">
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchSport('ride')}
+                    className={`px-2 py-0.5 rounded-md transition-colors ${
+                      !isNonCycling ? 'bg-volt-400 text-zinc-950' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Bicikl
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchSport('strength')}
+                    className={`px-2 py-0.5 rounded-md transition-colors ${
+                      isStrength ? 'bg-violet-400 text-zinc-950' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Trening snage
+                  </button>
+                </div>
+              )}
+            </div>
+
             {mode === 'edit' ? (
               <input
                 type="text"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 className="bg-zinc-900 border border-zinc-700 focus:border-volt-400 rounded-lg px-2.5 py-1 outline-none w-full max-w-md text-lg md:text-xl font-display font-bold uppercase tracking-wide text-zinc-100"
-                placeholder="Naziv treninga..."
+                placeholder={isStrength ? 'Naziv treninga snage (npr. Teretana — noge & core)' : 'Naziv treninga...'}
               />
             ) : (
               <h1 className="text-lg md:text-xl font-display font-bold uppercase tracking-wide text-zinc-100 truncate">
@@ -462,16 +591,24 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
           <div className="hidden sm:flex items-center gap-6 mx-4 shrink-0 font-mono telemetry-num">
             <div className="text-center">
               <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">Trajanje</div>
-              <div className="text-zinc-100 font-bold text-sm leading-tight">{formatDurSec(totalSecs)}</div>
+              <div className="text-zinc-100 font-bold text-sm leading-tight">
+                {totalSecs > 0 ? formatDurSec(totalSecs) : '-'}
+              </div>
             </div>
             <div className="text-center">
-              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">TSS Load</div>
-              <div className="text-volt-400 font-bold text-sm leading-tight">{stats.tss || '-'}</div>
+              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">
+                {isNonCycling ? 'Proc. TSS' : 'TSS Load'}
+              </div>
+              <div className={`font-bold text-sm leading-tight ${isStrength ? 'text-violet-300' : 'text-volt-400'}`}>
+                {displayTss > 0 ? displayTss : '-'}
+              </div>
             </div>
-            <div className="text-center">
-              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">Intenzitet</div>
-              <div className="text-zinc-100 font-bold text-sm leading-tight">{intensityPct > 0 ? `${intensityPct}%` : '-'}</div>
-            </div>
+            {!isNonCycling && (
+              <div className="text-center">
+                <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">Intenzitet</div>
+                <div className="text-zinc-100 font-bold text-sm leading-tight">{intensityPct > 0 ? `${intensityPct}%` : '-'}</div>
+              </div>
+            )}
           </div>
 
           <button onClick={onClose} className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 rounded-lg transition-colors shrink-0">
@@ -481,84 +618,219 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
 
         {/* ============ BODY ============ */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="flex flex-col lg:flex-row">
-
-            {/* LIJEVI STUPAC: Steps / Editor */}
-            <div className="flex-1 p-5 border-b lg:border-b-0 lg:border-r border-zinc-800 min-w-0" onKeyDown={e => e.stopPropagation()}>
+          {isNonCycling ? (
+            <div className="p-5 space-y-5" onKeyDown={e => e.stopPropagation()}>
               {mode === 'edit' ? (
-                <div className="flex flex-col gap-3">
-                  <label className="text-[10px] font-mono font-bold text-volt-400 uppercase tracking-[0.18em]">
-                    Struktura treninga (npr. - 10m 65%)
-                  </label>
-                  <textarea
-                    value={code}
-                    onChange={e => setCode(e.target.value)}
-                    className="w-full h-[320px] bg-zinc-950 border border-zinc-800 rounded-xl p-3.5 text-[12px] text-zinc-200 font-mono leading-relaxed focus:border-volt-400 focus:ring-1 focus:ring-volt-400/30 outline-none resize-none transition-all custom-scrollbar placeholder-zinc-700"
-                    placeholder={`Warmup\n- 15m 50-70%\n- 1m 100%\n- 1m 50%\n\nMain Set (Over-Unders)\n4x\n- 2m 88-92%\n- 1m 110-115%\n\nCooldown\n- 5m 50%`}
-                    spellCheck={false}
-                  />
-                </div>
-              ) : (
-                stats.blocks.length > 0 && stats.allSteps.length > 0 ? (
-                  <StepList blocks={stats.blocks} ftp={ftp} />
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-40 text-zinc-500 text-sm">
-                    <Pencil className="w-8 h-8 mb-3 text-zinc-700" />
-                    <p>Nema koraka za prikaz.</p>
-                    <button onClick={() => setMode('edit')} className="mt-2 text-volt-400 hover:text-volt-300 font-mono font-bold uppercase tracking-wider text-xs transition-colors">
-                      + Uredi kod treninga
-                    </button>
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 space-y-2">
+                      <label className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
+                        <Clock className="w-3.5 h-3.5 text-violet-400" />
+                        Trajanje (min)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={600}
+                        step={5}
+                        value={durationMinutes}
+                        onChange={e => setDurationMinutes(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-700 focus:border-violet-400 rounded-lg px-3 py-2 text-sm font-mono font-bold text-zinc-100 outline-none"
+                        placeholder="45"
+                      />
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {[30, 45, 60, 75, 90].map(m => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setDurationMinutes(String(m))}
+                            className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border transition-colors ${
+                              Number(durationMinutes) === m
+                                ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
+                                : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                            }`}
+                          >
+                            {m}m
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 space-y-2">
+                      <label className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
+                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                        Procijenjeni TSS
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={500}
+                        step={1}
+                        value={estimatedTss}
+                        onChange={e => setEstimatedTss(e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-700 focus:border-violet-400 rounded-lg px-3 py-2 text-sm font-mono font-bold text-zinc-100 outline-none"
+                        placeholder="35"
+                      />
+                      <p className="text-[11px] text-zinc-500 leading-snug">
+                        Opcionalno (npr. 25–50). Uključuje se u tjedni load i PMC krivulju.
+                      </p>
+                    </div>
                   </div>
-                )
+
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-violet-300 uppercase tracking-[0.18em]">
+                      <FileText className="w-3.5 h-3.5" />
+                      {isStrength ? 'Raspored vježbi / Podsjetnik (opcionalno)' : 'Bilješke treninga (opcionalno)'}
+                    </label>
+                    <textarea
+                      value={code}
+                      onChange={e => setCode(e.target.value)}
+                      className="w-full h-[220px] bg-zinc-950 border border-zinc-800 rounded-xl p-3.5 text-xs text-zinc-200 font-mono leading-relaxed focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none resize-y transition-all custom-scrollbar placeholder-zinc-600"
+                      placeholder={
+                        isStrength
+                          ? `Npr.:\nZagrijavanje: mobilnost kukova 10 min\n- Čučanj 4x8\n- Rumunjsko mrtvo dizanje 3x10\n- Bugarski čučanj 3x10 / noga\n- Plank 3x60s`
+                          : 'Upiši bilješke, zone pulsa ili plan treninga...'
+                      }
+                      spellCheck={false}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono telemetry-num">
+                    <div className="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3.5">
+                      <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Trajanje</div>
+                      <div className="text-lg font-bold text-zinc-100">
+                        {nonCyclingDurMin > 0 ? formatDurSec(nonCyclingDurMin * 60) : '-'}
+                      </div>
+                    </div>
+                    <div className="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3.5">
+                      <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Procijenjeni TSS</div>
+                      <div className="text-lg font-bold text-violet-300">
+                        {nonCyclingTssVal > 0 ? nonCyclingTssVal : '-'}
+                      </div>
+                    </div>
+                    <div className="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3.5 col-span-2 sm:col-span-1">
+                      <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Način izvedbe</div>
+                      <div className="text-xs font-sans font-semibold text-zinc-300 mt-1">
+                        {isStrength ? 'Izvan trenažera (snaga / teretana)' : 'Izvan trenažera'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-[0.18em]">
+                        <FileText className="w-3.5 h-3.5 text-violet-400" />
+                        {isStrength ? 'Raspored vježbi / Podsjetnik' : 'Bilješke treninga'}
+                      </h3>
+                    </div>
+
+                    {code.trim() ? (
+                      <div className="bg-zinc-950/90 border border-zinc-800 rounded-xl p-4 text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap font-sans max-h-[260px] overflow-y-auto custom-scrollbar">
+                        {code}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-8 px-4 rounded-xl border border-dashed border-zinc-800 bg-zinc-950/40 text-center">
+                        <Dumbbell className="w-7 h-7 text-zinc-700 mb-2" />
+                        <p className="text-xs text-zinc-500">
+                          {isStrength ? 'Nema upisanog rasporeda vježbi.' : 'Nema upisanih bilješki za ovaj trening.'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setMode('edit')}
+                          className="mt-2.5 text-violet-300 hover:text-violet-200 font-mono font-bold uppercase tracking-wider text-[11px] transition-colors"
+                        >
+                          {isStrength ? '+ Dodaj raspored vježbi / podsjetnik' : '+ Uredi detalje'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
+          ) : (
+            <>
+              <div className="flex flex-col lg:flex-row">
 
-            {/* DESNI STUPAC: Zone statistike */}
-            <div className="w-full lg:w-[280px] shrink-0 p-5 flex flex-col gap-4">
-              <ZoneBar zones={stats.zones} totalSecs={totalSecs} />
-
-              {stats.np > 0 && (
-                <div className="flex items-center justify-between text-[11px] font-mono telemetry-num text-zinc-500 pt-2 border-t border-zinc-800/80">
-                  <span className="font-bold">VI (VARIABILITY)</span>
-                  <span className="text-zinc-200 font-bold">{stats.variability}</span>
+                {/* LIJEVI STUPAC: Steps / Editor */}
+                <div className="flex-1 p-5 border-b lg:border-b-0 lg:border-r border-zinc-800 min-w-0" onKeyDown={e => e.stopPropagation()}>
+                  {mode === 'edit' ? (
+                    <div className="flex flex-col gap-3">
+                      <label className="text-[10px] font-mono font-bold text-volt-400 uppercase tracking-[0.18em]">
+                        Struktura treninga (npr. - 10m 65%)
+                      </label>
+                      <textarea
+                        value={code}
+                        onChange={e => setCode(e.target.value)}
+                        className="w-full h-[320px] bg-zinc-950 border border-zinc-800 rounded-xl p-3.5 text-[12px] text-zinc-200 font-mono leading-relaxed focus:border-volt-400 focus:ring-1 focus:ring-volt-400/30 outline-none resize-none transition-all custom-scrollbar placeholder-zinc-700"
+                        placeholder={`Warmup\n- 15m 50-70%\n- 1m 100%\n- 1m 50%\n\nMain Set (Over-Unders)\n4x\n- 2m 88-92%\n- 1m 110-115%\n\nCooldown\n- 5m 50%`}
+                        spellCheck={false}
+                      />
+                    </div>
+                  ) : (
+                    stats.blocks.length > 0 && stats.allSteps.length > 0 ? (
+                      <StepList blocks={stats.blocks} ftp={ftp} />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-40 text-zinc-500 text-sm">
+                        <Pencil className="w-8 h-8 mb-3 text-zinc-700" />
+                        <p>Nema koraka za prikaz.</p>
+                        <button onClick={() => setMode('edit')} className="mt-2 text-volt-400 hover:text-volt-300 font-mono font-bold uppercase tracking-wider text-xs transition-colors">
+                          + Uredi kod treninga
+                        </button>
+                      </div>
+                    )
+                  )}
                 </div>
-              )}
 
-              <div className="space-y-2 pt-2 border-t border-zinc-800/80 font-mono telemetry-num">
-                <StatBox label="Normalized" value={stats.np > 0 ? `${stats.np} W` : '-'} />
-                <StatBox label="Average" value={stats.avgPower > 0 ? `${stats.avgPower} W` : '-'} />
-                <StatBox label="Variability" value={stats.variability || '-'} />
-                <StatBox label="Work" value={stats.workKj > 0 ? `${stats.workKj} kJ` : '-'} />
-                {ftp > 0 && (
-                  <StatBox
-                    label="Work > FTP"
-                    value={
-                      stats.zones.z4 + stats.zones.z5 + stats.zones.z6 > 0
-                        ? `${Math.round(((stats.zones.z4 + stats.zones.z5 + stats.zones.z6) / totalSecs) * (stats.workKj || 0))} kJ`
-                        : '0 kJ'
-                    }
-                  />
-                )}
+                {/* DESNI STUPAC: Zone statistike */}
+                <div className="w-full lg:w-[280px] shrink-0 p-5 flex flex-col gap-4">
+                  <ZoneBar zones={stats.zones} totalSecs={totalSecs} />
+
+                  {stats.np > 0 && (
+                    <div className="flex items-center justify-between text-[11px] font-mono telemetry-num text-zinc-500 pt-2 border-t border-zinc-800/80">
+                      <span className="font-bold">VI (VARIABILITY)</span>
+                      <span className="text-zinc-200 font-bold">{stats.variability}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 pt-2 border-t border-zinc-800/80 font-mono telemetry-num">
+                    <StatBox label="Normalized" value={stats.np > 0 ? `${stats.np} W` : '-'} />
+                    <StatBox label="Average" value={stats.avgPower > 0 ? `${stats.avgPower} W` : '-'} />
+                    <StatBox label="Variability" value={stats.variability || '-'} />
+                    <StatBox label="Work" value={stats.workKj > 0 ? `${stats.workKj} kJ` : '-'} />
+                    {ftp > 0 && (
+                      <StatBox
+                        label="Work > FTP"
+                        value={
+                          stats.zones.z4 + stats.zones.z5 + stats.zones.z6 > 0
+                            ? `${Math.round(((stats.zones.z4 + stats.zones.z5 + stats.zones.z6) / totalSecs) * (stats.workKj || 0))} kJ`
+                            : '0 kJ'
+                        }
+                      />
+                    )}
+                  </div>
+
+                  {stats.tss > 0 && (
+                    <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80 font-mono telemetry-num">
+                      <span className="text-[10px] font-bold text-zinc-500">TSS</span>
+                      <span className="text-sm font-bold text-volt-400">{stats.tss}</span>
+                      <div className="ml-auto flex gap-1">
+                        <span className="bg-volt-400/15 text-volt-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-volt-400/25">{stats.tss}</span>
+                        <span className="bg-amber-500/15 text-amber-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-500/25">{stats.ifFactor}</span>
+                        <span className="bg-sky-500/15 text-sky-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-sky-500/25">{stats.variability}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {stats.tss > 0 && (
-                <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80 font-mono telemetry-num">
-                  <span className="text-[10px] font-bold text-zinc-500">TSS</span>
-                  <span className="text-sm font-bold text-volt-400">{stats.tss}</span>
-                  <div className="ml-auto flex gap-1">
-                    <span className="bg-volt-400/15 text-volt-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-volt-400/25">{stats.tss}</span>
-                    <span className="bg-amber-500/15 text-amber-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-500/25">{stats.ifFactor}</span>
-                    <span className="bg-sky-500/15 text-sky-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-sky-500/25">{stats.variability}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ============ GRAPH ============ */}
-          <div className="px-5 pb-4">
-            <MiniWorkoutGraph allSteps={stats.allSteps} ftp={ftp} totalSecs={totalSecs} />
-          </div>
+              {/* ============ GRAPH ============ */}
+              <div className="px-5 pb-4">
+                <MiniWorkoutGraph allSteps={stats.allSteps} ftp={ftp} totalSecs={totalSecs} />
+              </div>
+            </>
+          )}
         </div>
 
         {/* ============ FOOTER ============ */}
@@ -573,30 +845,32 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
               }`}
             >
               {mode === 'edit' ? <Eye className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-              {mode === 'edit' ? 'Pregled' : 'Uredi kod'}
+              {mode === 'edit' ? 'Pregled' : (isNonCycling ? 'Uredi' : 'Uredi kod')}
             </button>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleSaveToLibrary}
-              disabled={isSavingToLibrary || isLoading}
-              title="Spremi ovaj trening u zajedničku knjižnicu"
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-mono font-bold uppercase tracking-wider transition-colors border ${
-                librarySaveSuccess
-                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                  : 'text-zinc-400 hover:text-zinc-100 bg-zinc-900 hover:bg-zinc-800 border-zinc-800'
-              }`}
-            >
-              {isSavingToLibrary ? (
-                <span className="animate-spin w-3.5 h-3.5 border-2 border-zinc-500 border-t-zinc-300 rounded-full" />
-              ) : librarySaveSuccess ? (
-                <Check className="w-3.5 h-3.5" />
-              ) : (
-                <Database className="w-3.5 h-3.5" />
-              )}
-              {librarySaveSuccess ? 'Spremljeno' : 'U Knjižnicu'}
-            </button>
+            {!isNonCycling && (
+              <button
+                onClick={handleSaveToLibrary}
+                disabled={isSavingToLibrary || isLoading}
+                title="Spremi ovaj trening u zajedničku knjižnicu"
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-mono font-bold uppercase tracking-wider transition-colors border ${
+                  librarySaveSuccess
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : 'text-zinc-400 hover:text-zinc-100 bg-zinc-900 hover:bg-zinc-800 border-zinc-800'
+                }`}
+              >
+                {isSavingToLibrary ? (
+                  <span className="animate-spin w-3.5 h-3.5 border-2 border-zinc-500 border-t-zinc-300 rounded-full" />
+                ) : librarySaveSuccess ? (
+                  <Check className="w-3.5 h-3.5" />
+                ) : (
+                  <Database className="w-3.5 h-3.5" />
+                )}
+                {librarySaveSuccess ? 'Spremljeno' : 'U Knjižnicu'}
+              </button>
+            )}
             <button
               onClick={onClose}
               className="px-3.5 py-1.5 rounded-lg text-[11px] font-mono font-bold text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors uppercase tracking-wider"

@@ -1,6 +1,7 @@
 /**
  * Pomoćne funkcije i konfiguracije za AI Planer Treninga i kalendarske proračune.
  */
+import { isStrengthType, isRunningType, isSwimmingType } from './sportTypes.js';
 
 export const WEEKDAY_DEFS = [
   { key: 'mon', index: 0, jsDay: 1, short: 'PON', name: 'Ponedjeljak' },
@@ -233,12 +234,16 @@ export function isRestDayWorkout(item) {
     }
   }
 
+  if (isStrengthType(item.type) || isRunningType(item.type) || isSwimmingType(item.type)) {
+    return false;
+  }
+
   const hasExplicitZeroDuration =
     (item.durationMinutes != null && Number(item.durationMinutes) <= 0) ||
     (item.duration != null && Number(item.duration) <= 0 && item.moving_time == null && item.duration_seconds == null);
   const resolvedTss = Number(item.estimatedTss ?? item.tss ?? item.icu_training_load ?? item.plannedTss ?? 0);
   const hasStepsArray = Array.isArray(item.steps) && item.steps.length > 0;
-  const codeCandidate = item.intervalsCode ?? item.workout_doc;
+  const codeCandidate = item.intervalsCode ?? item.workout_doc ?? item.descriptionText;
   const hasCodeSteps = typeof codeCandidate === 'string' && codeCandidate.trim().length > 0;
 
   if (hasExplicitZeroDuration && resolvedTss <= 0 && !hasStepsArray && !hasCodeSteps) {

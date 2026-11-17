@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical, Bike, Upload, PenLine, Trophy, Sparkles, ArrowLeft, Flag, Layers, MessageSquare, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Activity, CheckCircle2, XCircle, Target, Unlink, Link2, Heart, Moon, Play, Trash2, GripVertical, Bike, Dumbbell, Footprints, Waves, Upload, PenLine, Trophy, Sparkles, ArrowLeft, Flag, Layers, MessageSquare, Loader2 } from 'lucide-react';
 import { parseIsoLocal, diffDaysIso, formatShortHrDate, getLocalIsoToday, EVENT_TYPE_OPTIONS, loadSavedPlan, clearSavedPlan, buildCalendarPlanMarkers, buildPlanAnalysisPrompt } from '../utils/plannerUtils';
+import { getWorkoutSportKind, canRunInTrainer, getSportLabel } from '../utils/sportTypes';
 import { DndContext, pointerWithin, DragOverlay, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
@@ -134,6 +135,25 @@ const WorkoutGraph = React.memo(function WorkoutGraph({ workoutDoc, isCompleted,
   );
 });
 
+const renderSportIcon = (sportKind, className) => {
+  switch (sportKind) {
+    case 'strength': return <Dumbbell className={className} />;
+    case 'run': return <Footprints className={className} />;
+    case 'swim': return <Waves className={className} />;
+    case 'other': return <Activity className={className} />;
+    default: return <Bike className={className} />;
+  }
+};
+
+const getSportBadgeStyle = (sportKind) => {
+  switch (sportKind) {
+    case 'strength': return 'bg-violet-500/15 text-violet-300 border-violet-500/30';
+    case 'run': return 'bg-sky-500/15 text-sky-300 border-sky-500/30';
+    case 'swim': return 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30';
+    default: return 'bg-zinc-950 text-zinc-400 border-zinc-800';
+  }
+};
+
 // ============================================================
 // WorkoutCard
 // ============================================================
@@ -153,6 +173,10 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
   };
 
   const sourceMeta = w.isSupabase && w.workout_source ? getSourceBadgeMeta(w.workout_source) : null;
+  const sportKind = getWorkoutSportKind(w);
+  const isRace = sportKind === 'race';
+  const isNonCycling = sportKind !== 'ride' && !isRace;
+  const showTrainerPlay = !w.isCompleted && canRunInTrainer(w) && Boolean(onSelectWorkout);
 
   return (
     <div
@@ -175,19 +199,23 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
         {compact ? (
           // Compact: just title + duration + status icon
           <div className="flex items-center gap-1.5 w-full">
-            {['RACE_A', 'RACE_B', 'RACE_C'].includes(w.eventCategory) && (
+            {isRace ? (
               <Trophy className="w-3 h-3 text-amber-400 shrink-0" />
-            )}
-            <span className={`text-[9px] font-bold truncate flex-1 ${['RACE_A', 'RACE_B', 'RACE_C'].includes(w.eventCategory) ? 'text-amber-200' : 'text-zinc-300'}`}>{w.title}</span>
-            {!['RACE_A', 'RACE_B', 'RACE_C'].includes(w.eventCategory) && (
-              <span className="text-[9px] font-mono telemetry-num text-zinc-400 shrink-0">{formatDur(w.duration)}</span>
+            ) : isNonCycling ? (
+              renderSportIcon(sportKind, `w-3 h-3 shrink-0 ${sportKind === 'strength' ? 'text-violet-400' : 'text-sky-400'}`)
+            ) : null}
+            <span className={`text-[9px] font-bold truncate flex-1 ${isRace ? 'text-amber-200' : 'text-zinc-300'}`}>{w.title}</span>
+            {!isRace && (
+              <span className="text-[9px] font-mono telemetry-num text-zinc-400 shrink-0">{w.duration > 0 ? formatDur(w.duration) : '-'}</span>
             )}
             {w.statusColor === 'green' && <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />}
             {w.statusColor === 'red-missed' && <XCircle className="w-3 h-3 text-rose-500 shrink-0" />}
           </div>
         ) : (() => {
-          const isRace = ['RACE_A', 'RACE_B', 'RACE_C'].includes(w.eventCategory);
           const racePriorityLabel = w.eventCategory === 'RACE_A' ? 'CILJ A' : w.eventCategory === 'RACE_B' ? 'EVENT B' : 'EVENT C';
+          const sportIconColor = sportKind === 'strength'
+            ? 'text-violet-400'
+            : (isNonCycling ? 'text-sky-400' : (isDesktop ? 'text-zinc-500' : 'text-zinc-400'));
           return (
           <div className={`flex flex-col ${isDenseCard ? 'gap-0.5' : 'gap-1'} w-full`}>
             {/* Header: Sport icon, duration, actions */}
@@ -199,9 +227,9 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-mono font-bold telemetry-num uppercase tracking-wider">
-                  <Bike className={`${isDesktop ? 'w-3 h-3 text-zinc-500' : 'w-4 h-4 text-zinc-400'}`} />
+                  {renderSportIcon(sportKind, `${isDesktop ? 'w-3 h-3' : 'w-4 h-4'} ${sportIconColor}`)}
                   <span title={w.plannedDuration ? `Plan: ${formatDur(w.plannedDuration)}` : ''}>
-                    {formatDur(w.duration)}
+                    {w.duration > 0 ? formatDur(w.duration) : (isNonCycling ? '-' : formatDur(w.duration))}
                     {((!isDesktop && w.plannedDuration) || (isExpandedCard && w.plannedDuration && w.isCompleted)) && (
                       <span className={`text-zinc-600 ${isExpandedCard ? 'text-[10px]' : 'text-[9px]'} ml-1`}>/ {formatDur(w.plannedDuration)}</span>
                     )}
@@ -256,7 +284,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                     <Trash2 className={`${isDesktop ? 'w-3 h-3' : 'w-4 h-4'}`} />
                   </button>
                 )}
-                {!w.isCompleted && !isRace && onSelectWorkout && (
+                {showTrainerPlay && (
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
@@ -324,22 +352,30 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                         </>
                       )}
                     </div>
-                    {w.category && w.difficulty_score && (
+                    {w.category && w.difficulty_score && !isNonCycling ? (
                       <div className="flex items-center gap-1 shrink-0">
                         <span className="bg-zinc-950 text-zinc-300 text-[8px] font-bold px-1 py-0.5 rounded border border-zinc-800">{w.category}</span>
                         <span className="text-volt-400 text-[9px] font-bold">{w.difficulty_score.toFixed(1)}</span>
                       </div>
-                    )}
+                    ) : isNonCycling ? (
+                      <span className={`text-[8px] font-bold px-1 py-0.5 rounded border uppercase shrink-0 ${getSportBadgeStyle(sportKind)}`}>
+                        {sportKind === 'strength' ? 'SNAGA' : getSportLabel(sportKind)}
+                      </span>
+                    ) : null}
                   </div>
-                  {w.intervalDescription && (
+                  {w.intervalDescription ? (
                     <span className="text-[9px] font-mono text-zinc-400/85 leading-tight line-clamp-1">{w.intervalDescription}</span>
-                  )}
+                  ) : isNonCycling && w.descriptionText ? (
+                    <span className="text-[9px] text-zinc-400/85 leading-tight line-clamp-1">{w.descriptionText}</span>
+                  ) : null}
                 </div>
-                <WorkoutGraph
-                  workoutDoc={w.workout_doc || w.steps}
-                  isCompleted={w.isCompleted || w.status === 'completed'}
-                  dense={true}
-                />
+                {!isNonCycling && (
+                  <WorkoutGraph
+                    workoutDoc={w.workout_doc || w.steps}
+                    isCompleted={w.isCompleted || w.status === 'completed'}
+                    dense={true}
+                  />
+                )}
               </>
             ) : (
               <>
@@ -380,28 +416,38 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                         {w.intervalDescription}
                       </span>
                     ) : w.descriptionText ? (
-                      <span className="text-[11px] text-zinc-400/90 leading-snug line-clamp-2">
+                      <span className="text-[11px] text-zinc-300/90 bg-zinc-950/60 border border-zinc-800/80 rounded px-2 py-1.5 leading-snug line-clamp-4 whitespace-pre-line">
                         {w.descriptionText}
                       </span>
                     ) : null
                   ) : (
-                    w.intervalDescription && (
+                    w.intervalDescription ? (
                       <span className="text-[10px] font-mono text-zinc-400/85 leading-tight line-clamp-1">{w.intervalDescription}</span>
-                    )
+                    ) : isNonCycling && w.descriptionText ? (
+                      <span className="text-[10px] text-zinc-400/90 leading-snug line-clamp-2 whitespace-pre-line">{w.descriptionText}</span>
+                    ) : null
                   )}
-                  {w.category && w.difficulty_score && (
+                  {w.category && w.difficulty_score && !isNonCycling ? (
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="bg-zinc-950 text-zinc-300 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-zinc-800">{w.category}</span>
                       <span className="text-volt-400 font-mono telemetry-num text-[10px] font-bold">LVL {w.difficulty_score.toFixed(1)}</span>
                     </div>
-                  )}
+                  ) : isNonCycling ? (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border uppercase ${getSportBadgeStyle(sportKind)}`}>
+                        {getSportLabel(sportKind)}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
                 {/* Graph */}
-                <WorkoutGraph
-                  workoutDoc={w.workout_doc || w.steps}
-                  isCompleted={w.isCompleted || w.status === 'completed'}
-                  expanded={isExpandedCard}
-                />
+                {!isNonCycling && (
+                  <WorkoutGraph
+                    workoutDoc={w.workout_doc || w.steps}
+                    isCompleted={w.isCompleted || w.status === 'completed'}
+                    expanded={isExpandedCard}
+                  />
+                )}
               </>
             )}
           </div>
@@ -643,6 +689,8 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
 // ============================================================
 function DragOverlayCard({ workout, activeWidth }) {
   if (!workout) return null;
+  const sportKind = getWorkoutSportKind(workout);
+  const isNonCycling = sportKind !== 'ride' && sportKind !== 'race';
 
   return (
     <div
@@ -652,18 +700,20 @@ function DragOverlayCard({ workout, activeWidth }) {
       <div className={`h-[2px] w-full ${getTopCol(workout.statusColor)}`} />
       <div className="p-2.5 flex flex-col gap-1">
         <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-mono telemetry-num font-bold uppercase tracking-wide">
-          <Bike className="w-3 h-3" />
-          <span>{formatDur(workout.duration)}</span>
+          {renderSportIcon(sportKind, `w-3 h-3 ${sportKind === 'strength' ? 'text-violet-400' : ''}`)}
+          <span>{workout.duration > 0 ? formatDur(workout.duration) : (isNonCycling ? '-' : formatDur(workout.duration))}</span>
         </div>
         <span className="font-bold text-xs text-zinc-100 line-clamp-1 leading-tight">{workout.title}</span>
         <div className="flex items-baseline gap-1 bg-zinc-950 rounded px-1.5 py-0.5 border border-zinc-800 w-fit mt-1 font-mono telemetry-num">
           <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">TSS</span>
           <span className="text-xs font-bold text-volt-400">{workout.tss > 0 ? workout.tss : (workout.plannedTss > 0 ? workout.plannedTss : '-')}</span>
         </div>
-        <WorkoutGraph
-          workoutDoc={workout.workout_doc || workout.steps}
-          isCompleted={workout.isCompleted || workout.status === 'completed'}
-        />
+        {!isNonCycling && (
+          <WorkoutGraph
+            workoutDoc={workout.workout_doc || workout.steps}
+            isCompleted={workout.isCompleted || workout.status === 'completed'}
+          />
+        )}
       </div>
     </div>
   );
@@ -1574,7 +1624,9 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
           {
             allSteps: updatedWorkout.allSteps,
             category: updatedWorkout.category,
-            difficulty_score: updatedWorkout.difficulty_score
+            difficulty_score: updatedWorkout.difficulty_score,
+            type: updatedWorkout.type,
+            descriptionText: updatedWorkout.descriptionText
           }
         );
       }
@@ -1599,8 +1651,31 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       statusColor: 'grey',
       isCompleted: false,
       isLocal: true,
+      isNewDraft: true,
       category: 'WORKOUT',
       type: 'ride',
+      steps: []
+    };
+    setSelectedDateForNew(null);
+    setEditingWorkout(newWorkout);
+  };
+
+  const handleManualStrengthCreate = () => {
+    const newWorkout = {
+      id: `local-${Date.now()}`,
+      date: selectedDateForNew,
+      title: 'Trening snage',
+      duration: 45,
+      plannedDuration: 45,
+      tss: 35,
+      plannedTss: 35,
+      statusColor: 'grey',
+      isCompleted: false,
+      isLocal: true,
+      isNewDraft: true,
+      category: 'OTHER',
+      type: 'strength',
+      descriptionText: '',
       steps: []
     };
     setSelectedDateForNew(null);
@@ -2204,7 +2279,20 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                   </div>
                   <div className="flex flex-col text-left">
                     <span className="font-bold text-sm text-zinc-100">Ručni unos treninga</span>
-                    <span className="text-xs text-zinc-500">Kreiraj strukturirani trening (npr. - 10m 65%)</span>
+                    <span className="text-xs text-zinc-500">Kreiraj strukturirani biciklistički trening (npr. - 10m 65%)</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={handleManualStrengthCreate}
+                  className="flex items-center gap-3.5 w-full p-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-violet-400/50 transition-all group"
+                >
+                  <div className="bg-violet-500/10 border border-violet-500/25 p-2.5 rounded-lg text-violet-400 group-hover:bg-violet-400 group-hover:text-zinc-950 transition-colors">
+                    <Dumbbell className="w-5 h-5" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="font-bold text-sm text-zinc-100">Trening snage / Teretana</span>
+                    <span className="text-xs text-zinc-500">Trajanje, naziv, procijenjeni TSS i podsjetnik vježbi</span>
                   </div>
                 </button>
 

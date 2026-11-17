@@ -19,6 +19,7 @@ import {
   stepsToIntervalsCode,
   normalizeIntervalsWorkoutText
 } from '../utils/workoutParser';
+import { isCyclingType, isStrengthType, isNonCyclingEvent } from '../utils/sportTypes';
 
 const STORAGE_KEY_CUSTOM_API_KEY = 'ergvibe_custom_gemini_key';
 const STORAGE_KEY_ANALYSES_CACHE = 'ergvibe_ai_workout_analyses_v1';
@@ -946,6 +947,27 @@ function sanitizePlannedWorkout(wo, dayMaxMinutes, ftp = 200) {
   const dayLimit = Math.max(30, Number(dayMaxMinutes) || 60);
   const maxAllowed = Math.max(dayLimit + 15, Math.round(dayLimit * 1.15));
 
+  const isNonCycling = Boolean(
+    isStrengthType(wo?.type) ||
+    isStrengthType(wo?.category) ||
+    (wo?.type && !isCyclingType(wo.type)) ||
+    isNonCyclingEvent({ ...wo, name: wo?.title, description: wo?.intervalsCode || wo?.description })
+  );
+
+  if (isNonCycling) {
+    const durMins = Math.max(15, Math.min(dayLimit, Math.round(Number(wo?.durationMinutes) || 45)));
+    const estTss = Math.max(0, Math.round(Number(wo?.estimatedTss) || Math.round(durMins * 0.65)));
+    const notes = String(wo?.descriptionText || wo?.coachNote || wo?.description || '').trim();
+    return {
+      durationMinutes: durMins,
+      estimatedTss: estTss,
+      intervalsCode: '',
+      steps: [],
+      type: wo?.type || 'strength',
+      descriptionText: notes
+    };
+  }
+
   const tryParseCode = (codeStr) => {
     if (!codeStr || typeof codeStr !== 'string') return null;
     const expanded = normalizeIntervalsWorkoutText(codeStr);
@@ -1409,9 +1431,11 @@ Pravila za jedinice: 'durationMinutes' je cijeli broj MINUTA (npr. 55, NIKAKO u 
         dayName: dayDef.name,
         date: exactDate,
         title: wo.title || 'AI Trening',
-        category: wo.category || 'Endurance',
+        category: sanitized.type && !isCyclingType(sanitized.type) ? 'OTHER' : (wo.category || 'Endurance'),
+        type: sanitized.type || 'ride',
         durationMinutes: sanitized.durationMinutes,
         estimatedTss: sanitized.estimatedTss,
+        descriptionText: sanitized.descriptionText || '',
         coachNote: wo.coachNote || wo.description || '',
         intervalsCode: sanitized.intervalsCode,
         steps: sanitized.steps
@@ -1492,15 +1516,18 @@ KOMENTAR / ZAHTJEV SPORTAŠA:
 "${cleanFeedback}"
 
 Popravi i zamijeni OVAJ trening tako da u potpunosti poštuje komentar sportaša, bude realan i fiziološki izvediv na trenažeru te unutar max ${dayLimit} minuta.
+Ako sportaš izričito traži trening snage / teretanu (izvan trenažera), postavi "type": "strength", "category": "OTHER", "intervalsCode": "" i upiši raspored vježbi u "descriptionText".
 
 ${PLANNER_WORKOUT_PROTOCOLS_GUIDE}
 
 VAŽNO: Vrati ISKLJUČIVO jedan valjani JSON objekt bez markdown backtick oznaka:
 {
   "title": "Novi jasan naziv treninga",
-  "category": "VO2max | SweetSpot | Endurance | Tempo | Threshold | Recovery | Anaerobic",
+  "type": "ride | strength",
+  "category": "VO2max | SweetSpot | Endurance | Tempo | Threshold | Recovery | Anaerobic | OTHER",
   "durationMinutes": ${dayLimit},
   "estimatedTss": 65,
+  "descriptionText": "Opcionalni podsjetnik vježbi za trening snage (prazno za bicikl)",
   "coachNote": "Kratko objašnjenje što je izmijenjeno i zašto",
   "intervalsCode": "- 12m 55-70% Zagrijavanje\\n\\n5x\\n- 3m 115% VO2 Max\\n- 3m 50% Oporavak\\n\\n- 13m 50% Hlađenje"
 }`;
@@ -1527,9 +1554,11 @@ VAŽNO: Vrati ISKLJUČIVO jedan valjani JSON objekt bez markdown backtick oznaka
   return {
     ...workout,
     title: parsed?.title || workout?.title || 'Prilagođeni trening',
-    category: parsed?.category || workout?.category || 'Endurance',
+    type: sanitized.type || 'ride',
+    category: sanitized.type && !isCyclingType(sanitized.type) ? 'OTHER' : (parsed?.category || workout?.category || 'Endurance'),
     durationMinutes: sanitized.durationMinutes,
     estimatedTss: sanitized.estimatedTss,
+    descriptionText: sanitized.descriptionText || '',
     coachNote: parsed?.coachNote || workout?.coachNote || '',
     intervalsCode: sanitized.intervalsCode,
     steps: sanitized.steps

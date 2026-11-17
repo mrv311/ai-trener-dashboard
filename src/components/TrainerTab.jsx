@@ -6,6 +6,7 @@ import { getZoneColorForTrainer, calculateCogganMetrics, calculateEF, calculateV
 import { exportToTCX, exportToFIT, buildFitUint8Array } from '../utils/exportUtils';
 import { calculateDistanceStream } from '../utils/virtualDistance';
 import { parseIntervalsCode, flattenStructuredSteps, resolveStepPowerPct } from '../utils/workoutParser';
+import { getWorkoutSportKind } from '../utils/sportTypes';
 import { uploadActivityToIntervals } from '../services/intervalsApi';
 import { supabase } from '../services/supabaseClient';
 import {
@@ -479,6 +480,10 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
   useEffect(() => {
     if (!workoutFromCalendar) {
+      loadedWorkoutKeyRef.current = null;
+      return;
+    }
+    if (getWorkoutSportKind(workoutFromCalendar) !== 'ride') {
       loadedWorkoutKeyRef.current = null;
       return;
     }

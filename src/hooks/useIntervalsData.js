@@ -11,6 +11,7 @@ import {
 import { supabase } from '../services/supabaseClient';
 import { parseWorkoutDoc, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
 import { isRestDayWorkout } from '../utils/plannerUtils';
+import { isCyclingType, isNonCyclingEvent, toIntervalsSportType } from '../utils/sportTypes';
 
 const formatLocalDate = (d = new Date()) => {
   const yr = d.getFullYear();
@@ -42,9 +43,19 @@ const writePlanRegistry = (userId, list) => {
 };
 
 const normalizeDurationMinutes = (workoutObj, isRace = false) => {
-  if (isRace) {
-    const rawMin = Number(workoutObj?.duration || 0);
-    return rawMin > 0 ? Math.round(rawMin) : 0;
+  const isCycling = isCyclingType(workoutObj?.type);
+  if (isRace || !isCycling) {
+    const rawMin = Number(workoutObj?.duration ?? 0);
+    if (rawMin > 0) {
+      let cleanMin = Math.round(rawMin);
+      if (cleanMin >= 360 && cleanMin % 60 === 0) cleanMin = Math.round(cleanMin / 60);
+      else if (cleanMin > 1440) cleanMin = Math.round(cleanMin / 60);
+      return cleanMin;
+    }
+    if (workoutObj?.duration_seconds > 0) {
+      return Math.max(1, Math.round(workoutObj.duration_seconds / 60));
+    }
+    return 0;
   }
   let durMin = workoutObj?.duration;
   if (durMin && durMin >= 360 && durMin % 60 === 0) {
@@ -68,8 +79,8 @@ const buildIntervalsEventPayload = (workoutObj) => {
     name: workoutObj.title || (isRace ? 'Ciljni Event' : 'Trening'),
     description: isRace
       ? (workoutObj.descriptionText || workoutObj.description || '')
-      : (workoutObj.description || ''),
-    type: workoutObj.type === 'run' ? 'Run' : (workoutObj.type === 'strength' ? 'WeightTraining' : 'Ride')
+      : (workoutObj.description ?? workoutObj.descriptionText ?? ''),
+    type: toIntervalsSportType(workoutObj.type)
   };
   if (workoutObj.tss && Number(workoutObj.tss) > 0) {
     payload.icu_training_load = Math.round(Number(workoutObj.tss));
@@ -80,26 +91,6 @@ const buildIntervalsEventPayload = (workoutObj) => {
   return payload;
 };
 
-const isIntervalsCyclingType = (typeStr) => {
-  if (!typeStr) return true; // default je biciklizam kad tip nije specificiran na treningu
-  const norm = String(typeStr).toLowerCase().replace(/[\s_-]/g, '');
-  return [
-    'ride',
-    'virtualride',
-    'mountainbikeride',
-    'gravelride',
-    'ebikeride',
-    'emountainbikeride',
-    'handcycle',
-    'velomobile',
-    'trackride',
-    'cycling',
-    'biking',
-    'indoorcycling',
-    'spin'
-  ].includes(norm);
-};
-
 // Helper: određuje je li aktivnost cycling tipa na temelju workout_source
 const isCyclingActivity = (sbAct) => {
   if (!sbAct.workout_source) return true; // default je cycling
@@ -107,7 +98,7 @@ const isCyclingActivity = (sbAct) => {
   if (src === 'free_ride' || src === 'calendar' || src === 'library' || src === 'local') return true;
   if (src.startsWith('external_upload_')) {
     const sport = src.replace('external_upload_', '');
-    return isIntervalsCyclingType(sport);
+    return isCyclingType(sport);
   }
   if (src === 'external_upload') {
     return sbAct.avg_power > 0; // pretpostavljamo cycling ako ima wate
@@ -156,18 +147,18 @@ const buildIntervalSummary = (steps) => {
 };
 
 const extractEventPlannedMetrics = (ev, userFtp = 250) => {
-  if (!ev) return { tss: 0, durationMin: 0, category: null, diffScore: null, targetNp: null, workoutDoc: null };
-  const isEvCycling = isIntervalsCyclingType(ev.type);
+  if (!ev) return { tss: 0, durationMin: 0, category: null, diffScore: null, targetNp: null, workoutDoc: null, descriptionText: '' };
+  const isEvCycling = !isNonCyclingEvent(ev);
   const docToParse = ev.workout_doc || ev.description;
   let parsed = null;
   let actCategory = isEvCycling ? null : 'OTHER';
   let diffScore = null;
   let targetNp = null;
 
-  if (docToParse) {
+  if (isEvCycling && docToParse) {
     try {
       parsed = parseWorkoutDoc(docToParse, userFtp);
-      if (isEvCycling && parsed && Array.isArray(parsed.allSteps) && parsed.allSteps.length > 0) {
+      if (parsed && Array.isArray(parsed.allSteps) && parsed.allSteps.length > 0) {
         actCategory = categorizeWorkout(parsed.allSteps);
         diffScore = calculateCategoryDifficulty(parsed.allSteps, actCategory);
         targetNp = parsed.np || null;
@@ -181,7 +172,7 @@ const extractEventPlannedMetrics = (ev, userFtp = 250) => {
     ev.icu_training_load,
     ev.load,
     ev.tss,
-    ev.workout_doc?.tss,
+    isEvCycling ? ev.workout_doc?.tss : null,
     parsed?.tss
   ];
   let resolvedTss = 0;
@@ -195,7 +186,7 @@ const extractEventPlannedMetrics = (ev, userFtp = 250) => {
 
   const candidatesSec = [
     ev.moving_time,
-    ev.workout_doc?.duration,
+    isEvCycling ? ev.workout_doc?.duration : null,
     ev.elapsed_time,
     parsed?.duration
   ];
@@ -216,9 +207,10 @@ const extractEventPlannedMetrics = (ev, userFtp = 250) => {
     category: actCategory,
     diffScore,
     targetNp,
-    steps: parsed?.allSteps || null,
-    intervalDescription: parsed?.allSteps?.length > 0 ? buildIntervalSummary(parsed.allSteps) : null,
-    workoutDoc: ev.workout_doc || (parsed?.allSteps?.length > 0 ? ev.description : null)
+    steps: isEvCycling ? (parsed?.allSteps || null) : null,
+    intervalDescription: isEvCycling && parsed?.allSteps?.length > 0 ? buildIntervalSummary(parsed.allSteps) : null,
+    workoutDoc: isEvCycling ? (ev.workout_doc || (parsed?.allSteps?.length > 0 ? ev.description : null)) : null,
+    descriptionText: typeof ev.description === 'string' ? ev.description : ''
   };
 };
 
@@ -562,11 +554,11 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     });
 
     const getLocalPlannedMetrics = (lw) => {
-      if (!lw) return { tss: 0, durationMin: 0, category: null, diffScore: null, workoutDoc: null };
-      const isLocCycling = !lw.type || isIntervalsCyclingType(lw.type);
+      if (!lw) return { tss: 0, durationMin: 0, category: null, diffScore: null, workoutDoc: null, descriptionText: '' };
+      const isLocCycling = !isNonCyclingEvent(lw);
       let parsed = null;
-      const docSource = lw.steps || lw.workout_doc;
-      if ((!lw.tss || Number(lw.tss) <= 0 || !lw.category) && docSource) {
+      const docSource = isLocCycling ? (lw.steps || lw.workout_doc) : null;
+      if (isLocCycling && (!lw.tss || Number(lw.tss) <= 0 || !lw.category) && docSource) {
         try {
           parsed = parseWorkoutDoc(docSource, effectiveFtp);
         } catch {
@@ -580,20 +572,25 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       if (durMin > 1440) durMin = Math.round(durMin / 60);
 
       let cat = isLocCycling ? (lw.category || null) : 'OTHER';
-      let diff = lw.difficulty_score ?? null;
+      let diff = isLocCycling ? (lw.difficulty_score ?? null) : null;
       if (isLocCycling && (!cat || cat === 'WORKOUT') && parsed?.allSteps?.length > 0) {
         cat = categorizeWorkout(parsed.allSteps);
         if (diff == null) diff = calculateCategoryDifficulty(parsed.allSteps, cat);
       }
+
+      const rawNotes = typeof lw.descriptionText === 'string'
+        ? lw.descriptionText
+        : (typeof lw.workout_doc === 'string' ? lw.workout_doc : (typeof lw.description === 'string' ? lw.description : ''));
 
       return {
         tss: Math.max(0, Math.round(rawTss)),
         durationMin: Math.max(0, Math.round(durMin)),
         category: cat,
         diffScore: diff,
-        steps: parsed?.allSteps || (Array.isArray(lw.steps) ? lw.steps : null),
-        intervalDescription: parsed?.allSteps?.length > 0 ? buildIntervalSummary(parsed.allSteps) : null,
-        workoutDoc: lw.workout_doc || lw.steps
+        steps: isLocCycling ? (parsed?.allSteps || (Array.isArray(lw.steps) ? lw.steps : null)) : null,
+        intervalDescription: isLocCycling && parsed?.allSteps?.length > 0 ? buildIntervalSummary(parsed.allSteps) : null,
+        workoutDoc: isLocCycling ? (lw.workout_doc || lw.steps) : null,
+        descriptionText: rawNotes
       };
     };
 
@@ -655,7 +652,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
             if (!separatedEventIds.includes(e.id)) separatedEventIds.push(e.id);
             continue;
           }
-          const isEvCycling = isIntervalsCyclingType(e.type);
+          const isEvCycling = !isNonCyclingEvent(e);
           if (isEvCycling !== isSportCycling) {
             separatedEventIds.push(e.id);
             continue;
@@ -726,7 +723,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       if (!isNaN(sbStartMs)) {
         for (const act of rawActivities) {
           if (consumedIntervalsActIds.has(String(act.id))) continue;
-          const isActCyc = isIntervalsCyclingType(act.type);
+          const isActCyc = isCyclingType(act.type);
           if (isActCyc !== isCycling) continue;
 
           const actStartMs = act.start_date
@@ -795,7 +792,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
             if (unpairedList.includes(`supabase-${sbAct.id}-local-${lw.id}`)) {
               separatedEventIds.push(`local-${lw.id}`);
             } else if (!consumedLocalIds.has(lw.id)) {
-              const isLocCycling = !lw.type || isIntervalsCyclingType(lw.type);
+              const isLocCycling = !isNonCyclingEvent(lw);
               if (isLocCycling === isCycling) {
                 pairedLocal = lw;
                 consumedLocalIds.add(lw.id);
@@ -813,6 +810,8 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       let actCategory = null;
       let workoutDoc = null;
       let targetNpVal = null;
+      let pairedDescriptionText = '';
+      let pairedType = null;
       let complianceColor = 'blue';
 
       if (pairedEvent) {
@@ -824,6 +823,8 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         actCategory = evMetrics.category;
         targetNpVal = evMetrics.targetNp;
         workoutDoc = evMetrics.workoutDoc;
+        pairedDescriptionText = evMetrics.descriptionText || '';
+        pairedType = pairedEvent.type || null;
       } else if (pairedLocal) {
         const locMetrics = getLocalPlannedMetrics(pairedLocal);
         eventIdObj = `local-${pairedLocal.id}`;
@@ -832,6 +833,8 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         diffScore = locMetrics.diffScore;
         actCategory = locMetrics.category;
         workoutDoc = locMetrics.workoutDoc;
+        pairedDescriptionText = locMetrics.descriptionText || '';
+        pairedType = pairedLocal.type || null;
       }
 
       if (pairedEvent || pairedLocal) {
@@ -858,6 +861,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         date: actDate,
         started_at: sbAct.started_at,
         title: sbAct.title || matchedIntervalsAct?.name || 'Lokalni Trening',
+        type: matchedIntervalsAct?.type || pairedType || (isCycling ? 'Ride' : 'Other'),
         duration: actualDur,
         plannedDuration: plannedDurDisplay,
         tss: actualTss,
@@ -866,9 +870,10 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         isCompleted: true,
         isSupabase: true,
         workout_source: sbAct.workout_source || 'local',
-        difficulty_score: diffScore,
+        difficulty_score: isCycling ? diffScore : null,
         category: isCycling ? (actCategory && actCategory !== 'OTHER' ? actCategory : defaultCategory) : 'OTHER',
-        workout_doc: workoutDoc || sbAct.workout_doc,
+        workout_doc: isCycling ? (workoutDoc || sbAct.workout_doc) : null,
+        descriptionText: pairedDescriptionText || matchedIntervalsAct?.description || '',
         targetNP: targetNpVal ? Math.round(targetNpVal) : null,
         np: Math.round(sbAct.np || fallbackIcuMetrics?.np || 0),
         average_power: Math.round(sbAct.avg_power || 0),
@@ -888,7 +893,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       if (!actDate) return;
 
       const actKey = `act-${act.id}`;
-      const isActCycling = isIntervalsCyclingType(act.type);
+      const isActCycling = isCyclingType(act.type);
       const defaultCategory = isActCycling ? 'WORKOUT' : 'OTHER';
       const completedMetrics = extractActivityCompletedMetrics(act, effectiveFtp);
       const actualTss = completedMetrics.tss;
@@ -926,7 +931,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
             if (unpairedList.includes(`${act.id}-local-${lw.id}`)) {
               separatedEventIds.push(`local-${lw.id}`);
             } else if (!consumedLocalIds.has(lw.id)) {
-              const isLocCycling = !lw.type || isIntervalsCyclingType(lw.type);
+              const isLocCycling = !isNonCyclingEvent(lw);
               if (isLocCycling === isActCycling) {
                 pairedLocal = lw;
                 consumedLocalIds.add(lw.id);
@@ -945,6 +950,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       let actCategory = null;
       let workoutDoc = null;
       let targetNpVal = null;
+      let pairedDescriptionText = '';
 
       if (pairedEvent || pairedLocal) {
         if (pairedEvent) {
@@ -956,6 +962,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
           actCategory = evMetrics.category;
           targetNpVal = evMetrics.targetNp;
           workoutDoc = evMetrics.workoutDoc;
+          pairedDescriptionText = evMetrics.descriptionText || '';
         } else {
           const locMetrics = getLocalPlannedMetrics(pairedLocal);
           eventIdObj = `local-${pairedLocal.id}`;
@@ -964,6 +971,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
           diffScore = locMetrics.diffScore;
           actCategory = locMetrics.category;
           workoutDoc = locMetrics.workoutDoc;
+          pairedDescriptionText = locMetrics.descriptionText || '';
         }
 
         let ratio = 1;
@@ -999,15 +1007,17 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         date: actDate,
         started_at: act.start_date_local || act.start_date,
         title: act.name || 'Trening',
+        type: act.type || null,
         duration: actualDur,
         plannedDuration: plannedDurDisplay,
         tss: actualTss,
         plannedTss: plannedTssDisplay,
         statusColor: complianceColor,
         isCompleted: true,
-        difficulty_score: diffScore,
+        difficulty_score: isActCycling ? diffScore : null,
         category: isActCycling ? (actCategory && actCategory !== 'OTHER' ? actCategory : defaultCategory) : 'OTHER',
-        workout_doc: workoutDoc,
+        workout_doc: isActCycling ? workoutDoc : null,
+        descriptionText: act.description || pairedDescriptionText || '',
         targetNP: targetNpVal ? Math.round(targetNpVal) : null,
         np: completedMetrics.np,
         average_power: Math.round(act.icu_average_watts || act.icu_average_power || act.average_watts || act.average_power || 0),
@@ -1029,12 +1039,13 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       if (!isRace && evDate < todayStr) complianceColor = 'red-missed';
 
       const evMetrics = extractEventPlannedMetrics(ev, effectiveFtp);
-      const isEvCycling = isIntervalsCyclingType(ev.type);
+      const isEvCycling = !isNonCyclingEvent(ev);
 
       finalWorkouts.push({
         id: `ev-${ev.id}`,
         eventId: ev.id,
         eventCategory: ev.category || 'WORKOUT',
+        type: ev.type || (isRace ? ev.category : (isEvCycling ? 'Ride' : 'WeightTraining')),
         date: evDate,
         title: ev.name || (isRace ? 'Utrka' : 'Planirano'),
         duration: isRace ? (evMetrics.durationMin || 0) : evMetrics.durationMin,
@@ -1043,11 +1054,11 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         plannedTss: evMetrics.tss,
         statusColor: complianceColor,
         isCompleted: false,
-        steps: isRace ? null : evMetrics.steps,
-        intervalDescription: isRace ? null : evMetrics.intervalDescription,
-        workout_doc: isRace ? null : evMetrics.workoutDoc,
-        descriptionText: isRace ? (ev.description || '') : undefined,
-        difficulty_score: isRace ? null : evMetrics.diffScore,
+        steps: (isRace || !isEvCycling) ? null : evMetrics.steps,
+        intervalDescription: (isRace || !isEvCycling) ? null : evMetrics.intervalDescription,
+        workout_doc: (isRace || !isEvCycling) ? null : evMetrics.workoutDoc,
+        descriptionText: isRace ? (ev.description || '') : (evMetrics.descriptionText || ''),
+        difficulty_score: (isRace || !isEvCycling) ? null : evMetrics.diffScore,
         category: isRace ? ev.category : (isEvCycling ? evMetrics.category : 'OTHER')
       });
     });
@@ -1062,14 +1073,16 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       let complianceColor = isRace ? 'race' : 'grey';
       if (!isRace && sched.date < todayStr) complianceColor = 'red-missed';
 
+      const isLocCycling = !isNonCyclingEvent(sched);
       const locMetrics = getLocalPlannedMetrics(sched);
       const cleanDuration = isRace
         ? (locMetrics.durationMin || 0)
-        : (locMetrics.durationMin > 0 ? locMetrics.durationMin : 60);
+        : (locMetrics.durationMin > 0 ? locMetrics.durationMin : (isLocCycling ? 60 : 0));
 
       finalWorkouts.push({
         id: `local-${sched.id}`,
         eventCategory: evCat,
+        type: sched.type || (isRace ? evCat : (isLocCycling ? 'ride' : 'strength')),
         planId: sched.planId || null,
         blockKey: sched.blockKey || null,
         date: sched.date,
@@ -1081,12 +1094,12 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         statusColor: complianceColor,
         isCompleted: false,
         isLocal: true,
-        steps: isRace ? null : (locMetrics.steps || sched.steps),
-        intervalDescription: isRace ? null : locMetrics.intervalDescription,
-        workout_doc: isRace ? null : locMetrics.workoutDoc,
-        descriptionText: isRace ? (sched.descriptionText || '') : undefined,
-        category: isRace ? evCat : locMetrics.category,
-        difficulty_score: isRace ? null : locMetrics.diffScore
+        steps: (isRace || !isLocCycling) ? null : (locMetrics.steps || sched.steps),
+        intervalDescription: (isRace || !isLocCycling) ? null : locMetrics.intervalDescription,
+        workout_doc: (isRace || !isLocCycling) ? null : locMetrics.workoutDoc,
+        descriptionText: isRace ? (sched.descriptionText || '') : (locMetrics.descriptionText || ''),
+        category: isRace ? evCat : (isLocCycling ? locMetrics.category : 'OTHER'),
+        difficulty_score: (isRace || !isLocCycling) ? null : locMetrics.diffScore
       });
     });
 
@@ -1466,19 +1479,39 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
   }, [rawEvents, intervalsId, intervalsKey, onRescheduleError, userId]);
 
   const handleUpdateWorkout = useCallback(async (workoutId, title, workout_doc, calculatedTss, calculatedDuration, extraFields = {}) => {
+    const cleanTss = Math.max(0, Math.round(Number(calculatedTss) || 0));
+    const cleanDurMin = Math.max(0, Math.round(Number(calculatedDuration) || 0));
+
     if (workoutId.startsWith('local-')) {
       const rawId = workoutId.replace('local-', '');
       let localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
       const idx = localScheduled.findIndex(w => String(w.id) === String(rawId));
       if (idx > -1) {
+        const nextType = extraFields.type || localScheduled[idx].type || 'ride';
+        const isCycling = isCyclingType(nextType);
+        const notes = extraFields.descriptionText !== undefined
+          ? String(extraFields.descriptionText || '')
+          : (typeof workout_doc === 'string' ? workout_doc : '');
+
         localScheduled[idx].title = title;
-        localScheduled[idx].workout_doc = workout_doc;
-        localScheduled[idx].steps = Array.isArray(extraFields.allSteps) && extraFields.allSteps.length > 0 ? extraFields.allSteps : workout_doc;
-        localScheduled[idx].tss = calculatedTss;
-        localScheduled[idx].duration = calculatedDuration;
-        localScheduled[idx].duration_seconds = (calculatedDuration || 0) * 60;
-        if (extraFields.category) localScheduled[idx].category = extraFields.category;
-        if (extraFields.difficulty_score != null) localScheduled[idx].difficulty_score = extraFields.difficulty_score;
+        localScheduled[idx].type = nextType;
+        localScheduled[idx].tss = cleanTss;
+        localScheduled[idx].duration = cleanDurMin;
+        localScheduled[idx].duration_seconds = cleanDurMin * 60;
+
+        if (isCycling) {
+          localScheduled[idx].workout_doc = workout_doc;
+          localScheduled[idx].steps = Array.isArray(extraFields.allSteps) && extraFields.allSteps.length > 0 ? extraFields.allSteps : workout_doc;
+          localScheduled[idx].descriptionText = extraFields.descriptionText ?? '';
+          if (extraFields.category) localScheduled[idx].category = extraFields.category;
+          if (extraFields.difficulty_score !== undefined) localScheduled[idx].difficulty_score = extraFields.difficulty_score;
+        } else {
+          localScheduled[idx].workout_doc = '';
+          localScheduled[idx].steps = [];
+          localScheduled[idx].descriptionText = notes;
+          localScheduled[idx].category = 'OTHER';
+          localScheduled[idx].difficulty_score = null;
+        }
         localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify(localScheduled));
         setLocalRefreshTrigger(prev => prev + 1);
       }
@@ -1490,20 +1523,45 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       const oldEvent = rawEvents.find(e => String(e.id) === eventId);
       if (!oldEvent) return;
 
-      // Optimistic upate
+      const nextType = extraFields.type ? toIntervalsSportType(extraFields.type) : (oldEvent.type || 'Ride');
+      const isCycling = isCyclingType(nextType);
+      const notes = extraFields.descriptionText !== undefined
+        ? String(extraFields.descriptionText || '')
+        : (typeof workout_doc === 'string' ? workout_doc : '');
+
+      const apiPayload = {
+        name: title,
+        type: nextType,
+        icu_training_load: cleanTss,
+        moving_time: cleanDurMin * 60
+      };
+      if (isCycling) {
+        if (workout_doc) {
+          apiPayload.workout_doc = workout_doc;
+        } else {
+          apiPayload.description = '';
+        }
+      } else {
+        apiPayload.description = notes;
+      }
+
+      // Optimistic update
       setRawEvents(prev => prev.map(e =>
         String(e.id) === eventId
-          ? { ...e, name: title, workout_doc: workout_doc, icu_training_load: calculatedTss, moving_time: calculatedDuration * 60 }
+          ? {
+              ...e,
+              name: title,
+              type: nextType,
+              description: isCycling ? (typeof workout_doc === 'string' ? workout_doc : e.description) : notes,
+              workout_doc: isCycling ? workout_doc : null,
+              icu_training_load: cleanTss,
+              moving_time: cleanDurMin * 60
+            }
           : e
       ));
 
       try {
-        await updateEventDetails(intervalsId, intervalsKey, eventId, {
-          name: title,
-          workout_doc: workout_doc,
-          icu_training_load: calculatedTss,
-          moving_time: (calculatedDuration || 0) * 60
-        });
+        await updateEventDetails(intervalsId, intervalsKey, eventId, apiPayload);
       } catch (err) {
         console.error('Update Workout API error:', err);
         // Revert on error
@@ -1517,34 +1575,43 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
 
   const planRegistry = useMemo(() => readPlanRegistry(userId), [userId, localRefreshTrigger]);
 
+  const buildLocalScheduledRecord = useCallback((wo, { idFallback, planIdOverride = null, blockKeyOverride = null } = {}) => {
+    const evCat = wo.eventCategory || 'WORKOUT';
+    const isRace = isRaceEventCategory(evCat);
+    const isCycling = isCyclingType(wo.type);
+    const durMin = normalizeDurationMinutes(wo, isRace);
+    const rawId = String(wo.id || idFallback || `local-${Date.now()}_${Math.random().toString(36).slice(2, 6)}`).replace(/^local-/, '');
+    const notes = wo.descriptionText ?? (typeof wo.description === 'string' ? wo.description : '') ?? '';
+
+    return {
+      id: rawId,
+      date: wo.date,
+      title: wo.title,
+      duration: durMin,
+      duration_seconds: durMin * 60,
+      tss: Math.max(0, Math.round(Number(wo.tss) || 0)),
+      workout_doc: (isRace || !isCycling) ? '' : (wo.description || ''),
+      steps: (isRace || !isCycling)
+        ? []
+        : (Array.isArray(wo.allSteps) && wo.allSteps.length > 0 ? wo.allSteps : (wo.description || '')),
+      category: isRace ? evCat : (isCycling ? (wo.category || 'WORKOUT') : 'OTHER'),
+      eventCategory: evCat,
+      planId: planIdOverride || wo.planId || null,
+      blockKey: blockKeyOverride || wo.blockKey || null,
+      descriptionText: isRace ? (wo.descriptionText || wo.description || '') : (isCycling ? (wo.descriptionText || '') : notes),
+      difficulty_score: (isRace || !isCycling) ? null : (wo.difficulty_score ?? null),
+      type: wo.type || (isRace ? evCat : 'ride')
+    };
+  }, []);
+
   const handleCreateWorkout = useCallback(async (workoutObj, options = {}) => {
     const { syncToIntervals = true } = options;
     const eventCategory = workoutObj.eventCategory || 'WORKOUT';
     const isRace = isRaceEventCategory(eventCategory);
     const durMin = normalizeDurationMinutes(workoutObj, isRace);
-    const durSec = durMin * 60;
 
     let localScheduled = JSON.parse(localStorage.getItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`) || '[]');
-    const rawLocalId = String(workoutObj.id || `local-${Date.now()}_${Math.random().toString(36).slice(2, 6)}`).replace(/^local-/, '');
-    const newLocalWorkout = {
-      id: rawLocalId,
-      date: workoutObj.date,
-      title: workoutObj.title,
-      duration: durMin,
-      duration_seconds: durSec,
-      tss: workoutObj.tss || 0,
-      workout_doc: isRace ? '' : workoutObj.description,
-      steps: isRace
-        ? ''
-        : (Array.isArray(workoutObj.allSteps) && workoutObj.allSteps.length > 0 ? workoutObj.allSteps : workoutObj.description),
-      category: isRace ? eventCategory : (workoutObj.category || 'WORKOUT'),
-      eventCategory,
-      planId: workoutObj.planId || null,
-      blockKey: workoutObj.blockKey || null,
-      descriptionText: isRace ? (workoutObj.descriptionText || workoutObj.description || '') : '',
-      difficulty_score: isRace ? null : (workoutObj.difficulty_score ?? null),
-      type: workoutObj.type || 'ride'
-    };
+    const newLocalWorkout = buildLocalScheduledRecord(workoutObj);
 
     localScheduled.push(newLocalWorkout);
     localStorage.setItem(`ai_trener_scheduled_workouts_${userId || 'guest'}`, JSON.stringify(localScheduled));
@@ -1572,7 +1639,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       console.error('Create Workout API error:', err);
       return { success: true, id: `local-${newLocalWorkout.id}`, intervalsSynced: false, error: err?.message || 'Greška pri slanju na Intervals.icu' };
     }
-  }, [intervalsId, intervalsKey, userId]);
+  }, [intervalsId, intervalsKey, userId, buildLocalScheduledRecord]);
 
   /**
    * Grupno upisuje cijeli trenažni blok (i eventualni ciljni event) u lokalni Kalendar
@@ -1644,55 +1711,25 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       // Ako neka stavka nije prošla na Intervals.icu, sačuvaj je lokalno da ništa ne nestane
       itemsList.forEach((wo, idx) => {
         if (!createdIndexSet.has(idx)) {
-          const evCat = wo.eventCategory || 'WORKOUT';
-          const isRace = isRaceEventCategory(evCat);
-          const durMin = normalizeDurationMinutes(wo, isRace);
-          const rawId = String(wo.id || `local-ai_${Date.now()}_${idx}`).replace(/^local-/, '');
-          localScheduled.push({
-            id: rawId,
-            date: wo.date,
-            title: wo.title,
-            duration: durMin,
-            duration_seconds: durMin * 60,
-            tss: wo.tss || 0,
-            workout_doc: isRace ? '' : wo.description,
-            steps: isRace ? '' : (Array.isArray(wo.allSteps) && wo.allSteps.length > 0 ? wo.allSteps : wo.description),
-            category: isRace ? evCat : (wo.category || 'WORKOUT'),
-            eventCategory: evCat,
-            planId: planId || wo.planId || null,
-            blockKey: blockKey || wo.blockKey || null,
-            descriptionText: isRace ? (wo.descriptionText || wo.description || '') : '',
-            difficulty_score: isRace ? null : (wo.difficulty_score ?? null),
-            type: wo.type || 'ride'
+          const rec = buildLocalScheduledRecord(wo, {
+            idFallback: `local-ai_${Date.now()}_${idx}`,
+            planIdOverride: planId,
+            blockKeyOverride: blockKey
           });
-          createdLocalIds.push(rawId);
+          localScheduled.push(rec);
+          createdLocalIds.push(rec.id);
         }
       });
     } else {
       itemsList.forEach((wo, idx) => {
         if (onProgress) onProgress({ done: idx + 1, total: itemsList.length, currentName: wo.title || 'Trening' });
-        const evCat = wo.eventCategory || 'WORKOUT';
-        const isRace = isRaceEventCategory(evCat);
-        const durMin = normalizeDurationMinutes(wo, isRace);
-        const rawId = String(wo.id || `local-ai_${Date.now()}_${idx}`).replace(/^local-/, '');
-        localScheduled.push({
-          id: rawId,
-          date: wo.date,
-          title: wo.title,
-          duration: durMin,
-          duration_seconds: durMin * 60,
-          tss: wo.tss || 0,
-          workout_doc: isRace ? '' : wo.description,
-          steps: isRace ? '' : (Array.isArray(wo.allSteps) && wo.allSteps.length > 0 ? wo.allSteps : wo.description),
-          category: isRace ? evCat : (wo.category || 'WORKOUT'),
-          eventCategory: evCat,
-          planId: planId || wo.planId || null,
-          blockKey: blockKey || wo.blockKey || null,
-          descriptionText: isRace ? (wo.descriptionText || wo.description || '') : '',
-          difficulty_score: isRace ? null : (wo.difficulty_score ?? null),
-          type: wo.type || 'ride'
+        const rec = buildLocalScheduledRecord(wo, {
+          idFallback: `local-ai_${Date.now()}_${idx}`,
+          planIdOverride: planId,
+          blockKeyOverride: blockKey
         });
-        createdLocalIds.push(rawId);
+        localScheduled.push(rec);
+        createdLocalIds.push(rec.id);
       });
     }
 

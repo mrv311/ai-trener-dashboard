@@ -26,6 +26,7 @@ import { handleIntervalsOAuthCallback } from './services/intervalsOAuth';
 import { extractIntervalsAthleteMetrics } from './services/intervalsApi';
 import { parseIsoLocal } from './utils/plannerUtils';
 import { VALID_UI_THEME_IDS } from './utils/themeConfig';
+import { canRunInTrainer } from './utils/sportTypes';
 
 const DEFAULT_GUEST_PROFILE = {
   username: 'Gost Vozač', weight: 75.9, ftp: 200, thresholdHr: 160, maxHr: 180,
@@ -498,6 +499,12 @@ export default function App() {
     setShowOnboardingModal(false);
   };
 
+  const handleLaunchWorkoutInTrainer = (workout) => {
+    if (!canRunInTrainer(workout)) return;
+    setSelectedWorkout(workout);
+    handleTabChange('trainer');
+  };
+
   const isDefaultGuestName = !athleteProfile?.username || ['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(athleteProfile.username);
   const displayName = isDefaultGuestName ? 'Gost Vozač' : athleteProfile.username.trim().split(' ')[0];
   const athleteWkg = ((Number(athleteProfile?.ftp) || 200) / (Number(athleteProfile?.weight) || 75)).toFixed(2);
@@ -766,7 +773,7 @@ export default function App() {
                 handleRescheduleWorkout={handleRescheduleWorkout}
                 handleUpdateWorkout={handleUpdateWorkout}
                 handleCreateWorkout={handleCreateWorkout}
-                onSelectWorkout={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
+                onSelectWorkout={handleLaunchWorkoutInTrainer}
                 profile={athleteProfile}
                 intervalsId={intervalsId}
                 intervalsKey={intervalsKey}
@@ -810,7 +817,7 @@ export default function App() {
                 onDeletePlanBlock={handleDeletePlanBlock}
                 onDeletePlanBlocks={handleDeletePlanBlocks}
                 planRegistry={planRegistry}
-                onStartWorkoutInTrainer={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
+                onStartWorkoutInTrainer={handleLaunchWorkoutInTrainer}
                 onNavigateToCalendar={openCalendarAtDate}
                 plannerLaunchRequest={plannerLaunchRequest}
                 onConsumePlannerLaunchRequest={() => setPlannerLaunchRequest(null)}
@@ -825,7 +832,7 @@ export default function App() {
             {activeTab === 'library' && (
               <LibraryTab
                 ftp={athleteProfile.ftp}
-                onSelectWorkout={(workout) => { setSelectedWorkout(workout); handleTabChange('trainer'); }}
+                onSelectWorkout={handleLaunchWorkoutInTrainer}
                 onScheduleWorkout={handleCreateWorkout}
                 userId={currentUserId}
               />
