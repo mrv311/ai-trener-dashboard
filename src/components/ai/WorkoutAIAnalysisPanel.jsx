@@ -31,7 +31,7 @@ export default function WorkoutAIAnalysisPanel({
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const cached = getCachedWorkoutAnalysis(cacheKey);
+    const cached = getCachedWorkoutAnalysis(cacheKey, userId);
     if (cached?.analysisText) {
       setAnalysisText(cached.analysisText);
       setQaHistory(Array.isArray(cached.qaHistory) ? cached.qaHistory : []);
@@ -42,7 +42,7 @@ export default function WorkoutAIAnalysisPanel({
       setUserNote('');
     }
     setError(null);
-  }, [cacheKey]);
+  }, [cacheKey, userId]);
 
   useEffect(() => {
     if (!isAnalyzing && !isAsking) return;
@@ -81,7 +81,7 @@ export default function WorkoutAIAnalysisPanel({
         analysisText: result,
         qaHistory: [],
         userNote
-      });
+      }, userId);
     } catch (err) {
       setError(err.message || 'Došlo je do greške pri AI analizi.');
     } finally {
@@ -118,7 +118,7 @@ export default function WorkoutAIAnalysisPanel({
         analysisText,
         qaHistory: finalHistory,
         userNote
-      });
+      }, userId);
     } catch (err) {
       setError(err.message || 'Greška pri slanju potpitanja.');
       setQaHistory(prevHistory);

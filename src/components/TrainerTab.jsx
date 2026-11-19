@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X, Gamepad2, ArrowUpDown, RotateCcw, Battery, Maximize2, Minimize2, Loader2, AlertCircle, FileText, Copy, Trash2, Search } from 'lucide-react';
+import { Bluetooth, BluetoothConnected, Heart, Zap, Play, Pause, Square, FastForward, Plus, Minus, Settings2, Award, UploadCloud, CheckCircle2, Activity, X, Gamepad2, ArrowUpDown, RotateCcw, Battery, Maximize2, Minimize2, Loader2, AlertCircle, FileText, Copy, Trash2, Search, ShieldCheck } from 'lucide-react';
 import TrainerModals from './trainer/TrainerModals';
 import TrainerGraph from './trainer/TrainerGraph';
 import { getZoneColorForTrainer, calculateCogganMetrics, calculateEF, calculateVI, calculateAerobicDecoupling } from '../utils/performanceMetrics';
@@ -9,6 +9,13 @@ import { parseIntervalsCode, flattenStructuredSteps, resolveStepPowerPct } from 
 import { getWorkoutSportKind } from '../utils/sportTypes';
 import { uploadActivityToIntervals } from '../services/intervalsApi';
 import { supabase } from '../services/supabaseClient';
+import {
+  saveActiveWorkoutCheckpoint,
+  saveActiveWorkoutSyncBackup,
+  clearActiveWorkoutCheckpoint,
+  requestPersistentStorageOnce,
+  MIN_RECOVERY_SECONDS
+} from '../services/workoutRecoveryStorage';
 import {
   logBleEvent,
   getBleLogs,
@@ -203,7 +210,22 @@ const formatBleErrorMessage = (err, deviceLabel) => {
   return `Nije uspjelo spajanje na ${deviceLabel}: ${msg}`;
 };
 
-export default function TrainerTab({ profile, userId, workoutFromCalendar, onClose, intervalsId, intervalsKey, workouts = [], wellnessData = {}, onAddWorkoutToCalendar, onPlayingChange, onFullscreenChange }) {
+export default function TrainerTab({
+  profile,
+  userId,
+  workoutFromCalendar,
+  onClose,
+  intervalsId,
+  intervalsKey,
+  workouts = [],
+  wellnessData = {},
+  onAddWorkoutToCalendar,
+  onPlayingChange,
+  onFullscreenChange,
+  recoveryRequest = null,
+  onRecoveryConsumed,
+  onActiveSessionPersisted
+}) {
   const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
@@ -325,6 +347,22 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   const [intervalsUploadStatus, setIntervalsUploadStatus] = useState(null); // null | 'uploading' | 'uploaded' | 'error'
   const [intervalsUploadError, setIntervalsUploadError] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'saved_local' | 'error'
+
+  // Crash Recovery & Autosave ("Crna kutija") stanja
+  const [awaitingManualResume, setAwaitingManualResume] = useState(false);
+  const [recoveredSensors, setRecoveredSensors] = useState(null);
+  const [lastAutosaveTime, setLastAutosaveTime] = useState(null);
+
+  const awaitingManualResumeRef = useRef(false);
+  const activeRecoveryNonceRef = useRef(null);
+  const lastSavedElapsedRef = useRef(-1);
+  const autosaveDirtyRef = useRef(false);
+  const sessionSensorsRef = useRef({ trainer: null, pm: null, hr: null, click: null });
+  const notifiedParentPersistedRef = useRef(false);
+
+  useEffect(() => {
+    awaitingManualResumeRef.current = awaitingManualResume;
+  }, [awaitingManualResume]);
 
   const crankDataRef = useRef({ revs: -1, time: -1 });
   const pmCrankDataRef = useRef({ revs: -1, time: -1 });
@@ -488,6 +526,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       return;
     }
 
+    // Oporavljeni trening — recept, elapsedTime i workoutHistory učitava recoveryRequest efekt (ne pregazi +5m ni telemetriju)
+    if (workoutFromCalendar.__recoveredNonce) {
+      return;
+    }
+
     const currentFtp = Number(profile?.ftp) || 200;
     let parsedRecipe = [];
 
@@ -532,12 +575,19 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         setElapsedTime(0);
         setSessionStartTime(null);
         setWorkoutHistory([]);
+        historyRef.current = [];
         setIsFinished(false);
         setShowStopPrompt(false);
         setIntervalsUploadStatus(null);
         setIntervalsUploadError(null);
         setSaveStatus(null);
         setIsPlaying(false);
+        setAwaitingManualResume(false);
+        setRecoveredSensors(null);
+        setLastAutosaveTime(null);
+        lastSavedElapsedRef.current = -1;
+        autosaveDirtyRef.current = false;
+        notifiedParentPersistedRef.current = false;
       }
     }
   }, [workoutFromCalendar, profile?.ftp]);
@@ -617,11 +667,20 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     // Odspoji sve senzore
     disconnectAllSensors();
 
+    // Očisti lokalni recovery checkpoint
+    clearActiveWorkoutCheckpoint(userId);
+    lastSavedElapsedRef.current = -1;
+    autosaveDirtyRef.current = false;
+    activeRecoveryNonceRef.current = null;
+    notifiedParentPersistedRef.current = false;
+    sessionSensorsRef.current = { trainer: null, pm: null, hr: null, click: null };
+
     // Reset svih lokalnih stanja trenažera
     setIsPlaying(false);
     setElapsedTime(0);
     setSessionStartTime(null);
     setWorkoutHistory([]);
+    historyRef.current = [];
     setIsFinished(false);
     setShowStopPrompt(false);
     setSummaryStats(null);
@@ -632,6 +691,9 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     setVirtualGear(VIRTUAL_GEAR_DEFAULT);
     setControlMode('ERG');
     setLiveMetrics({ np: 0, ifFactor: "0.00", tss: 0, workKj: 0 });
+    setAwaitingManualResume(false);
+    setRecoveredSensors(null);
+    setLastAutosaveTime(null);
     setFullscreenBleModal(null);
     setBleErrorBanner(null);
     exitingFsForBleRef.current = false;
@@ -641,7 +703,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
     // Pozovi parent callback za navigaciju
     if (onClose) onClose();
-  }, [disconnectAllSensors, onClose]);
+  }, [disconnectAllSensors, onClose, userId]);
 
   // Inicijalizacija Web Workera za precizno mjerenje vremena (zaobilazi pozadinsko usporavanje taba)
   useEffect(() => {
@@ -722,11 +784,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
   useEffect(() => {
     const anyPower = (isPmConnected ? effectivePmPower : 0) || (isPowerConnected ? currentPower : 0);
-    // Ne pokreći automatski ako je trening završen ili modal otvoren ili ako je već bilo podataka (stari trening)
-    if (!isPlaying && !isFinished && !showStopPrompt && !summaryStats && anyPower > 15) {
+    // Ne pokreći automatski ako je trening završen, modal otvoren ili čeka ručni "Nastavi" nakon oporavka (npr. kod buđenja pedala)
+    if (!isPlaying && !isFinished && !showStopPrompt && !summaryStats && !awaitingManualResume && anyPower > 15) {
       setIsPlaying(true);
     }
-  }, [currentPower, effectivePmPower, isPlaying, isFinished, showStopPrompt, summaryStats, isPowerConnected, isPmConnected]);
+  }, [currentPower, effectivePmPower, isPlaying, isFinished, showStopPrompt, summaryStats, awaitingManualResume, isPowerConnected, isPmConnected]);
 
   // Automatsko nuliranje kadence nakon prestanka okretanja pedala (>3.5s bez impulsa)
   // i detekcija jednostranog PowerMetra koji šalje ~50% snage (npr. Assioma UNO bez uključenog BLE ×2)
@@ -1350,6 +1412,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       if (hrDeviceRef.current && hrDeviceRef.current.gatt?.connected) {
         hrDeviceRef.current.gatt.disconnect();
       }
+      sessionSensorsRef.current.hr = null;
       setIsHrConnected(false);
       setCurrentHR(0);
       hrDeviceRef.current = null;
@@ -1410,6 +1473,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       if (trainerDeviceRef.current && trainerDeviceRef.current.gatt?.connected) {
         trainerDeviceRef.current.gatt.disconnect();
       }
+      sessionSensorsRef.current.trainer = null;
       setIsPowerConnected(false);
       setTrainerDeviceName('');
       setCurrentPower(0);
@@ -1496,6 +1560,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         pmDeviceRef.current.gatt.disconnect();
       }
       logBleEvent('info', 'PM', 'Korisnik ručno odspojio PowerMeter', pmDeviceName || 'PowerMeter');
+      sessionSensorsRef.current.pm = null;
       isPmConnectedRef.current = false;
       setIsPmConnected(false);
       setPmDeviceName('');
@@ -1760,6 +1825,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     const controller = zwiftClickRef.current;
     if (!controller) return;
     if (controller.connected) {
+      sessionSensorsRef.current.click = null;
       controller.disconnect();
       setShowClickSettings(false);
       return;
@@ -1792,24 +1858,38 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   const confirmStop = () => { setShowStopPrompt(false); handleFinishWorkout(); };
   const cancelStop = () => setShowStopPrompt(false);
 
-  const handleFinishWorkout = () => {
+  const handleFinishWorkout = (override = null) => {
+    const effectiveHistory = override?.workoutHistory ?? workoutHistory;
+    const effectiveElapsed = override?.elapsedTime ?? elapsedTime;
+    const effectiveTotalDur = override?.totalDuration ?? totalDuration;
+    const effectiveWorkout = override !== null ? override.workoutFromCalendar : workoutFromCalendar;
+    const effectiveStartTime = override?.sessionStartTime ?? sessionStartTime;
+
     setIsPlaying(false);
     setIsFinished(true);
-    const pwrData = workoutHistory.filter(h => h.power > 0);
-    const hrData = workoutHistory.filter(h => h.hr > 0);
-    const cadData = workoutHistory.filter(h => h.cadence > 0);
+    setAwaitingManualResume(false);
+    setRecoveredSensors(null);
+    setLastAutosaveTime(null);
+    lastSavedElapsedRef.current = -1;
+    autosaveDirtyRef.current = false;
+    clearActiveWorkoutCheckpoint(userId);
+
+    const pwrData = effectiveHistory.filter(h => h.power > 0);
+    const hrData = effectiveHistory.filter(h => h.hr > 0);
+    const cadData = effectiveHistory.filter(h => h.cadence > 0);
 
     // Provjera prava na upis razine (preko 85% dovršenosti)
-    if (elapsedTime / totalDuration >= 0.85 && workoutFromCalendar && workoutFromCalendar.difficulty_score) {
+    const isLevelUpEligible = effectiveTotalDur > 0 && (effectiveElapsed / effectiveTotalDur >= 0.85);
+    if (isLevelUpEligible && effectiveWorkout && effectiveWorkout.difficulty_score) {
       try {
         const existingHistory = JSON.parse(localStorage.getItem(`ai_trener_completed_workouts_${userId || 'guest'}`) || '[]');
         const newRecord = {
           id: Date.now().toString(),
           date: new Date().toISOString(),
-          title: workoutFromCalendar.title || 'Nepoznat trening',
-          category: workoutFromCalendar.category || 'Endurance',
-          difficulty_score: workoutFromCalendar.difficulty_score || 1.0,
-          duration_seconds: elapsedTime
+          title: effectiveWorkout.title || 'Nepoznat trening',
+          category: effectiveWorkout.category || 'Endurance',
+          difficulty_score: effectiveWorkout.difficulty_score || 1.0,
+          duration_seconds: effectiveElapsed
         };
         localStorage.setItem(`ai_trener_completed_workouts_${userId || 'guest'}`, JSON.stringify([...existingHistory, newRecord]));
         console.log("Napredak zabilježen!", newRecord);
@@ -1818,13 +1898,13 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       }
     }
 
-    const finalMetrics = calculateCogganMetrics(workoutHistory.map(h => h.power), profile?.ftp || 200);
+    const finalMetrics = calculateCogganMetrics(effectiveHistory.map(h => h.power), profile?.ftp || 200);
     setLiveMetrics(finalMetrics);
 
     // Izračun virtualne udaljenosti
     const mass = profile?.weight || 75;
-    console.log('[TrainerTab] workoutHistory duljina:', workoutHistory.length);
-    const distResult = calculateDistanceStream(workoutHistory, mass);
+    console.log('[TrainerTab] workoutHistory duljina:', effectiveHistory.length);
+    const distResult = calculateDistanceStream(effectiveHistory, mass);
     console.log('[TrainerTab] distResult.stream duljina:', distResult.stream.length);
     console.log('[TrainerTab] Prvi stream element:', distResult.stream[0]);
     const distanceKm = Math.round((distResult.totalDistanceM / 1000) * 10) / 10;
@@ -1836,15 +1916,15 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     const maxPower = pwrData.length ? Math.max(...pwrData.map(x => x.power)) : 0;
     const ef = calculateEF(finalMetrics.np, avgHr);
     const vi = calculateVI(finalMetrics.np, avgPower);
-    const decouplingInfo = calculateAerobicDecoupling(workoutHistory, profile?.ftp || 200);
+    const decouplingInfo = calculateAerobicDecoupling(effectiveHistory, profile?.ftp || 200);
 
     setSummaryStats({
       avgPower,
       maxPower,
       avgHr,
       avgCadence,
-      totalDur: elapsedTime,
-      isLevelUpEligible: elapsedTime / totalDuration >= 0.85,
+      totalDur: effectiveElapsed,
+      isLevelUpEligible,
       np: finalMetrics.np,
       ifFactor: finalMetrics.ifFactor,
       tss: finalMetrics.tss,
@@ -1860,17 +1940,17 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
     // --- AUTO SAVE u ErgVibe (localStorage + Supabase za prijavljene korisnike) ---
     let startedAt;
-    if (sessionStartTime) {
-      startedAt = new Date(sessionStartTime);
+    if (effectiveStartTime) {
+      startedAt = new Date(effectiveStartTime);
     } else {
       startedAt = new Date();
-      startedAt.setSeconds(startedAt.getSeconds() - elapsedTime);
+      startedAt.setSeconds(startedAt.getSeconds() - effectiveElapsed);
     }
 
-    const workoutTitle = workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja';
+    const workoutTitle = effectiveWorkout ? effectiveWorkout.title : 'Slobodna Vožnja';
     let workoutSource = 'free_ride';
-    if (workoutFromCalendar) {
-      workoutSource = workoutFromCalendar.workout_doc ? 'calendar' : 'library';
+    if (effectiveWorkout) {
+      workoutSource = effectiveWorkout.workout_doc ? 'calendar' : 'library';
     }
 
     setSaveStatus('saving');
@@ -1885,7 +1965,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       started_at: startedAt.toISOString(),
       title: workoutTitle,
       workout_source: workoutSource,
-      duration_seconds: elapsedTime,
+      duration_seconds: effectiveElapsed,
       avg_power: avgPower,
       avg_hr: avgHr,
       avg_cadence: avgCadence,
@@ -1908,7 +1988,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       const localActivity = {
         id: localId,
         ...activityPayload,
-        workout_doc: workoutFromCalendar?.steps || workoutFromCalendar?.workout_doc || null
+        workout_doc: effectiveWorkout?.steps || effectiveWorkout?.workout_doc || null
       };
 
       // Ograniči na zadnjih 50 aktivnosti da ne napunimo localStorage
@@ -1941,11 +2021,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     }
 
     // 3. Opcionalni automatski .FIT upload na Intervals.icu (samo ako je korisnik povezao Intervals.icu)
-    if (intervalsId && intervalsKey && workoutHistory.length > 0) {
+    if (intervalsId && intervalsKey && effectiveHistory.length > 0) {
       setIntervalsUploadStatus('uploading');
       setIntervalsUploadError(null);
       try {
-        const built = buildFitUint8Array(workoutHistory, startedAt.toISOString(), mass);
+        const built = buildFitUint8Array(effectiveHistory, startedAt.toISOString(), mass);
         if (built && built.uint8) {
           uploadActivityToIntervals(intervalsId, intervalsKey, built.uint8, workoutTitle)
             .then(() => {
@@ -1987,8 +2067,16 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
   const handleSkip = () => {
     let accumulatedToNext = 0;
     for (let i = 0; i <= currentStepIndex; i++) accumulatedToNext += workoutRecipe[i].duration;
-    if (currentStepIndex < workoutRecipe.length - 1) setElapsedTime(accumulatedToNext);
-    else { setElapsedTime(totalDuration); handleFinishWorkout(); }
+    if (currentStepIndex < workoutRecipe.length - 1) {
+      setElapsedTime(accumulatedToNext);
+      autosaveDirtyRef.current = true;
+      setTimeout(() => {
+        persistCheckpointNow(true);
+      }, 100);
+    } else {
+      setElapsedTime(totalDuration);
+      handleFinishWorkout();
+    }
   };
 
   const handleExtend = () => {
@@ -1997,7 +2085,292 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       newRecipe[currentStepIndex] = { ...newRecipe[currentStepIndex], duration: newRecipe[currentStepIndex].duration + 300 };
       return newRecipe;
     });
+    autosaveDirtyRef.current = true;
   };
+
+  // --- CRASH RECOVERY & LOKALNI AUTOSAVE ("Crna kutija" treninga) ---
+  // Pamti sve senzore koji su bili spojeni u ovoj sesiji (ostaje zapamćeno i ako trenažer izgubi struju trenutak prije PC-a)
+  useEffect(() => {
+    if (isPowerConnected) {
+      sessionSensorsRef.current.trainer = trainerDeviceName || 'FTMS Trenažer';
+    }
+  }, [isPowerConnected, trainerDeviceName]);
+
+  useEffect(() => {
+    if (isPmConnected) {
+      sessionSensorsRef.current.pm = pmDeviceName || 'PowerMeter';
+    }
+  }, [isPmConnected, pmDeviceName]);
+
+  useEffect(() => {
+    if (isHrConnected) {
+      sessionSensorsRef.current.hr = 'Pulsmetar';
+    }
+  }, [isHrConnected]);
+
+  useEffect(() => {
+    if (zwiftClickState.connected) {
+      sessionSensorsRef.current.click = zwiftClickState.deviceName || 'Zwift Click';
+    }
+  }, [zwiftClickState.connected, zwiftClickState.deviceName]);
+
+  const autosaveStateRef = useRef({
+    userId,
+    isPlaying,
+    isFinished,
+    elapsedTime,
+    sessionStartTime,
+    workoutFromCalendar,
+    workoutRecipe,
+    ergIntensity,
+    controlMode,
+    virtualGear,
+    powerMatchEnabled
+  });
+
+  useEffect(() => {
+    autosaveStateRef.current = {
+      userId,
+      isPlaying,
+      isFinished,
+      elapsedTime,
+      sessionStartTime,
+      workoutFromCalendar,
+      workoutRecipe,
+      ergIntensity,
+      controlMode,
+      virtualGear,
+      powerMatchEnabled
+    };
+  }, [
+    userId,
+    isPlaying,
+    isFinished,
+    elapsedTime,
+    sessionStartTime,
+    workoutFromCalendar,
+    workoutRecipe,
+    ergIntensity,
+    controlMode,
+    virtualGear,
+    powerMatchEnabled
+  ]);
+
+  const buildCheckpointPayload = useCallback(() => {
+    const s = autosaveStateRef.current;
+    return {
+      sessionStartTime: s.sessionStartTime,
+      elapsedTime: s.elapsedTime,
+      workoutFromCalendar: s.workoutFromCalendar,
+      workoutRecipe: s.workoutRecipe,
+      workoutHistory: historyRef.current,
+      ergIntensity: s.ergIntensity,
+      controlMode: s.controlMode,
+      virtualGear: s.virtualGear,
+      powerMatchEnabled: s.powerMatchEnabled,
+      sensors: { ...sessionSensorsRef.current }
+    };
+  }, []);
+
+  const persistCheckpointNow = useCallback(async (force = false) => {
+    const s = autosaveStateRef.current;
+    if (s.isFinished || s.elapsedTime < MIN_RECOVERY_SECONDS) return;
+    if (!force && s.elapsedTime === lastSavedElapsedRef.current && !autosaveDirtyRef.current) return;
+
+    const payload = buildCheckpointPayload();
+    const ok = await saveActiveWorkoutCheckpoint(s.userId, payload);
+    if (ok) {
+      lastSavedElapsedRef.current = s.elapsedTime;
+      autosaveDirtyRef.current = false;
+      setLastAutosaveTime(new Date());
+      if (!notifiedParentPersistedRef.current && onActiveSessionPersisted) {
+        notifiedParentPersistedRef.current = true;
+        onActiveSessionPersisted();
+      }
+    }
+  }, [buildCheckpointPayload, onActiveSessionPersisted]);
+
+  const flushSyncCheckpoint = useCallback(() => {
+    const s = autosaveStateRef.current;
+    if (s.isFinished || s.elapsedTime < MIN_RECOVERY_SECONDS) return;
+    const payload = buildCheckpointPayload();
+    saveActiveWorkoutSyncBackup(s.userId, payload);
+    lastSavedElapsedRef.current = s.elapsedTime;
+    autosaveDirtyRef.current = false;
+  }, [buildCheckpointPayload]);
+
+  const hasActiveRecoverableSession = elapsedTime >= MIN_RECOVERY_SECONDS && !isFinished;
+
+  // 1. Periodični autosave svakih 5 sekundi dok trening traje
+  useEffect(() => {
+    if (!isPlaying || isFinished) return;
+    requestPersistentStorageOnce();
+    const timer = setInterval(() => {
+      persistCheckpointNow(false);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [isPlaying, isFinished, persistCheckpointNow]);
+
+  // 2. Trenutno prvo spremanje čim prijeđemo 5 sekundi treninga
+  useEffect(() => {
+    if (hasActiveRecoverableSession && lastSavedElapsedRef.current < MIN_RECOVERY_SECONDS) {
+      requestPersistentStorageOnce();
+      persistCheckpointNow(true);
+    }
+  }, [hasActiveRecoverableSession, persistCheckpointNow]);
+
+  // 3. Trenutno spremanje na pauzu, skip intervala, +5m produžetak ili promjenu ERG/RES postavki
+  const prevIsPlayingRef = useRef(isPlaying);
+  useEffect(() => {
+    const wasPlaying = prevIsPlayingRef.current;
+    prevIsPlayingRef.current = isPlaying;
+    if (wasPlaying && !isPlaying && hasActiveRecoverableSession) {
+      persistCheckpointNow(true);
+    }
+  }, [isPlaying, hasActiveRecoverableSession, persistCheckpointNow]);
+
+  useEffect(() => {
+    if (!hasActiveRecoverableSession) return;
+    autosaveDirtyRef.current = true;
+    const t = setTimeout(() => {
+      persistCheckpointNow(false);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [ergIntensity, controlMode, virtualGear, totalDuration, hasActiveRecoverableSession, persistCheckpointNow]);
+
+  // 4. Zaštita od slučajnog izlaza (Chrome X / Ctrl+W / F5) + hitni sinkroni zapis na pagehide / skrivanje taba
+  useEffect(() => {
+    if (!hasActiveRecoverableSession) return;
+
+    const handleBeforeUnload = (e) => {
+      flushSyncCheckpoint();
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    };
+
+    const handlePageHide = () => {
+      flushSyncCheckpoint();
+    };
+
+    const handleVisibilitySave = () => {
+      if (document.visibilityState === 'hidden') {
+        flushSyncCheckpoint();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilitySave);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilitySave);
+    };
+  }, [hasActiveRecoverableSession, flushSyncCheckpoint]);
+
+  // 5. Ručni nastavak nakon oporavka (gasi blokadu auto-starta i odmah šalje ERG/RES cilj trenažeru)
+  const handleManualResume = useCallback(() => {
+    setAwaitingManualResume(false);
+    setRecoveredSensors(null);
+    setIsPlaying(true);
+    playBeep(980, 0.14);
+    showHudToast('Trening nastavljen!', formatTime(autosaveStateRef.current.elapsedTime), 'emerald');
+    setTimeout(() => {
+      if (autosaveStateRef.current.controlMode === 'ERG' && dispatchErgTargetRef.current) {
+        dispatchErgTargetRef.current(true);
+      } else if (autosaveStateRef.current.controlMode === 'RES' && dispatchResTargetRef.current) {
+        dispatchResTargetRef.current();
+      }
+    }, 100);
+  }, [showHudToast]);
+
+  const togglePlayPause = useCallback(() => {
+    if (awaitingManualResumeRef.current) {
+      handleManualResume();
+      return;
+    }
+    setIsPlaying(prev => !prev);
+  }, [handleManualResume]);
+
+  // 6. Obrada zahtjeva za oporavak sesije (iz WorkoutRecoveryModal u App.jsx)
+  useEffect(() => {
+    if (!recoveryRequest || !recoveryRequest.snapshot) return;
+    if (activeRecoveryNonceRef.current === recoveryRequest.nonce) return;
+    activeRecoveryNonceRef.current = recoveryRequest.nonce;
+
+    const snap = recoveryRequest.snapshot;
+    const restoredRecipe = Array.isArray(snap.workoutRecipe) && snap.workoutRecipe.length > 0
+      ? snap.workoutRecipe
+      : workoutRecipe;
+    const restoredHistory = Array.isArray(snap.workoutHistory) ? snap.workoutHistory : [];
+    const restoredTotalDur = restoredRecipe.reduce((acc, step) => acc + (Number(step?.duration) || 0), 0);
+    const restoredElapsed = Math.min(
+      Math.max(0, Number(snap.elapsedTime) || 0),
+      restoredTotalDur || Number(snap.elapsedTime) || 0
+    );
+    const restoredStartIso = snap.sessionStartTime || new Date(Date.now() - restoredElapsed * 1000).toISOString();
+
+    if (workerRef.current) workerRef.current.postMessage('stop');
+
+    setWorkoutRecipe(restoredRecipe);
+    setElapsedTime(restoredElapsed);
+    setSessionStartTime(restoredStartIso);
+    setWorkoutHistory(restoredHistory);
+    historyRef.current = restoredHistory;
+    setErgIntensity(Number(snap.ergIntensity) || 100);
+    setControlMode(snap.controlMode === 'RES' ? 'RES' : 'ERG');
+    if (Number.isFinite(snap.virtualGear) && snap.virtualGear >= VIRTUAL_GEAR_MIN && snap.virtualGear <= VIRTUAL_GEAR_MAX) {
+      setVirtualGear(snap.virtualGear);
+    }
+    setPowerMatchEnabled(Boolean(snap.powerMatchEnabled));
+    setShowStopPrompt(false);
+    setIntervalsUploadStatus(null);
+    setIntervalsUploadError(null);
+    setSaveStatus(null);
+    setIsPlaying(false);
+
+    const pwrArray = restoredHistory.map((h) => h.power);
+    if (pwrArray.length > 0) {
+      setLiveMetrics(calculateCogganMetrics(pwrArray, profile?.ftp || 200));
+    } else {
+      setLiveMetrics({ np: 0, ifFactor: '0.00', tss: 0, workKj: 0 });
+    }
+
+    if (snap.sensors) {
+      sessionSensorsRef.current = {
+        trainer: snap.sensors.trainer || null,
+        pm: snap.sensors.pm || null,
+        hr: snap.sensors.hr || null,
+        click: snap.sensors.click || null
+      };
+    }
+
+    if (recoveryRequest.mode === 'finish') {
+      setAwaitingManualResume(false);
+      setRecoveredSensors(null);
+      handleFinishWorkout({
+        workoutHistory: restoredHistory,
+        elapsedTime: restoredElapsed,
+        totalDuration: restoredTotalDur,
+        workoutFromCalendar: snap.workoutFromCalendar || null,
+        sessionStartTime: restoredStartIso
+      });
+    } else {
+      setIsFinished(false);
+      setSummaryStats(null);
+      setAwaitingManualResume(true);
+      setRecoveredSensors(snap.sensors || null);
+      lastSavedElapsedRef.current = restoredElapsed;
+      autosaveDirtyRef.current = false;
+      notifiedParentPersistedRef.current = true;
+      setLastAutosaveTime(snap.savedAt ? new Date(snap.savedAt) : new Date());
+      requestPersistentStorageOnce();
+      showHudToast('Trening oporavljen!', 'Spoji senzore i klikni Nastavi', 'amber');
+    }
+
+    if (onRecoveryConsumed) onRecoveryConsumed();
+  }, [recoveryRequest]);
 
   // --- ZWIFT CLICK POVEZIVANJE AKCIJA (RES 24 brzine + ERG kontrola) ---
   const clickActionRef = useRef({
@@ -2005,6 +2378,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     showStopPrompt,
     isFinished,
     handleSkip,
+    togglePlayPause,
     shiftVirtualGear,
     showHudToast
   });
@@ -2015,10 +2389,11 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
       showStopPrompt,
       isFinished,
       handleSkip,
+      togglePlayPause,
       shiftVirtualGear,
       showHudToast
     };
-  }, [controlMode, showStopPrompt, isFinished, handleSkip, shiftVirtualGear, showHudToast]);
+  }, [controlMode, showStopPrompt, isFinished, handleSkip, togglePlayPause, shiftVirtualGear, showHudToast]);
 
   useEffect(() => {
     const controller = zwiftClickRef.current;
@@ -2065,15 +2440,19 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
             liveCtx.showHudToast('Sljedeći interval', 'Zwift Click (dugi +)', 'emerald');
           } else {
             playBeep(720, 0.18);
-            setIsPlaying(prev => {
-              const next = !prev;
-              liveCtx.showHudToast(
-                next ? 'Trening pokrenut' : 'Trening pauziran',
-                'Zwift Click (dugi -)',
-                next ? 'emerald' : 'amber'
-              );
-              return next;
-            });
+            if (awaitingManualResumeRef.current) {
+              liveCtx.togglePlayPause();
+            } else {
+              setIsPlaying(prev => {
+                const next = !prev;
+                liveCtx.showHudToast(
+                  next ? 'Trening pokrenut' : 'Trening pauziran',
+                  'Zwift Click (dugi -)',
+                  next ? 'emerald' : 'amber'
+                );
+                return next;
+              });
+            }
           }
         }, 850);
       }
@@ -2220,7 +2599,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
 
       if (e.code === 'Space') {
         e.preventDefault();
-        setIsPlaying(p => !p);
+        togglePlayPause();
       } else if (e.code === 'ArrowUp' || e.code === 'Equal' || e.code === 'NumpadAdd') {
         e.preventDefault();
         if (controlMode === 'ERG') {
@@ -2247,7 +2626,7 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fullscreenBleModal, showBleLogModal, showStopPrompt, isFinished, controlMode, handleSkip, shiftVirtualGear, toggleFullscreen]);
+  }, [fullscreenBleModal, showBleLogModal, showStopPrompt, isFinished, controlMode, handleSkip, togglePlayPause, shiftVirtualGear, toggleFullscreen]);
 
   const hasRecentBleError = useMemo(() => {
     const cutoff = Date.now() - 30 * 60 * 1000;
@@ -2966,6 +3345,74 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
         </div>
       )}
 
+      {/* BANNER NAKON OPORAVKA SESIJE: Ručni nastavak + brzi BLE reconnect */}
+      {awaitingManualResume && !isFinished && !showStopPrompt && (
+        <div className="carbon-panel border-amber-400/45 bg-amber-950/25 rounded-xl px-3 py-2 md:px-4 md:py-2.5 flex flex-wrap items-center justify-between gap-2.5 shrink-0 animate-in fade-in">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-1.5 rounded-lg bg-amber-400/15 border border-amber-400/35 text-amber-300 shrink-0">
+              <RotateCcw className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="font-mono text-[10px] md:text-[11px] font-bold uppercase tracking-wider text-amber-300">
+                TRENING OPORAVLJEN · PAUZIRANO NA {formatTime(elapsedTime)}
+              </div>
+              <div className="text-[11px] md:text-xs text-zinc-300">
+                Sat čeka tvoj ručni klik — mirno spoji senzore (i zavrti pedale za buđenje Assiome) bez automatskog pokretanja.
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+            {recoveredSensors && (['trainer', 'pm', 'hr', 'click']).map((sKey) => {
+              const savedName = recoveredSensors[sKey];
+              if (!savedName) return null;
+              const info = sensorMetaMap[sKey];
+              const isBusy = bleConnectingType === sKey;
+              const connectFn =
+                sKey === 'trainer' ? connectTrainer
+                : sKey === 'pm' ? connectPowerMeter
+                : sKey === 'hr' ? connectHR
+                : connectZwiftClick;
+
+              return (
+                <button
+                  key={sKey}
+                  type="button"
+                  disabled={Boolean(bleConnectingType) || info.connected}
+                  onClick={() => {
+                    if (!info.connected) connectFn();
+                  }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-mono font-bold transition-colors ${
+                    info.connected
+                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35 cursor-default'
+                      : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-200 border-zinc-700 hover:border-amber-400/50'
+                  }`}
+                  title={info.connected ? `${savedName} je ponovno spojen` : `Ponovno spoji ${savedName}`}
+                >
+                  {isBusy ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-volt-400" />
+                  ) : info.connected ? (
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  ) : (
+                    <Bluetooth className="w-3 h-3 text-sky-400" />
+                  )}
+                  <span className="max-w-[120px] truncate">{savedName}</span>
+                </button>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={handleManualResume}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 md:py-2 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs md:text-sm shadow-volt-glow transition-all active:scale-95 shrink-0"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Nastavi trening</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* GLAVNI TELEMETRIJSKI GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 md:short:grid-cols-3 lg:grid-cols-3 gap-2 md:gap-3 short:gap-1.5 flex-[1.15] min-h-0" style={{ minHeight: 0 }}>
         <div className="md:col-span-2 md:short:col-span-2 lg:col-span-2 carbon-panel bg-telemetry-grid rounded-xl p-2.5 md:p-4 short:p-2.5 vshort:p-2 flex flex-col relative overflow-hidden min-h-0">
@@ -3303,13 +3750,13 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
                 <Square className="w-3.5 h-3.5 md:w-4 md:h-4 short:w-3.5 short:h-3.5" fill="currentColor" />
               </button>
               <button
-                onClick={() => setIsPlaying(!isPlaying)}
+                onClick={togglePlayPause}
                 className={`w-10 h-10 md:w-12 md:h-11 short:w-10 short:h-8 rounded-lg flex items-center justify-center transition-all shrink-0 ${
                   isPlaying
                     ? 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-volt-400'
                     : 'bg-volt-400 hover:bg-volt-300 text-zinc-950 shadow-volt-glow'
                 }`}
-                title="Pokreni / Pauziraj (Space)"
+                title={awaitingManualResume ? 'Nastavi oporavljeni trening (Space)' : 'Pokreni / Pauziraj (Space)'}
               >
                 {isPlaying ? <Pause className="w-4 h-4 md:w-5 md:h-5 short:w-4 short:h-4" fill="currentColor" /> : <Play className="w-4 h-4 md:w-5 md:h-5 short:w-4 short:h-4 ml-0.5" fill="currentColor" />}
               </button>
@@ -3365,9 +3812,20 @@ export default function TrainerTab({ profile, userId, workoutFromCalendar, onClo
             <span className="text-zinc-100 text-sm md:text-lg lg:text-xl short:text-base font-display font-bold telemetry-num tracking-tight leading-none">{formatTime(elapsedTime)}</span>
           </div>
 
-          <div className="hidden sm:flex items-center gap-2 font-mono telemetry-num text-[10px] text-zinc-500">
-            <span>NAPREDAK</span>
-            <span className="text-zinc-300 font-bold">{Math.min(100, Math.round(progressPercent))}%</span>
+          <div className="hidden sm:flex items-center gap-3 font-mono telemetry-num text-[10px] text-zinc-500">
+            <div className="flex items-center gap-2">
+              <span>NAPREDAK</span>
+              <span className="text-zinc-300 font-bold">{Math.min(100, Math.round(progressPercent))}%</span>
+            </div>
+            {hasActiveRecoverableSession && lastAutosaveTime && (
+              <span
+                className="inline-flex items-center gap-1 text-emerald-400/80 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded"
+                title={`Lokalni autosave aktivan (zadnji zapis: ${lastAutosaveTime.toLocaleTimeString('hr-HR')})`}
+              >
+                <ShieldCheck className="w-3 h-3" />
+                <span>AUTOSAVE</span>
+              </span>
+            )}
           </div>
 
           <div className="text-[10px] md:text-xs short:text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-400 flex items-baseline gap-2 text-right">

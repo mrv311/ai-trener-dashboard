@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Sparkles, Bot, Send, Loader2, Trash2, BookOpen,
   History, ClipboardList, MessageSquare, Upload, Plus, Check,
   AlertCircle, Zap, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Shield,
   FileText, ExternalLink, Video, Paperclip, X, Image as ImageIcon, Download, Eye,
-  Activity
+  Activity, Bookmark, BookmarkPlus, Copy, PanelLeft, Lock
 } from 'lucide-react';
 import {
   chatWithAICoach,
@@ -15,9 +16,24 @@ import {
   processFileForAi,
   saveAttachmentToLocalDB,
   getAttachmentFromLocalDB,
-  clearAllAttachmentsFromLocalDB,
   formatFileSize
 } from '../services/aiFilesStorage';
+import {
+  loadChatSessions,
+  saveChatSession,
+  deleteChatSession,
+  createSessionId,
+  generateSessionTitle,
+  getActiveChatSessionId,
+  setActiveChatSessionId,
+  getChatDraft,
+  setChatDraft,
+  exportChatSessionAsMarkdown,
+  getCoachNotes,
+  addCoachNote,
+  toggleCoachNote,
+  deleteCoachNote
+} from '../services/aiChatStorage';
 import {
   parsePdfFile,
   parseEpubFile,
@@ -41,10 +57,19 @@ import {
   clearExtraImportedHistory
 } from '../services/historyService';
 import AIMarkdown from './ai/AIMarkdown';
-import AIWorkoutCreatorModal from './AIWorkoutCreatorModal';
+import ChatSessionsSidebar from './ai/ChatSessionsSidebar';
+import CoachNotesDrawer from './ai/CoachNotesDrawer';
 import TrainingPlannerView from './planner/TrainingPlannerView';
 
-const STORAGE_KEY_CHAT = 'ergvibe_ai_coach_chat_v1';
+function buildNoteExcerpt(markdownText) {
+  return String(markdownText || '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*/g, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim()
+    .slice(0, 480);
+}
 
 function YoutubeIcon(props) {
   return (
@@ -79,33 +104,103 @@ export default function AICoachTab({
   onConsumePlannerLaunchRequest,
   coachLaunchRequest = null,
   onConsumeCoachLaunchRequest,
-  onAnalyzePlanInCoach
+  onAnalyzePlanInCoach,
+  onBusyChange
 }) {
   const [subTab, setSubTab] = useState(() => (
     coachLaunchRequest ? 'chat' : (plannerLaunchRequest ? 'planner' : 'chat')
   )); // 'chat' | 'planner' | 'knowledge'
   const [selectedModel, setSelectedModel] = useState('gemini-3.8-flash');
-  const [showCreatorModal, setShowCreatorModal] = useState(false);
   const [includeCoachArchive, setIncludeCoachArchiveState] = useState(() => getHistoryOptions(userId).includeBaseHistory);
 
-  // --- CHAT STATE ---
-  const [messages, setMessages] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY_CHAT) || '[]');
-    } catch {
-      return [];
-    }
-  });
-  const [chatInput, setChatInput] = useState('');
+  // --- MULTI-SESSION CHAT & LOCAL NOTES STATE (100% lokalno u IndexedDB/localStorage) ---
+  const [sessions, setSessions] = useState([]);
+  const [activeSessionId, setActiveSessionId] = useState(null);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  const [showSessionsSidebar, setShowSessionsSidebar] = useState(true);
+  const [showMobileSessionsDrawer, setShowMobileSessionsDrawer] = useState(false);
+  const [chatInput, setChatInput] = useState(() => getChatDraft(userId));
   const [isSendingChat, setIsSendingChat] = useState(false);
+  const [sendingSessionId, setSendingSessionId] = useState(null);
   const [chatError, setChatError] = useState(null);
   const [pendingAttachments, setPendingAttachments] = useState([]);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [selectedPreviewAttachment, setSelectedPreviewAttachment] = useState(null);
+  const [copiedMsgId, setCopiedMsgId] = useState(null);
+
+  // Lokalne Bilješke Trenera
+  const [coachNotes, setCoachNotes] = useState(() => getCoachNotes(userId));
+  const [showNotesDrawer, setShowNotesDrawer] = useState(false);
+  const [notePrefillText, setNotePrefillText] = useState('');
+
   const fileInputRef = useRef(null);
+  const chatInputRef = useRef(null);
   const chatEndRef = useRef(null);
   const chatContainerRef = useRef(null);
   const isFirstChatRender = useRef(true);
+  const sessionsRef = useRef([]);
+  const activeSessionIdRef = useRef(null);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
+
+  const activeSession = useMemo(
+    () => sessions.find((s) => s.id === activeSessionId) || null,
+    [sessions, activeSessionId]
+  );
+  const messages = useMemo(() => activeSession?.messages || [], [activeSession]);
+  const activeNotesCount = useMemo(
+    () => coachNotes.filter((n) => n.enabled !== false).length,
+    [coachNotes]
+  );
+
+  // Učitaj lokalne razgovore, nacrt i bilješke po korisniku
+  useEffect(() => {
+    let active = true;
+    setIsLoadingSessions(true);
+    setChatInput(getChatDraft(userId));
+    setCoachNotes(getCoachNotes(userId));
+
+    loadChatSessions(userId)
+      .then((loaded) => {
+        if (!active) return;
+        setSessions(loaded);
+        sessionsRef.current = loaded;
+
+        const savedActive = getActiveChatSessionId(userId);
+        if (savedActive && loaded.some((s) => s.id === savedActive)) {
+          setActiveSessionId(savedActive);
+          activeSessionIdRef.current = savedActive;
+        } else if (loaded.length > 0 && !coachLaunchRequest) {
+          setActiveSessionId(loaded[0].id);
+          activeSessionIdRef.current = loaded[0].id;
+        } else {
+          setActiveSessionId(null);
+          activeSessionIdRef.current = null;
+        }
+      })
+      .catch((err) => {
+        console.warn('[AICoachTab] Greška pri učitavanju razgovora:', err);
+      })
+      .finally(() => {
+        if (active) setIsLoadingSessions(false);
+      });
+
+    return () => { active = false; };
+  }, [userId]);
+
+  // Spremanje nacrta poruke lokalno (da se ne izgubi kod zatvaranja Chromea)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setChatDraft(userId, chatInput);
+    }, 200);
+    return () => clearTimeout(t);
+  }, [chatInput, userId]);
 
   // --- PLANNER STATE ---
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
@@ -145,20 +240,10 @@ export default function AICoachTab({
   const ftp = Number(profile?.ftp) || 270;
 
   useEffect(() => {
-    try {
-      // Spremamo samo zadnjih 30 poruka i uklanjamo teške base64 stringove iz localStorage-a
-      const lightweightMessages = messages.slice(-30).map(m => {
-        if (!Array.isArray(m?.attachments) || m.attachments.length === 0) return m;
-        return {
-          ...m,
-          attachments: m.attachments.map(({ id, name, type, size }) => ({ id, name, type, size }))
-        };
-      });
-      localStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(lightweightMessages));
-    } catch {
-      // ignore quota warning
+    if (onBusyChange) {
+      onBusyChange(Boolean(isSendingChat || isGeneratingPlan || isProcessingSource));
     }
-  }, [messages]);
+  }, [isSendingChat, isGeneratingPlan, isProcessingSource, onBusyChange]);
 
   useEffect(() => {
     // Spriječi neželjeno scrollanje na učitavanju komponente koje bi gurnulo cijeli prozor prema dolje
@@ -173,7 +258,7 @@ export default function AICoachTab({
         behavior: 'smooth'
       });
     }
-  }, [messages, isSendingChat, chatError]);
+  }, [messages.length, activeSessionId, isSendingChat, chatError]);
 
   // Drži zaslon mobitela uključenim dok se čeka odgovor AI poslužitelja kako mobilni OS ne bi prekinuo vezu
   useEffect(() => {
@@ -267,15 +352,111 @@ export default function AICoachTab({
     setPendingAttachments(prev => prev.filter(a => a.id !== id));
   };
 
-  const sendMessage = async (textOverride) => {
+  const upsertSessionInState = useCallback((updatedSession) => {
+    setSessions((prev) => {
+      const rest = prev.filter((s) => s.id !== updatedSession.id);
+      const next = [updatedSession, ...rest].sort((a, b) =>
+        String(b?.updatedAt || b?.createdAt || '').localeCompare(String(a?.updatedAt || a?.createdAt || ''))
+      );
+      sessionsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const handleNewChat = useCallback(() => {
+    setActiveSessionId(null);
+    activeSessionIdRef.current = null;
+    setActiveChatSessionId(userId, null);
+    setChatError(null);
+    setTimeout(() => {
+      chatInputRef.current?.focus();
+    }, 50);
+  }, [userId]);
+
+  const handleSelectSession = useCallback((sessionId) => {
+    setActiveSessionId(sessionId);
+    activeSessionIdRef.current = sessionId;
+    setActiveChatSessionId(userId, sessionId);
+    setChatError(null);
+  }, [userId]);
+
+  const handleRenameSession = useCallback(async (sessionId, newTitle) => {
+    const target = sessionsRef.current.find((s) => s.id === sessionId);
+    if (!target) return;
+    const updated = {
+      ...target,
+      title: newTitle.trim() || target.title,
+      isCustomTitle: true
+    };
+    upsertSessionInState(updated);
+    await saveChatSession(updated);
+  }, [upsertSessionInState]);
+
+  const handleDeleteSession = useCallback(async (sessionObj) => {
+    if (!sessionObj?.id) return;
+    const confirmed = window.confirm(
+      `Obrisati razgovor "${sessionObj.title || 'Razgovor'}" i njegove priložene datoteke s ovog uređaja?`
+    );
+    if (!confirmed) return;
+
+    await deleteChatSession(userId, sessionObj);
+    const remaining = sessionsRef.current.filter((s) => s.id !== sessionObj.id);
+    sessionsRef.current = remaining;
+    setSessions(remaining);
+
+    if (activeSessionIdRef.current === sessionObj.id) {
+      const nextId = remaining.length > 0 ? remaining[0].id : null;
+      setActiveSessionId(nextId);
+      activeSessionIdRef.current = nextId;
+      setActiveChatSessionId(userId, nextId);
+      setChatError(null);
+    }
+  }, [userId]);
+
+  const handleExportSession = useCallback((sessionObj) => {
+    exportChatSessionAsMarkdown(sessionObj);
+  }, []);
+
+  const handleAddCoachNote = useCallback(({ text, category }) => {
+    const updated = addCoachNote(userId, { text, category });
+    setCoachNotes(updated);
+  }, [userId]);
+
+  const handleToggleCoachNote = useCallback((noteId) => {
+    const updated = toggleCoachNote(userId, noteId);
+    setCoachNotes(updated);
+  }, [userId]);
+
+  const handleDeleteCoachNote = useCallback((noteId) => {
+    const updated = deleteCoachNote(userId, noteId);
+    setCoachNotes(updated);
+  }, [userId]);
+
+  const handleCopyMessage = useCallback(async (msgId, text) => {
+    try {
+      await navigator.clipboard.writeText(String(text || ''));
+      setCopiedMsgId(msgId);
+      setTimeout(() => setCopiedMsgId((cur) => (cur === msgId ? null : cur)), 1800);
+    } catch {
+      // ignore clipboard errors
+    }
+  }, []);
+
+  const handleSaveMessageAsNote = useCallback((text) => {
+    setNotePrefillText(buildNoteExcerpt(text));
+    setShowNotesDrawer(true);
+  }, []);
+
+  const sendMessage = async (textOverride, options = {}) => {
     const content = (textOverride ?? chatInput).trim();
     if ((!content && pendingAttachments.length === 0) || isSendingChat) return;
 
+    const forceNewSession = Boolean(options?.forceNewSession);
     setChatError(null);
     const currentAttachments = [...pendingAttachments];
     setPendingAttachments([]);
 
-    // Za trajno stanje i localStorage: čuvamo samo lagane metapodatke privitka
+    // U lokalni IndexedDB razgovora spremamo lagane metapodatke privitka (slike ostaju u aiFilesStorage)
     const cleanAttachments = currentAttachments.map(({ id, name, type, size, dataUrl }) => ({
       id,
       name,
@@ -284,16 +465,52 @@ export default function AICoachTab({
       dataUrl: type.startsWith('image/') ? dataUrl : undefined
     }));
 
-    const prevMessages = [...messages];
+    const nowIso = new Date().toISOString();
+    const curActiveId = activeSessionIdRef.current;
+    const existingSession = (!forceNewSession && curActiveId)
+      ? sessionsRef.current.find((s) => s.id === curActiveId) || null
+      : null;
+
+    const prevMessages = existingSession ? [...existingSession.messages] : [];
     const nextUserMessage = {
+      id: `msg_${Date.now().toString(36)}_u`,
       role: 'user',
       text: content,
+      createdAt: nowIso,
       ...(cleanAttachments.length > 0 ? { attachments: cleanAttachments } : {})
     };
     const nextMessages = [...prevMessages, nextUserMessage];
-    setMessages(nextMessages);
-    if (!textOverride) setChatInput('');
+
+    const isBrandNewSession = !existingSession;
+    const targetSessionId = existingSession ? existingSession.id : createSessionId();
+    const optimisticSession = existingSession
+      ? {
+          ...existingSession,
+          updatedAt: nowIso,
+          messages: nextMessages
+        }
+      : {
+          id: targetSessionId,
+          userId: userId || 'guest',
+          title: generateSessionTitle(content, cleanAttachments),
+          isCustomTitle: false,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          messages: nextMessages
+        };
+
+    upsertSessionInState(optimisticSession);
+    setActiveSessionId(targetSessionId);
+    activeSessionIdRef.current = targetSessionId;
+    setActiveChatSessionId(userId, targetSessionId);
+    saveChatSession(optimisticSession).catch(() => {});
+
+    if (!textOverride) {
+      setChatInput('');
+      setChatDraft(userId, '');
+    }
     setIsSendingChat(true);
+    setSendingSessionId(targetSessionId);
 
     // Za Gemini API: proslijedi poruke uključujući base64 podatke privitaka
     const messagesForGemini = [
@@ -314,14 +531,46 @@ export default function AICoachTab({
         model: selectedModel,
         userId
       });
-      setMessages([...nextMessages, { role: 'model', text: reply }]);
+
+      const replyIso = new Date().toISOString();
+      const latestSession = sessionsRef.current.find((s) => s.id === targetSessionId) || optimisticSession;
+      const completedSession = {
+        ...latestSession,
+        updatedAt: replyIso,
+        messages: [
+          ...nextMessages,
+          {
+            id: `msg_${Date.now().toString(36)}_m`,
+            role: 'model',
+            text: reply,
+            createdAt: replyIso
+          }
+        ]
+      };
+
+      upsertSessionInState(completedSession);
+      await saveChatSession(completedSession);
     } catch (err) {
       setChatError(err.message || 'Greška u komunikaciji s Gemini AI.');
-      setMessages(prevMessages);
+      if (isBrandNewSession) {
+        await deleteChatSession(userId, targetSessionId);
+        const cleaned = sessionsRef.current.filter((s) => s.id !== targetSessionId);
+        sessionsRef.current = cleaned;
+        setSessions(cleaned);
+        if (activeSessionIdRef.current === targetSessionId) {
+          setActiveSessionId(null);
+          activeSessionIdRef.current = null;
+          setActiveChatSessionId(userId, null);
+        }
+      } else if (existingSession) {
+        upsertSessionInState(existingSession);
+        saveChatSession(existingSession).catch(() => {});
+      }
       setPendingAttachments(currentAttachments);
       if (!textOverride) setChatInput(content);
     } finally {
       setIsSendingChat(false);
+      setSendingSessionId(null);
     }
   };
 
@@ -333,21 +582,8 @@ export default function AICoachTab({
     lastHandledCoachNonceRef.current = coachLaunchRequest.nonce;
     setSubTab('chat');
     onConsumeCoachLaunchRequest?.();
-    sendMessage(coachLaunchRequest.prompt);
+    sendMessage(coachLaunchRequest.prompt, { forceNewSession: true });
   }, [coachLaunchRequest]);
-
-  const handleClearChat = async () => {
-    if (messages.length > 0 && !window.confirm('Očistiti trenutni razgovor i sve priložene datoteke s AI Trenerom?')) return;
-    setMessages([]);
-    setPendingAttachments([]);
-    setChatError(null);
-    localStorage.removeItem(STORAGE_KEY_CHAT);
-    try {
-      await clearAllAttachmentsFromLocalDB();
-    } catch (e) {
-      console.warn('Greška pri čišćenju IndexedDB:', e);
-    }
-  };
 
   const handleCsvUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -512,7 +748,7 @@ export default function AICoachTab({
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto flex-1 min-h-0 h-full flex flex-col gap-2.5 md:gap-3 short:md:gap-2 animate-in fade-in overflow-hidden px-1 md:px-2 pt-1 pb-1">
+    <div className="w-full max-w-7xl mx-auto flex-1 min-h-0 h-full flex flex-col gap-2.5 md:gap-3 short:md:gap-2 animate-in fade-in overflow-hidden px-1 md:px-2 pt-1 pb-1">
       {/* GORNJI HEADER + SUB-NAVIGATION */}
       <div className="carbon-panel rounded-xl p-3 md:px-4 md:py-3 short:p-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 short:gap-2 shrink-0">
         <div className="flex items-center gap-3">
@@ -580,15 +816,6 @@ export default function AICoachTab({
             >
               <BookOpen className="w-3.5 h-3.5" /> Baza & Povijest
             </button>
-            <button
-              type="button"
-              onClick={() => setShowCreatorModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-display font-bold uppercase tracking-wider text-volt-300 bg-volt-400/10 hover:bg-volt-400/20 border border-volt-400/30 transition-all shadow-volt-glow/20"
-              title="Specijalizirani studio za automatsku izradu workouta iz slike (Zwift, TrainerRoad, Garmin)"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-volt-400" />
-              <span>AI Workout Studio</span>
-            </button>
           </div>
 
           <select
@@ -610,114 +837,285 @@ export default function AICoachTab({
       </div>
 
       {/* =====================================================================
-          1. SUB-TAB: AI KONZULTACIJE (CHAT)
+          1. SUB-TAB: AI KONZULTACIJE (CHAT + POVIJEST + BILJEŠKE)
          ===================================================================== */}
       {subTab === 'chat' && (
-        <div className="carbon-panel rounded-xl flex-1 min-h-0 flex flex-col overflow-hidden">
-          <div className="px-4 py-2 border-b border-zinc-800/80 bg-zinc-950/60 flex items-center justify-between shrink-0">
-            <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-zinc-400">
-              TELEMETRIJSKA KONZOLA · PITAJ O TRENINZIMA, ZONAMA ILI ZATRAŽI INTERVALNI TRENING
-            </span>
-            {messages.length > 0 && (
-              <button
-                type="button"
-                onClick={handleClearChat}
-                className="flex items-center gap-1 text-xs font-bold text-zinc-500 hover:text-rose-400 transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" /> Očisti chat
-              </button>
-            )}
-          </div>
+        <div className="carbon-panel rounded-xl flex-1 min-h-0 flex overflow-hidden relative">
+          {/* Desktop bočna traka: Povijest razgovora */}
+          {showSessionsSidebar && (
+            <div className="hidden lg:flex w-64 xl:w-72 shrink-0 flex-col min-h-0">
+              <ChatSessionsSidebar
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                sendingSessionId={sendingSessionId}
+                onSelectSession={handleSelectSession}
+                onNewChat={handleNewChat}
+                onRenameSession={handleRenameSession}
+                onDeleteSession={handleDeleteSession}
+                onExportSession={handleExportSession}
+              />
+            </div>
+          )}
 
-          <div
-            ref={chatContainerRef}
-            className={`flex-1 min-h-0 ${messages.length === 0 && !isSendingChat ? 'overflow-hidden p-3 md:p-4' : 'overflow-y-auto p-4 md:p-5'} flex flex-col gap-3 custom-scrollbar`}
-          >
-            {messages.length === 0 && !isSendingChat && (
-              <div className="my-auto flex flex-col items-center justify-center py-1 text-center max-w-2xl mx-auto w-full">
-                <div className="p-2.5 rounded-xl bg-volt-400/10 border border-volt-400/30 text-volt-400 mb-2">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <h3 className="text-base md:text-lg font-display font-bold uppercase tracking-wide text-zinc-100 mb-1">
-                  Spreman za analizu, {profile?.username || 'Vozač'}
-                </h3>
-                <p className="text-xs text-zinc-400 mb-3 max-w-xl leading-relaxed">
-                  Učitao sam vaše dostupne treninge, trenutni FTP (<span className="font-mono font-bold text-volt-400">{ftp} W</span>) i kalendar. Možete zalijepiti sliku bilo kojeg treninga (<span className="font-mono text-volt-300">Ctrl+V</span> / spajalica) za automatsku konverziju u trenažer, ili odabrati brza pitanja:
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full text-left">
-                  {QUICK_PROMPTS.map((qp, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => sendMessage(qp)}
-                      className="p-2.5 md:p-3 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/40 text-xs text-zinc-300 hover:text-zinc-100 font-medium transition-all flex items-start gap-2 group"
-                    >
-                      <Zap className="w-3.5 h-3.5 text-volt-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
-                      <span>{qp}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {messages.map((m, idx) => (
+          {/* Mobilna / tablet ladica za povijest razgovora (portal na document.body iznad headera i donjeg menija) */}
+          {showMobileSessionsDrawer && typeof document !== 'undefined' && createPortal(
+            <div
+              className="lg:hidden fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm flex animate-in fade-in"
+              onClick={() => setShowMobileSessionsDrawer(false)}
+            >
               <div
-                key={idx}
-                className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                className="w-[82vw] max-w-xs h-full shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
               >
-                <div
-                  className={`max-w-3xl rounded-xl p-4 ${
-                    m.role === 'user'
-                      ? 'bg-volt-400/12 border border-volt-400/35 text-zinc-100'
-                      : 'bg-zinc-950 border border-zinc-800/90 text-zinc-200 w-full'
+                <ChatSessionsSidebar
+                  sessions={sessions}
+                  activeSessionId={activeSessionId}
+                  sendingSessionId={sendingSessionId}
+                  onSelectSession={handleSelectSession}
+                  onNewChat={handleNewChat}
+                  onRenameSession={handleRenameSession}
+                  onDeleteSession={handleDeleteSession}
+                  onExportSession={handleExportSession}
+                  onCloseMobile={() => setShowMobileSessionsDrawer(false)}
+                />
+              </div>
+            </div>,
+            document.body
+          )}
+
+          {/* Glavni chat prostor */}
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+            {/* Gornja alatna traka chata */}
+            <div className="px-3 md:px-4 py-2 border-b border-zinc-800/80 bg-zinc-950/60 flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                {/* Desktop toggle bočne trake */}
+                <button
+                  type="button"
+                  onClick={() => setShowSessionsSidebar((v) => !v)}
+                  className={`hidden lg:inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-mono font-bold transition-colors shrink-0 ${
+                    showSessionsSidebar
+                      ? 'bg-zinc-900 text-volt-400 border-volt-400/30'
+                      : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 border-zinc-800'
                   }`}
+                  title={showSessionsSidebar ? 'Sakrij povijest razgovora' : 'Prikaži povijest razgovora'}
                 >
-                  {/* Priložene datoteke (slike ili PDF) */}
-                  {Array.isArray(m.attachments) && m.attachments.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {m.attachments.map((att) => (
-                        <ChatAttachmentItem
-                          key={att.id}
-                          attachment={att}
-                          onPreview={(fullAtt) => setSelectedPreviewAttachment(fullAtt)}
-                        />
-                      ))}
-                    </div>
-                  )}
+                  <PanelLeft className="w-3.5 h-3.5" />
+                  <span>{sessions.length}</span>
+                </button>
 
-                  {m.role === 'model' ? (
-                    <AIMarkdown
-                      text={m.text}
-                      ftp={ftp}
-                      onAddWorkoutToCalendar={onAddWorkoutToCalendar}
-                      onStartWorkoutInTrainer={onStartWorkoutInTrainer}
-                    />
-                  ) : (
-                    <p className="text-sm font-medium whitespace-pre-wrap">{m.text}</p>
-                  )}
-                </div>
+                {/* Mobilni gumb za ladicu povijesti */}
+                <button
+                  type="button"
+                  onClick={() => setShowMobileSessionsDrawer(true)}
+                  className="lg:hidden inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 text-[11px] font-mono font-bold shrink-0"
+                  title="Otvori povijest razgovora"
+                >
+                  <History className="w-3.5 h-3.5 text-volt-400" />
+                  <span>Povijest ({sessions.length})</span>
+                </button>
+
+                <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-zinc-300 truncate">
+                  {activeSession ? activeSession.title : 'Novi razgovor'}
+                </span>
+
+                <span
+                  className="hidden xl:inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400/80 bg-emerald-500/8 border border-emerald-500/20 px-1.5 py-0.5 rounded shrink-0"
+                  title="Razgovori i nalazi ostaju isključivo lokalno na ovom uređaju"
+                >
+                  <Lock className="w-2.5 h-2.5" /> Lokalno
+                </span>
               </div>
-            ))}
 
-            {isSendingChat && (
-              <div className="flex justify-start">
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex items-center gap-3 text-xs font-mono font-bold text-volt-300">
+              <div className="flex items-center gap-1.5 shrink-0">
+                {isSendingChat && sendingSessionId && sendingSessionId !== activeSessionId && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectSession(sendingSessionId)}
+                    className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-volt-400/12 border border-volt-400/35 text-volt-300 font-mono text-[10px] font-bold"
+                    title="Vrati se na razgovor u kojem AI trenutno generira odgovor"
+                  >
+                    <Loader2 className="w-3 h-3 animate-spin" /> AI piše...
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowNotesDrawer(true)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-mono font-bold transition-colors ${
+                    activeNotesCount > 0
+                      ? 'bg-volt-400/12 text-volt-300 border-volt-400/35 hover:bg-volt-400/20'
+                      : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 border-zinc-800'
+                  }`}
+                  title="Trajne lokalne bilješke koje AI automatski zna u svakom razgovoru"
+                >
+                  <Bookmark className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Bilješke</span>
+                  {activeNotesCount > 0 && (
+                    <span className="px-1 rounded bg-volt-400/20 text-volt-300 text-[10px]">
+                      {activeNotesCount}
+                    </span>
+                  )}
+                </button>
+
+                {activeSession && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleNewChat}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-950 hover:bg-zinc-900 text-zinc-300 hover:text-volt-400 border border-zinc-800 text-[11px] font-mono font-bold transition-colors"
+                      title="Započni novi čisti razgovor (stari ostaje sačuvan)"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline">Novi</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleExportSession(activeSession)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-100 border border-zinc-800 text-[11px] font-mono font-bold transition-colors"
+                      title="Izvezi ovaj razgovor kao Markdown (.md)"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden xl:inline">.md</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSession(activeSession)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-950 hover:bg-rose-500/15 text-zinc-500 hover:text-rose-400 border border-zinc-800 hover:border-rose-500/30 text-[11px] font-mono font-bold transition-colors"
+                      title="Obriši samo ovaj razgovor i njegove priloge"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div
+              ref={chatContainerRef}
+              className={`flex-1 min-h-0 ${messages.length === 0 && !(isSendingChat && sendingSessionId === activeSessionId) ? 'overflow-y-auto p-3 md:p-4' : 'overflow-y-auto p-4 md:p-5'} flex flex-col gap-3 custom-scrollbar`}
+            >
+              {isLoadingSessions ? (
+                <div className="my-auto flex items-center justify-center gap-2 text-xs font-mono text-zinc-500">
                   <Loader2 className="w-4 h-4 animate-spin text-volt-400" />
-                  AI TRENER ANALIZIRA TELEMETRIJU I PRIPREMA ODGOVOR...
+                  Učitavanje lokalne povijesti razgovora...
                 </div>
-              </div>
-            )}
+              ) : messages.length === 0 && !(isSendingChat && sendingSessionId === activeSessionId) && (
+                <div className="my-auto flex flex-col items-center justify-center py-1 text-center max-w-2xl mx-auto w-full">
+                  <div className="p-2.5 rounded-xl bg-volt-400/10 border border-volt-400/30 text-volt-400 mb-2">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base md:text-lg font-display font-bold uppercase tracking-wide text-zinc-100 mb-1">
+                    Spreman za analizu, {profile?.username || 'Vozač'}
+                  </h3>
+                  <p className="text-xs text-zinc-400 mb-3 max-w-xl leading-relaxed">
+                    Učitao sam vaše dostupne treninge, trenutni FTP (<span className="font-mono font-bold text-volt-400">{ftp} W</span>) i kalendar
+                    {activeNotesCount > 0 && (
+                      <> uz <button type="button" onClick={() => setShowNotesDrawer(true)} className="font-mono font-bold text-volt-400 hover:underline">{activeNotesCount} {activeNotesCount === 1 ? 'bilješku' : 'bilješke'} trenera</button></>
+                    )}. Svi razgovori i nalazi ostaju <strong className="text-zinc-200">100% lokalno na ovom uređaju</strong>.
+                  </p>
 
-            {chatError && (
-              <div className="p-3.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                <span>{chatError}</span>
-              </div>
-            )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full text-left">
+                    {QUICK_PROMPTS.map((qp, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => sendMessage(qp)}
+                        className="p-2.5 md:p-3 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/40 text-xs text-zinc-300 hover:text-zinc-100 font-medium transition-all flex items-start gap-2 group"
+                      >
+                        <Zap className="w-3.5 h-3.5 text-volt-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                        <span>{qp}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-            <div ref={chatEndRef} />
-          </div>
+              {messages.map((m, idx) => {
+                const msgKey = m.id || `${activeSessionId || 'new'}_${idx}`;
+                return (
+                  <div
+                    key={msgKey}
+                    className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-3xl rounded-xl p-4 ${
+                        m.role === 'user'
+                          ? 'bg-volt-400/12 border border-volt-400/35 text-zinc-100'
+                          : 'bg-zinc-950 border border-zinc-800/90 text-zinc-200 w-full'
+                      }`}
+                    >
+                      {/* Priložene datoteke (slike ili PDF) */}
+                      {Array.isArray(m.attachments) && m.attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {m.attachments.map((att) => (
+                            <ChatAttachmentItem
+                              key={att.id}
+                              attachment={att}
+                              onPreview={(fullAtt) => setSelectedPreviewAttachment(fullAtt)}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {m.role === 'model' ? (
+                        <>
+                          <AIMarkdown
+                            text={m.text}
+                            ftp={ftp}
+                            onAddWorkoutToCalendar={onAddWorkoutToCalendar}
+                            onStartWorkoutInTrainer={onStartWorkoutInTrainer}
+                          />
+                          <div className="mt-3 pt-2 border-t border-zinc-800/70 flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyMessage(msgKey, m.text)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
+                              title="Kopiraj odgovor"
+                            >
+                              {copiedMsgId === msgKey ? (
+                                <><Check className="w-3 h-3 text-emerald-400" /> <span className="text-emerald-400">Kopirano</span></>
+                              ) : (
+                                <><Copy className="w-3 h-3" /> Kopiraj</>
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveMessageAsNote(m.text)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 hover:text-volt-300 hover:bg-volt-400/10 transition-colors"
+                              title="Spremi ključni zaključak u trajne lokalne bilješke trenera"
+                            >
+                              <BookmarkPlus className="w-3 h-3" /> Zapamti u bilješke
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm font-medium whitespace-pre-wrap">{m.text}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {isSendingChat && sendingSessionId === activeSessionId && (
+                <div className="flex justify-start">
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex items-center gap-3 text-xs font-mono font-bold text-volt-300">
+                    <Loader2 className="w-4 h-4 animate-spin text-volt-400" />
+                    AI TRENER ANALIZIRA TELEMETRIJU I PRIPREMA ODGOVOR...
+                  </div>
+                </div>
+              )}
+
+              {chatError && (
+                <div className="p-3.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{chatError}</span>
+                </div>
+              )}
+
+              <div ref={chatEndRef} />
+            </div>
 
           {/* TRAKA S PRIPREMLJENIM PRIVITCIMA (PENDING) */}
           {pendingAttachments.length > 0 && (
@@ -805,6 +1203,7 @@ export default function AICoachTab({
               )}
             </button>
             <input
+              ref={chatInputRef}
               type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
@@ -822,6 +1221,7 @@ export default function AICoachTab({
               <span className="hidden sm:inline">Pošalji</span>
             </button>
           </form>
+          </div>
         </div>
       )}
 
@@ -943,7 +1343,9 @@ export default function AICoachTab({
                         <th className="px-3.5 py-2.5 font-bold">Treninzi</th>
                         <th className="px-3.5 py-2.5 font-bold">Sati</th>
                         <th className="px-3.5 py-2.5 font-bold">Load (TSS)</th>
+                        <th className="px-3.5 py-2.5 font-bold">Uspon</th>
                         <th className="px-3.5 py-2.5 font-bold">FTP raspon</th>
+                        <th className="px-3.5 py-2.5 font-bold">Peak CTL</th>
                         <th className="px-3.5 py-2.5 font-bold">Z2 EF</th>
                       </tr>
                     </thead>
@@ -953,15 +1355,95 @@ export default function AICoachTab({
                           <td className="px-3.5 py-2.5 font-bold text-zinc-100">{yr.year}</td>
                           <td className="px-3.5 py-2.5 text-zinc-300">{yr.count}</td>
                           <td className="px-3.5 py-2.5 text-zinc-300">{yr.hours} h</td>
-                          <td className="px-3.5 py-2.5 font-bold text-amber-400">{yr.tss}</td>
+                          <td className="px-3.5 py-2.5 font-bold text-amber-400">{yr.tss.toLocaleString('hr-HR')}</td>
+                          <td className="px-3.5 py-2.5 text-sky-300">
+                            {yr.climb > 0 ? `+${yr.climb.toLocaleString('hr-HR')} m` : '-'}
+                          </td>
                           <td className="px-3.5 py-2.5 text-volt-400 font-semibold">
                             {yr.minFtp ? `${yr.minFtp}–${yr.maxFtp} W` : '-'}
                           </td>
+                          <td className="px-3.5 py-2.5 text-zinc-200 font-semibold">{yr.peakCtl ?? '-'}</td>
                           <td className="px-3.5 py-2.5 text-emerald-400 font-bold">{yr.avgZ2Ef ?? '-'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                </div>
+
+                {histStats.records && (
+                  <div className="bg-zinc-950/90 border border-zinc-800 rounded-lg p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                        <Activity className="w-3.5 h-3.5 text-volt-400" /> Osobni rekordi iz CSV baze
+                      </span>
+                      <span className="font-mono text-[10px] text-zinc-500">
+                        {histStats.minDate} – {histStats.maxDate}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                      {histStats.records.longestRide && (
+                        <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Najduža vožnja</span>
+                          <span className="font-mono font-bold text-zinc-100">{(histStats.records.longestRide.durMin / 60).toFixed(1)} h</span>
+                          <span className="block text-[10px] text-zinc-400 truncate mt-0.5" title={histStats.records.longestRide.name}>
+                            {histStats.records.longestRide.name}
+                          </span>
+                        </div>
+                      )}
+                      {histStats.records.highestTss && (
+                        <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Najveći TSS</span>
+                          <span className="font-mono font-bold text-amber-400">{histStats.records.highestTss.tss} TSS</span>
+                          <span className="block text-[10px] text-zinc-400 truncate mt-0.5" title={histStats.records.highestTss.name}>
+                            {histStats.records.highestTss.name}
+                          </span>
+                        </div>
+                      )}
+                      {histStats.records.biggestClimb && (
+                        <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Najveći uspon</span>
+                          <span className="font-mono font-bold text-sky-300">+{histStats.records.biggestClimb.climb.toLocaleString('hr-HR')} m</span>
+                          <span className="block text-[10px] text-zinc-400 truncate mt-0.5" title={histStats.records.biggestClimb.name}>
+                            {histStats.records.biggestClimb.name}
+                          </span>
+                        </div>
+                      )}
+                      {histStats.records.peakCtl && (
+                        <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Vršni Fitness (CTL)</span>
+                          <span className="font-mono font-bold text-emerald-400">{histStats.records.peakCtl.ctl}</span>
+                          <span className="block text-[10px] text-zinc-400 truncate mt-0.5">
+                            {(histStats.records.peakCtl.date || '').slice(0, 10)}
+                          </span>
+                        </div>
+                      )}
+                      {histStats.records.highestNp45 && (
+                        <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Najviši NP (≥45m)</span>
+                          <span className="font-mono font-bold text-volt-400">{histStats.records.highestNp45.np} W</span>
+                          <span className="block text-[10px] text-zinc-400 truncate mt-0.5" title={histStats.records.highestNp45.name}>
+                            {histStats.records.highestNp45.name}
+                          </span>
+                        </div>
+                      )}
+                      {histStats.records.peakPmax && (
+                        <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Vršni Sprint (pMax)</span>
+                          <span className="font-mono font-bold text-rose-300">{histStats.records.peakPmax.pMax} W</span>
+                          <span className="block text-[10px] text-zinc-400 truncate mt-0.5" title={histStats.records.peakPmax.name}>
+                            {histStats.records.peakPmax.name}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-volt-400/5 border border-volt-400/20 text-[11px] text-zinc-300">
+                  <Sparkles className="w-4 h-4 text-volt-400 shrink-0 mt-0.5" />
+                  <p className="leading-relaxed">
+                    <span className="font-bold text-volt-400">Dubinsko čitanje CSV-a aktivno:</span> AI automatski dobiva zadnjih 40 treninga (s usponom, kadencom, RHR, HRRc i W&gt;FTP), mjesečni (12 mj.) i tjedni (10 tj.) pregled te osobne rekorde. Kada pitaš za konkretan mjesec, sezonu, rutu ili zonu (npr. <em>„svibanj 2025.“</em>, <em>„zadnja 3 mjeseca“</em>, <em>„Učka“</em>), lokalno pretražuje svih <strong>{histStats.totalWorkouts}</strong> vožnji i šalje točne zapise.
+                  </p>
                 </div>
               </>
             ) : (
@@ -1449,14 +1931,16 @@ export default function AICoachTab({
         </div>
       )}
 
-      {/* DEDICATED AI WORKOUT CREATOR MODAL */}
-      <AIWorkoutCreatorModal
-        isOpen={showCreatorModal}
-        onClose={() => setShowCreatorModal(false)}
-        athleteProfile={profile}
-        onAddWorkoutToCalendar={onAddWorkoutToCalendar}
-        onStartWorkoutInTrainer={onStartWorkoutInTrainer}
-        userId={userId}
+      {/* LOKALNE BILJEŠKE TRENERA (TRAJNA MEMORIJA NA UREĐAJU) */}
+      <CoachNotesDrawer
+        isOpen={showNotesDrawer}
+        onClose={() => setShowNotesDrawer(false)}
+        notes={coachNotes}
+        prefillText={notePrefillText}
+        onClearPrefill={() => setNotePrefillText('')}
+        onAddNote={handleAddCoachNote}
+        onToggleNote={handleToggleCoachNote}
+        onDeleteNote={handleDeleteCoachNote}
       />
     </div>
   );

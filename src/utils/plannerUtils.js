@@ -253,8 +253,40 @@ export function isRestDayWorkout(item) {
   return false;
 }
 
+export const PLAN_STORAGE_EVENT = 'ergvibe-saved-plan-changed';
+const LEGACY_PLANNER_SCHEDULE_KEY = 'ergvibe_planner_schedule_v1';
+
 export function getPlanStorageKey(userId) {
   return `ergvibe_ai_macro_plan_v2_${userId || 'guest'}`;
+}
+
+export function getPlannerScheduleKey(userId) {
+  return `${LEGACY_PLANNER_SCHEDULE_KEY}_${userId || 'guest'}`;
+}
+
+export function loadPlannerSchedule(userId) {
+  try {
+    const scopedRaw = localStorage.getItem(getPlannerScheduleKey(userId));
+    const raw = scopedRaw ?? localStorage.getItem(LEGACY_PLANNER_SCHEDULE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return { ...DEFAULT_WEEKLY_SCHEDULE, ...parsed };
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return { ...DEFAULT_WEEKLY_SCHEDULE };
+}
+
+export function savePlannerSchedule(userId, schedule) {
+  if (!schedule || typeof schedule !== 'object') return;
+  try {
+    localStorage.setItem(getPlannerScheduleKey(userId), JSON.stringify(schedule));
+  } catch {
+    // ignore quota errors
+  }
 }
 
 export function loadSavedPlan(userId) {
@@ -304,6 +336,15 @@ export function clearSavedPlan(userId, expectedPlanId = null) {
       }
     }
     localStorage.removeItem(key);
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent(PLAN_STORAGE_EVENT, {
+        detail: {
+          userId: userId || 'guest',
+          action: 'cleared',
+          planId: expectedPlanId || null
+        }
+      }));
+    }
     return true;
   } catch {
     return false;

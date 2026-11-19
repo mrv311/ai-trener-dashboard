@@ -71,30 +71,39 @@ export function buildActivityCacheKey(activity) {
   return `${idPart}_${datePart}_${titlePart}`;
 }
 
-export function getCachedWorkoutAnalysis(cacheKey) {
+function getAnalysesCacheStorageKey(userId) {
+  const safeUser = String(userId || 'guest').trim() || 'guest';
+  return `${STORAGE_KEY_ANALYSES_CACHE}_${safeUser}`;
+}
+
+export function getCachedWorkoutAnalysis(cacheKey, userId = null) {
   if (!cacheKey) return null;
   try {
-    const store = JSON.parse(localStorage.getItem(STORAGE_KEY_ANALYSES_CACHE) || '{}');
-    return store[cacheKey] || null;
+    const scopedStore = JSON.parse(localStorage.getItem(getAnalysesCacheStorageKey(userId)) || '{}');
+    if (scopedStore[cacheKey]) return scopedStore[cacheKey];
+    // Kompatibilnost sa starijim globalnim cache ključem
+    const legacyStore = JSON.parse(localStorage.getItem(STORAGE_KEY_ANALYSES_CACHE) || '{}');
+    return legacyStore[cacheKey] || null;
   } catch {
     return null;
   }
 }
 
-export function saveCachedWorkoutAnalysis(cacheKey, payload) {
+export function saveCachedWorkoutAnalysis(cacheKey, payload, userId = null) {
   if (!cacheKey) return;
   try {
-    const store = JSON.parse(localStorage.getItem(STORAGE_KEY_ANALYSES_CACHE) || '{}');
+    const key = getAnalysesCacheStorageKey(userId);
+    const store = JSON.parse(localStorage.getItem(key) || '{}');
     store[cacheKey] = {
       ...payload,
       updatedAt: new Date().toISOString()
     };
-    // Zadrži zadnjih 60 analiza kako ne bismo preopteretili localStorage
+    // Zadrži zadnjih 60 analiza po korisniku kako ne bismo preopteretili localStorage
     const entries = Object.entries(store).sort(
       (a, b) => String(b[1]?.updatedAt || '').localeCompare(String(a[1]?.updatedAt || ''))
     );
     const trimmed = Object.fromEntries(entries.slice(0, 60));
-    localStorage.setItem(STORAGE_KEY_ANALYSES_CACHE, JSON.stringify(trimmed));
+    localStorage.setItem(key, JSON.stringify(trimmed));
   } catch (e) {
     console.warn('[geminiService] Cache spremanje upozorenje:', e);
   }
@@ -293,10 +302,11 @@ export async function analyzeWorkoutWithGemini({
     liveWorkouts,
     wellnessData,
     targetActivity: activity,
+    userQuery: userNote,
     userId
   });
 
-  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
   const exactHistory = await findExactHistoricalRecord(activity, { userId });
 
@@ -331,11 +341,10 @@ export async function analyzeWorkoutWithGemini({
 - **Izvor aktivnosti:** ${activity.workout_source || (activity.isSupabase ? 'ErgVibe Baza' : 'Intervals.icu')}
 ${userNote ? `- **Subjektivna bilješka vozača:** "${userNote}"` : ''}
 
-${exactHistory ? `### USPOREDBA S POVIJEŠĆU SPORTAŠA ZA OVAJ TRENING:
-- Pronađen je raniji zapis ovog treninga u povijesti sportaša:
-- Povijesni datum: ${exactHistory.date} | Naziv: ${exactHistory.title}
-- Povijesni NP: ${exactHistory.np}W | Povijesni EF: ${exactHistory.ef} | Decoupling: ${exactHistory.decoupling}% | TSS: ${exactHistory.tss}
-- Usporedi trenutni napor s povijesnim i istakni trend napretka.` : ''}
+${exactHistory ? `### OBOGAĆENI PODACI IZ POVIJESNE / CSV BAZE ZA OVU AKTIVNOST:
+- Datum: ${(exactHistory.date || '').slice(0, 10)} | Naziv: ${exactHistory.name || exactHistory.title || 'Trening'}
+- NP: ${exactHistory.np ?? '-'}W | EF: ${exactHistory.ef ?? '-'} | Decoupling: ${exactHistory.dec ?? exactHistory.decoupling ?? '-'}% | TSS: ${exactHistory.tss ?? '-'}${exactHistory.climb ? ` | Uspon: +${exactHistory.climb}m` : ''}${exactHistory.cad ? ` | Kadenca: ${exactHistory.cad}rpm` : ''}${exactHistory.rhr ? ` | RHR: ${exactHistory.rhr}bpm` : ''}${exactHistory.hrr ? ` | HRRc: ${exactHistory.hrr}bpm` : ''}${exactHistory.wFtpKj ? ` | W>FTP: ${exactHistory.wFtpKj}kJ` : ''}${exactHistory.ctl != null ? ` | CTL: ${exactHistory.ctl} / TSB: ${exactHistory.tsb ?? '-'}` : ''}
+- Uključi ove dodatne fiziološke metrike u analizu.` : ''}
 
 Napiši analizu u strukturiranom, stručnom formatu prema zadanim trenerskim uputama.`;
 
@@ -361,15 +370,26 @@ export async function askWorkoutFollowUp({
   model = 'gemini-3.8-flash',
   userId = null
 }) {
+  const cleanQuestion = String(question || '').trim();
+  if (!cleanQuestion) {
+    throw new Error('Pitanje ne može biti prazno.');
+  }
+
+  const prevUserFollowUp = [...(Array.isArray(qaHistory) ? qaHistory : [])]
+    .reverse()
+    .find(m => m?.role === 'user');
+
   const athleteContextPrompt = await buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
     wellnessData,
     targetActivity: activity,
+    userQuery: cleanQuestion,
+    contextQuery: String(prevUserFollowUp?.text ?? prevUserFollowUp?.content ?? '').trim(),
     userId
   });
 
-  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
   const systemInstruction = `Ti si ErgVibe AI biciklistički trener. Odgovaraš na dodatno pitanje vozača vezano uz upravo analizirani trening "${activity?.title || activity?.name || 'Trening'}" (${(activity?.started_at || activity?.date || '').slice(0, 10)}).
 Budi konkretan, jasan i osloni se na podatke sportaša i bazu znanja. Odgovaraj na hrvatskom jeziku.
@@ -392,10 +412,6 @@ ${knowledgeBasePrompt}`;
     });
   });
 
-  const cleanQuestion = String(question || '').trim();
-  if (!cleanQuestion) {
-    throw new Error('Pitanje ne može biti prazno.');
-  }
   contents.push({ role: 'user', parts: [{ text: cleanQuestion }] });
 
   return callGeminiApi({
@@ -419,14 +435,31 @@ export async function chatWithAICoach({
   model = 'gemini-3.8-flash',
   userId = null
 }) {
+  const fullRawList = Array.isArray(messages) && messages.length > 0
+    ? messages
+    : [
+        ...(Array.isArray(chatHistory) ? chatHistory : []),
+        ...(String(userMessage || '').trim() ? [{ role: 'user', text: String(userMessage).trim() }] : [])
+      ];
+
+  // Izvuci zadnje (i pretposljednje) korisničko pitanje za Razinu 2 (pametni mini-RAG nad cijelim CSV-om)
+  const userTurnTexts = fullRawList
+    .filter(m => m?.role === 'user')
+    .map(m => String(m?.text ?? m?.content ?? '').trim())
+    .filter(Boolean);
+  const latestUserQuery = userTurnTexts[userTurnTexts.length - 1] || String(userMessage || '').trim();
+  const previousUserQuery = userTurnTexts.length >= 2 ? userTurnTexts[userTurnTexts.length - 2] : '';
+
   const athleteContextPrompt = await buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
     wellnessData,
+    userQuery: latestUserQuery,
+    contextQuery: previousUserQuery,
     userId
   });
 
-  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
   const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
 
@@ -564,16 +597,19 @@ Ako poruka sadrži priloženu sliku ili PDF laboratorijskog nalaza spiroergometr
    - Ažurirani FTP ili pragove pulsa ako se razlikuju od trenutnih.
    - U kojem rasponu watta voziti Zone 2 (izdržljivost) ispod LT1, a u kojem Sweet Spot / Threshold oko LT2.`;
 
-  const rawList = Array.isArray(messages) && messages.length > 0
-    ? messages
-    : [
-        ...(Array.isArray(chatHistory) ? chatHistory : []),
-        ...(String(userMessage || '').trim() ? [{ role: 'user', text: String(userMessage).trim() }] : [])
-      ];
+  // Pametni klizni prozor: cijeli razgovor se čuva lokalno u IndexedDB, a prema AI šaljemo zadnjih 20 poruka
+  // kako odgovori ostali brzi i stabilni. Teške slike/PDF-ove prilažemo kao inlineData samo za zadnja 4 turna.
+  const MAX_CONTEXT_MESSAGES = 20;
+  const MAX_MULTIMODAL_RECENT_TURNS = 4;
+  const rawList = fullRawList.length > MAX_CONTEXT_MESSAGES
+    ? fullRawList.slice(-MAX_CONTEXT_MESSAGES)
+    : fullRawList;
 
   // 1. Pripremi asinkrono sve partove uključujući multimodalne privitke (slike i PDF-ove)
   const normalizedTurns = [];
-  for (const m of rawList) {
+  for (let i = 0; i < rawList.length; i++) {
+    const m = rawList[i];
+    const isRecentForAttachments = i >= rawList.length - MAX_MULTIMODAL_RECENT_TURNS;
     const txt = String(m?.text ?? m?.content ?? '').trim();
     const parts = [];
 
@@ -584,31 +620,38 @@ Ako poruka sadrži priloženu sliku ili PDF laboratorijskog nalaza spiroergometr
 
     // Dodaj multimodalne privitke (slike ili PDF)
     if (Array.isArray(m?.attachments) && m.attachments.length > 0) {
-      for (const att of m.attachments) {
-        let base64 = att?.dataBase64;
-        let mime = att?.type;
+      if (isRecentForAttachments) {
+        for (const att of m.attachments) {
+          let base64 = att?.dataBase64;
+          let mime = att?.type;
 
-        // Ako base64 nije u memoriji, povuci ga iz lokalnog IndexedDB-a
-        if (!base64 && att?.id) {
-          try {
-            const dbItem = await getAttachmentFromLocalDB(att.id);
-            if (dbItem?.dataBase64) {
-              base64 = dbItem.dataBase64;
-              mime = dbItem.type || mime;
+          // Ako base64 nije u memoriji, povuci ga iz lokalnog IndexedDB-a
+          if (!base64 && att?.id) {
+            try {
+              const dbItem = await getAttachmentFromLocalDB(att.id);
+              if (dbItem?.dataBase64) {
+                base64 = dbItem.dataBase64;
+                mime = dbItem.type || mime;
+              }
+            } catch (e) {
+              console.warn('[chatWithAICoach] Neuspjelo dohvaćanje privitka iz IndexedDB-a:', att.id, e);
             }
-          } catch (e) {
-            console.warn('[chatWithAICoach] Neuspjelo dohvaćanje privitka iz IndexedDB-a:', att.id, e);
+          }
+
+          if (base64 && mime) {
+            parts.push({
+              inlineData: {
+                mimeType: mime,
+                data: base64
+              }
+            });
+          } else if (att?.name) {
+            parts.push({ text: `[Priložena datoteka: ${att.name}]` });
           }
         }
-
-        if (base64 && mime) {
-          parts.push({
-            inlineData: {
-              mimeType: mime,
-              data: base64
-            }
-          });
-        }
+      } else {
+        const names = m.attachments.map(a => a?.name || 'datoteka').join(', ');
+        parts.push({ text: `[Ranije priložene datoteke u ovoj poruci: ${names}]` });
       }
     }
 
@@ -659,188 +702,6 @@ Ako poruka sadrži priloženu sliku ili PDF laboratorijskog nalaza spiroergometr
 }
 
 /**
- * Specijalizirana funkcija za AI Workout Creator modal.
- * Fokusirana isključivo na dekonstrukciju slike treninga (TrainerRoad, Zwift, Garmin itd.)
- * ili tekstualnog opisa u 100% točan ErgVibe kod bez ometanja općenitim chat kontekstom.
- */
-export async function recreateWorkoutWithAi({
-  imageBase64 = null,
-  mimeType = 'image/jpeg',
-  description = '',
-  targetDuration = null,
-  targetTss = null,
-  athleteProfile = null,
-  model = 'gemini-3.8-flash'
-}) {
-  const ftp = Number(athleteProfile?.ftp) || 270;
-  const weight = Number(athleteProfile?.weight) || 74;
-
-  const systemInstruction = `Ti si specijalizirani ErgVibe AI Vision Workout Deconstructor i vrhunski biciklistički trener.
-Tvoj ISKLJUČIVI zadatak je pretvoriti priloženu snimku zaslona biciklističkog treninga (TrainerRoad, Zwift, TrainingPeaks, Garmin, Intervals.icu, crtež ili tablicu) ili tekstualni opis u točan, strukturirani trenažni workout.
-
-Profil sportaša:
-- Trenutni FTP: ${ftp} W | Težina: ${weight} kg
-
-ZLATNA PRAVILA ZA APSOLUTNU PRECIZNOST:
-1. DETEKCIJA METRIKA SA SLIKE (TrainerRoad, Zwift, TP, Garmin):
-   - ZABRANJENO JE AUTOMATSKI PREDPOSTAVLJATI 60 MINUTA!
-   - Pažljivo očitaj desni bočni stupac s podacima ("Duration", "TSS", "NP", "IF"):
-     * Ako piše "Duration 00:45:00", trajanje MORA biti točno 45 minuta ("DURATION: 45").
-     * Ako piše "Duration 01:15:00", trajanje MORA biti točno 75 minuta ("DURATION: 75").
-     * Ako piše "Duration 01:30:00", trajanje MORA biti točno 90 minuta ("DURATION: 90").
-     * Ako piše "TSS: 53", izlaz MORA imati točno "TSS: 53".
-     * Pogledaj i X-os na dnu (vremensku skalu): gdje završava graf (npr. 45:00, 60:00).
-   - Ako je vidljiv naziv treninga (npr. "Ainslie -4", "Anticosti", "Carson", "The Gorby", "Mary Austin", "Baxter"), OBAVEZNO točno prepiši taj naziv ("TITLE: Ainslie -4") i kategoriju ("CATEGORY: Threshold").
-2. BROJANJE RADNIH INTERVALA I SETOVA (NPR. ANTICOSTI, AINSLIE):
-   - Ako korisnik u opisu navede strukturu (npr. "3 sets of 5 intervals"), to je APSOLUTNO OBAVEZUJUĆE!
-   - Generiraj točno onoliki broj setova i ponavljanja koliko je zatraženo (npr. 3 seta po 5 intervala = ukupno 15 radnih intervala).
-   - Za setove koristi Intervals.icu grupnu sintaksu:
-     Set 1
-     5x
-     - 1m 120%
-     - 2m 40%
-3. BROJANJE IZ GRAFIKONA I TOOLTIPSA:
-   - Pažljivo prebroji radne blokove i odmore (npr. 4 radna bloka na pragu po 5 min, s 3 odmora od 4 min na 40% FTP-a).
-   - Očitaj vrijednosti iz tooltipsa ako postoje (npr. "Time 0:15:38, Target 40%, Interval Time 0:04:00").
-4. KORISNIČKE UPUTE I OPIS:
-   - Ako korisnik u opisu napiše specifičnu uputu (npr. "napravi 60 min verziju"), to ima prioritet. Ako nije naveo trajanje, koristi točno trajanje sa slike.
-5. FORMAT KOMPOZITNOG TRAJANJA (MINUTE I SEKUNDE):
-   - Za intervale koji imaju minute i sekunde, piši standardni format: \`- 1m20s 125%\` ili \`- 80s 125%\`, \`- 1m05s 121%\`, \`- 1m10s 122%\`, \`- 1m15s 123%\`.
-   - Nikada nemoj ispuštati minute!
-6. BALANSIRANJE UKUPNOG TRAJANJA:
-   - Ukupno trajanje svih koraka (Zagrijavanje + Setovi + Oporavci + Hlađenje) mora točno odgovarati ciljanom trajanju treninga sa slike (npr. 45 min ili 60 min). Zadnji korak (Hlađenje) prilagodi tako da ukupna suma sekundi bude točno na ciljanoj minuti.
-7. TOČAN FORMAT KODA:
-Na početku daj 2-3 rečenice analize onoga što si prepoznao (naziv, trajanje, setove, TSS), a zatim OBAVEZNO ispiši strukturirani blok:
-\`\`\`workout
-TITLE: Naziv Treninga
-CATEGORY: Sweet Spot | VO2 Max | Threshold | Endurance | Anaerobni | Tempo | Oporavak | Testiranje
-DURATION: trajanje u minutama (npr. 45)
-TSS: točan broj (npr. 53)
-STEPS:
-Zagrijavanje
-- 10m 50-75%
-
-Set 1
-- 1m 120%
-- 2m 40%
-...
-Hlađenje
-- 2m 40%
-\`\`\`
-`;
-
-  const parts = [];
-
-  let promptText = description?.trim()
-    ? `Rekreiraj ovaj trening sa slike poštujući ove korisničke upute i specifikacije:\n${description.trim()}`
-    : 'Pažljivo analiziraj priloženu sliku treninga, očitaj točan naziv, trajanje (Duration), TSS i točan broj intervala te ga rekreiraj u strukturirani ErgVibe workout.';
-
-  if (targetDuration) {
-    promptText += `\nKORISNIČKI ZAHTJEV ZA TRAJANJE: ${targetDuration} minuta (ukupni zbroj Zagrijavanja, Setova, Oporavaka i Hlađenja MORA iznositi točno ${targetDuration} min).`;
-  } else if (imageBase64) {
-    promptText += `\nOBAVEZNO: Očitaj točno trajanje (Duration) i TSS koji pišu na slici i uskladi trening s tim trajanjem (nemoj pogađati 60 min ako piše 45 min ili drugo trajanje).`;
-  }
-
-  if (targetTss) {
-    promptText += `\nKORISNIČKI ZAHTJEV ZA TSS: ${targetTss} TSS (potrebno postići točno ${targetTss} TSS).`;
-  }
-
-  parts.push({ text: promptText });
-
-  if (imageBase64 && mimeType) {
-    parts.push({
-      inlineData: {
-        mimeType,
-        data: imageBase64
-      }
-    });
-  }
-
-  return callGeminiApi({
-    systemInstruction,
-    contents: [{ role: 'user', parts }],
-    model,
-    temperature: 0.1
-  });
-}
-
-/**
- * Interaktivna dorada postojećeg workouta prema uputama sportaša ili trenera.
- * Omogućuje iterativno usavršavanje (npr. dodaj stepenasto zagrijavanje, promijeni odmore, dodaj set).
- */
-export async function refineWorkoutWithAi({
-  currentCode,
-  userInstruction,
-  title = '',
-  category = 'Sweet Spot',
-  targetDuration = 60,
-  targetTss = null,
-  imageBase64 = null,
-  mimeType = 'image/jpeg',
-  athleteProfile = null,
-  model = 'gemini-3.8-flash'
-}) {
-  const ftp = Number(athleteProfile?.ftp) || 270;
-  const weight = Number(athleteProfile?.weight) || 74;
-
-  const systemInstruction = `Ti si specijalizirani ErgVibe AI Workout Editor i vrhunski biciklistički trener.
-Tvoj zadatak je modificirati i poboljšati POSTOJEĆI Intervals.icu workout prema točnim uputama biciklista.
-
-Profil sportaša:
-- Trenutni FTP: ${ftp} W | Težina: ${weight} kg
-
-PRAVILA ZA INTERAKTIVNU DORADU:
-1. ZADRŽI STRUKTURU KOJU KORISNIK NIJE TRAŽIO DA SE MIJENJA:
-   - Ako korisnik zatraži npr. "dodaj stepenasto zagrijavanje", promijeni SAMO Zagrijavanje (npr. dodaj stepenasti ramp ili piramidu), a zadrži postojeće radne setove i odmore!
-   - Ako korisnik zatraži "skrati odmore na 90s", promijeni samo odmore između intervala.
-   - Ako zatraži "dodaj još jedan set", repliciraj radni set uz odgovarajući odmor.
-2. TOČAN FORMAT KORAKA (Intervals.icu):
-   - Zagrijavanje: npr. \`- 10m ramp 50-75%\` ili stepenasto: \`- 3m 50%\`, \`- 3m 60%\`, \`- 4m 70%\`.
-   - Radni intervali: \`- 1m 120%\`, \`- 1m20s 125%\`, \`- 80s 125%\` itd.
-   - Odmori / Oporavci: \`- 2m 40%\` ili \`- 90s 40%\`.
-   - Hlađenje: \`- 5m 40%\` (uskladi da ukupno vrijeme odgovara ciljanom trajanju).
-3. IZLAZNI FORMAT:
-Napiši 1 kratku rečenicu objašnjenja što si prilagodio, a zatim OBAVEZNO ispiši:
-\`\`\`workout
-TITLE: ${title || 'Trening'}
-CATEGORY: ${category || 'Sweet Spot'}
-DURATION: ${targetDuration || 60}
-TSS: ${targetTss || 75}
-STEPS:
-[Ovdje idu svi ažurirani koraci treninga u Intervals.icu formatu]
-\`\`\`
-`;
-
-  const parts = [];
-
-  let promptText = `Ovo je trenutni workout:\n\`\`\`intervals\n${currentCode}\n\`\`\`\n\n`;
-  promptText += `KORISNIČKA UPUTA ZA DORADU:\n"${userInstruction.trim()}"\n\n`;
-  promptText += `Primijeni traženu izmjenu na ovaj workout i vrati ažurirani \`\`\`workout ... \`\`\` blok.`;
-
-  if (targetDuration) {
-    promptText += `\nCiljano ukupno trajanje ostaje: ${targetDuration} minuta.`;
-  }
-
-  parts.push({ text: promptText });
-
-  if (imageBase64 && mimeType) {
-    parts.push({
-      inlineData: {
-        mimeType,
-        data: imageBase64
-      }
-    });
-  }
-
-  return callGeminiApi({
-    systemInstruction,
-    contents: [{ role: 'user', parts }],
-    model,
-    temperature: 0.1
-  });
-}
-
-/**
  * Automatsko generiranje cjelovitog periodiziranog trenažnog plana.
  */
 export async function generateStructuredTrainingPlan({
@@ -863,10 +724,11 @@ export async function generateStructuredTrainingPlan({
     athleteProfile,
     liveWorkouts,
     wellnessData,
+    userQuery: [goal, resolvedNotes].filter(Boolean).join(' '),
     userId
   });
 
-  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
   const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
 
@@ -1096,9 +958,10 @@ export async function generateMacrocycleBlueprint({
     athleteProfile,
     liveWorkouts,
     wellnessData,
+    userQuery: [goalTitle, eventType, weakness, notes].filter(Boolean).join(' '),
     userId
   });
-  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
   const eventLines = goalMode === 'event'
     ? [
@@ -1300,9 +1163,10 @@ export async function generatePlanBlockWorkouts({
     athleteProfile,
     liveWorkouts,
     wellnessData,
+    userQuery: [blueprint?.goalTitle, notes, blockFeedback].filter(Boolean).join(' '),
     userId
   });
-  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
   const weeksBrief = targetWeeks.map(w =>
     `- Tjedan ${w.weekNumber} (${w.startDate} do ${w.endDate}) | Faza: ${w.phaseLabel} (${w.phaseType}) | Fokus: ${w.focus} | Cilj: ~${w.targetHours}h, ~${w.targetTss} TSS${w.isRecoveryWeek ? ' [TJEDAN OPORAVKA]' : ''}${w.keySessions?.length ? ` | Ključni treninzi: ${w.keySessions.join(', ')}` : ''}`
@@ -1494,9 +1358,10 @@ export async function reviseSinglePlanWorkout({
     athleteProfile,
     liveWorkouts: [],
     wellnessData,
+    userQuery: [workout?.title, cleanFeedback].filter(Boolean).join(' '),
     userId
   });
-  const knowledgeBasePrompt = compileKnowledgeBasePrompt();
+  const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
   const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
 

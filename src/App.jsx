@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Activity, Calendar as CalendarIcon,
   User, Loader2, Monitor, LogOut, Link as LinkIcon,
   MoreHorizontal, X, Database, ClipboardList, PanelLeftClose, PanelLeftOpen,
-  LogIn, Sparkles, RefreshCw, CheckCircle2, AlertCircle
+  LogIn, Sparkles, RefreshCw, CheckCircle2, AlertCircle, RotateCcw, Play
 } from 'lucide-react';
 
 import CalendarTab from './components/CalendarTab';
@@ -16,8 +16,14 @@ import AICoachTab from './components/AICoachTab';
 import AuthPage from './components/AuthPage';
 import AuthModal from './components/AuthModal';
 import OnboardingModal from './components/OnboardingModal';
+import WorkoutRecoveryModal from './components/trainer/WorkoutRecoveryModal';
 import BrandLogo from './components/BrandLogo';
 import { supabase } from './services/supabaseClient';
+import {
+  loadActiveWorkoutCheckpoint,
+  clearActiveWorkoutCheckpoint,
+  buildRecoverySummary
+} from './services/workoutRecoveryStorage';
 
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useProfileSync } from './hooks/useProfileSync';
@@ -54,6 +60,14 @@ export default function App() {
   const [uiQuietGlow, setUiQuietGlow] = useLocalStorage('ergvibe_ui_quiet_glow', false);
   const [isTrainerPlaying, setIsTrainerPlaying] = useState(false);
   const [isTrainerFullscreen, setIsTrainerFullscreen] = useState(false);
+  const [hasMountedAiCoach, setHasMountedAiCoach] = useState(false);
+  const [isAiCoachBusy, setIsAiCoachBusy] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'aiCoach') {
+      setHasMountedAiCoach(true);
+    }
+  }, [activeTab]);
 
   const [session, setSession] = useState(null);
   const [isSessionLoading, setIsSessionLoading] = useState(true);
@@ -378,6 +392,78 @@ export default function App() {
     }
   }, [session, currentUserId, intervalsKey, intervalsId, setIntervalsKey, setIntervalsId]);
 
+  // Crash Recovery: nezavršena sesija trenažera (< 48h)
+  const [pendingRecoverySession, setPendingRecoverySession] = useState(null);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [recoveryRequest, setRecoveryRequest] = useState(null);
+  const checkedRecoveryForUserRef = useRef(null);
+
+  useEffect(() => {
+    if (isSessionLoading || isOAuthProcessing || !currentUserId) return;
+    if (checkedRecoveryForUserRef.current === currentUserId) return;
+    checkedRecoveryForUserRef.current = currentUserId;
+
+    let cancelled = false;
+    loadActiveWorkoutCheckpoint(currentUserId)
+      .then((snapshot) => {
+        if (!cancelled && snapshot) {
+          setPendingRecoverySession(snapshot);
+          setShowRecoveryModal(true);
+        }
+      })
+      .catch((err) => {
+        console.warn('[App] Greška pri provjeri oporavka treninga:', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSessionLoading, isOAuthProcessing, currentUserId]);
+
+  const pendingRecoverySummary = useMemo(
+    () => (pendingRecoverySession ? buildRecoverySummary(pendingRecoverySession) : null),
+    [pendingRecoverySession]
+  );
+
+  const handleResumeRecoveredWorkout = useCallback(() => {
+    if (!pendingRecoverySession) return;
+    const nonce = Date.now();
+    const snap = pendingRecoverySession;
+    setSelectedWorkout(snap.workoutFromCalendar ? { ...snap.workoutFromCalendar, __recoveredNonce: nonce } : null);
+    setRecoveryRequest({ nonce, mode: 'resume', snapshot: snap });
+    setPendingRecoverySession(null);
+    setShowRecoveryModal(false);
+    setActiveTab('trainer');
+    setIsMobileMenuOpen(false);
+  }, [pendingRecoverySession]);
+
+  const handleSaveRecoveredWorkout = useCallback(() => {
+    if (!pendingRecoverySession) return;
+    const nonce = Date.now();
+    const snap = pendingRecoverySession;
+    setSelectedWorkout(snap.workoutFromCalendar ? { ...snap.workoutFromCalendar, __recoveredNonce: nonce } : null);
+    setRecoveryRequest({ nonce, mode: 'finish', snapshot: snap });
+    setPendingRecoverySession(null);
+    setShowRecoveryModal(false);
+    setActiveTab('trainer');
+    setIsMobileMenuOpen(false);
+  }, [pendingRecoverySession]);
+
+  const handleDiscardRecoveredWorkout = useCallback(async () => {
+    await clearActiveWorkoutCheckpoint(currentUserId);
+    setPendingRecoverySession(null);
+    setShowRecoveryModal(false);
+  }, [currentUserId]);
+
+  const handleClearRecoveryRequest = useCallback(() => {
+    setRecoveryRequest(null);
+  }, []);
+
+  const handleActiveSessionPersisted = useCallback(() => {
+    setPendingRecoverySession(null);
+    setShowRecoveryModal(false);
+  }, []);
+
   // Automatsko pokretanje onboarding vodiča za nove korisnike ili goste
   useEffect(() => {
     if (!isSessionLoading && (session || isGuest) && !hasCompletedOnboarding) {
@@ -429,6 +515,12 @@ export default function App() {
 
     setSession(null);
     setIsGuest(false);
+    checkedRecoveryForUserRef.current = null;
+    setPendingRecoverySession(null);
+    setShowRecoveryModal(false);
+    setRecoveryRequest(null);
+    setHasMountedAiCoach(false);
+    setIsAiCoachBusy(false);
 
     setIntervalsId('');
     setIntervalsKey('');
@@ -583,7 +675,7 @@ export default function App() {
               label={TABS[tabId].shortLabel}
               code={TABS[tabId].code}
               active={activeTab === tabId}
-              liveBadge={tabId === 'trainer' && isTrainerPlaying}
+              liveBadge={(tabId === 'trainer' && isTrainerPlaying) || (tabId === 'aiCoach' && isAiCoachBusy)}
               onClick={() => handleTabChange(tabId)}
               collapsed={isSidebarCollapsed}
             />
@@ -761,6 +853,39 @@ export default function App() {
           </div>
         )}
 
+        {pendingRecoverySession && !showRecoveryModal && pendingRecoverySummary && (
+          <div className="px-3.5 md:px-5 py-2 text-xs font-semibold flex flex-wrap items-center justify-between gap-2 border-b bg-amber-500/12 border-amber-500/35 text-amber-200 animate-in fade-in z-30 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <RotateCcw className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="truncate">
+                Nezavršen trening: <strong className="text-zinc-100">{pendingRecoverySummary.title}</strong>{' '}
+                <span className="font-mono text-amber-300 telemetry-num">
+                  ({Math.floor(pendingRecoverySummary.elapsedTime / 60)}:{String(pendingRecoverySummary.elapsedTime % 60).padStart(2, '0')} / {Math.floor(pendingRecoverySummary.totalDuration / 60)}:{String(pendingRecoverySummary.totalDuration % 60).padStart(2, '0')})
+                </span>{' '}
+                <span className="hidden sm:inline text-amber-300/80">· {pendingRecoverySummary.ageText}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+              {!pendingRecoverySummary.isAtEnd && (
+                <button
+                  type="button"
+                  onClick={handleResumeRecoveredWorkout}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-mono text-[11px] font-bold uppercase tracking-wider transition-colors"
+                >
+                  <Play className="w-3 h-3 fill-current" /> Nastavi
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowRecoveryModal(true)}
+                className="px-2.5 py-1 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 font-mono text-[11px] font-bold uppercase tracking-wider transition-colors"
+              >
+                Opcije
+              </button>
+            </div>
+          </div>
+        )}
+
         <main ref={mainContentRef} className={`flex-1 min-h-0 ${['trainer', 'calendar', 'aiCoach'].includes(activeTab) ? `overflow-hidden p-1 md:p-2 short:p-1.5 ${activeTab === 'trainer' && isTrainerFullscreen ? 'pb-1.5' : 'pb-16 md:pb-2 short:md:pb-1.5'}` : 'overflow-auto p-3 md:p-6 short:p-3 pb-20 md:pb-6 short:md:pb-3'} bg-zinc-950 bg-telemetry-grid relative flex flex-col`}>
           <div className={`relative z-10 w-full ${['trainer', 'calendar', 'aiCoach'].includes(activeTab) ? 'flex-1 flex flex-col min-h-0 h-full' : ''}`}>
             {activeTab === 'calendar' && (
@@ -800,31 +925,37 @@ export default function App() {
                 onAddWorkoutToCalendar={handleCreateWorkout}
                 onPlayingChange={setIsTrainerPlaying}
                 onFullscreenChange={setIsTrainerFullscreen}
+                recoveryRequest={recoveryRequest}
+                onRecoveryConsumed={handleClearRecoveryRequest}
+                onActiveSessionPersisted={handleActiveSessionPersisted}
                 onClose={() => { setSelectedWorkout(null); handleTabChange('calendar'); }}
               />
             </div>
 
-            {activeTab === 'aiCoach' && (
-              <AICoachTab
-                profile={athleteProfile}
-                setProfile={setAthleteProfile}
-                workouts={workouts}
-                wellnessData={wellnessData}
-                userId={currentUserId}
-                intervalsConnected={intervalsConnected}
-                onAddWorkoutToCalendar={handleCreateWorkout}
-                onCreatePlanBatch={handleCreatePlanBatch}
-                onDeletePlanBlock={handleDeletePlanBlock}
-                onDeletePlanBlocks={handleDeletePlanBlocks}
-                planRegistry={planRegistry}
-                onStartWorkoutInTrainer={handleLaunchWorkoutInTrainer}
-                onNavigateToCalendar={openCalendarAtDate}
-                plannerLaunchRequest={plannerLaunchRequest}
-                onConsumePlannerLaunchRequest={() => setPlannerLaunchRequest(null)}
-                coachLaunchRequest={coachLaunchRequest}
-                onConsumeCoachLaunchRequest={() => setCoachLaunchRequest(null)}
-                onAnalyzePlanInCoach={openAICoachAnalysis}
-              />
+            {hasMountedAiCoach && (
+              <div className={activeTab === 'aiCoach' ? 'flex-1 flex flex-col min-h-0 h-full w-full' : 'hidden'}>
+                <AICoachTab
+                  profile={athleteProfile}
+                  setProfile={setAthleteProfile}
+                  workouts={workouts}
+                  wellnessData={wellnessData}
+                  userId={currentUserId}
+                  intervalsConnected={intervalsConnected}
+                  onAddWorkoutToCalendar={handleCreateWorkout}
+                  onCreatePlanBatch={handleCreatePlanBatch}
+                  onDeletePlanBlock={handleDeletePlanBlock}
+                  onDeletePlanBlocks={handleDeletePlanBlocks}
+                  planRegistry={planRegistry}
+                  onStartWorkoutInTrainer={handleLaunchWorkoutInTrainer}
+                  onNavigateToCalendar={openCalendarAtDate}
+                  plannerLaunchRequest={plannerLaunchRequest}
+                  onConsumePlannerLaunchRequest={() => setPlannerLaunchRequest(null)}
+                  coachLaunchRequest={coachLaunchRequest}
+                  onConsumeCoachLaunchRequest={() => setCoachLaunchRequest(null)}
+                  onAnalyzePlanInCoach={openAICoachAnalysis}
+                  onBusyChange={setIsAiCoachBusy}
+                />
+              </div>
             )}
 
             {activeTab === 'fitness' && <FitnessTab wellnessData={wellnessData} />}
@@ -879,7 +1010,7 @@ export default function App() {
           <div className="flex justify-around items-center h-14">
             <MobileTab icon={<CalendarIcon />} label="Kalendar" active={activeTab === 'calendar'} onClick={() => handleTabChange('calendar')} />
             <MobileTab icon={<Monitor />} label="Trenažer" live={isTrainerPlaying} active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
-            <MobileTab icon={<Sparkles />} label="AI Trener" active={activeTab === 'aiCoach'} onClick={() => handleTabChange('aiCoach')} />
+            <MobileTab icon={<Sparkles />} label="AI Trener" live={isAiCoachBusy} active={activeTab === 'aiCoach'} onClick={() => handleTabChange('aiCoach')} />
             <MobileTab icon={<ClipboardList />} label="Kondicija" active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
             <MobileTab icon={<MoreHorizontal />} label="Više" active={['library', 'profile', 'connections'].includes(activeTab) || isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
           </div>
@@ -956,6 +1087,16 @@ export default function App() {
           setAthleteProfile(updatedProfile);
         }}
         onComplete={handleOnboardingComplete}
+      />
+
+      {/* CRASH RECOVERY MODAL ZA NEZAVRŠENE TRENINGE (< 48H) */}
+      <WorkoutRecoveryModal
+        snapshot={pendingRecoverySession}
+        isOpen={showRecoveryModal}
+        onResume={handleResumeRecoveredWorkout}
+        onSaveAsFinished={handleSaveRecoveredWorkout}
+        onDiscard={handleDiscardRecoveredWorkout}
+        onDismissForNow={() => setShowRecoveryModal(false)}
       />
     </div>
   );

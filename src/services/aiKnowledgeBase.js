@@ -3,6 +3,8 @@
  * Ugrađena znanstvena i trenerska literatura + podrška za vlastite izvore korisnika (knjige, bilješke, protokoli).
  */
 
+import { compileCoachNotesPrompt } from './aiChatStorage';
+
 const STORAGE_KEY_CUSTOM_SOURCES = 'ergvibe_ai_custom_knowledge_v1';
 const STORAGE_KEY_DISABLED_MODULES = 'ergvibe_ai_disabled_modules_v1';
 
@@ -161,14 +163,19 @@ export function clearAllCustomKnowledgeSources() {
 }
 
 /**
- * Sastavlja aktivnu bazu znanja za Gemini sistemski prompt.
+ * Sastavlja aktivnu bazu znanja (+ lokalne bilješke trenera za korisnika) za Gemini sistemski prompt.
  */
-export function compileKnowledgeBasePrompt({ includeWorkoutSyntax = false } = {}) {
+export function compileKnowledgeBasePrompt({ includeWorkoutSyntax = false, userId = null } = {}) {
   const disabled = getDisabledModuleIds();
   const activeBuiltIn = BUILT_IN_KNOWLEDGE_MODULES.filter(m => !disabled.includes(m.id));
   const customSources = getCustomKnowledgeSources();
+  const coachNotesBlock = compileCoachNotesPrompt(userId);
 
   const sections = [];
+
+  if (coachNotesBlock) {
+    sections.push(coachNotesBlock);
+  }
 
   if (activeBuiltIn.length > 0) {
     sections.push('## ZNANSTVENA I TRENERSKA BAZA ZNANJA');

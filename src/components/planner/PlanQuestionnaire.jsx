@@ -16,7 +16,9 @@ import {
   getDefaultPlanStartDateIso,
   calculatePlanWeeksCount,
   summarizeWeeklySchedule,
-  formatShortHrDate
+  formatShortHrDate,
+  loadPlannerSchedule,
+  savePlannerSchedule
 } from '../../utils/plannerUtils';
 
 const EXPERIENCE_OPTIONS = [
@@ -77,6 +79,7 @@ const METHODOLOGY_OPTIONS = [
 export default function PlanQuestionnaire({
   initialPrefill = null,
   profile,
+  userId = null,
   wellnessData = {},
   intervalsConnected = false,
   isGenerating = false,
@@ -119,16 +122,12 @@ export default function PlanQuestionnaire({
   const [fitnessWeeks, setFitnessWeeks] = useState(8);
   const [startDate, setStartDate] = useState(defaultStart);
 
-  // Korak 2: Tjedni raspored
-  const [weeklySchedule, setWeeklySchedule] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('ergvibe_planner_schedule_v1') || 'null');
-      if (saved && typeof saved === 'object') return { ...DEFAULT_WEEKLY_SCHEDULE, ...saved };
-    } catch {
-      // ignore
-    }
-    return DEFAULT_WEEKLY_SCHEDULE;
-  });
+  // Korak 2: Tjedni raspored (odvojeno po korisniku)
+  const [weeklySchedule, setWeeklySchedule] = useState(() => loadPlannerSchedule(userId));
+
+  useEffect(() => {
+    setWeeklySchedule(loadPlannerSchedule(userId));
+  }, [userId]);
 
   // Korak 3: Profil & Fokus
   const [experience, setExperience] = useState(profile?.experience || '3-5');
@@ -280,11 +279,7 @@ export default function PlanQuestionnaire({
     }
     if (!validateStep1() || !validateStep2()) return;
 
-    try {
-      localStorage.setItem('ergvibe_planner_schedule_v1', JSON.stringify(weeklySchedule));
-    } catch {
-      // ignore
-    }
+    savePlannerSchedule(userId, weeklySchedule);
 
     onSubmit({
       goalMode,

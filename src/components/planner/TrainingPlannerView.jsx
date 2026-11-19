@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Calendar, Trophy, Flag, Sparkles, CheckCircle2, AlertTriangle,
   Trash2, RefreshCw, ChevronRight, Loader2, ExternalLink, Info,
   Layers, Activity, Clock, Zap, Check, Plus, Cloud, HardDrive,
-  MessageSquare, Send, X
+  MessageSquare, Send, X, SlidersHorizontal
 } from 'lucide-react';
 import {
   PHASE_META,
   WEEKDAY_DEFS,
+  DURATION_TIERS,
   DEFAULT_WEEKLY_SCHEDULE,
   chunkWeeksIntoBlocks,
   getLocalIsoToday,
@@ -18,7 +20,10 @@ import {
   getPlanStorageKey,
   loadSavedPlan,
   clearSavedPlan,
-  buildPlanAnalysisPrompt
+  buildPlanAnalysisPrompt,
+  summarizeWeeklySchedule,
+  PLAN_STORAGE_EVENT,
+  savePlannerSchedule
 } from '../../utils/plannerUtils';
 import {
   generateMacrocycleBlueprint,
@@ -75,6 +80,11 @@ export default function TrainingPlannerView({
   const [workoutFeedbackText, setWorkoutFeedbackText] = useState('');
   const [revisingWorkoutKey, setRevisingWorkoutKey] = useState(null);
 
+  // Weekly schedule editor (za prilagodbu dana/sati za iduće ili aktivni blok)
+  const [showScheduleEditor, setShowScheduleEditor] = useState(false);
+  const [draftSchedule, setDraftSchedule] = useState(null);
+  const [scheduleEditorError, setScheduleEditorError] = useState('');
+
   // Plan deletion state
   const [showDeletePlanConfirm, setShowDeletePlanConfirm] = useState(false);
   const [deleteAlsoCalendar, setDeleteAlsoCalendar] = useState(true);
@@ -102,6 +112,30 @@ export default function TrainingPlannerView({
     } else {
       setShowWizard(true);
     }
+  }, [userId]);
+
+  // Sinkroniziraj stanje ako je plan obrisan izvana (npr. direktno iz Kalendara dok je Planer ostao u pozadini)
+  useEffect(() => {
+    const handleExternalPlanChange = (e) => {
+      const targetUser = e?.detail?.userId || 'guest';
+      const currentUser = userId || 'guest';
+      if (targetUser !== currentUser) return;
+
+      const latest = loadSavedPlan(userId);
+      setSavedPlan(latest);
+      if (!latest?.blueprint) {
+        setActiveBlockKey('1-4');
+        setShowDeletePlanConfirm(false);
+        setShowBlockFeedbackBox(false);
+        setShowScheduleEditor(false);
+        setEditingWorkoutKey(null);
+        setSyncStatus(null);
+        setShowWizard(true);
+      }
+    };
+
+    window.addEventListener(PLAN_STORAGE_EVENT, handleExternalPlanChange);
+    return () => window.removeEventListener(PLAN_STORAGE_EVENT, handleExternalPlanChange);
   }, [userId]);
 
   useEffect(() => {
@@ -173,6 +207,13 @@ export default function TrainingPlannerView({
     if (!registryBlockKey) return null;
     return planRegistry.find(p => p.blockKey === registryBlockKey) || null;
   }, [planRegistry, registryBlockKey]);
+
+  const hasUnsyncedBlockChanges = useMemo(() => {
+    if (!activeSyncedRecord || !activeBlockData?.updatedAt || !activeSyncedRecord?.createdAt) {
+      return false;
+    }
+    return String(activeBlockData.updatedAt) > String(activeSyncedRecord.createdAt);
+  }, [activeSyncedRecord, activeBlockData?.updatedAt]);
 
   const syncedPlanBlocksForCurrentPlan = useMemo(() => {
     if (!blueprint?.planId) return [];
@@ -334,16 +375,19 @@ export default function TrainingPlannerView({
     }
   };
 
-  const handleGenerateBlock = async (blockMeta, blockFeedback = '') => {
+  const handleGenerateBlock = async (blockMeta, blockFeedback = '', options = {}) => {
     if (!blueprint || !blockMeta || isGeneratingBlock || revisingWorkoutKey) return;
     const trimmedFeedback = String(blockFeedback || '').trim();
+    const basePlan = options?.basePlanOverride || savedPlan;
+    const baseBlocks = basePlan?.blocks || generatedBlocks;
+    const activeQuestionnaire = basePlan?.questionnaire || questionnaire;
     setIsGeneratingBlock(true);
     setGenError(null);
     setSyncStatus(null);
 
     try {
-      const schedule = questionnaire?.weeklySchedule || DEFAULT_WEEKLY_SCHEDULE;
-      const minDate = questionnaire?.startDate || blueprint.startDate || todayIso;
+      const schedule = options?.scheduleOverride || activeQuestionnaire?.weeklySchedule || DEFAULT_WEEKLY_SCHEDULE;
+      const minDate = activeQuestionnaire?.startDate || blueprint.startDate || todayIso;
 
       const blockData = await generatePlanBlockWorkouts({
         blueprint,
@@ -351,10 +395,10 @@ export default function TrainingPlannerView({
         weekTo: blockMeta.weekTo,
         weeklySchedule: schedule,
         minWorkoutDate: minDate,
-        prioritizeCustomSources: Boolean(questionnaire?.prioritizeCustomSources),
-        notes: questionnaire?.notes || '',
+        prioritizeCustomSources: Boolean(activeQuestionnaire?.prioritizeCustomSources),
+        notes: activeQuestionnaire?.notes || '',
         blockFeedback: trimmedFeedback,
-        previousBlockData: trimmedFeedback ? generatedBlocks[blockMeta.key] || null : null,
+        previousBlockData: trimmedFeedback ? baseBlocks[blockMeta.key] || null : null,
         athleteProfile: profile,
         liveWorkouts: workouts,
         wellnessData,
@@ -362,37 +406,153 @@ export default function TrainingPlannerView({
         userId
       });
 
+      const nowIso = new Date().toISOString();
       const nextPlan = {
-        ...savedPlan,
+        ...basePlan,
         blocks: {
-          ...generatedBlocks,
-          [blockMeta.key]: blockData
+          ...baseBlocks,
+          [blockMeta.key]: {
+            ...blockData,
+            updatedAt: nowIso
+          }
         },
-        updatedAt: new Date().toISOString()
+        updatedAt: nowIso
       };
       persistPlan(nextPlan);
       setActiveBlockKey(blockMeta.key);
       setEditingWorkoutKey(null);
       setWorkoutFeedbackText('');
 
+      const isAlreadySynced = planRegistry.some(
+        p => p.blockKey === `${blueprint.planId}:${blockMeta.key}`
+      );
+
       if (trimmedFeedback) {
         setShowBlockFeedbackBox(false);
         setBlockFeedbackText('');
 
-        const isAlreadySynced = planRegistry.some(
-          p => p.blockKey === `${blueprint.planId}:${blockMeta.key}`
-        );
         setSyncStatus({
           type: isAlreadySynced ? 'warning' : 'success',
+          canQuickUpdate: isAlreadySynced,
           text: isAlreadySynced
-            ? `Blok ${blockMeta.blockIndex} je ažuriran prema komentaru. Napomena: stara verzija ovog bloka već je u kalendaru — ukloni je i ponovno dodaj blok kako bi se promjene prenijele.`
+            ? `Blok ${blockMeta.blockIndex} je ažuriran prema komentaru. Klikni "Ažuriraj blok u Kalendaru" da se nova verzija odmah prenese.`
             : `Blok ${blockMeta.blockIndex} je ažuriran prema tvom komentaru!`
+        });
+      } else if (isAlreadySynced) {
+        setSyncStatus({
+          type: 'warning',
+          canQuickUpdate: true,
+          text: `Blok ${blockMeta.blockIndex} je ponovno generiran. Klikni "Ažuriraj blok u Kalendaru" za zamjenu stare verzije.`
         });
       }
     } catch (err) {
       setGenError(err?.message || `Greška pri generiranju Bloka ${blockMeta.blockIndex}.`);
     } finally {
       setIsGeneratingBlock(false);
+    }
+  };
+
+  const openScheduleEditor = () => {
+    const current = questionnaire?.weeklySchedule || DEFAULT_WEEKLY_SCHEDULE;
+    const cloned = {};
+    WEEKDAY_DEFS.forEach((d) => {
+      cloned[d.key] = {
+        enabled: Boolean(current[d.key]?.enabled),
+        minutes: Number(current[d.key]?.minutes) || 60
+      };
+    });
+    setDraftSchedule(cloned);
+    setScheduleEditorError('');
+    setShowScheduleEditor(true);
+  };
+
+  const toggleDraftDay = (dayKey) => {
+    setDraftSchedule((prev) => ({
+      ...prev,
+      [dayKey]: {
+        ...(prev?.[dayKey] || { enabled: false, minutes: 60 }),
+        enabled: !prev?.[dayKey]?.enabled
+      }
+    }));
+    setScheduleEditorError('');
+  };
+
+  const setDraftDayMinutes = (dayKey, minutes) => {
+    setDraftSchedule((prev) => ({
+      ...prev,
+      [dayKey]: {
+        enabled: true,
+        minutes
+      }
+    }));
+    setScheduleEditorError('');
+  };
+
+  const applyDraftSchedulePreset = (preset) => {
+    const presets = {
+      '3x': {
+        mon: { enabled: false, minutes: 60 },
+        tue: { enabled: true, minutes: 60 },
+        wed: { enabled: false, minutes: 60 },
+        thu: { enabled: true, minutes: 60 },
+        fri: { enabled: false, minutes: 45 },
+        sat: { enabled: true, minutes: 135 },
+        sun: { enabled: false, minutes: 90 }
+      },
+      '4x': { ...DEFAULT_WEEKLY_SCHEDULE },
+      '5x': {
+        mon: { enabled: false, minutes: 60 },
+        tue: { enabled: true, minutes: 60 },
+        wed: { enabled: true, minutes: 60 },
+        thu: { enabled: true, minutes: 90 },
+        fri: { enabled: false, minutes: 45 },
+        sat: { enabled: true, minutes: 135 },
+        sun: { enabled: true, minutes: 90 }
+      }
+    };
+    if (presets[preset]) {
+      setDraftSchedule(presets[preset]);
+      setScheduleEditorError('');
+    }
+  };
+
+  const handleSaveSchedule = async ({ regenerateActiveBlock = false } = {}) => {
+    if (!draftSchedule || !savedPlan) return;
+    const summary = summarizeWeeklySchedule(draftSchedule);
+    if (summary.workoutsPerWeek === 0) {
+      setScheduleEditorError('Označi barem jedan dan u tjednu kad možeš trenirati.');
+      return;
+    }
+
+    const nextPlan = {
+      ...savedPlan,
+      questionnaire: {
+        ...(savedPlan.questionnaire || {}),
+        weeklySchedule: draftSchedule,
+        hoursPerWeek: summary.hoursPerWeek,
+        workoutsPerWeek: summary.workoutsPerWeek
+      },
+      updatedAt: new Date().toISOString()
+    };
+
+    persistPlan(nextPlan);
+    savePlannerSchedule(userId, draftSchedule);
+    if (setProfile) {
+      setProfile((prev) => ({ ...prev, hoursPerWeek: summary.hoursPerWeek }));
+    }
+    setShowScheduleEditor(false);
+    setScheduleEditorError('');
+
+    if (regenerateActiveBlock && activeBlockMeta) {
+      await handleGenerateBlock(activeBlockMeta, '', {
+        scheduleOverride: draftSchedule,
+        basePlanOverride: nextPlan
+      });
+    } else {
+      setSyncStatus({
+        type: 'success',
+        text: `Tjedni raspored je spremljen (${summary.workoutsPerWeek}× tj., ~${summary.hoursPerWeek} h/tj.). Primijenit će se na sve nove ili regenerirane blokove.`
+      });
     }
   };
 
@@ -412,7 +572,8 @@ export default function TrainingPlannerView({
       const inferredDayKey = workout.dayKey || (
         workout.date ? dayKeysByJsDay[new Date(`${workout.date}T12:00:00`).getDay()] : null
       );
-      const dayMaxMinutes = Number(schedule[inferredDayKey]?.maxMinutes) || Number(workout.durationMinutes) || 60;
+      const scheduledMins = Number(schedule[inferredDayKey]?.minutes ?? schedule[inferredDayKey]?.maxMinutes) || 0;
+      const dayMaxMinutes = Math.max(scheduledMins, Number(workout.durationMinutes) || 0) || 60;
 
       const revisedWorkout = await reviseSinglePlanWorkout({
         blueprint,
@@ -448,16 +609,18 @@ export default function TrainingPlannerView({
         };
       });
 
+      const nowIso = new Date().toISOString();
       const nextPlan = {
         ...savedPlan,
         blocks: {
           ...generatedBlocks,
           [activeBlockMeta.key]: {
             ...currentBlockData,
-            weeks: updatedWeeks
+            weeks: updatedWeeks,
+            updatedAt: nowIso
           }
         },
-        updatedAt: new Date().toISOString()
+        updatedAt: nowIso
       };
 
       persistPlan(nextPlan);
@@ -469,8 +632,9 @@ export default function TrainingPlannerView({
       );
       setSyncStatus({
         type: isAlreadySynced ? 'warning' : 'success',
+        canQuickUpdate: isAlreadySynced,
         text: isAlreadySynced
-          ? `Trening "${revisedWorkout.title}" (${formatShortHrDate(revisedWorkout.date)}) je zamijenjen u planu. Kako je ovaj blok već u kalendaru, dodaj novi trening na taj dan ili ponovno sinkroniziraj blok.`
+          ? `Trening "${revisedWorkout.title}" (${formatShortHrDate(revisedWorkout.date)}) je zamijenjen u planu. Klikni "Ažuriraj blok u Kalendaru" da se izmjena odmah prenese.`
           : `Trening za ${formatShortHrDate(revisedWorkout.date)} je ažuriran: "${revisedWorkout.title}".`
       });
     } catch (err) {
@@ -516,14 +680,30 @@ export default function TrainingPlannerView({
     });
   };
 
-  const handleSyncActiveBlock = async () => {
+  const handleSyncActiveBlock = async ({ replaceCurrentSynced = false } = {}) => {
     if (!activeBlockData || !activeBlockMeta || !blueprint || !onCreatePlanBatch) return;
 
     setSyncStatus(null);
 
     try {
-      // Ako je odabrana zamjena prethodnih AI blokova koji se preklapaju
-      if (collisionMode === 'replace' && overlappingRegistryBlocks.length > 0 && onDeletePlanBlock) {
+      // 1-klik ažuriranje već sinkroniziranog bloka: prvo ukloni staru verziju istog bloka
+      if (replaceCurrentSynced && activeSyncedRecord && onDeletePlanBlock) {
+        const oldTotal = Math.max(1, (activeSyncedRecord.localIds?.length || 0) + (activeSyncedRecord.intervalsIds?.length || 0));
+        setSyncProgress({
+          mode: 'delete',
+          done: 0,
+          total: oldTotal,
+          message: `Uklanjanje stare verzije Bloka ${activeBlockMeta.blockIndex}...`
+        });
+        await onDeletePlanBlock(activeSyncedRecord.blockKey, {
+          onProgress: createProgressHandler(
+            'delete',
+            oldTotal,
+            ({ done, total }) => `Uklanjanje stare verzije bloka (${done}/${total})...`
+          )
+        });
+      } else if (collisionMode === 'replace' && overlappingRegistryBlocks.length > 0 && onDeletePlanBlock) {
+        // Ako je odabrana zamjena prethodnih AI blokova koji se preklapaju
         for (const oldBlock of overlappingRegistryBlocks) {
           const oldTotal = Math.max(1, (oldBlock.localIds?.length || 0) + (oldBlock.intervalsIds?.length || 0));
           setSyncProgress({
@@ -544,7 +724,7 @@ export default function TrainingPlannerView({
 
       const occupiedDates = new Set(collidingDates);
       const workoutsToSync = activeBlockWorkouts.filter(w => {
-        if (collisionMode === 'skip' && occupiedDates.has(w.date)) return false;
+        if (!replaceCurrentSynced && collisionMode === 'skip' && occupiedDates.has(w.date)) return false;
         return true;
       });
 
@@ -564,14 +744,15 @@ export default function TrainingPlannerView({
         })
       );
 
-      if (includeTargetEventInSync && blueprint.goalMode === 'event' && !isEventInCalendar) {
-        const racePayload = buildRaceEventPayload();
-        if (racePayload) {
-          workoutPayloads.push(racePayload);
-        }
-      }
+      const shouldAddRaceEventSeparately = Boolean(
+        !replaceCurrentSynced &&
+        includeTargetEventInSync &&
+        blueprint.goalMode === 'event' &&
+        !isEventInCalendar &&
+        onAddWorkoutToCalendar
+      );
 
-      if (workoutPayloads.length === 0) {
+      if (workoutPayloads.length === 0 && !shouldAddRaceEventSeparately) {
         setSyncStatus({
           type: 'warning',
           text: 'Svi datumi ovog bloka već su zauzeti postojećim treninzima pa ništa nije dodano. Odaberi "Dodaj uz postojeće" ili oslobodi dane u kalendaru.'
@@ -581,65 +762,82 @@ export default function TrainingPlannerView({
       }
 
       const useIntervals = Boolean(intervalsConnected && syncToIntervals);
-      setSyncProgress({
-        mode: 'add',
-        done: 0,
-        total: workoutPayloads.length,
-        message: useIntervals
-          ? `Sinkronizacija s Kalendarom i Intervals.icu (0/${workoutPayloads.length})...`
-          : `Spremanje treninga u ErgVibe Kalendar...`
-      });
+      let result = { total: 0, intervalsCount: 0, localCount: 0, errors: [] };
 
-      const firstWorkoutDate = workoutsToSync
-        .map(w => w.date)
-        .filter(Boolean)
-        .sort()[0] || activeBlockDateRange.start;
+      if (workoutPayloads.length > 0) {
+        setSyncProgress({
+          mode: 'add',
+          done: 0,
+          total: workoutPayloads.length,
+          message: useIntervals
+            ? `Sinkronizacija s Kalendarom i Intervals.icu (0/${workoutPayloads.length})...`
+            : `Spremanje treninga u ErgVibe Kalendar...`
+        });
 
-      const result = await onCreatePlanBatch(workoutPayloads, {
-        planId: blueprint.planId,
-        blockKey: registryBlockKey,
-        blockTitle: `${blueprint.planTitle} • Blok ${activeBlockMeta.blockIndex} (Tj. ${activeBlockMeta.weekFrom}–${activeBlockMeta.weekTo})`,
-        planTitle: blueprint.planTitle,
-        planStartDate: blueprint.startDate || questionnaire?.startDate || activeBlockDateRange.start,
-        methodology: blueprint.recommendedMethodology || '',
-        totalWeeks: blueprint.totalWeeks || null,
-        blockIndex: activeBlockMeta.blockIndex,
-        firstWorkoutDate,
-        goalTitle: blueprint.goalTitle || '',
-        eventDate: blueprint.eventDate || '',
-        startDate: activeBlockDateRange.start,
-        endDate: activeBlockDateRange.end,
-        syncToIntervals: useIntervals,
-        onProgress: createProgressHandler(
-          'add',
-          workoutPayloads.length,
-          ({ done, total, currentName }) => {
-            const label = currentName ? `: ${currentName}` : '';
-            return useIntervals
-              ? `Slanje na Intervals.icu (${done}/${total})${label}`
-              : `Spremanje u kalendar (${done}/${total})${label}`;
-          }
-        )
-      });
+        const firstWorkoutDate = workoutsToSync
+          .map(w => w.date)
+          .filter(Boolean)
+          .sort()[0] || activeBlockDateRange.start;
+
+        result = await onCreatePlanBatch(workoutPayloads, {
+          planId: blueprint.planId,
+          blockKey: registryBlockKey,
+          blockTitle: `${blueprint.planTitle} • Blok ${activeBlockMeta.blockIndex} (Tj. ${activeBlockMeta.weekFrom}–${activeBlockMeta.weekTo})`,
+          planTitle: blueprint.planTitle,
+          planStartDate: blueprint.startDate || questionnaire?.startDate || activeBlockDateRange.start,
+          methodology: blueprint.recommendedMethodology || '',
+          totalWeeks: blueprint.totalWeeks || null,
+          blockIndex: activeBlockMeta.blockIndex,
+          firstWorkoutDate,
+          goalTitle: blueprint.goalTitle || '',
+          eventDate: blueprint.eventDate || '',
+          startDate: activeBlockDateRange.start,
+          endDate: activeBlockDateRange.end,
+          syncToIntervals: useIntervals,
+          onProgress: createProgressHandler(
+            'add',
+            workoutPayloads.length,
+            ({ done, total, currentName }) => {
+              const label = currentName ? `: ${currentName}` : '';
+              return useIntervals
+                ? `Slanje na Intervals.icu (${done}/${total})${label}`
+                : `Spremanje u kalendar (${done}/${total})${label}`;
+            }
+          )
+        });
+      }
+
+      // Ciljni event (utrka) dodaje se ZASEBNO od bloka tako da brisanje/ažuriranje Bloka 1 nikada ne obriše samu utrku!
+      let raceEventAdded = false;
+      if (shouldAddRaceEventSeparately) {
+        const racePayload = buildRaceEventPayload();
+        if (racePayload) {
+          const raceRes = await onAddWorkoutToCalendar(racePayload, { syncToIntervals: useIntervals });
+          raceEventAdded = Boolean(raceRes?.success);
+        }
+      }
 
       setSyncProgress(null);
+
+      const raceNote = raceEventAdded ? ' + ciljni event dodan zasebno' : '';
+      const actionVerb = replaceCurrentSynced ? 'Ažurirano' : 'Dodano';
 
       if (result.errors?.length > 0 && result.intervalsCount === 0 && useIntervals) {
         setSyncStatus({
           type: 'warning',
-          text: `${result.total} treninga spremljeno lokalno, ali Intervals.icu sinkronizacija je javila grešku (${result.errors[0]?.error || 'API greška'}).`,
+          text: `${result.total} treninga spremljeno lokalno${raceNote}, ali Intervals.icu sinkronizacija je javila grešku (${result.errors[0]?.error || 'API greška'}).`,
           targetDate: activeBlockDateRange.start
         });
       } else if (useIntervals) {
         setSyncStatus({
           type: 'success',
-          text: `Dodano ${result.total} stavki u Kalendar (${result.intervalsCount} sinkronizirano na Intervals.icu).`,
+          text: `${actionVerb} ${result.total} treninga u Kalendar (${result.intervalsCount} sinkronizirano na Intervals.icu${raceNote}).`,
           targetDate: activeBlockDateRange.start
         });
       } else {
         setSyncStatus({
           type: 'success',
-          text: `Dodano ${result.total} stavki u lokalni ErgVibe Kalendar.`,
+          text: `${actionVerb} ${result.total} treninga u lokalni ErgVibe Kalendar${raceNote}.`,
           targetDate: activeBlockDateRange.start
         });
       }
@@ -651,6 +849,8 @@ export default function TrainingPlannerView({
       });
     }
   };
+
+  const handleUpdateSyncedBlock = () => handleSyncActiveBlock({ replaceCurrentSynced: true });
 
   const handleRemoveSyncedBlock = async () => {
     if (!activeSyncedRecord || !onDeletePlanBlock) return;
@@ -813,6 +1013,7 @@ export default function TrainingPlannerView({
         <PlanQuestionnaire
           initialPrefill={initialPrefill}
           profile={profile}
+          userId={userId}
           wellnessData={wellnessData}
           intervalsConnected={intervalsConnected}
           isGenerating={isGenerating}
@@ -1103,25 +1304,223 @@ export default function TrainingPlannerView({
               })}
             </div>
 
-            {questionnaire?.weeklySchedule && (
-              <div className="text-[11px] text-zinc-500 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-zinc-400" />
-                <span>
-                  Aktivni dani:{' '}
-                  {WEEKDAY_DEFS.filter(d => questionnaire.weeklySchedule[d.key]?.enabled)
-                    .map(d => d.short)
-                    .join(', ')}
-                </span>
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {questionnaire?.weeklySchedule && (
+                <div className="text-[11px] text-zinc-400 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>
+                    Aktivni dani:{' '}
+                    <strong className="text-zinc-200">
+                      {WEEKDAY_DEFS.filter(d => questionnaire.weeklySchedule[d.key]?.enabled)
+                        .map(d => d.short)
+                        .join(', ')}
+                    </strong>
+                  </span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                disabled={isGeneratingBlock || isSyncBusy || Boolean(revisingWorkoutKey) || isDeletingPlan}
+                onClick={() => {
+                  if (showScheduleEditor) {
+                    setShowScheduleEditor(false);
+                  } else {
+                    openScheduleEditor();
+                  }
+                }}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-colors disabled:opacity-50 ${
+                  showScheduleEditor
+                    ? 'bg-volt-400/15 text-volt-300 border-volt-400/40'
+                    : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-volt-300 border-zinc-800 hover:border-zinc-700'
+                }`}
+                title="Prilagodi slobodne dane i trajanje po danu za iduće ili aktivni blok"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Uredi dane / sate</span>
+              </button>
+            </div>
           </div>
         )}
+
+        {/* INLINE UREĐIVAČ TJEDNOG RASPOREDA (za buduće ili regenerirane blokove) */}
+        {showScheduleEditor && draftSchedule && (() => {
+          const draftSummary = summarizeWeeklySchedule(draftSchedule);
+          return (
+            <div className="bg-zinc-900/95 border border-volt-400/35 rounded-2xl p-4 sm:p-5 space-y-4 animate-in fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2">
+                    <SlidersHorizontal className="w-4 h-4 text-volt-400" />
+                    Prilagodba tjednog rasporeda
+                  </h4>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Promijeni slobodne dane ili dostupno vrijeme po danu — novi raspored vrijedi za sve buduće blokove bez izrade novog makrociklusa.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-[10px] font-mono text-zinc-500 uppercase mr-1">Brzo:</span>
+                  {[
+                    { id: '3x', label: '3× tj.' },
+                    { id: '4x', label: '4× tj.' },
+                    { id: '5x', label: '5× tj.' }
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => applyDraftSchedulePreset(p.id)}
+                      className="px-2.5 py-1 rounded bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-mono font-bold text-zinc-300 hover:text-volt-400 transition-colors"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setShowScheduleEditor(false)}
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 ml-1"
+                    title="Zatvori"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+                {WEEKDAY_DEFS.map((day) => {
+                  const cfg = draftSchedule[day.key] || { enabled: false, minutes: 60 };
+                  return (
+                    <div
+                      key={day.key}
+                      className={`rounded-xl border p-2.5 flex flex-col gap-2 transition-all ${
+                        cfg.enabled
+                          ? 'bg-zinc-950 border-volt-400/45'
+                          : 'bg-zinc-950/50 border-zinc-800/80 opacity-65 hover:opacity-90'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleDraftDay(day.key)}
+                        className="flex md:flex-col items-center justify-between md:justify-center gap-1 w-full text-left md:text-center"
+                      >
+                        <span className={`font-display font-bold uppercase tracking-wider text-xs ${
+                          cfg.enabled ? 'text-volt-400' : 'text-zinc-400'
+                        }`}>
+                          {day.short}
+                        </span>
+                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+                          cfg.enabled
+                            ? 'bg-volt-400/15 text-volt-300 border-volt-400/30'
+                            : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                        }`}>
+                          {cfg.enabled ? 'TRENING' : 'ODMOR'}
+                        </span>
+                      </button>
+
+                      {cfg.enabled && (
+                        <div className="flex flex-row md:flex-col gap-1 pt-1 border-t border-zinc-800/80 flex-wrap">
+                          {DURATION_TIERS.map((tier) => {
+                            const isSelected = cfg.minutes === tier.minutes;
+                            return (
+                              <button
+                                key={tier.id}
+                                type="button"
+                                onClick={() => setDraftDayMinutes(day.key, tier.minutes)}
+                                title={tier.desc}
+                                className={`flex-1 md:flex-none px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all border ${
+                                  isSelected
+                                    ? 'bg-volt-400 text-zinc-950 border-volt-400'
+                                    : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700 hover:text-zinc-200'
+                                }`}
+                              >
+                                {tier.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {scheduleEditorError && (
+                <div className="text-xs text-rose-300 font-semibold flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                  <span>{scheduleEditorError}</span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-zinc-800/80">
+                <div className="font-mono text-xs text-zinc-300 telemetry-num">
+                  Novi raspored: <strong className="text-volt-400">{draftSummary.workoutsPerWeek}× tj.</strong> · ~<strong className="text-zinc-100">{draftSummary.hoursPerWeek} h</strong> tjedno
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowScheduleEditor(false)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-950 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 transition-colors"
+                  >
+                    Odustani
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveSchedule({ regenerateActiveBlock: false })}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-colors"
+                  >
+                    Spremi raspored
+                  </button>
+                  {activeBlockMeta && activeBlockData && (
+                    <button
+                      type="button"
+                      disabled={isGeneratingBlock}
+                      onClick={() => handleSaveSchedule({ regenerateActiveBlock: true })}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-volt-400 hover:bg-volt-300 text-zinc-950 transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingBlock ? 'animate-spin' : ''}`} />
+                      Spremi i regeneriraj Blok {activeBlockMeta.blockIndex}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Global Error Banner */}
         {genError && (
           <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-sm text-rose-200 flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
             <span>{genError}</span>
+          </div>
+        )}
+
+        {/* Obavijest o statusu kad je odabran još negenerirani blok (npr. nakon spremanja novog rasporeda) */}
+        {activeBlockMeta && !activeBlockData && syncStatus && (
+          <div className={`p-3 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-3 ${
+            syncStatus.type === 'success'
+              ? 'bg-emerald-950/40 border-emerald-500/35 text-emerald-200'
+              : syncStatus.type === 'warning'
+              ? 'bg-amber-950/40 border-amber-500/35 text-amber-200'
+              : 'bg-rose-950/40 border-rose-500/35 text-rose-200'
+          }`}>
+            <div className="flex items-center gap-2">
+              {syncStatus.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+              )}
+              <span>{syncStatus.text}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSyncStatus(null)}
+              className="text-zinc-400 hover:text-zinc-100 p-0.5"
+              title="Zatvori"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 
@@ -1199,10 +1598,16 @@ export default function TrainingPlannerView({
                     <h3 className="text-sm sm:text-base font-bold text-white">
                       Sinkronizacija Bloka {activeBlockMeta.blockIndex} (Tjedni {activeBlockMeta.weekFrom}–{activeBlockMeta.weekTo})
                     </h3>
-                    {activeSyncedRecord && (
+                    {activeSyncedRecord && !hasUnsyncedBlockChanges && (
                       <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                         <CheckCircle2 className="w-3 h-3" />
                         Sinkronizirano
+                      </span>
+                    )}
+                    {activeSyncedRecord && hasUnsyncedBlockChanges && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/35">
+                        <AlertTriangle className="w-3 h-3" />
+                        Izmjene čekaju ažuriranje
                       </span>
                     )}
                   </div>
@@ -1235,20 +1640,33 @@ export default function TrainingPlannerView({
                   )}
 
                   {activeSyncedRecord ? (
-                    <button
-                      type="button"
-                      disabled={isSyncBusy}
-                      onClick={handleRemoveSyncedBlock}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition-colors disabled:opacity-50"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Ukloni blok iz Kalendara{activeSyncedRecord.intervalsIds?.length > 0 ? ' & Intervals.icu' : ''}
-                    </button>
+                    <>
+                      {hasUnsyncedBlockChanges && (
+                        <button
+                          type="button"
+                          disabled={isSyncBusy || isGeneratingBlock || Boolean(revisingWorkoutKey)}
+                          onClick={handleUpdateSyncedBlock}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black bg-volt-400 hover:bg-volt-300 text-zinc-950 transition-all shadow-lg shadow-volt-400/20 disabled:opacity-50"
+                        >
+                          {isSyncBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                          Ažuriraj blok u Kalendaru
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={isSyncBusy}
+                        onClick={handleRemoveSyncedBlock}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Ukloni blok iz Kalendara{activeSyncedRecord.intervalsIds?.length > 0 ? ' & Intervals.icu' : ''}
+                      </button>
+                    </>
                   ) : (
                     <button
                       type="button"
                       disabled={isSyncBusy || activeBlockWorkouts.length === 0}
-                      onClick={handleSyncActiveBlock}
+                      onClick={() => handleSyncActiveBlock()}
                       className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black bg-volt-400 hover:bg-volt-300 text-zinc-950 transition-all shadow-lg shadow-volt-400/15 disabled:opacity-50"
                     >
                       {isSyncBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
@@ -1478,16 +1896,29 @@ export default function TrainingPlannerView({
                     )}
                     <span>{syncStatus.text}</span>
                   </div>
-                  {syncStatus.targetDate && onNavigateToCalendar && (
-                    <button
-                      type="button"
-                      onClick={() => onNavigateToCalendar(getMondayOfWeekIso(syncStatus.targetDate))}
-                      className="inline-flex items-center gap-1 font-bold underline hover:text-white"
-                    >
-                      Pogledaj u Kalendaru
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {syncStatus.canQuickUpdate && activeSyncedRecord && (
+                      <button
+                        type="button"
+                        disabled={isSyncBusy || isGeneratingBlock}
+                        onClick={handleUpdateSyncedBlock}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-bold transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Ažuriraj blok u Kalendaru
+                      </button>
+                    )}
+                    {syncStatus.targetDate && onNavigateToCalendar && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigateToCalendar(getMondayOfWeekIso(syncStatus.targetDate))}
+                        className="inline-flex items-center gap-1 font-bold underline hover:text-white"
+                      >
+                        Pogledaj u Kalendaru
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1700,10 +2131,10 @@ export default function TrainingPlannerView({
         )}
       </div>
 
-      {/* Modal za potvrdu brisanja cijelog plana */}
-      {showDeletePlanConfirm && blueprint && (
+      {/* Modal za potvrdu brisanja cijelog plana (portal iznad zaglavlja i mobilne navigacije) */}
+      {showDeletePlanConfirm && blueprint && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
+          className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in"
           onClick={() => !isDeletingPlan && setShowDeletePlanConfirm(false)}
         >
           <div
@@ -1806,7 +2237,8 @@ export default function TrainingPlannerView({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
