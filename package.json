@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "import:workouts": "node scripts/import-local-workouts.mjs",
     "import:workouts:commit": "node scripts/import-local-workouts.mjs --commit",
+    "recalc:difficulty": "node scripts/recalculate-difficulty.mjs",
+    "recalc:difficulty:commit": "node scripts/recalculate-difficulty.mjs --commit",
     "build:history": "node scripts/build-historical-json.cjs"
   },
   "dependencies": {

@@ -44,10 +44,12 @@ export function calculateCogganMetrics(powerArray, ftp) {
   }
   
   // Ako imamo manje od 30 sekundi, koristimo što imamo
+  let windowCount = powerArray.length;
   if (powerArray.length < windowSize) {
     const avg = currentWindowSum / powerArray.length;
     sumPwr4 = Math.pow(avg, 4) * powerArray.length;
   } else {
+    windowCount = powerArray.length - windowSize + 1;
     // Dodaj prvi puni prozor
     const avg30 = currentWindowSum / windowSize;
     sumPwr4 += Math.pow(avg30, 4);
@@ -68,7 +70,7 @@ export function calculateCogganMetrics(powerArray, ftp) {
   
   // Zaštita od dijeljenja s nulom
   let avgPower = powerArray.length > 0 ? Math.round(totalWorkJ / powerArray.length) : 0;
-  let np = powerArray.length > 0 ? Math.round(Math.pow(sumPwr4 / powerArray.length, 0.25)) : 0;
+  let np = windowCount > 0 ? Math.round(Math.pow(sumPwr4 / windowCount, 0.25)) : 0;
   
   // Zaštita od dijeljenja s nulom i Infinity
   let IF = (validFtp > 0 && np > 0) ? (np / validFtp) : 0;
@@ -135,10 +137,12 @@ export function expandStepsToSeconds(steps, ftp) {
       if (r) { pMin = r[0]; pMax = r[1]; }
     }
     const hasRamp = !!(step.ramp || (step.power && step.power.ramp));
+    const rStart = step.rampStart != null && Number(step.rampStart) > 0 ? Number(step.rampStart) : pMin;
+    const rEnd = step.rampEnd != null && Number(step.rampEnd) > 0 ? Number(step.rampEnd) : pMax;
 
-    if (hasRamp && pMin != null && pMax != null && pMin !== pMax && durSec > 1) {
-      const startW = toWatts(pMin);
-      const endW = toWatts(pMax);
+    if (hasRamp && rStart != null && rEnd != null && rStart !== rEnd && durSec > 1) {
+      const startW = toWatts(rStart);
+      const endW = toWatts(rEnd);
       for (let i = 0; i < durSec; i++) {
         result.push(startW + ((endW - startW) * i) / (durSec - 1));
       }

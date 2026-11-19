@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare, Sparkles, Search, Star, Timer, Target, Compass, Flame, Filter } from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/performanceMetrics';
-import { parseWorkoutFile, normalizeCategory, CANONICAL_CATEGORIES } from '../utils/workoutParser';
+import { parseWorkoutFile, normalizeCategory, CANONICAL_CATEGORIES, calculateCategoryDifficulty } from '../utils/workoutParser';
 import { calculateCogganMetrics, expandStepsToSeconds } from '../utils/performanceMetrics';
 import { generateLocalWorkout } from '../utils/workoutGenerator';
 import { stepsToIntervalsCode } from './ai/AIMarkdown';
@@ -192,7 +192,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
         title: selectedDetailWorkout.title,
         description: selectedDetailWorkout.description || '',
         duration_seconds: selectedDetailWorkout.duration_seconds,
-        difficulty_score: selectedDetailWorkout.difficulty_score || 50,
+        difficulty_score: selectedDetailWorkout.difficulty_score ?? 1.0,
         category: selectedDetailWorkout.category,
         steps: selectedDetailWorkout.steps
       };
@@ -319,7 +319,17 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
   const handleUpdateWorkout = async () => {
     if (!editingWorkoutId || !editTitle.trim()) return;
     try {
-      const { error } = await supabase.from('workouts').update({ title: editTitle.trim(), category: normalizeCategory(editCategory) }).eq('id', editingWorkoutId);
+      const nextCategory = normalizeCategory(editCategory);
+      const targetWorkout = workouts.find(w => w.id === editingWorkoutId);
+      const updatePayload = {
+        title: editTitle.trim(),
+        category: nextCategory
+      };
+      if (targetWorkout && Array.isArray(targetWorkout.steps) && targetWorkout.steps.length > 0) {
+        updatePayload.difficulty_score = calculateCategoryDifficulty(targetWorkout.steps, nextCategory);
+      }
+
+      const { error } = await supabase.from('workouts').update(updatePayload).eq('id', editingWorkoutId);
       if (error) throw error;
       setEditingWorkoutId(null);
       await fetchWorkouts();

@@ -447,14 +447,21 @@ export const parseIntervalsCode = (code, ftp = 200) => {
 
     const isRamp = /\bramp\b/i.test(cleanLine);
 
+    let rampStart = null, rampEnd = null;
     if (pRangeMatch) {
-      powerMin = Math.round(parseFloat(pRangeMatch[1]));
-      powerMax = Math.round(parseFloat(pRangeMatch[2]));
+      const p1 = Math.round(parseFloat(pRangeMatch[1]));
+      const p2 = Math.round(parseFloat(pRangeMatch[2]));
+      powerMin = Math.min(p1, p2);
+      powerMax = Math.max(p1, p2);
       powerAvg = Math.round((powerMin + powerMax) / 2);
+      if (isRamp && p1 !== p2) { rampStart = p1; rampEnd = p2; }
     } else if (wRangeMatch) {
-      powerMin = Math.round((parseInt(wRangeMatch[1], 10) / validFtp) * 100);
-      powerMax = Math.round((parseInt(wRangeMatch[2], 10) / validFtp) * 100);
+      const p1 = Math.round((parseInt(wRangeMatch[1], 10) / validFtp) * 100);
+      const p2 = Math.round((parseInt(wRangeMatch[2], 10) / validFtp) * 100);
+      powerMin = Math.min(p1, p2);
+      powerMax = Math.max(p1, p2);
       powerAvg = Math.round((powerMin + powerMax) / 2);
+      if (isRamp && p1 !== p2) { rampStart = p1; rampEnd = p2; }
     } else if (pMatch) {
       powerMin = Math.round(parseFloat(pMatch[1]));
       powerMax = powerMin;
@@ -474,7 +481,8 @@ export const parseIntervalsCode = (code, ftp = 200) => {
         powerMax: powerMax > 0 ? powerMax : 55,
         power: powerAvg > 0 ? powerAvg : 55,
         isRange,
-        ramp: isRamp
+        ramp: isRamp,
+        ...(rampStart != null && rampEnd != null ? { rampStart, rampEnd } : {})
       };
 
       if (activeRepeatCount > 1) {
@@ -512,10 +520,35 @@ export async function parseWorkoutFile(fileText, fileName) {
   return parsedWorkout;
 }
 
+function expandRampsForCategorization(steps) {
+  const out = [];
+  for (const s of steps) {
+    if (!s) continue;
+    const dur = s.duration || 0;
+    const isRamp = !!(s.ramp || (s.power && s.power.ramp));
+    const rStart = s.rampStart != null ? Number(s.rampStart) : (s.powerMin != null ? Number(s.powerMin) : null);
+    const rEnd = s.rampEnd != null ? Number(s.rampEnd) : (s.powerMax != null ? Number(s.powerMax) : null);
+    if (isRamp && rStart != null && rEnd != null && Math.abs(rEnd - rStart) >= 5 && dur >= 60) {
+      const slices = Math.min(12, Math.max(4, Math.round(dur / 60)));
+      let used = 0;
+      for (let i = 0; i < slices; i++) {
+        const d = i === slices - 1 ? dur - used : Math.round(dur / slices);
+        used += d;
+        const p = Math.round(rStart + (rEnd - rStart) * ((i + 0.5) / slices));
+        if (d > 0) out.push({ duration: d, power: p });
+      }
+    } else {
+      out.push(s);
+    }
+  }
+  return out;
+}
+
 export function categorizeWorkout(steps) {
   if (!steps || steps.length === 0) return 'Ostalo';
 
-  const totalDur = steps.reduce((sum, s) => sum + (s.duration || 0), 0);
+  const expandedSteps = expandRampsForCategorization(steps);
+  const totalDur = expandedSteps.reduce((sum, s) => sum + (s.duration || 0), 0);
   if (totalDur === 0) return 'Ostalo';
 
   // 1. Prepoznavanje čistih Oporavak (Active Recovery) vožnji:
@@ -523,7 +556,7 @@ export function categorizeWorkout(steps) {
   let z1Dur = 0;
   let highDur = 0;
   let weightedSum = 0;
-  steps.forEach(s => {
+  expandedSteps.forEach(s => {
     const p = s.power || 0;
     const d = s.duration || 0;
     weightedSum += p * d;
@@ -535,20 +568,60 @@ export function categorizeWorkout(steps) {
     return 'Oporavak';
   }
 
-  // 2. Kontinuirani Over-Under / Criss-Cross blokovi (>= 150s bez pada ispod 76%):
-  // ako bazni rad (76-106%) čini >= 65% bloka, a surgeovi iznad praga traju <= 60s,
-  // bodujemo blok prema efektivnom prosječnom intenzitetu umjesto da ga kratki šprintevi gurnu u Anaerobni.
+  // 2. Kontinuirani Over-Under / Criss-Cross blokovi (>= 150s bez pada ispod 76%)
+  //    + VO2 Max mikro-intervalne serije (npr. Rønnestad 30/15, 40/20, 30/30 na 115-132% s kratkim odmorom)
   const effectiveSteps = [];
   let idx = 0;
-  while (idx < steps.length) {
-    if ((steps[idx].power || 0) >= 76) {
+  while (idx < expandedSteps.length) {
+    // 2a. Provjera VO2 Max mikro-intervalne serije (>= 5 uzastopnih ON/OFF parova)
+    const isMicroOn = (st) => {
+      const d = st?.duration || 0;
+      const p = st?.power || 0;
+      return d >= 20 && d <= 45 && p >= 115 && p <= 132;
+    };
+    const isMicroOff = (st, onDur) => {
+      const d = st?.duration || 0;
+      const p = st?.power || 0;
+      return d >= 10 && d <= 35 && d <= onDur && p < 95;
+    };
+    if (isMicroOn(expandedSteps[idx])) {
+      let pairs = 0;
+      let cursor = idx;
+      let totalOnDur = 0;
+      while (cursor < expandedSteps.length && isMicroOn(expandedSteps[cursor])) {
+        const onStep = expandedSteps[cursor];
+        const offStep = expandedSteps[cursor + 1];
+        if (offStep && isMicroOff(offStep, onStep.duration)) {
+          pairs++;
+          totalOnDur += onStep.duration;
+          cursor += 2;
+        } else {
+          // Zadnji ON u seriji bez pratećeg kratkog OFF-a
+          if (pairs >= 4) {
+            pairs++;
+            totalOnDur += onStep.duration;
+            cursor += 1;
+          }
+          break;
+        }
+      }
+      if (pairs >= 5) {
+        // Mikro-intervalna VO2 Max serija: preslikavamo efektivni rad na VO2 Max zonu (~116%)
+        effectiveSteps.push({ duration: totalOnDur, power: 116 });
+        idx = cursor;
+        continue;
+      }
+    }
+
+    // 2b. Kontinuirani Over-Under / Criss-Cross blokovi
+    if ((expandedSteps[idx].power || 0) >= 76) {
       let end = idx;
       let blockDur = 0;
       let baseDur = 0;
       let maxSurgeDur = 0;
-      while (end < steps.length && (steps[end].power || 0) >= 76) {
-        const d = steps[end].duration || 0;
-        const p = steps[end].power || 0;
+      while (end < expandedSteps.length && (expandedSteps[end].power || 0) >= 76) {
+        const d = expandedSteps[end].duration || 0;
+        const p = expandedSteps[end].power || 0;
         blockDur += d;
         if (p <= 106) baseDur += d;
         else if (d > maxSurgeDur) maxSurgeDur = d;
@@ -557,8 +630,8 @@ export function categorizeWorkout(steps) {
       if (blockDur >= 150 && baseDur > 0 && baseDur / blockDur >= 0.65 && maxSurgeDur <= 60) {
         let blockWeighted = 0;
         for (let k = idx; k < end; k++) {
-          const d = steps[k].duration || 0;
-          const p = steps[k].power || 0;
+          const d = expandedSteps[k].duration || 0;
+          const p = expandedSteps[k].power || 0;
           const pEff = (d <= 15 && p > 135) ? 120 : p;
           blockWeighted += pEff * d;
         }
@@ -567,7 +640,7 @@ export function categorizeWorkout(steps) {
         continue;
       }
     }
-    effectiveSteps.push(steps[idx]);
+    effectiveSteps.push(expandedSteps[idx]);
     idx++;
   }
 
@@ -699,180 +772,214 @@ export function parseDurationMinutes(rawStr) {
   return null;
 }
 
-function getZoneRange(category) {
-  switch (category) {
-    case 'Oporavak': return [0, 55];
-    case 'Endurance': return [55, 76];
-    case 'Tempo': return [76, 88];
-    case 'Sweet Spot': return [88, 95];
-    case 'Threshold': return [95, 106];
-    case 'VO2 Max': return [106, 121];
-    case 'Anaerobni': return [121, 999];
-    default: return [0, 100];
-  }
+function clampVal(v, lo, hi) {
+  return v < lo ? lo : (v > hi ? hi : v);
 }
 
-function calculateWorkoutMetrics(steps) {
-  // FTP postavljen na 100 jer steps.power obično sadržava % FTP-a
-  const powerArray = expandStepsToSeconds(steps, 100);
-  const metrics = calculateCogganMetrics(powerArray, 100);
-
-  const totalSecs = powerArray.length;
-  if (totalSecs === 0) return { np: 0, tss: 0, workingIf: 0, trueTotalTss: 0 };
-
-  let startIdx = 0;
-  while (startIdx < totalSecs && powerArray[startIdx] < 55) {
-    startIdx++;
-  }
-  let endIdx = totalSecs - 1;
-  while (endIdx > startIdx && powerArray[endIdx] < 55) {
-    endIdx--;
-  }
-
-  if (startIdx >= endIdx) {
-    startIdx = 0;
-    endIdx = totalSecs - 1;
-  }
-
-  const workingMetrics = calculateCogganMetrics(powerArray.slice(startIdx, endIdx + 1), 100);
-
-  return {
-    np: metrics.np,
-    tss: metrics.tss,
-    workingIf: parseFloat(workingMetrics.ifFactor)
-  };
+function rampWeight(p, zeroAt, fullAt) {
+  if (p <= zeroAt) return 0;
+  if (p >= fullAt) return 1;
+  return (p - zeroAt) / (fullAt - zeroAt);
 }
 
+/**
+ * Glatka fiziološka krivulja napora po minuti ovisno o % FTP-a:
+ * - C1-glatka na prijelazu u supraprag (95% FTP)
+ * - Strmiji rast iznad praga u skladu s padom vremena do iscrpljenja (TTE)
+ * - Meko prigušenje iznad 160–180% FTP kako 10s neuromuskularni sprintevi ne bi eksplodirali ocjenu
+ */
+function physioCostPerMin(p) {
+  const pc = Math.max(0, p);
+  const effP = pc <= 180 ? pc : 180 + (pc - 180) * 0.25;
+  const sub = Math.pow(effP / 100, 2.3);
+  if (effP <= 95) return sub;
+  const above = Math.min(effP - 95, 65);
+  const extra = effP > 160 ? (effP - 160) * 0.04 : 0;
+  return sub + 0.30 * Math.pow(above / 10, 1.45) + extra;
+}
+
+/**
+ * Glatka zonska težina i efektivni trošak po kategoriji (bez oštrih „litica” na granicama zona).
+ * Gornje prigušenje ostaje strogo rastuće pa veća snaga nikad ne može smanjiti ocjenu težine.
+ */
+function getEffectiveSecondCost(p, category) {
+  const rawCost = physioCostPerMin(p);
+  const cfg = {
+    'Oporavak':   [25,  42,  60, 0.10],
+    'Endurance':  [46,  57,  78, 0.20],
+    'Tempo':      [66,  76,  92, 0.30],
+    'Sweet Spot': [74,  86, 100, 0.40],
+    'Threshold':  [82,  94, 115, 0.40],
+    'VO2 Max':    [94, 106, 138, 0.35],
+    'Anaerobni':  [106, 120, 175, 0.30]
+  }[category] || [50, 65, 160, 0.30];
+
+  const w = rampWeight(p, cfg[0], cfg[1]);
+  const cap = physioCostPerMin(cfg[2]);
+  const effCost = rawCost <= cap ? rawCost : cap + (rawCost - cap) * cfg[3];
+  return { w, cost: effCost };
+}
+
+/**
+ * Evolucijski 1-Hz fiziološki izračun faktora težine (LVL) unutar kategorije:
+ *  - Radi sekundu-po-sekundu (rampe, hard-start i over-under blokovi bez grešaka brojanja koraka)
+ *  - Dvokomponentna anaerobna rezerva (brzi PCr buffer + spori glikolitički W'bal) za rad > 100% FTP
+ *  - Akutni metabolički/mišićni umor F(t) za odmor i duljinu blokova ispod praga (Tempo/SS/Threshold)
+ *  - Strogo monotona integracija (dodavanje hlađenja ili Z2 završetka nikad ne smanjuje težinu)
+ *  - Nema umjetnog gornjeg limita na 10.0 prema zahtjevu korisnika
+ */
 export function calculateCategoryDifficulty(steps, category) {
-  const [minPow, maxPow] = getZoneRange(category);
-  const metrics = calculateWorkoutMetrics(steps);
-  let totalTSS = metrics.tss;
+  if (!Array.isArray(steps) || steps.length === 0) return 1.0;
 
-  let tizSeconds = 0;
-  let maxIntervalSeconds = 0;
-  let currentInterval = 0;
+  const normalizedCategory = normalizeCategory(category);
+  const powerArray = expandStepsToSeconds(steps, 100);
+  const totalSecs = powerArray.length;
+  if (totalSecs === 0) return 1.0;
 
-  // Novi prag za Over-Under: toleriramo rad iznad baze radne zone
-  let continuousWorkThreshold = minPow;
-  if (category === 'Threshold') continuousWorkThreshold = 85;
-  else if (category === 'VO2 Max' || category === 'Anaerobni') continuousWorkThreshold = 95;
-  else if (category === 'Sweet Spot') continuousWorkThreshold = 76;
+  const metrics = calculateCogganMetrics(powerArray, 100);
+  const totalTSS = metrics.tss;
 
-  let zoneTSS = 0;
+  // Dvokomponentna suprapražna rezerva (u %·s, normirano na tipičnog biciklista)
+  const PCR_MAX = 1100; // brzi alaktični/PCr buffer (~10–15s šprint / kratki mikropulsevi)
+  const W_MAX = 6500;   // spora glikolitička W' rezerva
+  let pcrBal = PCR_MAX;
+  let wBal = W_MAX;
+  let peakWDepl = 0;
 
-  let workSteps = 0;
-  let restSteps = 0;
-  let totalWorkDur = 0;
-  let totalRestDur = 0;
+  // Praćenje dubine pojedinačnog intervala u sporom W' (razlikuje 5×2m od 20×30s na istoj snazi)
+  let boutWDrain = 0;
+  let maxBoutWDrain = 0;
 
-  steps.forEach(step => {
-    let intensity = step.power / 100;
-    let stepTss = (step.duration / 3600) * (intensity * intensity) * 100;
+  // Akutni podpražni umor F(t) ∈ [0, 1] (nakuplja se u radu, eksponencijalno opada u odmoru)
+  let fatigueF = 0;
+  let workFloor = 75;
+  if (normalizedCategory === 'Threshold') workFloor = 82;
+  else if (normalizedCategory === 'VO2 Max') workFloor = 90;
+  else if (normalizedCategory === 'Anaerobni') workFloor = 95;
+  else if (normalizedCategory === 'Endurance') workFloor = 55;
 
-    if (step.power >= continuousWorkThreshold) {
-      currentInterval += step.duration;
-      // Ako je unutar rastegnute "korisne" zone za odabranu kategoriju
-      if (step.power <= (maxPow === 999 ? 999 : maxPow + 15)) {
-        tizSeconds += step.duration;
-        zoneTSS += stepTss;
-      }
+  const betaF = ({
+    'Oporavak': 0.0,
+    'Endurance': 0.20,
+    'Tempo': 0.65,
+    'Sweet Spot': 0.90,
+    'Threshold': 1.15,
+    'VO2 Max': 0.35,
+    'Anaerobni': 0.15
+  })[normalizedCategory] ?? 0.50;
+
+  const gammaW = ({
+    'Oporavak': 0.0,
+    'Endurance': 0.10,
+    'Tempo': 0.25,
+    'Sweet Spot': 0.50,
+    'Threshold': 1.00,
+    'VO2 Max': 1.55,
+    'Anaerobni': 2.40
+  })[normalizedCategory] ?? 0.80;
+
+  let zoneStrain = 0;
+  let totalStrain = 0;
+  let enduranceWorkMins = 0;
+
+  for (let i = 0; i < totalSecs; i++) {
+    const p = powerArray[i] || 0;
+
+    // 1. Ažuriranje brze (PCr) i spore (W') anaerobne rezerve
+    if (p > 100) {
+      const exc = p <= 170 ? (p - 100) : 70 + (p - 170) * 0.25;
+      const pcrShare = Math.min(pcrBal, exc * 0.58);
+      pcrBal -= pcrShare;
+      const wShare = exc - pcrShare;
+      wBal = Math.max(0, wBal - wShare);
+      boutWDrain += wShare;
+      if (boutWDrain > maxBoutWDrain) maxBoutWDrain = boutWDrain;
     } else {
-      if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
-      currentInterval = 0;
+      const dCp = 100 - p;
+      const pcrRate = clampVal(dCp / 50, 0.20, 1.25);
+      pcrBal += (PCR_MAX - pcrBal) / (36 / pcrRate);
+
+      const tauW = 460 * Math.exp(-0.022 * dCp) + 170;
+      wBal += (W_MAX - wBal) / tauW;
+
+      const boutDecayTau = p <= 75 ? 40 : (p <= 90 ? 120 : 400);
+      boutWDrain *= Math.exp(-1 / boutDecayTau);
     }
 
-    // Statistika za Work-To-Rest multiplikator
-    if (category === 'VO2 Max' || category === 'Anaerobni') {
-      if (step.power >= 106) {
-        workSteps++;
-        totalWorkDur += step.duration;
-      } else if (step.power <= 75 && workSteps > 0) {
-        restSteps++;
-        totalRestDur += step.duration;
-      }
+    const wDepl = 1 - (wBal / W_MAX);
+    const pcrDepl = 1 - (pcrBal / PCR_MAX);
+    const combinedDepl = clampVal(wDepl * 0.88 + pcrDepl * 0.12, 0, 1);
+    if (wDepl > peakWDepl) peakWDepl = wDepl;
+
+    // 2. Ažuriranje podpražnog akutnog umora F(t)
+    if (p >= workFloor) {
+      let tauChargeSec;
+      if (p < 75) tauChargeSec = 5400;
+      else if (p < 86) tauChargeSec = 2400;
+      else if (p < 95) tauChargeSec = 1500;
+      else if (p < 103) tauChargeSec = 960;
+      else tauChargeSec = 480;
+      fatigueF += (1 - fatigueF) / tauChargeSec;
+    } else {
+      const recDepth = clampVal((workFloor - p) / 28, 0.15, 1.3);
+      fatigueF *= Math.exp(-1 / (300 / recDepth));
     }
-  });
 
-  if (currentInterval > maxIntervalSeconds) maxIntervalSeconds = currentInterval;
+    // 3. Nenegativna akumulacija napora (jamči strogu monotonost)
+    const { w, cost } = getEffectiveSecondCost(p, normalizedCategory);
+    const mult = 1 + betaF * fatigueF + gammaW * Math.pow(combinedDepl, 1.45);
+    zoneStrain += (cost / 60) * w * mult;
+    totalStrain += (physioCostPerMin(p) / 60) * (1 + 0.45 * fatigueF + 1.0 * Math.pow(combinedDepl, 1.45));
 
-  let tizMinutes = tizSeconds / 60;
-  let maxIntervalMins = maxIntervalSeconds / 60;
+    if (p >= 55) enduranceWorkMins += 1 / 60;
+  }
 
-  // Prilagodba: Umjesto čistog vremena u zoni (koje nagrađuje niži intenzitet), 
-  // računamo "efektivne minute" balansirajući vrijeme sakupljeno i intenzitet (TSS) unutar zone.
-  const baseTssPerMin = {
-    'Oporavak': 0.1,
-    'Endurance': 0.50, // na 55%
-    'Tempo': 0.96,     // na 76%
-    'Sweet Spot': 1.29,// na 88%
-    'Threshold': 1.50, // na 95%
-    'VO2 Max': 1.87,   // na 106%
-    'Anaerobni': 2.44  // na 121%
-  };
-
-  let normalizedTizMins = zoneTSS / (baseTssPerMin[category] || 1.0);
-
-  let blendFactor = 0.5; // Zadani omjer vremena i intenziteta
-  if (category === 'Anaerobni') blendFactor = 0.8;      // U Anaerobnoj zoni (121-999%) intenzitet je ključan
-  else if (category === 'VO2 Max') blendFactor = 0.6;
-  else if (category === 'Oporavak' || category === 'Endurance') blendFactor = 0.2; // U Z2 dominira čisto vrijeme
-
-  let effectiveMins = tizMinutes * (1 - blendFactor) + normalizedTizMins * blendFactor;
-
+  const peakBoutFrac = clampVal(maxBoutWDrain / W_MAX, 0, 1.3);
+  const volGate = clampVal(zoneStrain / 22, 0.30, 1.0);
   let score = 1.0;
-  // Temeljni sustav bodovanja po Zonama temeljen na efektivnom vremenu (effectiveMins)
-  switch (category) {
+
+  switch (normalizedCategory) {
     case 'Oporavak':
-      score = 1.0;
+      score = 1.0 + Math.pow(zoneStrain, 0.72) * 0.085;
       break;
-    case 'Endurance':
-      score = 1.0 + (effectiveMins / 75) * 1.8;
+    case 'Endurance': {
+      // Blagi glikogenski/durability bonus nakon ~110 min aktivnog rada
+      const durBonus = enduranceWorkMins > 110 ? Math.pow((enduranceWorkMins - 110) / 60, 1.25) * 0.45 : 0;
+      score = 1.0 + zoneStrain * 0.070 + durBonus;
       break;
-    case 'Tempo':
-      score = 1.0 + (effectiveMins / 60) * 2.2;
+    }
+    case 'Tempo': {
+      const durBonus = enduranceWorkMins > 110 ? Math.pow((enduranceWorkMins - 110) / 60, 1.2) * 0.35 : 0;
+      score = 1.0 + zoneStrain * 0.078 + durBonus;
       break;
+    }
     case 'Sweet Spot':
-      score = 1.0 + (effectiveMins / 50) * 2.8;
-      // Bonus za duge neprekinute intervale
-      if (maxIntervalMins > 20) score += (maxIntervalMins - 20) * 0.05;
+      score = 1.0 + zoneStrain * 0.080;
       break;
     case 'Threshold':
-      score = 1.0 + (effectiveMins / 40) * 3.4;
-      if (maxIntervalMins > 10) score += (maxIntervalMins - 10) * 0.08;
+      score = 1.0 + zoneStrain * 0.072;
       break;
     case 'VO2 Max':
-      score = 1.0 + (effectiveMins / 22) * 3.6;
-      if (maxIntervalMins >= 2) score += (maxIntervalMins - 2) * 0.08;
+      score = 1.0
+        + Math.pow(zoneStrain, 0.78) * 0.172
+        + (Math.pow(peakWDepl, 1.6) * 1.5 + Math.pow(peakBoutFrac, 1.5) * 1.0) * volGate;
       break;
     case 'Anaerobni':
-      score = 1.0 + Math.pow(effectiveMins / 18, 0.7) * 3.8;
+      score = 1.0
+        + Math.pow(zoneStrain, 0.65) * 0.21
+        + (Math.pow(peakWDepl, 1.4) * 1.4 + Math.pow(peakBoutFrac, 1.35) * 2.3) * volGate;
+      break;
+    case 'Testiranje':
+      score = 2.0 + Math.pow(totalStrain, 0.72) * 0.15 + Math.pow(peakWDepl, 1.2) * 3.8;
       break;
     default:
-      score = (totalTSS / 60) * 4.0;
+      score = 1.0 + Math.pow(totalStrain, 0.80) * 0.105;
       break;
   }
 
-  // Work-to-Rest Bonus za vrlo oštre intervale
-  if ((category === 'VO2 Max' || category === 'Anaerobni') && workSteps > 0 && restSteps > 0) {
-    let avgWork = totalWorkDur / workSteps;
-    let avgRest = totalRestDur / restSteps;
-    if (avgRest > 0) {
-      let ratio = avgWork / avgRest;
-      // Strog i jako ograničen bonus kako se ne bi 'lijepio' na već golemi base score
-      if (ratio >= 1.0) {
-        score += Math.min(ratio * 0.4, 1.2); // Čvrsta kapa na 1.2
-      } else if (ratio > 0.5) {
-        score += 0.3;
-      }
-    }
-  }
-
-  // Utjecaj ukupnog umora i volumena
-  score += (totalTSS * 0.006);
-
-  // Bonus za radni intenzitet izbrušen u granice normale
-  if (metrics.workingIf > 0.85) {
-    score += (metrics.workingIf - 0.85) * 5.0;
+  // Mali pozadinski doprinos ukupnog volumena (ne može poništiti učinak odmora)
+  if (normalizedCategory !== 'Oporavak' && normalizedCategory !== 'Testiranje') {
+    score += totalTSS * 0.0035;
   }
 
   if (score < 1.0) score = 1.0;
@@ -927,10 +1034,17 @@ function parseZWO(xmlText) {
       let powerLow = powerLowAttr ? parseFloat(powerLowAttr) * 100 : (singlePwr ? parseFloat(singlePwr) * 100 : getZonePct('Zone', 50));
       let powerHigh = powerHighAttr ? parseFloat(powerHighAttr) * 100 : (singlePwr ? parseFloat(singlePwr) * 100 : getZonePct('Zone', 50));
 
+      const rStart = Math.round(powerLow);
+      const rEnd = Math.round(powerHigh);
+      const pMin = Math.min(rStart, rEnd);
+      const pMax = Math.max(rStart, rEnd);
+      const isRamp = Math.abs(rEnd - rStart) >= 2;
+
       steps.push({
         name: type === 'warmup' ? 'Zagrijavanje' : (type === 'cooldown' ? 'Hlađenje' : 'Rampa'),
         duration: duration || 0,
-        power: Math.round((powerLow + powerHigh) / 2)
+        power: Math.round((pMin + pMax) / 2),
+        ...(isRamp ? { powerMin: pMin, powerMax: pMax, isRange: true, ramp: true, rampStart: rStart, rampEnd: rEnd } : {})
       });
     } else if (type === 'steadystate' || type === 'solidstate') {
       const duration = parseInt(getAttr(node, 'Duration', 'duration'));
@@ -1013,12 +1127,14 @@ function parseERG(ergText) {
   let inData = false;
   let dataLines = [];
   let ftpParams = 250;
+  let unitsPercent = false;
 
   for (let line of lines) {
     const cl = line.trim();
     if (cl.startsWith('DESCRIPTION=')) description = cl.replace('DESCRIPTION=', '').trim();
     if (cl.startsWith('FILE NAME=') || cl.startsWith('FILENAME=')) title = cl.replace(/FILE NAME=|FILENAME=/g, '').trim();
     if (/^FTP\s*=/i.test(cl)) ftpParams = parseFloat(cl.replace(/^FTP\s*=/i, '')) || 250;
+    if (/^MINUTES\s+PERCENT/i.test(cl)) unitsPercent = true;
 
     if (cl === '[COURSE DATA]') {
       inData = true;
@@ -1040,6 +1156,11 @@ function parseERG(ergText) {
     return { min: parts[0], val: parts[1] };
   });
 
+  const toPct = (val) => {
+    if (unitsPercent || !ftpParams || val <= 0) return Math.round(val || 0);
+    return Math.round((val / ftpParams) * 100);
+  };
+
   const steps = [];
   for (let i = 0; i < points.length - 1; i++) {
     const start = points[i];
@@ -1047,27 +1168,27 @@ function parseERG(ergText) {
 
     if (end.min > start.min) {
       const durationSec = Math.round((end.min - start.min) * 60);
-      let power = start.val;
-
-      // Pokušaj pretvoriti Watte u FTP% ako su vrijednosti očito Watti
-      // Većina ERG fajlova koristi čiste watte koji se baziraju na zadani FTP. 
-      if (ftpParams && power > 0) {
-        power = (power / ftpParams) * 100;
-      }
+      const pStart = toPct(start.val);
+      const pEnd = toPct(end.val);
+      const isRamp = Math.abs(pEnd - pStart) >= 2;
+      const pMin = Math.min(pStart, pEnd);
+      const pMax = Math.max(pStart, pEnd);
 
       steps.push({
-        name: 'ERG Interval',
+        name: isRamp ? 'Rampa' : 'ERG Interval',
         duration: durationSec,
-        power: Math.round(power)
+        power: Math.round((pMin + pMax) / 2),
+        ...(isRamp ? { powerMin: pMin, powerMax: pMax, isRange: true, ramp: true, rampStart: pStart, rampEnd: pEnd } : {})
       });
     }
   }
 
-  // Grupiranje uzastopnih koraka s istom snagom za čišći UI
+  // Grupiranje uzastopnih koraka s istom snagom za čišći UI (rampe se ne spajaju)
   const mergedSteps = [];
   steps.forEach(s => {
-    if (mergedSteps.length > 0 && mergedSteps[mergedSteps.length - 1].power === s.power) {
-      mergedSteps[mergedSteps.length - 1].duration += s.duration;
+    const prev = mergedSteps[mergedSteps.length - 1];
+    if (prev && !prev.ramp && !s.ramp && prev.power === s.power) {
+      prev.duration += s.duration;
     } else {
       mergedSteps.push(s);
     }
