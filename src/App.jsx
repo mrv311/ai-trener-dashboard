@@ -515,6 +515,8 @@ export default function App() {
 
     setSession(null);
     setIsGuest(false);
+    setShowOnboardingModal(false);
+    setShowAuthModal(false);
     checkedRecoveryForUserRef.current = null;
     setPendingRecoverySession(null);
     setShowRecoveryModal(false);

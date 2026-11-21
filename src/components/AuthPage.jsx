@@ -267,7 +267,7 @@ export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
           <div className="mt-5 text-center space-y-3">
             <button
               type="button"
-              onClick={() => setIsLogin(!isLogin)}
+              onClick={() => { setIsLogin(!isLogin); setErrorMsg(''); setSuccessMsg(''); }}
               className="text-xs font-semibold text-zinc-400 hover:text-volt-400 transition-colors block w-full"
             >
               {isLogin ? 'Nemaš račun? Kreiraj ga ovdje.' : 'Već imaš račun? Prijavi se ovdje.'}

@@ -1,28 +1,52 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Zap, CheckCircle2, ArrowRight, ArrowLeft,
   Monitor, Database, Download, User, Scale
 } from 'lucide-react';
 import BrandLogo from './BrandLogo';
 
+const GENERIC_USERNAMES = ['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač', 'Vozač'];
+
+const getEditableUsername = (name) => {
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  return trimmed && !GENERIC_USERNAMES.includes(trimmed) ? trimmed : '';
+};
+
 export default function OnboardingModal({ isOpen, onClose, initialProfile, onSaveProfile, onComplete }) {
   const [step, setStep] = useState(1);
-  const [username, setUsername] = useState(initialProfile?.username || 'Odvažni Vozač');
+  const [username, setUsername] = useState(() => getEditableUsername(initialProfile?.username));
   const [ftp, setFtp] = useState(initialProfile?.ftp || 200);
   const [weight, setWeight] = useState(initialProfile?.weight || 75);
 
-  // Ažuriraj polja ako podaci sportaša pristignu s Intervals.icu ili iz baze
+  const wasOpenRef = useRef(false);
+  const editedFieldsRef = useRef({ username: false, ftp: false, weight: false });
+
+  // Resetiraj korak i inicijaliziraj polja kad se modal otvori
   useEffect(() => {
-    if (initialProfile?.username && !['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(initialProfile.username)) {
-      setUsername(initialProfile.username);
+    if (isOpen && !wasOpenRef.current) {
+      setStep(1);
+      editedFieldsRef.current = { username: false, ftp: false, weight: false };
+      setUsername(getEditableUsername(initialProfile?.username));
+      setFtp(initialProfile?.ftp || 200);
+      setWeight(initialProfile?.weight || 75);
     }
-    if (initialProfile?.ftp && initialProfile.ftp !== 200) {
+    wasOpenRef.current = isOpen;
+  }, [isOpen, initialProfile]);
+
+  // Ažuriraj samo neuređena polja ako podaci sportaša pristignu s Intervals.icu ili iz baze
+  useEffect(() => {
+    if (!isOpen) return;
+    const incomingName = getEditableUsername(initialProfile?.username);
+    if (!editedFieldsRef.current.username && incomingName) {
+      setUsername(incomingName);
+    }
+    if (!editedFieldsRef.current.ftp && initialProfile?.ftp && initialProfile.ftp !== 200) {
       setFtp(initialProfile.ftp);
     }
-    if (initialProfile?.weight && initialProfile.weight !== 75 && initialProfile.weight !== 75.9) {
+    if (!editedFieldsRef.current.weight && initialProfile?.weight && initialProfile.weight !== 75 && initialProfile.weight !== 75.9) {
       setWeight(initialProfile.weight);
     }
-  }, [initialProfile]);
+  }, [isOpen, initialProfile]);
 
   if (!isOpen) return null;
 
@@ -32,11 +56,14 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
 
   const handleFinish = () => {
     if (onSaveProfile) {
+      const trimmedName = username.trim();
       onSaveProfile({
         ...(initialProfile || {}),
-        username: username.trim() || 'Odvažni Vozač',
+        username: trimmedName || initialProfile?.username || 'Gost Vozač',
         ftp: numFtp,
         weight: numWeight,
+        ...(editedFieldsRef.current.ftp ? { isManualFtp: true } : {}),
+        ...(editedFieldsRef.current.weight ? { isManualWeight: true } : {}),
         lastFtpUpdate: new Date().toISOString()
       });
     }
@@ -50,10 +77,14 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
   };
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/85 animate-in fade-in" onClick={handleSkip}>
+    <div
+      className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/85 animate-in fade-in"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="onboarding-modal-title"
+    >
       <div
         className="w-full max-w-2xl bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-6 md:p-7 relative animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[92vh]"
-        onClick={e => e.stopPropagation()}
       >
         <div className="absolute top-0 left-0 right-0 h-[3px] bg-volt-400" />
 
@@ -68,6 +99,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
             </span>
           </div>
           <button
+            type="button"
             onClick={handleSkip}
             className="text-zinc-500 hover:text-zinc-200 text-xs font-semibold px-2.5 py-1 rounded-md hover:bg-zinc-800 transition-colors"
           >
@@ -82,7 +114,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
               <div className="flex items-center gap-3.5">
                 <BrandLogo size={42} />
                 <div>
-                  <h2 className="font-display font-bold text-2xl uppercase tracking-wide text-zinc-100">
+                  <h2 id="onboarding-modal-title" className="font-display font-bold text-2xl uppercase tracking-wide text-zinc-100">
                     Dobrodošli u ErgVibe
                   </h2>
                   <p className="text-zinc-400 text-xs md:text-sm">
@@ -108,43 +140,59 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
               {/* Unos parametara */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
-                  <label className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <label htmlFor="onboarding-rider-name" className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                     <User className="w-3.5 h-3.5 text-volt-400" /> Ime vozača
                   </label>
                   <input
+                    id="onboarding-rider-name"
+                    name="riderName"
                     type="text"
+                    autoComplete="off"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    onChange={(e) => {
+                      editedFieldsRef.current.username = true;
+                      setUsername(e.target.value);
+                    }}
                     placeholder="npr. Marko"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-zinc-100 font-semibold text-sm focus:border-volt-400 focus:outline-none"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-zinc-100 font-semibold text-sm focus:border-volt-400 focus:outline-none placeholder:text-zinc-600"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <label htmlFor="onboarding-rider-ftp" className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5 text-volt-400" /> FTP (W)
                   </label>
                   <input
+                    id="onboarding-rider-ftp"
+                    name="riderFtp"
                     type="number"
                     min="50"
                     max="600"
                     value={ftp}
-                    onChange={(e) => setFtp(e.target.value)}
+                    onChange={(e) => {
+                      editedFieldsRef.current.ftp = true;
+                      setFtp(e.target.value);
+                    }}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-volt-400 font-mono font-bold text-sm telemetry-num focus:border-volt-400 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <label htmlFor="onboarding-rider-weight" className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                     <Scale className="w-3.5 h-3.5 text-emerald-400" /> Težina (kg)
                   </label>
                   <input
+                    id="onboarding-rider-weight"
+                    name="riderWeight"
                     type="number"
-                    step="0.5"
+                    step="0.1"
                     min="30"
                     max="200"
                     value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
+                    onChange={(e) => {
+                      editedFieldsRef.current.weight = true;
+                      setWeight(e.target.value);
+                    }}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-zinc-100 font-mono font-bold text-sm telemetry-num focus:border-volt-400 focus:outline-none"
                   />
                 </div>
@@ -195,7 +243,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
           ) : (
             <>
               <div>
-                <h2 className="font-display font-bold text-2xl uppercase tracking-wide text-zinc-100 mb-1">
+                <h2 id="onboarding-modal-title" className="font-display font-bold text-2xl uppercase tracking-wide text-zinc-100 mb-1">
                   Tri koraka do treninga
                 </h2>
                 <p className="text-zinc-400 text-xs md:text-sm">
@@ -250,6 +298,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
             <div />
           ) : (
             <button
+              type="button"
               onClick={() => setStep(1)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 text-xs font-semibold transition-all"
             >
@@ -259,6 +308,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
 
           {step === 1 ? (
             <button
+              type="button"
               onClick={() => setStep(2)}
               className="flex items-center gap-2 bg-volt-400 hover:bg-volt-300 text-zinc-950 px-5 py-2.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs transition-all shadow-volt-glow ml-auto"
             >
@@ -266,6 +316,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
             </button>
           ) : (
             <button
+              type="button"
               onClick={handleFinish}
               className="flex items-center gap-2 bg-volt-400 hover:bg-volt-300 text-zinc-950 px-5 py-2.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs transition-all shadow-volt-glow ml-auto"
             >

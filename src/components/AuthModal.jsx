@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { Mail, Lock, Loader2, AlertCircle, CheckCircle2, X, Link as LinkIcon } from 'lucide-react';
 import BrandLogo from './BrandLogo';
@@ -12,6 +12,7 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
   const [isIntervalsLoading, setIsIntervalsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const backdropMouseDownRef = useRef(false);
 
   if (!isOpen) return null;
 
@@ -92,13 +93,24 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 animate-in fade-in" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 animate-in fade-in"
+      onMouseDown={(e) => {
+        backdropMouseDownRef.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && backdropMouseDownRef.current) {
+          onClose();
+        }
+        backdropMouseDownRef.current = false;
+      }}
+    >
       <div
         className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-6 md:p-7 relative animate-in zoom-in-95 duration-200 overflow-hidden"
-        onClick={e => e.stopPropagation()}
       >
         <div className="absolute top-0 left-0 right-0 h-[3px] bg-volt-400" />
         <button
+          type="button"
           onClick={onClose}
           className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-zinc-100 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors"
         >
