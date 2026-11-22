@@ -661,6 +661,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
     setActiveFolder(null);
     setActiveCollection(null);
     setDurationFilter('all');
+    setSearchQuery('');
     setEditingWorkoutId(null);
   };
 
@@ -823,9 +824,10 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       ) : (
         <div className="w-full">
           {!isViewingWorkoutsList ? (
-            <div className="flex flex-col gap-6">
+            <div key={`library-overview-${libraryScope}`} className="flex flex-col gap-6">
               
               {/* SEKCIJA 1: PAMETNE KOLEKCIJE & CILJANI PROGRAMI */}
+              {scopedWorkouts.length > 0 && (
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400 flex items-center gap-1.5">
@@ -872,6 +874,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                   })}
                 </div>
               </div>
+              )}
 
               {/* SEKCIJA 2: MAPE PO FIZIOLOŠKIM ZONAMA */}
               <div className="flex flex-col gap-3">
@@ -959,7 +962,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
 
             </div>
           ) : (
-            <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+            <div key={`library-list-${libraryScope}`} className="flex flex-col gap-4 animate-in fade-in duration-200">
               
               {/* ZAGLAVLJE LISTE S KONTROLAMA */}
               <div className="carbon-panel rounded-xl p-3.5 px-4 flex flex-col gap-3">

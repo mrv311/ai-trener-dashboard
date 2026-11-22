@@ -110,7 +110,7 @@ function sanitizeWorkoutRecord(w) {
  * Dohvaća javni katalog + privatne treninge korisnika (cloud ili guest lokalno).
  */
 export async function fetchLibraryWorkouts(userId) {
-  let remoteWorkouts = [];
+  const dedupMap = new Map();
   let from = 0;
   const batchSize = 1000;
 
@@ -119,14 +119,21 @@ export async function fetchLibraryWorkouts(userId) {
       .from('workouts')
       .select('*')
       .order('difficulty_score', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, from + batchSize - 1);
 
     if (error) throw error;
     if (!data || data.length === 0) break;
-    remoteWorkouts = remoteWorkouts.concat(data);
+    for (const row of data) {
+      if (row?.id && !dedupMap.has(row.id)) {
+        dedupMap.set(row.id, row);
+      }
+    }
     if (data.length < batchSize) break;
     from += batchSize;
   }
+
+  const remoteWorkouts = Array.from(dedupMap.values());
 
   // Dodatna klijentska zaštita (uz Supabase RLS): gost vidi samo javni katalog iz baze + svoje lokalne treninge
   if (isGuestUser(userId)) {
