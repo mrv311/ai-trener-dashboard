@@ -12,6 +12,7 @@
     "import:workouts:commit": "node scripts/import-local-workouts.mjs --commit",
     "recalc:difficulty": "node scripts/recalculate-difficulty.mjs",
     "recalc:difficulty:commit": "node scripts/recalculate-difficulty.mjs --commit",
+    "build:catalog": "node scripts/build-public-catalog.mjs",
     "build:history": "node scripts/build-historical-json.cjs"
   },
   "dependencies": {

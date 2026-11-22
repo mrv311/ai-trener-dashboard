@@ -23,12 +23,10 @@ import {
 } from '../services/workoutLibraryStorage';
 
 const FAMOUS_CLASSICS = [
-  'carson', 'gorby', 'antelope', 'baxter', 'mary austin', 'rattlesnake',
-  'hunter', 'galena', 'kaweah', 'petit', 'geiger', 'tallac', 'spencer',
-  'eclipse', 'palisade', 'over-under', 'over under', 'ramp test', 'colins',
-  'spanish needle', '4x8', '3x10', '3x12', '3x15', '3x20', '2x20',
-  'sweet spot progression', 'sweet spot foundation', 'vo2max tt', 'lactate threshold',
-  'eichorn', 'taku', 'blackcap'
+  'classic', 'over-under classic', 'rønnestad', 'ronnestad', 'billat', 'seiler',
+  'tabata', 'ramp test', '20-min ftp test', '2×20', '2x20', '3×15', '3x15',
+  '3×20', '3x20', '4×8', '4x8', '5×4', '5x4', '4×4', '4x4',
+  'gran fondo base', 'fatmax', 'hard-start', 'over-under', 'over under'
 ];
 
 export function isClassicWorkout(workout) {
