@@ -8,6 +8,8 @@
  *           godine, godišnja doba, nazivi ruta/treninga, zone intenziteta, rekordi/ekstremi).
  */
 
+import { tr } from '../i18n/i18nCore.js';
+
 const STORAGE_KEY_EXTRA_HISTORY = 'ergvibe_extra_historical_workouts_v1';
 
 let cachedBaseHistory = null;
@@ -130,17 +132,22 @@ const toNum = (v, decimals = 0) => {
  */
 export async function importIntervalsCsvText(csvText, userId = null) {
   if (!csvText || typeof csvText !== 'string') {
-    throw new Error('CSV datoteka je prazna ili neispravna.');
+    throw new Error(tr('CSV datoteka je prazna ili neispravna.', 'CSV file is empty or invalid.'));
   }
 
   const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
   if (lines.length < 2) {
-    throw new Error('CSV datoteka ne sadrži zapise o treninzima.');
+    throw new Error(tr('CSV datoteka ne sadrži zapise o treninzima.', 'CSV file does not contain any workout records.'));
   }
 
   const headers = parseCSVLine(lines[0].replace(/^\uFEFF/, '')).map(h => h.replace(/^"|"$/g, '').trim());
   if (!headers.includes('Date') || !headers.includes('Name')) {
-    throw new Error('Nepoznat CSV format. Koristi standardni Intervals.icu CSV izvoz aktivnosti.');
+    throw new Error(
+      tr(
+        'Nepoznat CSV format. Koristi standardni Intervals.icu CSV izvoz aktivnosti.',
+        'Unrecognized CSV format. Please use the standard Intervals.icu activities CSV export.'
+      )
+    );
   }
 
   const existingExtra = getExtraImportedHistory(userId);

@@ -2,23 +2,54 @@
  * Pomoćne funkcije i konfiguracije za AI Planer Treninga i kalendarske proračune.
  */
 import { isStrengthType, isRunningType, isSwimmingType } from './sportTypes.js';
+import { tr, getCurrentLanguage, getLocale } from '../i18n/i18nCore.js';
 
 export const WEEKDAY_DEFS = [
-  { key: 'mon', index: 0, jsDay: 1, short: 'PON', name: 'Ponedjeljak' },
-  { key: 'tue', index: 1, jsDay: 2, short: 'UTO', name: 'Utorak' },
-  { key: 'wed', index: 2, jsDay: 3, short: 'SRI', name: 'Srijeda' },
-  { key: 'thu', index: 3, jsDay: 4, short: 'ČET', name: 'Četvrtak' },
-  { key: 'fri', index: 4, jsDay: 5, short: 'PET', name: 'Petak' },
-  { key: 'sat', index: 5, jsDay: 6, short: 'SUB', name: 'Subota' },
-  { key: 'sun', index: 6, jsDay: 0, short: 'NED', name: 'Nedjelja' }
+  { key: 'mon', index: 0, jsDay: 1, shortHr: 'PON', shortEn: 'MON', nameHr: 'Ponedjeljak', nameEn: 'Monday', get short() { return tr(this.shortHr, this.shortEn); }, get name() { return tr(this.nameHr, this.nameEn); } },
+  { key: 'tue', index: 1, jsDay: 2, shortHr: 'UTO', shortEn: 'TUE', nameHr: 'Utorak', nameEn: 'Tuesday', get short() { return tr(this.shortHr, this.shortEn); }, get name() { return tr(this.nameHr, this.nameEn); } },
+  { key: 'wed', index: 2, jsDay: 3, shortHr: 'SRI', shortEn: 'WED', nameHr: 'Srijeda', nameEn: 'Wednesday', get short() { return tr(this.shortHr, this.shortEn); }, get name() { return tr(this.nameHr, this.nameEn); } },
+  { key: 'thu', index: 3, jsDay: 4, shortHr: 'ČET', shortEn: 'THU', nameHr: 'Četvrtak', nameEn: 'Thursday', get short() { return tr(this.shortHr, this.shortEn); }, get name() { return tr(this.nameHr, this.nameEn); } },
+  { key: 'fri', index: 4, jsDay: 5, shortHr: 'PET', shortEn: 'FRI', nameHr: 'Petak', nameEn: 'Friday', get short() { return tr(this.shortHr, this.shortEn); }, get name() { return tr(this.nameHr, this.nameEn); } },
+  { key: 'sat', index: 5, jsDay: 6, shortHr: 'SUB', shortEn: 'SAT', nameHr: 'Subota', nameEn: 'Saturday', get short() { return tr(this.shortHr, this.shortEn); }, get name() { return tr(this.nameHr, this.nameEn); } },
+  { key: 'sun', index: 6, jsDay: 0, shortHr: 'NED', shortEn: 'SUN', nameHr: 'Nedjelja', nameEn: 'Sunday', get short() { return tr(this.shortHr, this.shortEn); }, get name() { return tr(this.nameHr, this.nameEn); } }
 ];
 
+export function getWeekdayShort(dayOrKey, lang = getCurrentLanguage()) {
+  const def = typeof dayOrKey === 'string'
+    ? WEEKDAY_DEFS.find(
+        d =>
+          d.key === dayOrKey ||
+          d.shortHr.toLowerCase() === dayOrKey.toLowerCase() ||
+          d.shortEn.toLowerCase() === dayOrKey.toLowerCase() ||
+          d.nameHr.toLowerCase() === dayOrKey.toLowerCase() ||
+          d.nameEn.toLowerCase() === dayOrKey.toLowerCase()
+      )
+    : dayOrKey;
+  if (!def) return typeof dayOrKey === 'string' ? dayOrKey : '';
+  return lang === 'en' ? (def.shortEn || def.short) : (def.shortHr || def.short);
+}
+
+export function getWeekdayName(dayOrKey, lang = getCurrentLanguage()) {
+  const def = typeof dayOrKey === 'string'
+    ? WEEKDAY_DEFS.find(
+        d =>
+          d.key === dayOrKey ||
+          d.nameHr.toLowerCase() === dayOrKey.toLowerCase() ||
+          d.nameEn.toLowerCase() === dayOrKey.toLowerCase() ||
+          d.shortHr.toLowerCase() === dayOrKey.toLowerCase() ||
+          d.shortEn.toLowerCase() === dayOrKey.toLowerCase()
+      )
+    : dayOrKey;
+  if (!def) return typeof dayOrKey === 'string' ? dayOrKey : '';
+  return lang === 'en' ? (def.nameEn || def.name) : (def.nameHr || def.name);
+}
+
 export const DURATION_TIERS = [
-  { id: 'short', label: '45m', minutes: 45, desc: 'Brzi / Trenažer' },
-  { id: 'standard', label: '60m', minutes: 60, desc: 'Standardni trenažer' },
-  { id: 'medium', label: '90m', minutes: 90, desc: 'Srednji / Prag' },
-  { id: 'long', label: '2h+', minutes: 135, desc: 'Duža vožnja' },
-  { id: 'epic', label: '3h+', minutes: 200, desc: 'Duga Z2 / Vikend' }
+  { id: 'short', label: '45m', minutes: 45, descHr: 'Brzi / Trenažer', descEn: 'Quick / Smart Trainer', get desc() { return tr(this.descHr, this.descEn); } },
+  { id: 'standard', label: '60m', minutes: 60, descHr: 'Standardni trenažer', descEn: 'Standard Trainer', get desc() { return tr(this.descHr, this.descEn); } },
+  { id: 'medium', label: '90m', minutes: 90, descHr: 'Srednji / Prag', descEn: 'Medium / Threshold', get desc() { return tr(this.descHr, this.descEn); } },
+  { id: 'long', label: '2h+', minutes: 135, descHr: 'Duža vožnja', descEn: 'Long Ride', get desc() { return tr(this.descHr, this.descEn); } },
+  { id: 'epic', label: '3h+', minutes: 200, descHr: 'Duga Z2 / Vikend', descEn: 'Long Z2 / Weekend', get desc() { return tr(this.descHr, this.descEn); } }
 ];
 
 export const DEFAULT_WEEKLY_SCHEDULE = {
@@ -32,27 +63,164 @@ export const DEFAULT_WEEKLY_SCHEDULE = {
 };
 
 export const EVENT_TYPE_OPTIONS = [
-  { id: 'Gran Fondo / Cestovni maraton', label: 'Gran Fondo / Maraton', desc: 'Duga izdržljivost i konstantni usponi' },
-  { id: 'Cestovna utrka / Kriterij', label: 'Cestovna utrka', desc: 'Visoki skokovi snage, VO2max i napadi' },
-  { id: 'Gravel / MTB maraton', label: 'Gravel / MTB maraton', desc: 'Promjenjiv ritam, ponovljeni prag i snaga' },
-  { id: 'Brdski uspon / Sportive', label: 'Brdski uspon / Alpe', desc: 'Omjer W/kg i dugi napori na pragu' },
-  { id: 'Kronometar (TT)', label: 'Kronometar (TT)', desc: 'Stabilna snaga na FTP-u i izdržljivost praga' }
+  {
+    id: 'Gran Fondo / Cestovni maraton',
+    labelHr: 'Gran Fondo / Maraton',
+    labelEn: 'Gran Fondo / Marathon',
+    descHr: 'Duga izdržljivost i konstantni usponi',
+    descEn: 'Long endurance and sustained climbs',
+    get label() { return tr(this.labelHr, this.labelEn); },
+    get desc() { return tr(this.descHr, this.descEn); }
+  },
+  {
+    id: 'Cestovna utrka / Kriterij',
+    labelHr: 'Cestovna utrka',
+    labelEn: 'Road Race / Crit',
+    descHr: 'Visoki skokovi snage, VO2max i napadi',
+    descEn: 'High power surges, VO2 Max, and attacks',
+    get label() { return tr(this.labelHr, this.labelEn); },
+    get desc() { return tr(this.descHr, this.descEn); }
+  },
+  {
+    id: 'Gravel / MTB maraton',
+    labelHr: 'Gravel / MTB maraton',
+    labelEn: 'Gravel / MTB Marathon',
+    descHr: 'Promjenjiv ritam, ponovljeni prag i snaga',
+    descEn: 'Variable pacing, repeated threshold, and force',
+    get label() { return tr(this.labelHr, this.labelEn); },
+    get desc() { return tr(this.descHr, this.descEn); }
+  },
+  {
+    id: 'Brdski uspon / Sportive',
+    labelHr: 'Brdski uspon / Alpe',
+    labelEn: 'Mountain Climb / Sportive',
+    descHr: 'Omjer W/kg i dugi napori na pragu',
+    descEn: 'W/kg ratio and long threshold climbs',
+    get label() { return tr(this.labelHr, this.labelEn); },
+    get desc() { return tr(this.descHr, this.descEn); }
+  },
+  {
+    id: 'Kronometar (TT)',
+    labelHr: 'Kronometar (TT)',
+    labelEn: 'Time Trial (TT)',
+    descHr: 'Stabilna snaga na FTP-u i izdržljivost praga',
+    descEn: 'Steady FTP power and threshold stamina',
+    get label() { return tr(this.labelHr, this.labelEn); },
+    get desc() { return tr(this.descHr, this.descEn); }
+  }
 ];
 
 export const FITNESS_PRESET_GOALS = [
-  { id: 'Podizanje FTP-a i Sweet Spot izdržljivosti', label: 'Podizanje FTP-a', desc: 'Sweet Spot i Threshold progresija' },
-  { id: 'Z2 Aerobna baza i izdržljivost', label: 'Aerobna baza (Z2)', desc: 'Mitohondrijska gustoća i efikasnost' },
-  { id: 'VO2 Max i probijanje platoa', label: 'VO2 Max & Snaga', desc: 'Kratki visoko-intenzivni intervali' },
-  { id: 'Održavanje kondicije uz nizak umor', label: 'Održavanje forme', desc: 'Fleksibilno uz manji tjedni stres' }
+  {
+    id: 'Podizanje FTP-a i Sweet Spot izdržljivosti',
+    goalHr: 'Podizanje FTP-a i Sweet Spot izdržljivosti',
+    goalEn: 'Raise FTP & Sweet Spot Endurance',
+    labelHr: 'Podizanje FTP-a',
+    labelEn: 'Raise FTP',
+    descHr: 'Sweet Spot i Threshold progresija',
+    descEn: 'Sweet Spot & Threshold progression',
+    get goal() { return tr(this.goalHr, this.goalEn); },
+    get label() { return tr(this.labelHr, this.labelEn); },
+    get desc() { return tr(this.descHr, this.descEn); }
+  },
+  {
+    id: 'Z2 Aerobna baza i izdržljivost',
+    goalHr: 'Z2 Aerobna baza i izdržljivost',
+    goalEn: 'Z2 Aerobic Base & Endurance',
+    labelHr: 'Aerobna baza (Z2)',
+    labelEn: 'Aerobic Base (Z2)',
+    descHr: 'Mitohondrijska gustoća i efikasnost',
+    descEn: 'Mitochondrial density & efficiency',
+    get goal() { return tr(this.goalHr, this.goalEn); },
+    get label() { return tr(this.labelHr, this.labelEn); },
+    get desc() { return tr(this.descHr, this.descEn); }
+  },
+  {
+    id: 'VO2 Max i probijanje platoa',
+    goalHr: 'VO2 Max i probijanje platoa',
+    goalEn: 'VO2 Max & Breaking Plateaus',
+    labelHr: 'VO2 Max & Snaga',
+    labelEn: 'VO2 Max & Power',
+    descHr: 'Kratki visoko-intenzivni intervali',
+    descEn: 'Short high-intensity intervals',
+    get goal() { return tr(this.goalHr, this.goalEn); },
+    get label() { return tr(this.labelHr, this.labelEn); },
+    get desc() { return tr(this.descHr, this.descEn); }
+  },
+  {
+    id: 'Održavanje kondicije uz nizak umor',
+    goalHr: 'Održavanje kondicije uz nizak umor',
+    goalEn: 'Maintain Fitness with Low Fatigue',
+    labelHr: 'Održavanje forme',
+    labelEn: 'Maintain Fitness',
+    descHr: 'Fleksibilno uz manji tjedni stres',
+    descEn: 'Flexible with lower weekly stress',
+    get goal() { return tr(this.goalHr, this.goalEn); },
+    get label() { return tr(this.labelHr, this.labelEn); },
+    get desc() { return tr(this.descHr, this.descEn); }
+  }
 ];
 
 export const PHASE_META = {
-  base: { label: 'Baza', cls: 'bg-sky-500/15 text-sky-300 border-sky-500/30', bar: 'bg-sky-400' },
-  build: { label: 'Build', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30', bar: 'bg-amber-400' },
-  peak: { label: 'Peak', cls: 'bg-rose-500/15 text-rose-300 border-rose-500/30', bar: 'bg-rose-400' },
-  taper: { label: 'Taper', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30', bar: 'bg-emerald-400' },
-  race: { label: 'Event', cls: 'bg-volt-400/15 text-volt-400 border-volt-400/35', bar: 'bg-volt-400' }
+  base: {
+    labelHr: 'Baza',
+    labelEn: 'Base',
+    get label() { return tr(this.labelHr, this.labelEn); },
+    cls: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+    bar: 'bg-sky-400'
+  },
+  build: {
+    labelHr: 'Build',
+    labelEn: 'Build',
+    get label() { return tr(this.labelHr, this.labelEn); },
+    cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    bar: 'bg-amber-400'
+  },
+  peak: {
+    labelHr: 'Peak',
+    labelEn: 'Peak',
+    get label() { return tr(this.labelHr, this.labelEn); },
+    cls: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+    bar: 'bg-rose-400'
+  },
+  taper: {
+    labelHr: 'Taper',
+    labelEn: 'Taper',
+    get label() { return tr(this.labelHr, this.labelEn); },
+    cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    bar: 'bg-emerald-400'
+  },
+  race: {
+    labelHr: 'Event',
+    labelEn: 'Race / Event',
+    get label() { return tr(this.labelHr, this.labelEn); },
+    cls: 'bg-volt-400/15 text-volt-400 border-volt-400/35',
+    bar: 'bg-volt-400'
+  }
 };
+
+export function getLocalizedPhaseLabel(phaseType, rawLabel, lang = getCurrentLanguage()) {
+  const meta = PHASE_META[phaseType] || PHASE_META.base;
+  if (!rawLabel) return lang === 'en' ? meta.labelEn : meta.labelHr;
+  const trimmed = String(rawLabel).trim();
+  const lower = trimmed.toLowerCase();
+  if (lower === 'baza' || lower === 'base') return lang === 'en' ? 'Base' : 'Baza';
+  if (lower === 'build' || lower === 'izgradnja') return 'Build';
+  if (lower === 'peak' || lower === 'vrhunac') return 'Peak';
+  if (lower === 'taper' || lower === 'rasterećenje') return 'Taper';
+  if (lower === 'oporavak' || lower === 'recovery' || lower === 'rest') return lang === 'en' ? 'Recovery' : 'Oporavak';
+  if (lower === 'event' || lower === 'utrka' || lower === 'race' || lower === 'race / event') return lang === 'en' ? 'Race / Event' : 'Event';
+  return trimmed;
+}
+
+export function getLocalizedEventType(eventTypeId, lang = getCurrentLanguage()) {
+  if (!eventTypeId) return '';
+  const match = EVENT_TYPE_OPTIONS.find(
+    o => o.id === eventTypeId || o.labelHr === eventTypeId || o.labelEn === eventTypeId
+  );
+  if (!match) return eventTypeId;
+  return lang === 'en' ? match.labelEn : match.labelHr;
+}
 
 export function parseIsoLocal(dateIso) {
   if (!dateIso || typeof dateIso !== 'string') return new Date();
@@ -158,20 +326,34 @@ export function chunkWeeksIntoBlocks(totalWeeks, blockSize = 4) {
  * Sažima tjedni raspored u statistike i tekst za AI prompt.
  */
 export function summarizeWeeklySchedule(weeklySchedule = DEFAULT_WEEKLY_SCHEDULE) {
+  const lang = getCurrentLanguage();
   const activeDays = [];
   const promptLines = [];
   let totalMinutes = 0;
 
   WEEKDAY_DEFS.forEach(day => {
     const cfg = weeklySchedule?.[day.key];
+    const dayLabel = lang === 'en' ? day.nameEn : day.nameHr;
     if (cfg?.enabled) {
       const mins = Math.max(30, Number(cfg.minutes) || 60);
       totalMinutes += mins;
       activeDays.push({ ...day, minutes: mins });
-      const hint = mins >= 120 ? 'duga vožnja / vani ili duži Z2' : (mins <= 50 ? 'kratki intenzivni / trenažer' : 'trenažer / standardni trening');
-      promptLines.push(`- ${day.name} (${day.key}): TRENING max ${mins} min (${hint})`);
+      const hint = mins >= 120
+        ? tr('duga vožnja / vani ili duži Z2', 'long ride / outdoor or extended Z2', null, lang)
+        : (mins <= 50
+          ? tr('kratki intenzivni / trenažer', 'short intense / smart trainer', null, lang)
+          : tr('trenažer / standardni trening', 'smart trainer / standard workout', null, lang));
+      promptLines.push(
+        lang === 'en'
+          ? `- ${dayLabel} (${day.key}): WORKOUT max ${mins} min (${hint})`
+          : `- ${dayLabel} (${day.key}): TRENING max ${mins} min (${hint})`
+      );
     } else {
-      promptLines.push(`- ${day.name} (${day.key}): DAN ODMORA (ne zakazuj trening!)`);
+      promptLines.push(
+        lang === 'en'
+          ? `- ${dayLabel} (${day.key}): REST DAY (do not schedule a workout!)`
+          : `- ${dayLabel} (${day.key}): DAN ODMORA (ne zakazuj trening!)`
+      );
     }
   });
 
@@ -184,11 +366,19 @@ export function summarizeWeeklySchedule(weeklySchedule = DEFAULT_WEEKLY_SCHEDULE
   };
 }
 
-export function formatShortHrDate(dateIso) {
+export function formatShortHrDate(dateIso, lang = getCurrentLanguage()) {
   if (!dateIso) return '';
   const dt = parseIsoLocal(dateIso);
-  const months = ['sij', 'velj', 'ožu', 'tra', 'svi', 'lip', 'srp', 'kol', 'ruj', 'lis', 'stu', 'pro'];
-  return `${dt.getDate()}. ${months[dt.getMonth()]}`;
+  try {
+    return dt.toLocaleDateString(getLocale(lang), { day: 'numeric', month: 'short' });
+  } catch {
+    if (lang === 'en') {
+      const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${monthsEn[dt.getMonth()]} ${dt.getDate()}`;
+    }
+    const months = ['sij', 'velj', 'ožu', 'tra', 'svi', 'lip', 'srp', 'kol', 'ruj', 'lis', 'stu', 'pro'];
+    return `${dt.getDate()}. ${months[dt.getMonth()]}`;
+  }
 }
 
 const REST_EVENT_CATEGORIES = new Set(['REST', 'ODMOR', 'DAY_OFF', 'NOTE', 'HOLIDAY', 'SICK']);
@@ -211,7 +401,7 @@ export function isRestDayWorkout(item) {
   const rawTitle = String(item.title ?? item.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (rawTitle) {
     const strippedTitle = rawTitle
-      .replace(/^(?:ponedjeljak|utorak|srijeda|četvrtak|cetvrtak|petak|subota|nedjelja|pon|uto|sri|čet|cet|pet|sub|ned)\s*[-–:|]\s*/i, '')
+      .replace(/^(?:ponedjeljak|utorak|srijeda|četvrtak|cetvrtak|petak|subota|nedjelja|pon|uto|sri|čet|cet|pet|sub|ned|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\s*[-–:|]\s*/i, '')
       .replace(/[.!?]+$/g, '')
       .trim();
 
@@ -365,17 +555,45 @@ export function buildPlanAnalysisPrompt({
   summary,
   workoutsInCalendar = []
 }) {
+  const lang = getCurrentLanguage();
+  const isEn = lang === 'en';
   const sorted = [...workoutsInCalendar].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const completed = sorted.filter(w => w.isCompleted);
   const upcoming = sorted.filter(w => !w.isCompleted);
   const totalPlannedTss = sorted.reduce((acc, w) => acc + (Number(w.plannedTss || w.tss) || 0), 0);
 
   const previewLines = sorted.slice(0, 28).map(w => {
-    const status = w.isCompleted ? 'ODRAĐENO' : (w.statusColor === 'red-missed' ? 'PROPUŠTENO' : 'PLANIRANO');
+    const status = w.isCompleted
+      ? tr('ODRAĐENO', 'COMPLETED', null, lang)
+      : (w.statusColor === 'red-missed'
+        ? tr('PROPUŠTENO', 'MISSED', null, lang)
+        : tr('PLANIRANO', 'PLANNED', null, lang));
     const dur = Math.round(Number(w.plannedDuration || w.duration) || 0);
     const tss = Math.round(Number(w.plannedTss || w.tss) || 0);
-    return `- ${w.date} [${status}]: ${w.title} (${dur}m, ~${tss} TSS, kat: ${w.category || 'WORKOUT'})`;
+    const catLabel = isEn ? 'cat' : 'kat';
+    return `- ${w.date} [${status}]: ${w.title} (${dur}m, ~${tss} TSS, ${catLabel}: ${w.category || 'WORKOUT'})`;
   });
+
+  if (isEn) {
+    return [
+      `Please provide a detailed coaching analysis of my training plan "${planTitle || 'AI Training Plan'}".`,
+      methodology ? `• Methodology: ${methodology}` : null,
+      totalWeeks ? `• Macrocycle duration: ${totalWeeks} weeks` : null,
+      startDate ? `• Plan start in calendar: ${startDate}${endDate ? ` to ${endDate}` : ''}` : null,
+      goalTitle ? `• Goal: ${goalTitle}${eventDate ? ` (${eventDate})` : ''}` : null,
+      summary ? `• Plan summary: ${summary}` : null,
+      sorted.length > 0
+        ? `• Calendar items: ${sorted.length} workouts (${completed.length} completed, ${upcoming.length} upcoming, ~${Math.round(totalPlannedTss)} total TSS)`
+        : null,
+      previewLines.length > 0
+        ? `\nWorkout schedule:\n${previewLines.join('\n')}${sorted.length > 28 ? `\n... and ${sorted.length - 28} more workouts` : ''}`
+        : null,
+      '\nPlease evaluate specifically:',
+      '1. Is the load progression (TSS / volume) and intensity-to-Z2 recovery ratio optimal for my current CTL/ATL/TSB and goal?',
+      '2. Are there any unrealistic, overly hard, or poorly placed workouts for a smart trainer?',
+      '3. What specific adjustments or improvements would you recommend for the upcoming workouts / blocks?'
+    ].filter(Boolean).join('\n');
+  }
 
   return [
     `Molim te napravi detaljnu trenersku analizu mog plana treninga "${planTitle || 'AI Plan Treninga'}".`,
@@ -473,7 +691,7 @@ export function buildCalendarPlanMarkers({ planRegistry = [], savedPlan = null, 
 
     const cleanTitle = savedBlueprintMatch?.planTitle
       || earliestEntry.planTitle
-      || String(earliestEntry.title || 'AI Plan Treninga').split(' • Blok ')[0];
+      || String(earliestEntry.title || tr('AI Plan Treninga', 'AI Training Plan')).split(/\s*•\s*(?:Blok|Block)\s+/)[0];
 
     const primaryBlockSubKey = earliestEntry.blockKey.includes(':')
       ? earliestEntry.blockKey.split(':')[1]

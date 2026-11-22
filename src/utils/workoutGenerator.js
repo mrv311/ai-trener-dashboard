@@ -1,4 +1,5 @@
 import { parseWorkoutDoc, categorizeWorkout, calculateCategoryDifficulty } from './workoutParser';
+import { tr, translateCategory } from '../i18n/i18nCore.js';
 
 export const generateLocalWorkout = (type, durationMins, difficulty = 3) => {
   // difficulty scale 1 to 5 (3 is normal)
@@ -21,7 +22,7 @@ export const generateLocalWorkout = (type, durationMins, difficulty = 3) => {
   const mainMins = durationMins - warmupMins - cooldownMins;
 
   // --- 1. WARMUP (3-part) ---
-  lines.push("Zagrijavanje");
+  lines.push(tr("Zagrijavanje", "Warmup"));
   
   const w1 = Math.floor(warmupMins / 3);
   const w2 = Math.floor(warmupMins / 3);
@@ -35,7 +36,7 @@ export const generateLocalWorkout = (type, durationMins, difficulty = 3) => {
   if (needsPrimers && w3 >= 4) {
     // Odvojimo dio za primerse (2 min)
     lines.push(`- ${w3 - 2}m 60%`);
-    lines.push("Priprema (Primers)");
+    lines.push(tr("Priprema (Primers)", "Primers"));
     lines.push("- 30s 110%");
     lines.push("- 30s 50%");
     lines.push("- 30s 115%");
@@ -46,7 +47,7 @@ export const generateLocalWorkout = (type, durationMins, difficulty = 3) => {
   lines.push("");
 
   // --- 2. MAIN BLOCK ---
-  lines.push("Glavni dio");
+  lines.push(tr("Glavni dio", "Main Set"));
   
   if (mainMins <= 0) {
     lines.push(`- ${durationMins}m 50-60%`);
@@ -158,7 +159,7 @@ export const generateLocalWorkout = (type, durationMins, difficulty = 3) => {
 
         if (setCount > 0) {
           for(let s=0; s<setCount; s++) {
-            lines.push(`Serija ${s+1}`);
+            lines.push(tr(`Serija ${s+1}`, `Set ${s+1}`));
             for(let i=0; i<anSet; i++) {
                lines.push(`- ${anBlock}m ${targetPct}%`);
                lines.push(`- ${anRest}m 50%`);
@@ -192,17 +193,21 @@ export const generateLocalWorkout = (type, durationMins, difficulty = 3) => {
 
   lines.push("");
   // --- 3. COOLDOWN ---
-  lines.push("Hlađenje");
+  lines.push(tr("Hlađenje", "Cooldown"));
   lines.push(`- ${cooldownMins}m 50-40%`);
 
   const code = lines.join('\n');
   const parsed = parseWorkoutDoc(code);
   const diffScore = calculateCategoryDifficulty(parsed.allSteps, type);
+  const displayType = translateCategory(type);
   
   return {
     id: `local-ai-${Date.now()}`,
-    title: `AI: ${durationMins}m ${type} (T${difficulty})`,
-    description: `Automatski generiran trening: ${durationMins}m ${type}, Težina ${difficulty}/5.\n\n${code}`,
+    title: `AI: ${durationMins}m ${displayType} (${tr('T', 'L')}${difficulty})`,
+    description: tr(
+      `Automatski generiran trening: ${durationMins}m ${displayType}, Težina ${difficulty}/5.\n\n${code}`,
+      `Auto-generated workout: ${durationMins}m ${displayType}, Difficulty ${difficulty}/5.\n\n${code}`
+    ),
     category: type,
     isLocalGenerated: true,
     steps: parsed.allSteps,

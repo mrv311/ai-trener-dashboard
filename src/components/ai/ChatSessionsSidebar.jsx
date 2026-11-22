@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import {
   Plus, MessageSquare, Pencil, Trash2, Download, Check, X, Lock, Search
 } from 'lucide-react';
+import { useI18n } from '../../i18n/I18nContext';
 
-function formatSessionDate(isoStr) {
+function formatSessionDate(isoStr, locale, tr) {
   if (!isoStr) return '';
   const d = new Date(isoStr);
   if (Number.isNaN(d.getTime())) return '';
@@ -14,7 +15,7 @@ function formatSessionDate(isoStr) {
     d.getDate() === now.getDate();
 
   if (isToday) {
-    return d.toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   }
 
   const yesterday = new Date(now);
@@ -24,13 +25,16 @@ function formatSessionDate(isoStr) {
     d.getMonth() === yesterday.getMonth() &&
     d.getDate() === yesterday.getDate();
 
-  if (isYesterday) return 'jučer';
+  if (isYesterday) return tr('jučer', 'yesterday');
 
-  return d.toLocaleDateString('hr-HR', { day: '2-digit', month: '2-digit' });
+  return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
 }
 
-function pluralMessages(count) {
+function pluralMessages(count, isEn) {
   const n = Number(count) || 0;
+  if (isEn) {
+    return n === 1 ? '1 message' : `${n} messages`;
+  }
   if (n === 1) return '1 poruka';
   const mod10 = n % 10;
   const mod100 = n % 100;
@@ -51,6 +55,7 @@ export default function ChatSessionsSidebar({
   onExportSession,
   onCloseMobile
 }) {
+  const { isEn, locale, tr } = useI18n();
   const [editingId, setEditingId] = useState(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -98,7 +103,7 @@ export default function ChatSessionsSidebar({
           className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs transition-all shadow-volt-glow/50 active:scale-[0.99]"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span>Novi razgovor</span>
+          <span>{tr('Novi razgovor', 'New Chat')}</span>
         </button>
 
         {onCloseMobile && (
@@ -106,7 +111,7 @@ export default function ChatSessionsSidebar({
             type="button"
             onClick={onCloseMobile}
             className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-800 lg:hidden shrink-0"
-            title="Zatvori povijest"
+            title={tr('Zatvori povijest', 'Close history')}
           >
             <X className="w-4 h-4" />
           </button>
@@ -122,7 +127,7 @@ export default function ChatSessionsSidebar({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Pretraži razgovore..."
+              placeholder={tr('Pretraži razgovore...', 'Search conversations...')}
               className="w-full bg-zinc-900/90 border border-zinc-800 rounded-lg pl-8 pr-7 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-volt-400/60 outline-none"
             />
             {searchQuery && (
@@ -144,11 +149,13 @@ export default function ChatSessionsSidebar({
           <div className="text-center py-8 px-3">
             <MessageSquare className="w-6 h-6 text-zinc-700 mx-auto mb-2" />
             <p className="text-xs text-zinc-500 font-medium">
-              {searchQuery ? 'Nema podudaranja.' : 'Još nema spremljenih razgovora.'}
+              {searchQuery
+                ? tr('Nema podudaranja.', 'No matches found.')
+                : tr('Još nema spremljenih razgovora.', 'No saved conversations yet.')}
             </p>
             {!searchQuery && (
               <p className="text-[10px] text-zinc-600 mt-1">
-                Svaki novi razgovor automatski se sprema lokalno.
+                {tr('Svaki novi razgovor automatski se sprema lokalno.', 'Every new conversation is automatically saved locally.')}
               </p>
             )}
           </div>
@@ -158,6 +165,10 @@ export default function ChatSessionsSidebar({
             const isEditing = editingId === session.id;
             const isSendingHere = sendingSessionId === session.id;
             const msgCount = Array.isArray(session.messages) ? session.messages.length : 0;
+            const displayTitle =
+              !session.isCustomTitle && session.title === 'Novi razgovor'
+                ? tr('Novi razgovor', 'New Chat')
+                : session.title || tr('Razgovor', 'Conversation');
 
             return (
               <div
@@ -190,7 +201,7 @@ export default function ChatSessionsSidebar({
                       type="button"
                       onClick={(e) => commitEditing(session.id, e)}
                       className="p-1 rounded bg-volt-400 text-zinc-950 hover:bg-volt-300 shrink-0"
-                      title="Spremi naziv"
+                      title={tr('Spremi naziv', 'Save title')}
                     >
                       <Check className="w-3 h-3" />
                     </button>
@@ -198,7 +209,7 @@ export default function ChatSessionsSidebar({
                       type="button"
                       onClick={cancelEditing}
                       className="p-1 rounded bg-zinc-800 text-zinc-300 hover:text-white shrink-0"
-                      title="Odustani"
+                      title={tr('Odustani', 'Cancel')}
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -211,7 +222,7 @@ export default function ChatSessionsSidebar({
                           <span className="w-1.5 h-1.5 rounded-full bg-volt-400 animate-ping shrink-0" />
                         )}
                         <span className={`text-xs font-semibold truncate ${isActive ? 'text-volt-300' : 'text-zinc-200'}`}>
-                          {session.title || 'Razgovor'}
+                          {displayTitle}
                         </span>
                       </div>
 
@@ -220,7 +231,7 @@ export default function ChatSessionsSidebar({
                           type="button"
                           onClick={(e) => startEditing(session, e)}
                           className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors"
-                          title="Preimenuj razgovor"
+                          title={tr('Preimenuj razgovor', 'Rename conversation')}
                         >
                           <Pencil className="w-3 h-3" />
                         </button>
@@ -231,7 +242,7 @@ export default function ChatSessionsSidebar({
                             onExportSession(session);
                           }}
                           className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-volt-400 transition-colors"
-                          title="Izvezi kao Markdown (.md)"
+                          title={tr('Izvezi kao Markdown (.md)', 'Export as Markdown (.md)')}
                         >
                           <Download className="w-3 h-3" />
                         </button>
@@ -242,7 +253,7 @@ export default function ChatSessionsSidebar({
                             onDeleteSession(session);
                           }}
                           className="p-1 rounded hover:bg-rose-500/15 text-zinc-500 hover:text-rose-400 transition-colors"
-                          title="Obriši razgovor"
+                          title={tr('Obriši razgovor', 'Delete conversation')}
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -250,8 +261,8 @@ export default function ChatSessionsSidebar({
                     </div>
 
                     <div className="flex items-center justify-between gap-2 mt-1 font-mono text-[10px] text-zinc-500">
-                      <span>{pluralMessages(msgCount)}</span>
-                      <span>{formatSessionDate(session.updatedAt || session.createdAt)}</span>
+                      <span>{pluralMessages(msgCount, isEn)}</span>
+                      <span>{formatSessionDate(session.updatedAt || session.createdAt, locale, tr)}</span>
                     </div>
                   </>
                 )}
@@ -264,8 +275,14 @@ export default function ChatSessionsSidebar({
       {/* Privacy footer */}
       <div className="px-3 py-2 border-t border-zinc-800/80 bg-zinc-950 text-[10px] font-mono text-zinc-500 flex items-center gap-1.5 shrink-0">
         <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
-        <span className="truncate" title="Svi razgovori i prilozi ostaju isključivo lokalno na ovom uređaju i nikad se ne spremaju na server.">
-          100% lokalno na ovom uređaju
+        <span
+          className="truncate"
+          title={tr(
+            'Svi razgovori i prilozi ostaju isključivo lokalno na ovom uređaju i nikad se ne spremaju na server.',
+            'All conversations and attachments stay strictly local on this device and are never saved to a server.'
+          )}
+        >
+          {tr('100% lokalno na ovom uređaju', '100% local on this device')}
         </span>
       </div>
     </div>

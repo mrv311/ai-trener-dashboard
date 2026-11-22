@@ -1,3 +1,5 @@
+import { getCurrentLanguage } from '../i18n/i18nCore.js';
+
 /**
  * Centralizirane pomoćne funkcije za prepoznavanje vrste sporta / treninga
  * (biciklizam za trenažer vs. trening snage / teretana, trčanje, plivanje, ostalo).
@@ -205,16 +207,17 @@ export function toIntervalsSportType(typeStr) {
 }
 
 /**
- * Vraća čitljivi hrvatski naziv vrste treninga.
+ * Vraća čitljivi lokalizirani naziv vrste treninga (HR / EN).
  */
-export function getSportLabel(kindOrWorkout) {
+export function getSportLabel(kindOrWorkout, lang = getCurrentLanguage()) {
   const kind = typeof kindOrWorkout === 'string' ? kindOrWorkout : getWorkoutSportKind(kindOrWorkout);
+  const en = lang === 'en';
   switch (kind) {
-    case 'strength': return 'Trening snage';
-    case 'run': return 'Trčanje';
-    case 'swim': return 'Plivanje';
-    case 'other': return 'Ostali trening';
-    case 'race': return 'Ciljni Event';
-    default: return 'Biciklizam';
+    case 'strength': return en ? 'Strength Training' : 'Trening snage';
+    case 'run': return en ? 'Running' : 'Trčanje';
+    case 'swim': return en ? 'Swimming' : 'Plivanje';
+    case 'other': return en ? 'Other Workout' : 'Ostali trening';
+    case 'race': return en ? 'Target Event' : 'Ciljni Event';
+    default: return en ? 'Cycling' : 'Biciklizam';
   }
 }

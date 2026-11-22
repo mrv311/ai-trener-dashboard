@@ -3,6 +3,7 @@ import { X, Save, Pencil, Eye, Database, Check, Dumbbell, Bike, Footprints, Wave
 import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty, resolveStepPowerPct } from '../utils/workoutParser';
 import { insertLibraryWorkouts } from '../services/workoutLibraryStorage';
 import { getWorkoutSportKind, getSportLabel } from '../utils/sportTypes';
+import { useI18n } from '../i18n/I18nContext';
 
 
 // ============================================================
@@ -293,12 +294,13 @@ function MiniWorkoutGraph({ allSteps, ftp, totalSecs }) {
 // Step List (View Mode)
 // ============================================================
 function StepList({ blocks, ftp }) {
+  const { tStep } = useI18n();
   return (
     <div className="space-y-4 overflow-y-auto max-h-[340px] pr-1 custom-scrollbar">
       {blocks.map((block, bi) => (
         <div key={bi}>
           <h3 className="text-[11px] font-black text-zinc-400 uppercase tracking-wider mb-1.5 border-b border-zinc-800/60 pb-1">
-            {block.name}
+            {tStep(block.name)}
           </h3>
           <ul className="space-y-0.5">
             {block.steps.map((step, si) => {
@@ -356,6 +358,7 @@ function renderEditorSportIcon(sportKind, className) {
 // MAIN MODAL
 // ============================================================
 export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, isLoading, userFtp, userId }) {
+  const { lang, tr, locale } = useI18n();
   const [title, setTitle] = useState('');
   const [code, setCode] = useState('');
   const [workoutType, setWorkoutType] = useState('ride');
@@ -420,13 +423,18 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
   const handleSwitchSport = (nextType) => {
     setHasExplicitTypeSwitch(true);
     setWorkoutType(nextType);
+    const trimmed = title.trim();
     if (nextType === 'strength') {
-      if (!title.trim() || title.trim() === 'Novi Trening') setTitle('Trening snage');
+      if (!trimmed || trimmed === 'Novi Trening' || trimmed === 'New Workout') {
+        setTitle(tr('Trening snage', 'Strength Training'));
+      }
       if (!Number(durationMinutes)) setDurationMinutes('45');
       if (!Number(estimatedTss)) setEstimatedTss('35');
       setCode('');
     } else {
-      if (!title.trim() || title.trim() === 'Trening snage') setTitle('Novi Trening');
+      if (!trimmed || trimmed === 'Trening snage' || trimmed === 'Strength Training') {
+        setTitle(tr('Novi Trening', 'New Workout'));
+      }
       setCode('');
     }
   };
@@ -437,7 +445,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
       const cleanDur = Math.max(0, Math.round(Number(durationMinutes) || 0));
       const cleanTss = Math.max(0, Math.round(Number(estimatedTss) || 0));
       const cleanNotes = code.trim();
-      const resolvedTitle = title.trim() || (isStrength ? 'Trening snage' : getSportLabel(effectiveSportKind));
+      const resolvedTitle = title.trim() || (isStrength ? tr('Trening snage', 'Strength Training') : getSportLabel(effectiveSportKind, lang));
 
       onSave({
         ...workout,
@@ -486,7 +494,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
       const difficulty = calculateCategoryDifficulty(stats.allSteps, category);
 
       const workoutPayload = {
-        title: title || 'Novi Trening',
+        title: title || tr('Novi Trening', 'New Workout'),
         description: '',
         duration_seconds: Math.round(stats.duration || 0),
         difficulty_score: difficulty,
@@ -505,7 +513,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
       setTimeout(() => setLibrarySaveSuccess(false), 2000);
     } catch (err) {
       console.error(err);
-      alert("Greška pri spremanju u knjižnicu: " + err.message);
+      alert(tr('Greška pri spremanju u knjižnicu: {msg}', 'Error saving to library: {msg}', { msg: err.message }));
     } finally {
       setIsSavingToLibrary(false);
     }
@@ -520,10 +528,10 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
 
   // Informacije o datumu treninga
   const workoutDate = workout.date ? new Date(workout.date) : null;
-  const dayNames = ['Nedjelja', 'Ponedjeljak', 'Utorak', 'Srijeda', 'Četvrtak', 'Petak', 'Subota'];
-  const dayName = workoutDate ? dayNames[workoutDate.getDay()] : '';
+  const rawDayName = workoutDate ? workoutDate.toLocaleDateString(locale, { weekday: 'long' }) : '';
+  const dayName = rawDayName ? rawDayName.charAt(0).toUpperCase() + rawDayName.slice(1) : '';
   const dateStr = workoutDate
-    ? `${workoutDate.getDate()} ${['Sij', 'Velj', 'Ožu', 'Tra', 'Svi', 'Lip', 'Srp', 'Kol', 'Ruj', 'Lis', 'Stu', 'Pro'][workoutDate.getMonth()]}`
+    ? workoutDate.toLocaleDateString(locale, { day: 'numeric', month: 'short' })
     : '';
   const timeStr = workout.time || '08:00';
 
@@ -546,7 +554,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                   : 'bg-volt-400/10 text-volt-400 border-volt-400/25'
               }`}>
                 {renderEditorSportIcon(effectiveSportKind, 'w-3 h-3')}
-                {getSportLabel(effectiveSportKind)}
+                {getSportLabel(effectiveSportKind, lang)}
               </span>
 
               {canSwitchSport && mode === 'edit' && (
@@ -558,7 +566,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                       !isNonCycling ? 'bg-volt-400 text-zinc-950' : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
-                    Bicikl
+                    {tr('Bicikl', 'Cycling')}
                   </button>
                   <button
                     type="button"
@@ -567,7 +575,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                       isStrength ? 'bg-violet-400 text-zinc-950' : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
-                    Trening snage
+                    {tr('Trening snage', 'Strength Training')}
                   </button>
                 </div>
               )}
@@ -579,11 +587,13 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                 value={title}
                 onChange={e => setTitle(e.target.value)}
                 className="bg-zinc-900 border border-zinc-700 focus:border-volt-400 rounded-lg px-2.5 py-1 outline-none w-full max-w-md text-lg md:text-xl font-display font-bold uppercase tracking-wide text-zinc-100"
-                placeholder={isStrength ? 'Naziv treninga snage (npr. Teretana — noge & core)' : 'Naziv treninga...'}
+                placeholder={isStrength
+                  ? tr('Naziv treninga snage (npr. Teretana — noge & core)', 'Strength workout name (e.g. Gym — Legs & Core)')
+                  : tr('Naziv treninga...', 'Workout title...')}
               />
             ) : (
               <h1 className="text-lg md:text-xl font-display font-bold uppercase tracking-wide text-zinc-100 truncate">
-                {title || workout.name || 'Bez naziva'}
+                {title || workout.name || tr('Bez naziva', 'Untitled')}
               </h1>
             )}
             <div className="text-xs font-mono text-zinc-400">
@@ -594,14 +604,14 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
           {/* Header statistike */}
           <div className="hidden sm:flex items-center gap-6 mx-4 shrink-0 font-mono telemetry-num">
             <div className="text-center">
-              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">Trajanje</div>
+              <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">{tr('Trajanje', 'Duration')}</div>
               <div className="text-zinc-100 font-bold text-sm leading-tight">
                 {totalSecs > 0 ? formatDurSec(totalSecs) : '-'}
               </div>
             </div>
             <div className="text-center">
               <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">
-                {isNonCycling ? 'Proc. TSS' : 'TSS Load'}
+                {isNonCycling ? tr('Proc. TSS', 'Est. TSS') : tr('TSS Load', 'TSS Load')}
               </div>
               <div className={`font-bold text-sm leading-tight ${isStrength ? 'text-violet-300' : 'text-volt-400'}`}>
                 {displayTss > 0 ? displayTss : '-'}
@@ -609,13 +619,17 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
             </div>
             {!isNonCycling && (
               <div className="text-center">
-                <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">Intenzitet</div>
+                <div className="text-zinc-500 font-bold uppercase text-[9px] tracking-widest">{tr('Intenzitet', 'Intensity')}</div>
                 <div className="text-zinc-100 font-bold text-sm leading-tight">{intensityPct > 0 ? `${intensityPct}%` : '-'}</div>
               </div>
             )}
           </div>
 
-          <button onClick={onClose} className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 rounded-lg transition-colors shrink-0">
+          <button
+            onClick={onClose}
+            aria-label={tr('Zatvori', 'Close')}
+            className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 rounded-lg transition-colors shrink-0"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -630,7 +644,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                     <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 space-y-2">
                       <label className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
                         <Clock className="w-3.5 h-3.5 text-violet-400" />
-                        Trajanje (min)
+                        {tr('Trajanje (min)', 'Duration (min)')}
                       </label>
                       <input
                         type="number"
@@ -663,7 +677,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                     <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 space-y-2">
                       <label className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
                         <Zap className="w-3.5 h-3.5 text-amber-400" />
-                        Procijenjeni TSS
+                        {tr('Procijenjeni TSS', 'Estimated TSS')}
                       </label>
                       <input
                         type="number"
@@ -676,7 +690,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                         placeholder="35"
                       />
                       <p className="text-[11px] text-zinc-500 leading-snug">
-                        Opcionalno (npr. 25–50). Uključuje se u tjedni load i PMC krivulju.
+                        {tr('Opcionalno (npr. 25–50). Uključuje se u tjedni load i PMC krivulju.', 'Optional (e.g. 25–50). Included in weekly load and the PMC curve.')}
                       </p>
                     </div>
                   </div>
@@ -684,7 +698,9 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                   <div className="flex flex-col gap-2">
                     <label className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-violet-300 uppercase tracking-[0.18em]">
                       <FileText className="w-3.5 h-3.5" />
-                      {isStrength ? 'Raspored vježbi / Podsjetnik (opcionalno)' : 'Bilješke treninga (opcionalno)'}
+                      {isStrength
+                        ? tr('Raspored vježbi / Podsjetnik (opcionalno)', 'Exercise Routine / Notes (optional)')
+                        : tr('Bilješke treninga (opcionalno)', 'Workout Notes (optional)')}
                     </label>
                     <textarea
                       value={code}
@@ -692,8 +708,11 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                       className="w-full h-[220px] bg-zinc-950 border border-zinc-800 rounded-xl p-3.5 text-xs text-zinc-200 font-mono leading-relaxed focus:border-violet-400 focus:ring-1 focus:ring-violet-400/30 outline-none resize-y transition-all custom-scrollbar placeholder-zinc-600"
                       placeholder={
                         isStrength
-                          ? `Npr.:\nZagrijavanje: mobilnost kukova 10 min\n- Čučanj 4x8\n- Rumunjsko mrtvo dizanje 3x10\n- Bugarski čučanj 3x10 / noga\n- Plank 3x60s`
-                          : 'Upiši bilješke, zone pulsa ili plan treninga...'
+                          ? tr(
+                              `Npr.:\nZagrijavanje: mobilnost kukova 10 min\n- Čučanj 4x8\n- Rumunjsko mrtvo dizanje 3x10\n- Bugarski čučanj 3x10 / noga\n- Plank 3x60s`,
+                              `E.g.:\nWarmup: hip mobility 10 min\n- Squat 4x8\n- Romanian Deadlift 3x10\n- Bulgarian Split Squat 3x10 / leg\n- Plank 3x60s`
+                            )
+                          : tr('Upiši bilješke, zone pulsa ili plan treninga...', 'Enter notes, heart rate zones, or workout plan...')
                       }
                       spellCheck={false}
                     />
@@ -703,21 +722,21 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                 <>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono telemetry-num">
                     <div className="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3.5">
-                      <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Trajanje</div>
+                      <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-1">{tr('Trajanje', 'Duration')}</div>
                       <div className="text-lg font-bold text-zinc-100">
                         {nonCyclingDurMin > 0 ? formatDurSec(nonCyclingDurMin * 60) : '-'}
                       </div>
                     </div>
                     <div className="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3.5">
-                      <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Procijenjeni TSS</div>
+                      <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-1">{tr('Procijenjeni TSS', 'Estimated TSS')}</div>
                       <div className="text-lg font-bold text-violet-300">
                         {nonCyclingTssVal > 0 ? nonCyclingTssVal : '-'}
                       </div>
                     </div>
                     <div className="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3.5 col-span-2 sm:col-span-1">
-                      <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-1">Način izvedbe</div>
+                      <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-1">{tr('Način izvedbe', 'Execution Mode')}</div>
                       <div className="text-xs font-sans font-semibold text-zinc-300 mt-1">
-                        {isStrength ? 'Izvan trenažera (snaga / teretana)' : 'Izvan trenažera'}
+                        {isStrength ? tr('Izvan trenažera (snaga / teretana)', 'Off-trainer (strength / gym)') : tr('Izvan trenažera', 'Off-trainer')}
                       </div>
                     </div>
                   </div>
@@ -726,7 +745,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                     <div className="flex items-center justify-between">
                       <h3 className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-[0.18em]">
                         <FileText className="w-3.5 h-3.5 text-violet-400" />
-                        {isStrength ? 'Raspored vježbi / Podsjetnik' : 'Bilješke treninga'}
+                        {isStrength ? tr('Raspored vježbi / Podsjetnik', 'Exercise Routine / Notes') : tr('Bilješke treninga', 'Workout Notes')}
                       </h3>
                     </div>
 
@@ -738,14 +757,14 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                       <div className="flex flex-col items-center justify-center py-8 px-4 rounded-xl border border-dashed border-zinc-800 bg-zinc-950/40 text-center">
                         <Dumbbell className="w-7 h-7 text-zinc-700 mb-2" />
                         <p className="text-xs text-zinc-500">
-                          {isStrength ? 'Nema upisanog rasporeda vježbi.' : 'Nema upisanih bilješki za ovaj trening.'}
+                          {isStrength ? tr('Nema upisanog rasporeda vježbi.', 'No exercise routine entered.') : tr('Nema upisanih bilješki za ovaj trening.', 'No notes entered for this workout.')}
                         </p>
                         <button
                           type="button"
                           onClick={() => setMode('edit')}
                           className="mt-2.5 text-violet-300 hover:text-violet-200 font-mono font-bold uppercase tracking-wider text-[11px] transition-colors"
                         >
-                          {isStrength ? '+ Dodaj raspored vježbi / podsjetnik' : '+ Uredi detalje'}
+                          {isStrength ? tr('+ Dodaj raspored vježbi / podsjetnik', '+ Add exercise routine / notes') : tr('+ Uredi detalje', '+ Edit details')}
                         </button>
                       </div>
                     )}
@@ -762,7 +781,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                   {mode === 'edit' ? (
                     <div className="flex flex-col gap-3">
                       <label className="text-[10px] font-mono font-bold text-volt-400 uppercase tracking-[0.18em]">
-                        Struktura treninga (npr. - 10m 65%)
+                        {tr('Struktura treninga (npr. - 10m 65%)', 'Workout Structure (e.g. - 10m 65%)')}
                       </label>
                       <textarea
                         value={code}
@@ -778,9 +797,9 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                     ) : (
                       <div className="flex flex-col items-center justify-center h-40 text-zinc-500 text-sm">
                         <Pencil className="w-8 h-8 mb-3 text-zinc-700" />
-                        <p>Nema koraka za prikaz.</p>
+                        <p>{tr('Nema koraka za prikaz.', 'No steps to display.')}</p>
                         <button onClick={() => setMode('edit')} className="mt-2 text-volt-400 hover:text-volt-300 font-mono font-bold uppercase tracking-wider text-xs transition-colors">
-                          + Uredi kod treninga
+                          {tr('+ Uredi kod treninga', '+ Edit workout code')}
                         </button>
                       </div>
                     )
@@ -849,7 +868,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
               }`}
             >
               {mode === 'edit' ? <Eye className="w-3.5 h-3.5" /> : <Pencil className="w-3.5 h-3.5" />}
-              {mode === 'edit' ? 'Pregled' : (isNonCycling ? 'Uredi' : 'Uredi kod')}
+              {mode === 'edit' ? tr('Pregled', 'Preview') : (isNonCycling ? tr('Uredi', 'Edit') : tr('Uredi kod', 'Edit Code'))}
             </button>
           </div>
 
@@ -858,7 +877,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
               <button
                 onClick={handleSaveToLibrary}
                 disabled={isSavingToLibrary || isLoading}
-                title="Spremi ovaj trening u zajedničku knjižnicu"
+                title={tr('Spremi ovaj trening u zajedničku knjižnicu', 'Save this workout to your workout library')}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-mono font-bold uppercase tracking-wider transition-colors border ${
                   librarySaveSuccess
                     ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
@@ -872,14 +891,14 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
                 ) : (
                   <Database className="w-3.5 h-3.5" />
                 )}
-                {librarySaveSuccess ? 'Spremljeno' : 'U Knjižnicu'}
+                {librarySaveSuccess ? tr('Spremljeno', 'Saved') : tr('U Knjižnicu', 'Save to Library')}
               </button>
             )}
             <button
               onClick={onClose}
               className="px-3.5 py-1.5 rounded-lg text-[11px] font-mono font-bold text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors uppercase tracking-wider"
             >
-              Zatvori
+              {tr('Zatvori', 'Close')}
             </button>
             <button
               onClick={handleSave}
@@ -891,7 +910,7 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
               ) : (
                 <Save className="w-3.5 h-3.5" />
               )}
-              Spremi
+              {tr('Spremi', 'Save')}
             </button>
           </div>
         </div>

@@ -10,6 +10,7 @@
  */
 
 import { deleteAttachmentFromLocalDB } from './aiFilesStorage';
+import { tr, getLocale } from '../i18n/i18nCore.js';
 
 const DB_NAME = 'ergvibe_ai_chat_db';
 const DB_VERSION = 1;
@@ -82,7 +83,7 @@ function sanitizeSessionForStorage(session) {
   return {
     id: session?.id || createSessionId(),
     userId: normalizeUserKey(session?.userId),
-    title: String(session?.title || 'Novi razgovor').trim() || 'Novi razgovor',
+    title: String(session?.title || tr('Novi razgovor', 'New Chat')).trim() || tr('Novi razgovor', 'New Chat'),
     isCustomTitle: Boolean(session?.isCustomTitle),
     createdAt: session?.createdAt || nowIso,
     updatedAt: session?.updatedAt || nowIso,
@@ -108,12 +109,12 @@ export function generateSessionTitle(text = '', attachments = []) {
   }
 
   if (Array.isArray(attachments) && attachments.length > 0) {
-    const firstName = attachments[0]?.name || 'datoteka';
-    const label = `Analiza: ${firstName}`;
+    const firstName = attachments[0]?.name || tr('datoteka', 'file');
+    const label = `${tr('Analiza', 'Analysis')}: ${firstName}`;
     return label.length > 52 ? `${label.slice(0, 51).trim()}…` : label;
   }
 
-  return 'Novi razgovor';
+  return tr('Novi razgovor', 'New Chat');
 }
 
 function readFallbackSessions(userId) {
@@ -375,27 +376,27 @@ export function exportChatSessionAsMarkdown(session) {
 
   const dateStr = (session.updatedAt || session.createdAt || new Date().toISOString()).slice(0, 10);
   const lines = [
-    `# ${session.title || 'ErgVibe AI Trener — Razgovor'}`,
+    `# ${session.title || tr('ErgVibe AI Trener — Razgovor', 'ErgVibe AI Coach — Conversation')}`,
     '',
-    `- **Datum:** ${dateStr}`,
-    `- **Broj poruka:** ${session.messages.length}`,
-    `- **Izvor:** ErgVibe AI Trener (lokalni izvoz)`,
+    `- **${tr('Datum', 'Date')}:** ${dateStr}`,
+    `- **${tr('Broj poruka', 'Messages')}:** ${session.messages.length}`,
+    `- **${tr('Izvor', 'Source')}:** ${tr('ErgVibe AI Trener (lokalni izvoz)', 'ErgVibe AI Coach (local export)')}`,
     '',
     '---',
     ''
   ];
 
   session.messages.forEach((m) => {
-    const who = m.role === 'user' ? 'Vozač' : 'ErgVibe AI Trener';
+    const who = m.role === 'user' ? tr('Vozač', 'Rider') : tr('ErgVibe AI Trener', 'ErgVibe AI Coach');
     const ts = m.createdAt
-      ? ` _(${new Date(m.createdAt).toLocaleString('hr-HR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})_`
+      ? ` _(${new Date(m.createdAt).toLocaleString(getLocale(), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})_`
       : '';
     lines.push(`## ${who}${ts}`);
     lines.push('');
 
     if (Array.isArray(m.attachments) && m.attachments.length > 0) {
-      const names = m.attachments.map((a) => `\`${a.name || 'prilog'}\``).join(', ');
-      lines.push(`> Prilozi: ${names}`);
+      const names = m.attachments.map((a) => `\`${a.name || tr('prilog', 'attachment')}\``).join(', ');
+      lines.push(`> ${tr('Prilozi', 'Attachments')}: ${names}`);
       lines.push('');
     }
 
@@ -458,7 +459,7 @@ function saveCoachNotesList(userId, notes) {
 
 export function addCoachNote(userId, { text, category = 'Fiziologija & Zone' }) {
   const cleaned = String(text || '').trim();
-  if (!cleaned) throw new Error('Tekst bilješke ne može biti prazan.');
+  if (!cleaned) throw new Error(tr('Tekst bilješke ne može biti prazan.', 'Note text cannot be empty.'));
 
   const existing = getCoachNotes(userId);
   const note = {

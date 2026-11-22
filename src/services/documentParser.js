@@ -9,6 +9,7 @@
 import JSZip from 'jszip';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { tr } from '../i18n/i18nCore.js';
 
 // Postavi URL za PDF.js web worker unutar Vite bundle-a
 if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
@@ -160,7 +161,7 @@ export async function parseTextFile(file) {
   return {
     title,
     author,
-    category: file.name.endsWith('.md') ? 'Markdown bilješke' : 'Tekstualni dokument',
+    category: file.name.endsWith('.md') ? tr('Markdown bilješke', 'Markdown Notes') : tr('Tekstualni dokument', 'Text Document'),
     content
   };
 }

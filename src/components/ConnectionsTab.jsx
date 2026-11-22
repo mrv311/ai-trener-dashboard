@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, Clock, Link as LinkIcon, Unlink, HardDriveDownload, ShieldCheck, Check, Eye, EyeOff, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { getGeminiConfigStatus, setCustomGeminiApiKey } from '../services/geminiService';
 import { startIntervalsOAuth } from '../services/intervalsOAuth';
+import { useI18n } from '../i18n/I18nContext';
 
 export default function ConnectionsTab({ connectionStatus, connectionError, intervalsId, setId, intervalsKey, setKey, onSave, onDisconnect, userId, athleteInfo }) {
+  const { tr } = useI18n();
   const [draftId, setDraftId] = useState(() => String(intervalsId ?? ''));
   const [draftKey, setDraftKey] = useState(() => String(intervalsKey ?? ''));
   const [showKey, setShowKey] = useState(false);
@@ -53,10 +55,13 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
 
       <div className="mb-8 border-b border-zinc-800/80 pb-6 relative z-10">
         <h2 className="text-xl md:text-2xl font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2.5">
-          Način rada i vanjske veze
+          {tr('Način rada i vanjske veze', 'Operating Mode & External Connections')}
         </h2>
         <p className="text-zinc-400 text-sm mt-2 leading-relaxed max-w-2xl">
-          ErgVibe radi potpuno samostalno bez obaveznih vanjskih računa. Povezivanje s platformom Intervals.icu je opcionalno.
+          {tr(
+            'ErgVibe radi potpuno samostalno bez obaveznih vanjskih računa. Povezivanje s platformom Intervals.icu je opcionalno.',
+            'ErgVibe works completely standalone with no required third-party accounts. Connecting Intervals.icu is optional.'
+          )}
         </p>
       </div>
 
@@ -70,17 +75,22 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                 <HardDriveDownload className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">Samostalan način rada</h3>
-                <span className="text-[11px] text-zinc-500">Direktan izvoz treninga</span>
+                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">
+                  {tr('Samostalan način rada', 'Standalone Mode')}
+                </h3>
+                <span className="text-[11px] text-zinc-500">{tr('Direktan izvoz treninga', 'Direct workout export')}</span>
               </div>
             </div>
             <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1 shrink-0">
-              <ShieldCheck className="w-3 h-3" /> UVIJEK AKTIVAN
+              <ShieldCheck className="w-3 h-3" /> {tr('UVIJEK AKTIVAN', 'ALWAYS ACTIVE')}
             </span>
           </div>
 
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Svaki odrađeni trening automatski se sprema u memoriju aplikacije. Po završetku vožnje u tabu <strong className="text-zinc-200">Trenažer</strong> jednim klikom preuzimaš industrijski standardnu <strong className="text-volt-400 font-mono">.FIT datoteku</strong> kompatibilnu s:
+            {tr(
+              'Svaki odrađeni trening automatski se sprema u memoriju aplikacije. Po završetku vožnje u tabu Trenažer jednim klikom preuzimaš industrijski standardnu .FIT datoteku kompatibilnu s:',
+              'Every completed workout is saved automatically. After finishing a ride in the Trainer tab, download an industry-standard .FIT file in one click — compatible with:'
+            )}
           </p>
 
           <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-zinc-300">
@@ -94,7 +104,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
               <Check className="w-3.5 h-3.5 text-volt-400 shrink-0" /> TrainingPeaks
             </div>
             <div className="bg-zinc-900 border border-zinc-800 p-2.5 rounded-lg flex items-center gap-2">
-              <Check className="w-3.5 h-3.5 text-volt-400 shrink-0" /> Bilo koji analizator
+              <Check className="w-3.5 h-3.5 text-volt-400 shrink-0" /> {tr('Bilo koji analizator', 'Any analytics platform')}
             </div>
           </div>
         </div>
@@ -108,28 +118,30 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
               </div>
               <div>
                 <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">Intervals.icu</h3>
-                <span className="text-[11px] text-zinc-500">Automatski kalendar i upload vožnji</span>
+                <span className="text-[11px] text-zinc-500">
+                  {tr('Automatski kalendar i upload vožnji', 'Auto calendar sync & ride uploads')}
+                </span>
               </div>
             </div>
 
             {connectionStatus === 'connected' && (
               <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1 shrink-0">
-                <CheckCircle className="w-3 h-3" /> POVEZANO
+                <CheckCircle className="w-3 h-3" /> {tr('POVEZANO', 'CONNECTED')}
               </span>
             )}
             {connectionStatus === 'connecting' && (
               <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/25 flex items-center gap-1 shrink-0">
-                <Clock className="w-3 h-3 animate-spin" /> SPAJANJE...
+                <Clock className="w-3 h-3 animate-spin" /> {tr('SPAJANJE...', 'CONNECTING...')}
               </span>
             )}
             {connectionStatus === 'error' && (
               <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-rose-500/10 text-rose-400 border border-rose-500/25 flex items-center gap-1 shrink-0" title={connectionError}>
-                <XCircle className="w-3 h-3" /> GREŠKA
+                <XCircle className="w-3 h-3" /> {tr('GREŠKA', 'ERROR')}
               </span>
             )}
             {connectionStatus === 'idle' && (
               <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-zinc-900 text-zinc-400 border border-zinc-800 shrink-0">
-                NIJE SPOJENO
+                {tr('NIJE SPOJENO', 'NOT CONNECTED')}
               </span>
             )}
           </div>
@@ -140,10 +152,11 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-3.5 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-zinc-300">
-                    Povezani sportaš: <strong className="text-zinc-100">{athleteInfo?.name || intervalsId}</strong>
+                    {tr('Povezani sportaš:', 'Connected athlete:')}{' '}
+                    <strong className="text-zinc-100">{athleteInfo?.name || intervalsId}</strong>
                   </span>
                   <span className="font-mono text-[10px] uppercase px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
-                    {isOAuth ? 'OAuth 2.0 (Sigurno)' : 'Ručni API ključ'}
+                    {isOAuth ? tr('OAuth 2.0 (Sigurno)', 'OAuth 2.0 (Secure)') : tr('Ručni API ključ', 'Manual API Key')}
                   </span>
                 </div>
                 {intervalsId && intervalsId !== '0' && (
@@ -165,7 +178,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                   onClick={handleDisconnect}
                   className="flex-1 px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider bg-zinc-900 hover:bg-rose-500/15 text-zinc-300 hover:text-rose-400 border border-zinc-800 hover:border-rose-500/30 transition-all flex items-center justify-center gap-2"
                 >
-                  <Unlink className="w-4 h-4" /> Odspoji Intervals.icu
+                  <Unlink className="w-4 h-4" /> {tr('Odspoji Intervals.icu', 'Disconnect Intervals.icu')}
                 </button>
                 {!isOAuth && (
                   <button
@@ -177,7 +190,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                     disabled={isRedirecting}
                     className="px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider bg-volt-400 hover:bg-volt-300 text-zinc-950 shadow-volt-glow transition-all flex items-center justify-center gap-2"
                   >
-                    <LinkIcon className="w-4 h-4" /> Prebaci na 1-klik OAuth
+                    <LinkIcon className="w-4 h-4" /> {tr('Prebaci na 1-klik OAuth', 'Switch to 1-Click OAuth')}
                   </button>
                 )}
               </div>
@@ -186,7 +199,10 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
             /* Ako NIJE povezano */
             <div className="flex flex-col gap-4">
               <p className="text-xs text-zinc-400 leading-relaxed">
-                Poveži svoj Intervals.icu račun za automatsko povlačenje treninga u kalendar i automatski upload po završetku svake vožnje:
+                {tr(
+                  'Poveži svoj Intervals.icu račun za automatsko povlačenje treninga u kalendar i automatski upload po završetku svake vožnje:',
+                  'Connect your Intervals.icu account to pull planned workouts into your calendar and auto-upload every completed ride:'
+                )}
               </p>
 
               {/* GLAVNI GUMB: 1-KLIK OAUTH */}
@@ -204,11 +220,18 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                 ) : (
                   <LinkIcon className="w-4 h-4 group-hover:scale-110 transition-transform" />
                 )}
-                <span>{isRedirecting ? 'Preusmjeravanje...' : 'Poveži s Intervals.icu (1-klik)'}</span>
+                <span>
+                  {isRedirecting
+                    ? tr('Preusmjeravanje...', 'Redirecting...')
+                    : tr('Poveži s Intervals.icu (1-klik)', 'Connect Intervals.icu (1-Click)')}
+                </span>
               </button>
 
               <p className="text-[11px] text-zinc-500 text-center -mt-2 font-mono">
-                ✓ Službena autorizacija · Nema ručnog prepisivanja ključeva
+                {tr(
+                  '✓ Službena autorizacija · Nema ručnog prepisivanja ključeva',
+                  '✓ Official OAuth · No manual API key copy-paste'
+                )}
               </p>
 
               {/* PREKIDAČ ZA RUČNI UNOS */}
@@ -218,7 +241,12 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                   onClick={() => setShowManualForm(!showManualForm)}
                   className="text-[11px] font-mono text-zinc-400 hover:text-zinc-200 transition-colors flex items-center justify-between w-full"
                 >
-                  <span>Ili se poveži ručno putem API ključa (napredno)</span>
+                  <span>
+                    {tr(
+                      'Ili se poveži ručno putem API ključa (napredno)',
+                      'Or connect manually with an API key (advanced)'
+                    )}
+                  </span>
                   {showManualForm ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
 
@@ -226,34 +254,34 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                   <form onSubmit={saveSettings} className="space-y-3 mt-3 animate-in fade-in duration-200">
                     <div>
                       <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-                        Korisnički ID (Athlete ID)
+                        {tr('Korisnički ID (Athlete ID)', 'Athlete ID')}
                       </label>
                       <input
                         type="text"
                         value={draftId}
                         onChange={(e) => setDraftId(e.target.value)}
-                        placeholder="npr. i12345 ili brojčani ID"
+                        placeholder={tr('npr. i12345 ili brojčani ID', 'e.g. i12345 or numeric ID')}
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-zinc-100 font-mono text-xs focus:border-volt-400 focus:outline-none transition-all placeholder:text-zinc-600"
                       />
                     </div>
 
                     <div>
                       <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
-                        API Ključ (Settings &gt; Developer &gt; API Keys)
+                        {tr('API Ključ (Settings > Developer > API Keys)', 'API Key (Settings > Developer > API Keys)')}
                       </label>
                       <div className="relative">
                         <input
                           type={showKey ? 'text' : 'password'}
                           value={draftKey}
                           onChange={(e) => setDraftKey(e.target.value)}
-                          placeholder="Unesi svoj privatni API ključ"
+                          placeholder={tr('Unesi svoj privatni API ključ', 'Enter your personal API key')}
                           className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2.5 pr-10 text-zinc-100 font-mono text-xs focus:border-volt-400 focus:outline-none transition-all placeholder:text-zinc-600"
                         />
                         <button
                           type="button"
                           onClick={() => setShowKey(!showKey)}
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
-                          title={showKey ? 'Sakrij ključ' : 'Prikaži ključ'}
+                          title={showKey ? tr('Sakrij ključ', 'Hide key') : tr('Prikaži ključ', 'Show key')}
                         >
                           {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
@@ -265,7 +293,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                       disabled={!String(draftId ?? '').trim() || !String(draftKey ?? '').trim()}
                       className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-200 py-2.5 px-4 rounded-lg font-mono font-bold transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2"
                     >
-                      <Check className="w-4 h-4" /> Spremi ručni ključ
+                      <Check className="w-4 h-4" /> {tr('Spremi ručni ključ', 'Save Manual Key')}
                     </button>
                   </form>
                 )}
@@ -288,24 +316,37 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">Google Gemini AI Trener</h3>
-                <span className="text-[11px] text-zinc-500">Post-workout analiza, povijest treninga i generator planova</span>
+                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">
+                  {tr('Google Gemini AI Trener', 'Google Gemini AI Coach')}
+                </h3>
+                <span className="text-[11px] text-zinc-500">
+                  {tr(
+                    'Post-workout analiza, povijest treninga i generator planova',
+                    'Post-ride analysis, training history insights & plan generator'
+                  )}
+                </span>
               </div>
             </div>
 
             {geminiStatus.configured ? (
               <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
-                <CheckCircle className="w-3 h-3" /> {geminiStatus.source === 'custom' ? 'AKTIVAN · VLASTITI KLJUČ' : 'AKTIVAN · SIGURNI VERCEL PROXY'}
+                <CheckCircle className="w-3 h-3" />{' '}
+                {geminiStatus.source === 'custom'
+                  ? tr('AKTIVAN · VLASTITI KLJUČ', 'ACTIVE · CUSTOM KEY')
+                  : tr('AKTIVAN · SIGURNI VERCEL PROXY', 'ACTIVE · SECURE SERVER PROXY')}
               </span>
             ) : (
               <span className="px-2.5 py-1 rounded font-mono text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/25">
-                KLJUČ NIJE UNESEN
+                {tr('KLJUČ NIJE UNESEN', 'KEY NOT SET')}
               </span>
             )}
           </div>
 
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Aplikacija koristi sigurni backend proxy (<code className="text-volt-300 font-mono bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">/api/gemini</code>). Tvoj Gemini API ključ je pohranjen na poslužitelju kao tajna (<code className="text-zinc-300 font-mono">GEMINI_API_KEY</code>) i <strong className="text-zinc-200">fizički se ne šalje u preglednik</strong>, čime je 100% zaštićen od kopiranja. Za dubinske analize s Pro modelom ovdje se može postaviti i vlastiti ključ:
+            {tr(
+              'Aplikacija koristi sigurni backend proxy (/api/gemini). Serverski Gemini API ključ fizički se ne šalje u preglednik. Po želji ovdje možeš postaviti i vlastiti API ključ za neograničeno korištenje:',
+              'ErgVibe uses a secure backend proxy (/api/gemini) so server API keys are never exposed in the browser. Optionally, you can enter your own Gemini API key below for personal quota:'
+            )}
           </p>
 
           <div className="flex flex-col sm:flex-row gap-2.5">
@@ -314,7 +355,14 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                 type={showGeminiKey ? 'text' : 'password'}
                 value={customGeminiDraft}
                 onChange={(e) => setCustomGeminiDraft(e.target.value)}
-                placeholder={geminiStatus.source === 'custom' ? 'Unesi Gemini API ključ (AIzaSy...)' : 'Koristi se sigurni Vercel proxy (opcionalna zamjena za Pro model)'}
+                placeholder={
+                  geminiStatus.source === 'custom'
+                    ? tr('Unesi Gemini API ključ (AIzaSy...)', 'Enter Gemini API key (AIzaSy...)')
+                    : tr(
+                        'Koristi se sigurni Vercel proxy (opcionalna zamjena vlastitim ključem)',
+                        'Using secure server proxy (optional custom key override)'
+                      )
+                }
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2.5 pr-10 text-zinc-100 font-mono text-xs focus:border-volt-400 focus:outline-none transition-all placeholder:text-zinc-500"
               />
               <button
@@ -335,7 +383,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
               }}
               className="px-5 py-2.5 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-40 text-zinc-950 font-display font-bold text-xs uppercase tracking-wider transition-all shrink-0 shadow-volt-glow"
             >
-              Spremi ključ
+              {tr('Spremi ključ', 'Save Key')}
             </button>
             {geminiStatus.source === 'custom' && (
               <button
@@ -346,7 +394,7 @@ export default function ConnectionsTab({ connectionStatus, connectionError, inte
                 }}
                 className="px-4 py-2.5 rounded-lg bg-zinc-900 hover:bg-rose-500/15 text-zinc-300 hover:text-rose-400 border border-zinc-800 text-xs font-bold transition-all shrink-0"
               >
-                Vrati na .env
+                {tr('Vrati na zadani proxy', 'Reset to Default Proxy')}
               </button>
             )}
           </div>

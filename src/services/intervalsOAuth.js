@@ -5,6 +5,8 @@
  * Nije potreban niti dopušten Client Secret u pregledniku.
  */
 
+import { tr } from '../i18n/i18nCore.js';
+
 export const INTERVALS_OAUTH_CLIENT_ID = '1787';
 
 export const INTERVALS_OAUTH_SCOPES = [
@@ -90,11 +92,21 @@ export async function handleIntervalsOAuthCallback(code, state) {
   window.sessionStorage.removeItem('ergvibe_intervals_oauth_redirect_uri');
 
   if (savedState && state && savedState !== state) {
-    throw new Error('Sigurnosna provjera nije uspjela (neispravan OAuth state). Pokušajte ponovno.');
+    throw new Error(
+      tr(
+        'Sigurnosna provjera nije uspjela (neispravan OAuth state). Pokušajte ponovno.',
+        'Security check failed (invalid OAuth state). Please try again.'
+      )
+    );
   }
 
   if (!verifier) {
-    throw new Error('Nedostaje OAuth verifier. Pokrenite postupak povezivanja ponovno.');
+    throw new Error(
+      tr(
+        'Nedostaje OAuth verifier. Pokrenite postupak povezivanja ponovno.',
+        'Missing OAuth verifier. Please restart the connection flow.'
+      )
+    );
   }
 
   const payload = {
@@ -137,7 +149,11 @@ export async function handleIntervalsOAuthCallback(code, state) {
 
   if (!directRes.ok) {
     const errData = await directRes.json().catch(() => ({}));
-    throw new Error(errData.error || errData.message || `Greška pri preuzimanju tokena (HTTP ${directRes.status})`);
+    throw new Error(
+      errData.error ||
+        errData.message ||
+        tr(`Greška pri preuzimanju tokena (HTTP ${directRes.status})`, `Token exchange error (HTTP ${directRes.status})`)
+    );
   }
 
   const directData = await directRes.json();
@@ -146,7 +162,7 @@ export async function handleIntervalsOAuthCallback(code, state) {
 
 function formatTokenResponse(data) {
   if (!data?.access_token) {
-    throw new Error('Poslužitelj nije vratio valjani access token.');
+    throw new Error(tr('Poslužitelj nije vratio valjani access token.', 'Server did not return a valid access token.'));
   }
 
   return {

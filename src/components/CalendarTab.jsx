@@ -9,6 +9,7 @@ import WorkoutEditorModal from './WorkoutEditorModal';
 import { updateEventDetails } from '../services/intervalsApi';
 import ActivityDetailModal from './ActivityDetailModal';
 import { extractIntensityData, parseWorkoutFile } from '../utils/workoutParser';
+import { useI18n } from '../i18n/I18nContext';
 
 const formatDur = (mins) => {
   if (!mins || isNaN(mins) || mins <= 0) return '00m';
@@ -72,16 +73,68 @@ const getZoneFromFtpPercent = (percent) => {
   return 5;
 };
 
-const getSourceBadgeMeta = (src) => {
+const MONTH_SHORT_UPPER_HR = ['SIJ', 'VELJ', 'OŽU', 'TRA', 'SVI', 'LIP', 'SRP', 'KOL', 'RUJ', 'LIS', 'STU', 'PRO'];
+const MONTH_SHORT_UPPER_EN = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const MONTH_SHORT_HR = ['Sij', 'Velj', 'Ožu', 'Tra', 'Svi', 'Lip', 'Srp', 'Kol', 'Ruj', 'Lis', 'Stu', 'Pro'];
+const MONTH_SHORT_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_GENITIVE_HR = ['siječnja', 'veljače', 'ožujka', 'travnja', 'svibnja', 'lipnja', 'srpnja', 'kolovoza', 'rujna', 'listopada', 'studenog', 'prosinca'];
+const MONTH_FULL_HR = ['Siječanj', 'Veljača', 'Ožujak', 'Travanj', 'Svibanj', 'Lipanj', 'Srpanj', 'Kolovoz', 'Rujan', 'Listopad', 'Studeni', 'Prosinac'];
+const MONTH_FULL_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DAY_SHORT_UPPER_HR = ['PON', 'UTO', 'SRI', 'ČET', 'PET', 'SUB', 'NED'];
+const DAY_SHORT_UPPER_EN = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+const DAY_TWO_LETTER_HR = ['Po', 'Ut', 'Sr', 'Če', 'Pe', 'Su', 'Ne'];
+const DAY_TWO_LETTER_EN = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+
+const EVENT_TYPE_EN_MAP = {
+  'Gran Fondo / Cestovni maraton': 'Gran Fondo / Road Marathon',
+  'Cestovna utrka / Kriterij': 'Road Race / Criterium',
+  'Gravel / MTB maraton': 'Gravel / MTB Marathon',
+  'Brdski uspon / Sportive': 'Hill Climb / Sportive',
+  'Kronometar (TT)': 'Time Trial (TT)'
+};
+
+const EVENT_TYPE_SHORT_EN_MAP = {
+  'Gran Fondo / Cestovni maraton': 'Gran Fondo / Marathon',
+  'Cestovna utrka / Kriterij': 'Road Race',
+  'Gravel / MTB maraton': 'Gravel / MTB Marathon',
+  'Brdski uspon / Sportive': 'Hill Climb / Alpine',
+  'Kronometar (TT)': 'Time Trial (TT)'
+};
+
+const getEventTypeOptionLabel = (opt, isEn) => {
+  if (!opt) return '';
+  if (isEn) return opt.labelEn || EVENT_TYPE_SHORT_EN_MAP[opt.id] || opt.label;
+  return opt.label;
+};
+
+const localizeRaceText = (text, isEn) => {
+  if (!text || !isEn) return text || '';
+  if (EVENT_TYPE_EN_MAP[text]) return EVENT_TYPE_EN_MAP[text];
+  for (const [hrKey, enVal] of Object.entries(EVENT_TYPE_EN_MAP)) {
+    if (text.startsWith(`${hrKey} • `)) {
+      return `${enVal} • ${text.slice(hrKey.length + 3)}`;
+    }
+  }
+  return text;
+};
+
+const formatShortLocalizedDate = (dateIso, isEn) => {
+  if (!dateIso) return '';
+  if (!isEn) return formatShortHrDate(dateIso);
+  const dt = parseIsoLocal(dateIso);
+  return `${MONTH_SHORT_EN[dt.getMonth()]} ${dt.getDate()}`;
+};
+
+const getSourceBadgeMeta = (src, tr) => {
   if (!src) return null;
-  if (src === 'calendar') return { label: 'KALENDAR', dot: 'bg-volt-400', cls: 'text-zinc-300 border-zinc-700 bg-zinc-950' };
-  if (src === 'library') return { label: 'KNJIŽNICA', dot: 'bg-volt-400', cls: 'text-zinc-300 border-zinc-700 bg-zinc-950' };
-  if (src === 'free_ride') return { label: 'SLOBODNO', dot: 'bg-sky-400', cls: 'text-sky-300 border-sky-500/25 bg-sky-500/10' };
+  if (src === 'calendar') return { label: tr('KALENDAR', 'CALENDAR'), dot: 'bg-volt-400', cls: 'text-zinc-300 border-zinc-700 bg-zinc-950' };
+  if (src === 'library') return { label: tr('KNJIŽNICA', 'LIBRARY'), dot: 'bg-volt-400', cls: 'text-zinc-300 border-zinc-700 bg-zinc-950' };
+  if (src === 'free_ride') return { label: tr('SLOBODNO', 'FREE RIDE'), dot: 'bg-sky-400', cls: 'text-sky-300 border-sky-500/25 bg-sky-500/10' };
   if (src === 'garmin') return { label: 'GARMIN', dot: 'bg-emerald-400', cls: 'text-emerald-300 border-emerald-500/25 bg-emerald-500/10' };
   if (src === 'strava') return { label: 'STRAVA', dot: 'bg-orange-400', cls: 'text-orange-300 border-orange-500/25 bg-orange-500/10' };
   if (src === 'wahoo') return { label: 'WAHOO', dot: 'bg-sky-400', cls: 'text-sky-300 border-sky-500/25 bg-sky-500/10' };
-  if (src.startsWith('external_upload')) return { label: 'FIT UVOZ', dot: 'bg-violet-400', cls: 'text-violet-300 border-violet-500/25 bg-violet-500/10' };
-  if (src === 'external') return { label: 'VANJSKI', dot: 'bg-zinc-400', cls: 'text-zinc-300 border-zinc-700 bg-zinc-950' };
+  if (src.startsWith('external_upload')) return { label: tr('FIT UVOZ', 'FIT IMPORT'), dot: 'bg-violet-400', cls: 'text-violet-300 border-violet-500/25 bg-violet-500/10' };
+  if (src === 'external') return { label: tr('VANJSKI', 'EXTERNAL'), dot: 'bg-zinc-400', cls: 'text-zinc-300 border-zinc-700 bg-zinc-950' };
   return { label: String(src).toUpperCase(), dot: 'bg-zinc-400', cls: 'text-zinc-300 border-zinc-700 bg-zinc-950' };
 };
 
@@ -158,6 +211,7 @@ const getSportBadgeStyle = (sportKind) => {
 // WorkoutCard
 // ============================================================
 const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, isCurrentMonth, compact, expanded = false, dense = false }) {
+  const { lang, isEn, tr, tCat, tDesc } = useI18n();
   const canDrag = isDesktop && isDraggable(w);
   const isExpandedCard = expanded && isDesktop && !compact;
   const isDenseCard = dense && isDesktop && !compact && !isExpandedCard;
@@ -172,7 +226,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
     touchAction: canDrag ? 'none' : 'auto'
   };
 
-  const sourceMeta = w.isSupabase && w.workout_source ? getSourceBadgeMeta(w.workout_source) : null;
+  const sourceMeta = w.isSupabase && w.workout_source ? getSourceBadgeMeta(w.workout_source, tr) : null;
   const sportKind = getWorkoutSportKind(w);
   const isRace = sportKind === 'race';
   const isNonCycling = sportKind !== 'ride' && !isRace;
@@ -212,10 +266,13 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
             {w.statusColor === 'red-missed' && <XCircle className="w-3 h-3 text-rose-500 shrink-0" />}
           </div>
         ) : (() => {
-          const racePriorityLabel = w.eventCategory === 'RACE_A' ? 'CILJ A' : w.eventCategory === 'RACE_B' ? 'EVENT B' : 'EVENT C';
+          const racePriorityLabel = w.eventCategory === 'RACE_A' ? tr('CILJ A', 'GOAL A') : w.eventCategory === 'RACE_B' ? 'EVENT B' : 'EVENT C';
           const sportIconColor = sportKind === 'strength'
             ? 'text-violet-400'
             : (isNonCycling ? 'text-sky-400' : (isDesktop ? 'text-zinc-500' : 'text-zinc-400'));
+          const localizedDescription = isRace
+            ? localizeRaceText(w.descriptionText || w.category, isEn)
+            : tDesc(w.title, w.descriptionText);
           return (
           <div className={`flex flex-col ${isDenseCard ? 'gap-0.5' : 'gap-1'} w-full`}>
             {/* Header: Sport icon, duration, actions */}
@@ -228,7 +285,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
               ) : (
                 <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] font-mono font-bold telemetry-num uppercase tracking-wider">
                   {renderSportIcon(sportKind, `${isDesktop ? 'w-3 h-3' : 'w-4 h-4'} ${sportIconColor}`)}
-                  <span title={w.plannedDuration ? `Plan: ${formatDur(w.plannedDuration)}` : ''}>
+                  <span title={w.plannedDuration ? `${tr('Plan', 'Planned')}: ${formatDur(w.plannedDuration)}` : ''}>
                     {w.duration > 0 ? formatDur(w.duration) : (isNonCycling ? '-' : formatDur(w.duration))}
                     {((!isDesktop && w.plannedDuration) || (isExpandedCard && w.plannedDuration && w.isCompleted)) && (
                       <span className={`text-zinc-600 ${isExpandedCard ? 'text-[10px]' : 'text-[9px]'} ml-1`}>/ {formatDur(w.plannedDuration)}</span>
@@ -242,7 +299,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); handleUnpair(w.actId, w.eventId); }}
                     className="text-zinc-500 hover:text-volt-400 transition-opacity md:opacity-0 md:group-hover/wcard:opacity-100 p-0.5"
-                    title="Razdvoji planirano i odrađeno"
+                    title={tr('Razdvoji planirano i odrađeno', 'Unpair planned and completed')}
                   >
                     <Unlink className="w-3 h-3" />
                   </button>
@@ -253,7 +310,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); handlePair(w.actId, sepId); }}
                     className="text-zinc-500 hover:text-emerald-400 transition-opacity md:opacity-0 md:group-hover/wcard:opacity-100 p-0.5"
-                    title="Spoji s planiranim treningom"
+                    title={tr('Spoji s planiranim treningom', 'Pair with planned workout')}
                   >
                     <Link2 className="w-3 h-3" />
                   </button>
@@ -263,7 +320,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); handleDeleteLocalActivity(w.id); }}
                     className="text-zinc-500 hover:text-rose-400 rounded p-0.5 transition-opacity md:opacity-0 md:group-hover/wcard:opacity-100"
-                    title={isRace ? 'Obriši event' : 'Obriši planirani trening'}
+                    title={isRace ? tr('Obriši event', 'Delete event') : tr('Obriši planirani trening', 'Delete planned workout')}
                   >
                     <Trash2 className={`${isDesktop ? 'w-3 h-3' : 'w-4 h-4'}`} />
                   </button>
@@ -273,13 +330,13 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={async (e) => {
                       e.stopPropagation();
-                      if (window.confirm('Sigurno želiš obrisati ovaj odrađeni trening?')) {
+                      if (window.confirm(tr('Sigurno želiš obrisati ovaj odrađeni trening?', 'Are you sure you want to delete this completed workout?'))) {
                         const result = await handleDeleteCompletedActivity(w.id);
-                        if (!result.success) alert('Greška pri brisanju: ' + (result.error || 'Nepoznata greška'));
+                        if (!result.success) alert(tr('Greška pri brisanju: ', 'Error deleting: ') + (result.error || tr('Nepoznata greška', 'Unknown error')));
                       }
                     }}
                     className="text-zinc-500 hover:text-rose-400 rounded p-0.5 transition-opacity md:opacity-0 md:group-hover/wcard:opacity-100"
-                    title="Obriši odrađeni trening"
+                    title={tr('Obriši odrađeni trening', 'Delete completed workout')}
                   >
                     <Trash2 className={`${isDesktop ? 'w-3 h-3' : 'w-4 h-4'}`} />
                   </button>
@@ -289,7 +346,7 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); onSelectWorkout(w); }}
                     className={`text-volt-400 hover:text-zinc-950 bg-volt-400/12 hover:bg-volt-400 ${isDesktop ? 'rounded p-1' : 'rounded-lg p-1.5'} transition-all border border-volt-400/30`}
-                    title="Pokreni u trenažeru"
+                    title={tr('Pokreni u trenažeru', 'Start in Trainer')}
                   >
                     <Play className={`${isDesktop ? 'w-3 h-3' : 'w-4 h-4'} fill-current`} />
                   </button>
@@ -314,9 +371,9 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
             {/* Metrics */}
             {isRace ? (
               <div className={`flex flex-col gap-1 ${isDenseCard ? 'mt-0.5' : 'mt-1'}`}>
-                {(w.descriptionText || w.category) && (
+                {localizedDescription && (
                   <span className={`text-[10px] text-amber-200/80 leading-tight ${isDenseCard ? 'line-clamp-1' : 'line-clamp-2'}`}>
-                    {w.descriptionText || w.category}
+                    {localizedDescription}
                   </span>
                 )}
               </div>
@@ -354,19 +411,19 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                     </div>
                     {w.category && w.difficulty_score && !isNonCycling ? (
                       <div className="flex items-center gap-1 shrink-0">
-                        <span className="bg-zinc-950 text-zinc-300 text-[8px] font-bold px-1 py-0.5 rounded border border-zinc-800">{w.category}</span>
+                        <span className="bg-zinc-950 text-zinc-300 text-[8px] font-bold px-1 py-0.5 rounded border border-zinc-800">{tCat(w.category)}</span>
                         <span className="text-volt-400 text-[9px] font-bold">{w.difficulty_score.toFixed(1)}</span>
                       </div>
                     ) : isNonCycling ? (
                       <span className={`text-[8px] font-bold px-1 py-0.5 rounded border uppercase shrink-0 ${getSportBadgeStyle(sportKind)}`}>
-                        {sportKind === 'strength' ? 'SNAGA' : getSportLabel(sportKind)}
+                        {sportKind === 'strength' ? tr('SNAGA', 'STRENGTH') : getSportLabel(sportKind, lang)}
                       </span>
                     ) : null}
                   </div>
                   {w.intervalDescription ? (
                     <span className="text-[9px] font-mono text-zinc-400/85 leading-tight line-clamp-1">{w.intervalDescription}</span>
-                  ) : isNonCycling && w.descriptionText ? (
-                    <span className="text-[9px] text-zinc-400/85 leading-tight line-clamp-1">{w.descriptionText}</span>
+                  ) : isNonCycling && localizedDescription ? (
+                    <span className="text-[9px] text-zinc-400/85 leading-tight line-clamp-1">{localizedDescription}</span>
                   ) : null}
                 </div>
                 {!isNonCycling && (
@@ -415,27 +472,27 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
                       <span className="text-[11px] font-mono text-zinc-300 bg-zinc-950/80 border border-zinc-800/80 rounded px-2 py-1.5 leading-relaxed line-clamp-3">
                         {w.intervalDescription}
                       </span>
-                    ) : w.descriptionText ? (
+                    ) : localizedDescription ? (
                       <span className="text-[11px] text-zinc-300/90 bg-zinc-950/60 border border-zinc-800/80 rounded px-2 py-1.5 leading-snug line-clamp-4 whitespace-pre-line">
-                        {w.descriptionText}
+                        {localizedDescription}
                       </span>
                     ) : null
                   ) : (
                     w.intervalDescription ? (
                       <span className="text-[10px] font-mono text-zinc-400/85 leading-tight line-clamp-1">{w.intervalDescription}</span>
-                    ) : isNonCycling && w.descriptionText ? (
-                      <span className="text-[10px] text-zinc-400/90 leading-snug line-clamp-2 whitespace-pre-line">{w.descriptionText}</span>
+                    ) : isNonCycling && localizedDescription ? (
+                      <span className="text-[10px] text-zinc-400/90 leading-snug line-clamp-2 whitespace-pre-line">{localizedDescription}</span>
                     ) : null
                   )}
                   {w.category && w.difficulty_score && !isNonCycling ? (
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="bg-zinc-950 text-zinc-300 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-zinc-800">{w.category}</span>
+                      <span className="bg-zinc-950 text-zinc-300 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-zinc-800">{tCat(w.category)}</span>
                       <span className="text-volt-400 font-mono telemetry-num text-[10px] font-bold">LVL {w.difficulty_score.toFixed(1)}</span>
                     </div>
                   ) : isNonCycling ? (
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border uppercase ${getSportBadgeStyle(sportKind)}`}>
-                        {getSportLabel(sportKind)}
+                        {getSportLabel(sportKind, lang)}
                       </span>
                     </div>
                   ) : null}
@@ -460,8 +517,6 @@ const WorkoutCard = React.memo(function WorkoutCard({ w, isDragging, isDesktop, 
 // ============================================================
 // CalendarDay
 // ============================================================
-const MONTH_SHORT_UPPER = ['SIJ', 'VELJ', 'OŽU', 'TRA', 'SVI', 'LIP', 'SRP', 'KOL', 'RUJ', 'LIS', 'STU', 'PRO'];
-
 function formatLocalDateIso(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -483,10 +538,12 @@ function getMondayDateObj(dateInput) {
 }
 
 const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [], onPlanMarkerClick, isTdy, dWell, isDesktop, todayStr, activeId, onSelectWorkout, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, onEditWorkout, onViewActivity, compact, showMonthSplitBg = false, expanded = false, dense = false, onAddWorkoutClick }) {
+  const { isEn, tr } = useI18n();
   const { isOver, setNodeRef } = useDroppable({ id: dObj.dateStr });
+  const monthShortUpper = isEn ? MONTH_SHORT_UPPER_EN : MONTH_SHORT_UPPER_HR;
 
   if (!isDesktop) {
-    const dayNames = ["PON", "UTO", "SRI", "ČET", "PET", "SUB", "NED"];
+    const dayNames = isEn ? DAY_SHORT_UPPER_EN : DAY_SHORT_UPPER_HR;
     const dayOfWeek = dayNames[(new Date(dObj.dateStr).getDay() + 6) % 7];
     return (
       <div
@@ -503,13 +560,13 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
           <div className="flex items-center gap-2">
             {dObj.day === 1 && typeof dObj.month === 'number' ? (
               <span className="bg-volt-400/15 text-volt-300 border border-volt-400/35 px-1.5 py-0.5 rounded font-mono text-[10px] font-bold uppercase tracking-wider">
-                1. {MONTH_SHORT_UPPER[dObj.month]}{dObj.month === 0 ? ` '${String(dObj.year).slice(-2)}` : ''}
+                {isEn ? `${monthShortUpper[dObj.month]} 1` : `1. ${monthShortUpper[dObj.month]}`}{dObj.month === 0 ? ` '${String(dObj.year).slice(-2)}` : ''}
               </span>
             ) : (
-              <span className={`text-sm font-mono telemetry-num font-bold ${isTdy ? 'text-volt-400' : 'text-zinc-200'}`}>{dObj.day}.</span>
+              <span className={`text-sm font-mono telemetry-num font-bold ${isTdy ? 'text-volt-400' : 'text-zinc-200'}`}>{dObj.day}{isEn ? '' : '.'}</span>
             )}
             <span className="text-xs font-mono font-bold text-zinc-500 uppercase tracking-wider">{dayOfWeek}</span>
-            {isTdy && <span className="text-[9px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-volt-400/15 text-volt-400 border border-volt-400/30">DANAS</span>}
+            {isTdy && <span className="text-[9px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-volt-400/15 text-volt-400 border border-volt-400/30">{tr('DANAS', 'TODAY')}</span>}
           </div>
           {dWell && (
             <div className="flex gap-2.5 text-[11px] font-mono telemetry-num font-bold text-zinc-400 bg-zinc-950 px-2.5 py-1 rounded-lg border border-zinc-800">
@@ -538,7 +595,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
                 <div className="min-w-0">
                   <div className="text-xs font-bold text-volt-200 truncate">{plan.title}</div>
                   <div className="text-[10px] text-zinc-400 truncate">
-                    {plan.methodology || 'Početak AI plana'} • {plan.totalWorkouts} treninga
+                    {plan.methodology || tr('Početak AI plana', 'AI Plan Start')} • {plan.totalWorkouts} {tr('treninga', plan.totalWorkouts === 1 ? 'workout' : 'workouts')}
                   </div>
                 </div>
               </div>
@@ -548,7 +605,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
           {dWorks.length > 0 ? dWorks.map(w => (
             <WorkoutCard key={w.id} w={w} isDesktop={false} isDragging={false} onSelectWorkout={onSelectWorkout} handleUnpair={handleUnpair} handlePair={handlePair} handleDeleteLocalActivity={handleDeleteLocalActivity} handleDeleteCompletedActivity={handleDeleteCompletedActivity} onEditWorkout={onEditWorkout} onViewActivity={onViewActivity} />
           )) : (
-            <div className="text-[11px] font-mono text-zinc-500 px-2.5 py-1.5 bg-zinc-950/60 rounded border border-zinc-800/80 border-dashed mr-auto uppercase tracking-wider">Dan odmora · + Dodaj</div>
+            <div className="text-[11px] font-mono text-zinc-500 px-2.5 py-1.5 bg-zinc-950/60 rounded border border-zinc-800/80 border-dashed mr-auto uppercase tracking-wider">{tr('Dan odmora · + Dodaj', 'Rest day · + Add')}</div>
           )}
         </div>
       </div>
@@ -578,23 +635,23 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
         <div className="flex items-center gap-1.5">
           {dObj.day === 1 && typeof dObj.month === 'number' ? (
             <span className={`bg-volt-400/15 text-volt-300 border border-volt-400/35 px-1.5 py-0.5 rounded font-mono ${isExpandedDay ? 'text-[11px]' : 'text-[10px]'} font-bold uppercase tracking-wider`}>
-              1. {MONTH_SHORT_UPPER[dObj.month]}{dObj.month === 0 ? ` '${String(dObj.year).slice(-2)}` : ''}
+              {isEn ? `${monthShortUpper[dObj.month]} 1` : `1. ${monthShortUpper[dObj.month]}`}{dObj.month === 0 ? ` '${String(dObj.year).slice(-2)}` : ''}
             </span>
           ) : (
             <>
               <span className={`font-mono telemetry-num font-bold ${isExpandedDay ? 'text-sm sm:text-base' : 'text-xs'} ${isTdy ? 'text-volt-400' : (showMonthSplitBg || dObj.isCurrentMonth ? 'text-zinc-200' : 'text-zinc-600')}`}>
-                {dObj.day}{isExpandedDay ? '.' : ''}
+                {dObj.day}{isExpandedDay && !isEn ? '.' : ''}
               </span>
               {isExpandedDay && typeof dObj.month === 'number' && (
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500">
-                  {MONTH_SHORT_UPPER[dObj.month]}
+                  {monthShortUpper[dObj.month]}
                 </span>
               )}
             </>
           )}
           {isTdy && !compact && (
             <span className="text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-volt-400/15 text-volt-400 border border-volt-400/30">
-              DANAS
+              {tr('DANAS', 'TODAY')}
             </span>
           )}
         </div>
@@ -629,7 +686,11 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
               e.stopPropagation();
               onPlanMarkerClick?.(plan);
             }}
-            title={`AI Plan: ${plan.title} — klikni za opcije (Analiziraj, Izmijeni, Obriši)`}
+            title={tr(
+              'AI Plan: {title} — klikni za opcije (Analiziraj, Izmijeni, Obriši)',
+              'AI Plan: {title} — click for options (Analyze, Edit, Delete)',
+              { title: plan.title }
+            )}
             className={`plan-marker-element w-full text-left rounded-lg overflow-hidden border border-volt-400/50 bg-volt-400/12 hover:bg-volt-400/20 hover:border-volt-400 transition-all cursor-pointer ${
               compact ? 'px-1.5 py-1' : (isExpandedDay ? 'p-2.5' : (isDenseDay ? 'px-2 py-1' : 'p-2'))
             }`}
@@ -650,7 +711,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
             </div>
             {!compact && !isDenseDay && (
               <div className="text-[9px] font-mono text-zinc-400 truncate mt-0.5">
-                {plan.methodology ? plan.methodology : 'Početak plana'} • opcije
+                {plan.methodology ? plan.methodology : tr('Početak plana', 'Plan start')} • {tr('opcije', 'options')}
               </div>
             )}
           </button>
@@ -676,7 +737,7 @@ const CalendarDay = React.memo(function CalendarDay({ dObj, dWorks, dPlans = [],
         ))}
         {isExpandedDay && dWorks.length === 0 && dPlans.length === 0 && (
           <div className="h-full min-h-[140px] flex items-center justify-center rounded-lg border border-dashed border-zinc-800/70 group-hover:border-zinc-700 text-zinc-600 group-hover:text-zinc-400 transition-colors px-3 py-6 text-center">
-            <span className="text-[11px] font-mono uppercase tracking-wider">Dan odmora · + Dodaj trening</span>
+            <span className="text-[11px] font-mono uppercase tracking-wider">{tr('Dan odmora · + Dodaj trening', 'Rest day · + Add workout')}</span>
           </div>
         )}
       </div>
@@ -742,6 +803,7 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
   onEditWorkout,
   onAddWorkoutClick,
 }) {
+  const { isEn, tr } = useI18n();
   let aT_cycle = 0; let pT_cycle = 0; let aD = 0; let pD = 0;
   let aT_other = 0; let pT_other = 0; let aD_other = 0; let pD_other = 0;
 
@@ -789,10 +851,10 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
   // Week label: date range
   const wStart = days[0];
   const wEnd = days[6];
-  const mn = ["Sij", "Velj", "Ožu", "Tra", "Svi", "Lip", "Srp", "Kol", "Ruj", "Lis", "Stu", "Pro"];
+  const mn = isEn ? MONTH_SHORT_EN : MONTH_SHORT_HR;
   const weekRangeLabel = wStart.month === wEnd.month
-    ? `${wStart.day}–${wEnd.day} ${mn[wStart.month]}`
-    : `${wStart.day} ${mn[wStart.month]} – ${wEnd.day} ${mn[wEnd.month]}`;
+    ? (isEn ? `${mn[wStart.month]} ${wStart.day}–${wEnd.day}` : `${wStart.day}–${wEnd.day} ${mn[wStart.month]}`)
+    : (isEn ? `${mn[wStart.month]} ${wStart.day} – ${mn[wEnd.month]} ${wEnd.day}` : `${wStart.day} ${mn[wStart.month]} – ${wEnd.day} ${mn[wEnd.month]}`);
 
   const weekStartStr = wStart.dateStr;
   const weekEndStr = wEnd.dateStr;
@@ -915,10 +977,10 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
   const tssBarPct = Math.min(100, tssPctRaw);
 
   const pmcHeaderLabel = showWeekProjection
-    ? 'PMC · DANAS (NED)'
+    ? tr('PMC · DANAS (NED)', 'PMC · TODAY (SUN)')
     : isFutureWeek
-    ? 'PMC · PROJEKCIJA'
-    : 'PMC FORMA';
+    ? tr('PMC · PROJEKCIJA', 'PMC · PROJECTED')
+    : tr('PMC FORMA', 'PMC FORM');
 
   const isThreeWeekMode = !isContinuous && !isSingleWeek;
   const emphasizeSummary = isContinuous ? isCurrentCalendarWeek : isActive;
@@ -974,7 +1036,7 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
           {(isContinuous || isSingleWeek) && isCurrentCalendarWeek && (
             <div className="mb-1 flex justify-end">
               <span className="text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-volt-400/15 text-volt-400 border border-volt-400/30">
-                OVAJ TJEDAN
+                {tr('OVAJ TJEDAN', 'THIS WEEK')}
               </span>
             </div>
           )}
@@ -985,10 +1047,10 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
         <div className={`${isSingleWeek ? 'space-y-3.5' : (isThreeWeekMode ? 'space-y-1.5' : 'space-y-2.5')} w-full`}>
           <div>
             <div className={`flex items-center justify-between text-[9px] font-bold uppercase tracking-wider ${isThreeWeekMode ? '' : 'mb-0.5'}`}>
-              <span className={readableSummary ? 'text-zinc-400' : 'text-zinc-600'}>VRIJEME</span>
+              <span className={readableSummary ? 'text-zinc-400' : 'text-zinc-600'}>{tr('VRIJEME', 'TIME')}</span>
               {mainPlannedDur > 0 && <span className={durPctRaw >= 90 ? 'text-volt-400' : 'text-zinc-500'}>{durPctRaw}%</span>}
             </div>
-            <div className={`flex items-center justify-end gap-1 ${isThreeWeekMode ? 'text-[10px]' : 'text-[11px]'}`} title="Odrađeno / Planirano vrijeme">
+            <div className={`flex items-center justify-end gap-1 ${isThreeWeekMode ? 'text-[10px]' : 'text-[11px]'}`} title={tr('Odrađeno / Planirano vrijeme', 'Completed / Planned time')}>
               <Clock className={`w-3 h-3 mr-auto ${emphasizeSummary ? 'text-volt-400' : (readableSummary ? 'text-zinc-400' : 'text-zinc-600')}`} />
               <span className={`font-bold ${readableSummary ? 'text-zinc-100' : 'text-zinc-400'}`}>{formatDur(mainActualDur)}</span>
               <span className="text-zinc-700">/</span>
@@ -1007,7 +1069,7 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
               <span className={readableSummary ? 'text-zinc-400' : 'text-zinc-600'}>TSS LOAD</span>
               {mainPlannedTss > 0 && <span className={tssPctRaw >= 90 ? 'text-volt-400' : 'text-zinc-500'}>{tssPctRaw}%</span>}
             </div>
-            <div className={`flex items-center justify-end gap-1 ${isThreeWeekMode ? 'text-[10px]' : 'text-[11px]'}`} title="Odrađeni TSS / Planirani TSS">
+            <div className={`flex items-center justify-end gap-1 ${isThreeWeekMode ? 'text-[10px]' : 'text-[11px]'}`} title={tr('Odrađeni TSS / Planirani TSS', 'Completed TSS / Planned TSS')}>
               {hasCycle ? (
                 <Bike className={`w-3 h-3 mr-auto ${readableSummary ? 'text-zinc-400' : 'text-zinc-600'}`} />
               ) : (
@@ -1024,7 +1086,7 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
               />
             </div>
             {hasCycle && (aT_other > 0 || pT_other > 0) && (
-              <div className={`flex items-center justify-end gap-1 ${isThreeWeekMode ? 'text-[9px] mt-0.5' : 'text-[10px] mt-1'}`} title="Ostali sportovi TSS (ulazi u PMC projekciju)">
+              <div className={`flex items-center justify-end gap-1 ${isThreeWeekMode ? 'text-[9px] mt-0.5' : 'text-[10px] mt-1'}`} title={tr('Ostali sportovi TSS (ulazi u PMC projekciju)', 'Other sports TSS (included in PMC projection)')}>
                 <Activity className="w-2.5 h-2.5 mr-auto text-zinc-500" />
                 <span className="font-bold text-zinc-300">{aT_other}</span>
                 <span className="text-zinc-700">/</span>
@@ -1037,7 +1099,12 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
           {(displayCtl != null || displayAtl != null) && (
             <div
               className={`${isThreeWeekMode ? 'pt-1' : 'pt-2'} border-t ${readableSummary ? 'border-zinc-800' : 'border-zinc-800/60'}`}
-              title={showWeekProjection ? 'Prvi broj = trenutno stanje danas · (u zagradi) = projekcija na kraju tjedna u nedjelju prema planu' : 'Projekcija / stanje kondicije na kraju tjedna'}
+              title={showWeekProjection
+                ? tr(
+                    'Prvi broj = trenutno stanje danas · (u zagradi) = projekcija na kraju tjedna u nedjelju prema planu',
+                    'First number = current status today · (in parentheses) = projected end-of-week Sunday based on plan'
+                  )
+                : tr('Projekcija / stanje kondicije na kraju tjedna', 'Projected / actual fitness status at end of week')}
             >
               <p className={`text-[9px] font-bold uppercase tracking-widest ${isThreeWeekMode ? 'mb-0.5' : 'mb-1'} ${emphasizeSummary ? 'text-sky-400' : (isContinuous ? 'text-sky-400/75' : 'text-zinc-600')}`}>
                 {pmcHeaderLabel}
@@ -1064,7 +1131,7 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
                   </div>
                 )}
                 {renderedRamp != null && (
-                  <div className={`flex items-center justify-between w-full gap-1 ${isThreeWeekMode ? 'px-1 py-0.5' : 'mt-0.5 px-1.5 py-0.5'} rounded bg-zinc-950 border border-zinc-800/80`} title="Ramp Rate: tjedna promjena CTL-a (optimalno +3 do +8)">
+                  <div className={`flex items-center justify-between w-full gap-1 ${isThreeWeekMode ? 'px-1 py-0.5' : 'mt-0.5 px-1.5 py-0.5'} rounded bg-zinc-950 border border-zinc-800/80`} title={tr('Ramp Rate: tjedna promjena CTL-a (optimalno +3 do +8)', 'Ramp Rate: weekly CTL change (optimal +3 to +8)')}>
                     <span className={`text-zinc-500 ${isThreeWeekMode ? 'text-[9px]' : 'text-[10px]'} font-bold`}>RR</span>
                     <span className={`font-bold whitespace-nowrap ${getRampColor(colorRampVal)}`}>
                       {renderedRamp}
@@ -1084,6 +1151,7 @@ const CalendarWeekRow = React.memo(function CalendarWeekRow({
 // CalendarTab
 // ============================================================
 export default function CalendarTab({ currentDate, setCurrentDate, workouts, wellnessData, handleUnpair, handlePair, handleDeleteLocalActivity, handleDeleteCompletedActivity, handleRescheduleWorkout, handleUpdateWorkout, handleCreateWorkout, onSelectWorkout, profile, intervalsId, intervalsKey, userId, intervalsConnected = false, planRegistry = [], onDeletePlanBlock, onDeletePlanBlocks, onOpenAIPlanner, onAnalyzePlanInCoach }) {
+  const { isEn, tr } = useI18n();
   const cy = currentDate.getFullYear();
   const cm = currentDate.getMonth();
   const [activeId, setActiveId] = useState(null);
@@ -1178,7 +1246,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
     if (profile?.goalDate && profile.goalDate >= todayIso) {
       return {
-        title: profile.primaryGoal || 'Ciljni Event',
+        title: profile.primaryGoal || tr('Ciljni Event', 'Target Event'),
         date: profile.goalDate,
         daysLeft: diffDaysIso(todayIso, profile.goalDate),
         priority: 'RACE_A'
@@ -1186,7 +1254,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     }
 
     return null;
-  }, [workouts, profile?.goalDate, profile?.primaryGoal]);
+  }, [workouts, profile?.goalDate, profile?.primaryGoal, isEn]);
 
   const planMarkersByDate = useMemo(() => {
     const savedPlan = loadSavedPlan(userId);
@@ -1227,8 +1295,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       done: 0,
       total: totalCount,
       message: mode === 'block'
-        ? 'Uklanjanje bloka iz Kalendara i Intervals.icu...'
-        : 'Brisanje plana i treninga iz Kalendara...'
+        ? tr('Uklanjanje bloka iz Kalendara i Intervals.icu...', 'Removing block from Calendar and Intervals.icu...')
+        : tr('Brisanje plana i treninga iz Kalendara...', 'Deleting plan and workouts from Calendar...')
     });
 
     try {
@@ -1237,8 +1305,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
           done: Number(done) || 0,
           total: Math.max(1, Number(total) || totalCount),
           message: currentName
-            ? `Brisanje (${done}/${total}): ${currentName}`
-            : `Brisanje stavki (${done}/${total})...`
+            ? tr('Brisanje ({done}/{total}): {currentName}', 'Deleting ({done}/{total}): {currentName}', { done, total, currentName })
+            : tr('Brisanje stavki ({done}/{total})...', 'Deleting items ({done}/{total})...', { done, total })
         });
       };
 
@@ -1261,7 +1329,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       setViewingPlanMarker(null);
     } catch (err) {
       setPlanActionProgress(null);
-      setPlanActionError(err?.message || 'Greška pri brisanju plana.');
+      setPlanActionError(err?.message || tr('Greška pri brisanju plana.', 'Error deleting plan.'));
     }
   };
 
@@ -1287,7 +1355,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     try {
       const res = await handleCreateWorkout(payload);
       if (res && res.success === false) {
-        alert('Greška pri spremanju eventa: ' + (res.error || 'Nepoznata greška'));
+        alert(tr('Greška pri spremanju eventa: ', 'Error saving event: ') + (res.error || tr('Nepoznata greška', 'Unknown error')));
         return;
       }
       setSelectedDateForNew(null);
@@ -1508,20 +1576,28 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
   const headerLabel = useMemo(() => {
     const start = activeHeaderWeek[0];
     const end = activeHeaderWeek[6];
-    const mn = ["siječnja", "veljače", "ožujka", "travnja", "svibnja", "lipnja", "srpnja", "kolovoza", "rujna", "listopada", "studenog", "prosinca"];
-    const mnKratki = ["Sij", "Velj", "Ožu", "Tra", "Svi", "Lip", "Srp", "Kol", "Ruj", "Lis", "Stu", "Pro"];
+
+    if (isEn) {
+      if (start.month === end.month) {
+        return `${MONTH_FULL_EN[start.month]} ${start.day} – ${end.day}, ${start.year}`;
+      }
+      if (start.year !== end.year) {
+        return `${MONTH_SHORT_EN[start.month]} ${start.day}, ${start.year} – ${MONTH_SHORT_EN[end.month]} ${end.day}, ${end.year}`;
+      }
+      return `${MONTH_SHORT_EN[start.month]} ${start.day} – ${MONTH_SHORT_EN[end.month]} ${end.day}, ${end.year}`;
+    }
 
     if (start.month === end.month) {
       // Isti mjesec: "21. – 27. travnja 2026"
-      return `${start.day}. – ${end.day}. ${mn[start.month]} ${start.year}`;
+      return `${start.day}. – ${end.day}. ${MONTH_GENITIVE_HR[start.month]} ${start.year}`;
     }
     if (start.year !== end.year) {
       // Različite godine: "29. pro 2025 – 4. sij 2026"
-      return `${start.day}. ${mnKratki[start.month]} ${start.year} – ${end.day}. ${mnKratki[end.month]} ${end.year}`;
+      return `${start.day}. ${MONTH_SHORT_HR[start.month]} ${start.year} – ${end.day}. ${MONTH_SHORT_HR[end.month]} ${end.year}`;
     }
     // Ista godina, različiti mjeseci: "28. tra – 4. svi 2026"
-    return `${start.day}. ${mnKratki[start.month]} – ${end.day}. ${mnKratki[end.month]} ${end.year}`;
-  }, [activeHeaderWeek]);
+    return `${start.day}. ${MONTH_SHORT_HR[start.month]} – ${end.day}. ${MONTH_SHORT_HR[end.month]} ${end.year}`;
+  }, [activeHeaderWeek, isEn]);
 
   // Keep picker in sync with week start
   useEffect(() => {
@@ -1571,8 +1647,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     return map;
   }, [workouts]);
 
-  const monthNames = ["Siječanj", "Veljača", "Ožujak", "Travanj", "Svibanj", "Lipanj", "Srpanj", "Kolovoz", "Rujan", "Listopad", "Studeni", "Prosinac"];
-  const dayNames = ["PON", "UTO", "SRI", "ČET", "PET", "SUB", "NED"];
+  const monthNames = isEn ? MONTH_FULL_EN : MONTH_FULL_HR;
+  const dayNames = isEn ? DAY_SHORT_UPPER_EN : DAY_SHORT_UPPER_HR;
   const nowLocal = new Date();
   const todayStr = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth() + 1).padStart(2, '0')}-${String(nowLocal.getDate()).padStart(2, '0')}`;
 
@@ -1643,7 +1719,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     const newWorkout = {
       id: `local-${Date.now()}`,
       date: selectedDateForNew,
-      title: 'Novi Trening',
+      title: tr('Novi Trening', 'New Workout'),
       duration: 0,
       plannedDuration: 0,
       tss: 0,
@@ -1664,7 +1740,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
     const newWorkout = {
       id: `local-${Date.now()}`,
       date: selectedDateForNew,
-      title: 'Trening snage',
+      title: tr('Trening snage', 'Strength Training'),
       duration: 45,
       plannedDuration: 45,
       tss: 35,
@@ -1693,7 +1769,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       const newWorkout = {
         id: `local-${Date.now()}`,
         date: selectedDateForNew,
-        title: parsed.title || 'Učitani Trening',
+        title: parsed.title || tr('Učitani Trening', 'Imported Workout'),
         duration: Math.round(parsed.duration_seconds / 60) || 60,
         plannedDuration: Math.round(parsed.duration_seconds / 60) || 60,
         tss: 0, // WorkoutEditorModal will recalculate this
@@ -1709,7 +1785,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       setSelectedDateForNew(null);
       setEditingWorkout(newWorkout);
     } catch (err) {
-      alert("Greška pri učitavanju datoteke: " + err.message);
+      alert(tr('Greška pri učitavanju datoteke: ', 'Error loading file: ') + err.message);
     } finally {
       // Reset input so the same file can be selected again
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -1734,7 +1810,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         const { parseTCX } = await import('../utils/activityParser');
         parsedActivity = parseTCX(text);
       } else {
-        throw new Error("Nepodržan format datoteke.");
+        throw new Error(tr('Nepodržan format datoteke.', 'Unsupported file format.'));
       }
 
       // If user selected a specific date in the calendar, overwrite it
@@ -1780,9 +1856,9 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       // Osvježi listu aktivnosti u kalendaru
       window.dispatchEvent(new CustomEvent('activity-title-updated', { detail: { activityId: 'refresh', newTitle: '' }}));
       
-      alert("Aktivnost uspješno učitana!");
+      alert(tr('Aktivnost uspješno učitana!', 'Activity imported successfully!'));
     } catch (err) {
-      alert("Greška pri učitavanju aktivnosti: " + err.message);
+      alert(tr('Greška pri učitavanju aktivnosti: ', 'Error importing activity: ') + err.message);
     } finally {
       setIsUpdating(false);
       if (activityFileInputRef.current) activityFileInputRef.current.value = '';
@@ -1818,30 +1894,40 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       {viewingRace && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setViewingRace(null)}>
           <div className="carbon-panel rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4 relative border border-amber-400/35" onClick={e => e.stopPropagation()}>
-            <button onClick={() => setViewingRace(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition-colors">
+            <button onClick={() => setViewingRace(null)} title={tr('Zatvori', 'Close')} className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition-colors">
               <XCircle className="w-5 h-5" />
             </button>
 
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
                 <Trophy className="w-3.5 h-3.5" />
-                {viewingRace.eventCategory === 'RACE_A' ? 'Glavni Cilj (A)' : viewingRace.eventCategory === 'RACE_B' ? 'Sekundarni Event (B)' : 'Event (C)'}
+                {viewingRace.eventCategory === 'RACE_A'
+                  ? tr('Glavni Cilj (A)', 'Main Goal (A-Race)')
+                  : viewingRace.eventCategory === 'RACE_B'
+                  ? tr('Sekundarni Event (B)', 'Secondary Event (B-Race)')
+                  : tr('Event (C)', 'Event (C-Race)')}
               </span>
-              <span className="text-xs font-mono text-zinc-400">{formatShortHrDate(viewingRace.date)} ({viewingRace.date})</span>
+              <span className="text-xs font-mono text-zinc-400">{formatShortLocalizedDate(viewingRace.date, isEn)} ({viewingRace.date})</span>
             </div>
 
             <div>
               <h2 className="text-xl font-bold text-white leading-snug">{viewingRace.title}</h2>
               {(viewingRace.descriptionText || viewingRace.category) && (
                 <p className="text-xs text-zinc-300 mt-1.5 leading-relaxed">
-                  {viewingRace.descriptionText || viewingRace.category}
+                  {localizeRaceText(viewingRace.descriptionText || viewingRace.category, isEn)}
                 </p>
               )}
               {(() => {
                 const daysLeft = diffDaysIso(getLocalIsoToday(), viewingRace.date);
                 return daysLeft >= 0 ? (
                   <p className="text-xs text-amber-300 font-semibold mt-2">
-                    {daysLeft === 0 ? 'Event je danas!' : `Preostalo još ${daysLeft} dana do starta`}
+                    {daysLeft === 0
+                      ? tr('Event je danas!', 'Event is today!')
+                      : tr(
+                          'Preostalo još {days} dana do starta',
+                          daysLeft === 1 ? '1 day left until race day' : '{days} days left until race day',
+                          { days: daysLeft }
+                        )}
                   </p>
                 ) : null;
               })()}
@@ -1869,7 +1955,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                   className="w-full py-2.5 px-4 rounded-xl bg-volt-400 hover:bg-volt-300 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition-colors"
                 >
                   <Sparkles className="w-4 h-4" />
-                  Izradi AI plan priprema do ovog eventa
+                  {tr('Izradi AI plan priprema do ovog eventa', 'Build AI training plan for this event')}
                 </button>
               )}
 
@@ -1884,7 +1970,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                   className="w-full py-2 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/25 font-semibold text-xs flex items-center justify-center gap-2 transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  Obriši event iz kalendara
+                  {tr('Obriši event iz kalendara', 'Delete event from calendar')}
                 </button>
               )}
             </div>
@@ -1907,7 +1993,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                 type="button"
                 onClick={() => setViewingPlanMarker(null)}
                 className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition-colors"
-                title="Zatvori"
+                title={tr('Zatvori', 'Close')}
               >
                 <XCircle className="w-5 h-5" />
               </button>
@@ -1916,7 +2002,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             <div className="flex flex-wrap items-center gap-2 pr-6">
               <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-volt-400/15 text-volt-400 border border-volt-400/35">
                 <Layers className="w-3.5 h-3.5" />
-                AI Plan Treninga
+                {tr('AI Plan Treninga', 'AI Training Plan')}
               </span>
               {viewingPlanMarker.methodology && (
                 <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-200 border border-zinc-700">
@@ -1934,13 +2020,13 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               <h2 className="text-xl font-bold text-white leading-snug">{viewingPlanMarker.title}</h2>
               <div className="text-xs font-mono text-zinc-400 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span>
-                  Početak: <strong className="text-zinc-200">{formatShortHrDate(viewingPlanMarker.startDate)}</strong>
+                  {tr('Početak:', 'Start:')} <strong className="text-zinc-200">{formatShortLocalizedDate(viewingPlanMarker.startDate, isEn)}</strong>
                   {viewingPlanMarker.endDate && viewingPlanMarker.endDate !== viewingPlanMarker.startDate
-                    ? ` – ${formatShortHrDate(viewingPlanMarker.endDate)}`
+                    ? ` – ${formatShortLocalizedDate(viewingPlanMarker.endDate, isEn)}`
                     : ''}
                 </span>
                 {viewingPlanMarker.totalWeeks && (
-                  <span>• {viewingPlanMarker.totalWeeks} tjedana</span>
+                  <span>• {viewingPlanMarker.totalWeeks} {tr('tjedana', viewingPlanMarker.totalWeeks === 1 ? 'week' : 'weeks')}</span>
                 )}
               </div>
               {viewingPlanMarker.summary && (
@@ -1952,22 +2038,22 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
             <div className="grid grid-cols-3 gap-2.5">
               <div className="p-2.5 rounded-xl bg-zinc-950/90 border border-zinc-800">
-                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Treninzi</div>
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">{tr('Treninzi', 'Workouts')}</div>
                 <div className="text-sm font-mono font-bold text-white mt-0.5">
                   {viewingPlanMarker.completedCount}/{viewingPlanMarker.totalWorkouts}
-                  <span className="text-[10px] font-normal text-zinc-400 ml-1">odrađeno</span>
+                  <span className="text-[10px] font-normal text-zinc-400 ml-1">{tr('odrađeno', 'completed')}</span>
                 </div>
               </div>
               <div className="p-2.5 rounded-xl bg-zinc-950/90 border border-zinc-800">
-                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Planirano TSS</div>
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">{tr('Planirano TSS', 'Planned TSS')}</div>
                 <div className="text-sm font-mono font-bold text-volt-400 mt-0.5">
                   ~{viewingPlanMarker.totalPlannedTss}
                 </div>
               </div>
               <div className="p-2.5 rounded-xl bg-zinc-950/90 border border-zinc-800">
-                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Blokovi</div>
+                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">{tr('Blokovi', 'Blocks')}</div>
                 <div className="text-sm font-mono font-bold text-zinc-200 mt-0.5">
-                  {viewingPlanMarker.blocks.length} u kalendaru
+                  {viewingPlanMarker.blocks.length} {tr('u kalendaru', 'in calendar')}
                 </div>
               </div>
             </div>
@@ -2002,15 +2088,38 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               <div className="p-4 rounded-xl bg-rose-950/30 border border-rose-500/35 space-y-3">
                 <div className="text-xs font-bold text-rose-200">
                   {planActionConfirmMode === 'block'
-                    ? `Potvrdi uklanjanje Bloka (${viewingPlanMarker.blocks[0]?.title || viewingPlanMarker.title}) iz kalendara?`
-                    : 'Potvrdi trajno brisanje cijelog plana?'}
+                    ? tr(
+                        'Potvrdi uklanjanje Bloka ({title}) iz kalendara?',
+                        'Confirm removing Block ({title}) from calendar?',
+                        { title: viewingPlanMarker.blocks[0]?.title || viewingPlanMarker.title }
+                      )
+                    : tr('Potvrdi trajno brisanje cijelog plana?', 'Confirm permanently deleting the entire plan?')}
                 </div>
                 <p className="text-[11px] text-zinc-300 leading-relaxed">
                   {planActionConfirmMode === 'block'
-                    ? 'Svi nesinkronizirani i Intervals.icu treninzi iz prvog sinkroniziranog bloka bit će uklonjeni iz kalendara, dok makrociklus ostaje spremljen u AI Planeru.'
+                    ? tr(
+                        'Svi nesinkronizirani i Intervals.icu treninzi iz prvog sinkroniziranog bloka bit će uklonjeni iz kalendara, dok makrociklus ostaje spremljen u AI Planeru.',
+                        'All local and Intervals.icu workouts from the first synced block will be removed from the calendar, while the macrocycle remains saved in the AI Planner.'
+                      )
                     : viewingPlanMarker.hasSavedBlueprint
-                    ? `Brišu se svi sinkronizirani treninzi iz kalendara${viewingPlanMarker.intervalsCount > 0 ? ' (uključujući Intervals.icu)' : ''} i cijeli spremljeni plan iz AI Planera.`
-                    : `Brišu se svi sinkronizirani treninzi ovog plana iz lokalnog kalendara${viewingPlanMarker.intervalsCount > 0 ? ' i s Intervals.icu' : ''}.`}
+                    ? tr(
+                        'Brišu se svi sinkronizirani treninzi iz kalendara{intervalsPart} i cijeli spremljeni plan iz AI Planera.',
+                        'All synced workouts will be deleted from the calendar{intervalsPart} along with the entire saved plan from the AI Planner.',
+                        {
+                          intervalsPart: viewingPlanMarker.intervalsCount > 0
+                            ? tr(' (uključujući Intervals.icu)', ' (including Intervals.icu)')
+                            : ''
+                        }
+                      )
+                    : tr(
+                        'Brišu se svi sinkronizirani treninzi ovog plana iz lokalnog kalendara{intervalsPart}.',
+                        'All synced workouts of this plan will be deleted from the local calendar{intervalsPart}.',
+                        {
+                          intervalsPart: viewingPlanMarker.intervalsCount > 0
+                            ? tr(' i s Intervals.icu', ' and from Intervals.icu')
+                            : ''
+                        }
+                      )}
                 </p>
                 <div className="flex items-center justify-end gap-2">
                   <button
@@ -2019,7 +2128,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     onClick={() => setPlanActionConfirmMode(null)}
                     className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-colors disabled:opacity-50"
                   >
-                    Odustani
+                    {tr('Odustani', 'Cancel')}
                   </button>
                   <button
                     type="button"
@@ -2028,7 +2137,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-colors disabled:opacity-50"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    {planActionConfirmMode === 'block' ? 'Ukloni blok' : 'Trajno obriši plan'}
+                    {planActionConfirmMode === 'block' ? tr('Ukloni blok', 'Remove block') : tr('Trajno obriši plan', 'Delete plan permanently')}
                   </button>
                 </div>
               </div>
@@ -2056,7 +2165,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     className="w-full py-2.5 px-4 rounded-xl bg-volt-400 hover:bg-volt-300 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition-colors"
                   >
                     <Sparkles className="w-4 h-4" />
-                    Analiziraj plan s AI Trenerom
+                    {tr('Analiziraj plan s AI Trenerom', 'Analyze plan with AI Coach')}
                   </button>
                 )}
 
@@ -2075,7 +2184,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       className="py-2.5 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
                     >
                       <PenLine className="w-3.5 h-3.5 text-volt-400" />
-                      Izmijeni u AI Planeru
+                      {tr('Izmijeni u AI Planeru', 'Edit in AI Planner')}
                     </button>
 
                     <button
@@ -2092,7 +2201,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       className="py-2.5 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
                     >
                       <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
-                      Komentiraj AI treneru
+                      {tr('Komentiraj AI treneru', 'Give feedback to AI Coach')}
                     </button>
                   </div>
                 )}
@@ -2107,7 +2216,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 font-semibold text-xs flex items-center justify-center gap-2 transition-colors"
                   >
                     <PenLine className="w-3.5 h-3.5 text-volt-400" />
-                    Izradi novi plan u AI Planeru
+                    {tr('Izradi novi plan u AI Planeru', 'Create new plan in AI Planner')}
                   </button>
                 )}
 
@@ -2119,7 +2228,9 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       className="py-2 px-3 rounded-xl bg-zinc-900 hover:bg-rose-500/15 text-rose-300 border border-rose-500/25 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      {viewingPlanMarker.blocks.length > 1 ? 'Ukloni 1. blok iz kalendara' : 'Ukloni samo iz kalendara'}
+                      {viewingPlanMarker.blocks.length > 1
+                        ? tr('Ukloni 1. blok iz kalendara', 'Remove 1st block from calendar')
+                        : tr('Ukloni samo iz kalendara', 'Remove from calendar only')}
                     </button>
                   )}
 
@@ -2132,7 +2243,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       }`}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      Obriši cijeli plan
+                      {tr('Obriši cijeli plan', 'Delete entire plan')}
                     </button>
                   )}
                 </div>
@@ -2145,13 +2256,13 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
       {selectedDateForNew && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setSelectedDateForNew(null)}>
           <div className="carbon-panel rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-3.5 relative" onClick={e => e.stopPropagation()}>
-            <button onClick={() => setSelectedDateForNew(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition-colors">
+            <button onClick={() => setSelectedDateForNew(null)} title={tr('Zatvori', 'Close')} className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition-colors">
               <XCircle className="w-5 h-5" />
             </button>
             <div>
               <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400">{selectedDateForNew}</span>
               <h2 className="text-xl font-display font-bold uppercase tracking-wide text-zinc-100">
-                {newModalMode === 'race' ? 'Ciljni Event / Utrka' : 'Dodaj u Kalendar'}
+                {newModalMode === 'race' ? tr('Ciljni Event / Utrka', 'Target Event / Race') : tr('Dodaj u Kalendar', 'Add to Calendar')}
               </h2>
             </div>
 
@@ -2159,13 +2270,13 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
               <div className="space-y-3">
                 <div>
                   <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Naziv utrke ili cilja *
+                    {tr('Naziv utrke ili cilja *', 'Race or goal name *')}
                   </label>
                   <input
                     type="text"
                     value={raceTitle}
                     onChange={(e) => setRaceTitle(e.target.value)}
-                    placeholder="Npr. Gran Fondo Zagreb, Učka..."
+                    placeholder={tr('Npr. Gran Fondo Zagreb, Učka...', 'e.g. Gran Fondo, Alpine Climb...')}
                     autoFocus
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-400"
                   />
@@ -2174,21 +2285,21 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                      Prioritet
+                      {tr('Prioritet', 'Priority')}
                     </label>
                     <select
                       value={raceCategory}
                       onChange={(e) => setRaceCategory(e.target.value)}
                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
                     >
-                      <option value="RACE_A">Cilj A (Glavna)</option>
-                      <option value="RACE_B">Event B (Sekundarni)</option>
-                      <option value="RACE_C">Trening C</option>
+                      <option value="RACE_A">{tr('Cilj A (Glavna)', 'Goal A (Main Race)')}</option>
+                      <option value="RACE_B">{tr('Event B (Sekundarni)', 'Event B (Secondary)')}</option>
+                      <option value="RACE_C">{tr('Trening C', 'C-Race / Training')}</option>
                     </select>
                   </div>
                   <div>
                     <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                      Disciplina
+                      {tr('Disciplina', 'Discipline')}
                     </label>
                     <select
                       value={raceType}
@@ -2196,7 +2307,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
                     >
                       {EVENT_TYPE_OPTIONS.map(opt => (
-                        <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        <option key={opt.id} value={opt.id}>{getEventTypeOptionLabel(opt, isEn)}</option>
                       ))}
                     </select>
                   </div>
@@ -2204,20 +2315,20 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
                 <div>
                   <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                    Distanca / napomena (opcionalno)
+                    {tr('Distanca / napomena (opcionalno)', 'Distance / notes (optional)')}
                   </label>
                   <input
                     type="text"
                     value={raceNotes}
                     onChange={(e) => setRaceNotes(e.target.value)}
-                    placeholder="Npr. 125 km, 2100 m uspona"
+                    placeholder={tr('Npr. 125 km, 2100 m uspona', 'e.g. 125 km, 2100 m elevation')}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-400"
                   />
                 </div>
 
                 {intervalsConnected && (
                   <p className="text-[10px] text-sky-400">
-                    Event će se automatski sinkronizirati i s tvojim Intervals.icu kalendarom.
+                    {tr('Event će se automatski sinkronizirati i s tvojim Intervals.icu kalendarom.', 'The event will automatically sync with your Intervals.icu calendar.')}
                   </p>
                 )}
 
@@ -2230,7 +2341,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       className="w-full py-2.5 px-3 rounded-xl bg-volt-400 hover:bg-volt-300 disabled:opacity-50 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 transition-colors"
                     >
                       <Sparkles className="w-4 h-4" />
-                      {isSavingRace ? 'Spremanje...' : 'Spremi & Izradi AI Plan do eventa'}
+                      {isSavingRace ? tr('Spremanje...', 'Saving...') : tr('Spremi & Izradi AI Plan do eventa', 'Save & Build AI Plan for Event')}
                     </button>
                   )}
 
@@ -2242,7 +2353,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 flex items-center gap-1"
                     >
                       <ArrowLeft className="w-3.5 h-3.5" />
-                      Natrag
+                      {tr('Natrag', 'Back')}
                     </button>
                     <button
                       type="button"
@@ -2251,7 +2362,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                       className="flex-1 py-2 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-50 border border-amber-500/35 text-amber-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
                     >
                       <Flag className="w-3.5 h-3.5" />
-                      Spremi samo Event
+                      {tr('Spremi samo Event', 'Save Event Only')}
                     </button>
                   </div>
                 </div>
@@ -2266,8 +2377,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     <Trophy className="w-5 h-5" />
                   </div>
                   <div className="flex flex-col text-left">
-                    <span className="font-bold text-sm text-zinc-100">Ciljni Event / Utrka</span>
-                    <span className="text-xs text-zinc-500">Upiši utrku i planiraj pripreme do cilja</span>
+                    <span className="font-bold text-sm text-zinc-100">{tr('Ciljni Event / Utrka', 'Target Event / Race')}</span>
+                    <span className="text-xs text-zinc-500">{tr('Upiši utrku i planiraj pripreme do cilja', 'Add a race and plan training toward your goal')}</span>
                   </div>
                 </button>
 
@@ -2279,8 +2390,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     <PenLine className="w-5 h-5" />
                   </div>
                   <div className="flex flex-col text-left">
-                    <span className="font-bold text-sm text-zinc-100">Ručni unos treninga</span>
-                    <span className="text-xs text-zinc-500">Kreiraj strukturirani biciklistički trening (npr. - 10m 65%)</span>
+                    <span className="font-bold text-sm text-zinc-100">{tr('Ručni unos treninga', 'Manual Workout Entry')}</span>
+                    <span className="text-xs text-zinc-500">{tr('Kreiraj strukturirani biciklistički trening (npr. - 10m 65%)', 'Create a structured cycling workout (e.g. - 10m 65%)')}</span>
                   </div>
                 </button>
 
@@ -2292,8 +2403,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     <Dumbbell className="w-5 h-5" />
                   </div>
                   <div className="flex flex-col text-left">
-                    <span className="font-bold text-sm text-zinc-100">Trening snage / Teretana</span>
-                    <span className="text-xs text-zinc-500">Trajanje, naziv, procijenjeni TSS i podsjetnik vježbi</span>
+                    <span className="font-bold text-sm text-zinc-100">{tr('Trening snage / Teretana', 'Strength Training / Gym')}</span>
+                    <span className="text-xs text-zinc-500">{tr('Trajanje, naziv, procijenjeni TSS i podsjetnik vježbi', 'Duration, title, estimated TSS, and exercise notes')}</span>
                   </div>
                 </button>
 
@@ -2305,7 +2416,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     <Upload className="w-5 h-5" />
                   </div>
                   <div className="flex flex-col text-left">
-                    <span className="font-bold text-sm text-zinc-100">Uvezi recept datoteku</span>
+                    <span className="font-bold text-sm text-zinc-100">{tr('Uvezi recept datoteku', 'Import Workout File')}</span>
                     <span className="text-xs font-mono text-zinc-500">.ZWO · .ERG</span>
                   </div>
                 </button>
@@ -2325,8 +2436,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
                     <Activity className="w-5 h-5" />
                   </div>
                   <div className="flex flex-col text-left">
-                    <span className="font-bold text-sm text-zinc-100">Odrađena aktivnost</span>
-                    <span className="text-xs font-mono text-zinc-500">.FIT · .TCX telemetrija</span>
+                    <span className="font-bold text-sm text-zinc-100">{tr('Odrađena aktivnost', 'Completed Activity')}</span>
+                    <span className="text-xs font-mono text-zinc-500">{tr('.FIT · .TCX telemetrija', '.FIT · .TCX telemetry')}</span>
                   </div>
                 </button>
                 <input
@@ -2396,8 +2507,8 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
               {/* Day headers */}
               <div className="grid grid-cols-7 mb-1">
-                {["Po", "Ut", "Sr", "Če", "Pe", "Su", "Ne"].map(d => (
-                  <div key={d} className="text-center text-[10px] font-mono font-bold text-zinc-500 uppercase py-1">{d}</div>
+                {(isEn ? DAY_TWO_LETTER_EN : DAY_TWO_LETTER_HR).map((d, idx) => (
+                  <div key={idx} className="text-center text-[10px] font-mono font-bold text-zinc-500 uppercase py-1">{d}</div>
                 ))}
               </div>
 
@@ -2461,13 +2572,17 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             <button
               type="button"
               onClick={() => setCurrentDate(parseIsoLocal(upcomingGoal.date))}
-              title={`Skok na ciljni event: ${upcomingGoal.title} (${upcomingGoal.date})`}
+              title={tr(
+                'Skok na ciljni event: {title} ({date})',
+                'Jump to target event: {title} ({date})',
+                { title: upcomingGoal.title, date: upcomingGoal.date }
+              )}
               className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-200 text-xs transition-colors"
             >
               <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               <span className="font-semibold truncate max-w-[140px]">{upcomingGoal.title}</span>
               <span className="font-mono font-bold text-amber-400">
-                {upcomingGoal.daysLeft === 0 ? 'DANAS' : `${upcomingGoal.daysLeft}d`}
+                {upcomingGoal.daysLeft === 0 ? tr('DANAS', 'TODAY') : `${upcomingGoal.daysLeft}d`}
               </span>
             </button>
           )}
@@ -2476,11 +2591,11 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             <button
               type="button"
               onClick={() => onOpenAIPlanner({ openWizard: false })}
-              title="Otvori AI Planer treninga"
+              title={tr('Otvori AI Planer treninga', 'Open AI Training Planner')}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-volt-400/15 hover:bg-volt-400/25 border border-volt-400/35 text-volt-400 text-xs font-bold transition-colors"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">AI Planer</span>
+              <span className="hidden sm:inline">{tr('AI Planer', 'AI Planner')}</span>
             </button>
           )}
 
@@ -2489,38 +2604,38 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
             <button
               type="button"
               onClick={() => handleViewModeChange('continuous')}
-              title="Kontinuirani skrol kalendar (TrainerRoad stil)"
+              title={tr('Kontinuirani skrol kalendar (TrainerRoad stil)', 'Continuous scroll calendar (TrainerRoad style)')}
               className={`px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-[11px] font-mono font-bold transition-colors ${
                 viewMode === 'continuous'
                   ? 'bg-volt-400/15 text-volt-400 border border-volt-400/35'
                   : 'text-zinc-400 hover:text-zinc-200 border border-transparent'
               }`}
             >
-              Kontinuirano
+              {tr('Kontinuirano', 'Continuous')}
             </button>
             <button
               type="button"
               onClick={() => handleViewModeChange('threeWeeks')}
-              title="Klasični prikaz 3 tjedna"
+              title={tr('Klasični prikaz 3 tjedna', 'Classic 3-week view')}
               className={`px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-[11px] font-mono font-bold transition-colors ${
                 viewMode === 'threeWeeks'
                   ? 'bg-volt-400/15 text-volt-400 border border-volt-400/35'
                   : 'text-zinc-400 hover:text-zinc-200 border border-transparent'
               }`}
             >
-              3 Tjedna
+              {tr('3 Tjedna', '3 Weeks')}
             </button>
             <button
               type="button"
               onClick={() => handleViewModeChange('oneWeek')}
-              title="Detaljni prikaz jednog tjedna"
+              title={tr('Detaljni prikaz jednog tjedna', 'Detailed single-week view')}
               className={`px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-[11px] font-mono font-bold transition-colors ${
                 viewMode === 'oneWeek'
                   ? 'bg-volt-400/15 text-volt-400 border border-volt-400/35'
                   : 'text-zinc-400 hover:text-zinc-200 border border-transparent'
               }`}
             >
-              1 Tjedan
+              {tr('1 Tjedan', '1 Week')}
             </button>
           </div>
 
@@ -2528,26 +2643,26 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
           <div className="flex items-stretch bg-zinc-900 rounded-lg p-1 border border-zinc-800 gap-1">
             <button
               onClick={goWeekBack}
-              title="Prošli tjedan (-7 dana)"
+              title={tr('Prošli tjedan (-7 dana)', 'Previous week (-7 days)')}
               className="px-2 py-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors flex flex-col items-center justify-center gap-0.5 group/nav"
             >
               <ChevronLeft className="w-4 h-4" />
-              <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-zinc-500 group-hover/nav:text-zinc-300 leading-none">-1 tjedan</span>
+              <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-zinc-500 group-hover/nav:text-zinc-300 leading-none">{tr('-1 tjedan', '-1 week')}</span>
             </button>
             <button
               onClick={goToday}
-              title="Idi na današnji tjedan"
+              title={tr('Idi na današnji tjedan', 'Go to current week')}
               className="px-3 py-1 hover:bg-zinc-800 rounded text-[11px] font-mono font-bold text-volt-400 uppercase tracking-wider transition-colors flex flex-col items-center justify-center border-x border-zinc-800/80"
             >
-              <span>Danas</span>
+              <span>{tr('Danas', 'Today')}</span>
             </button>
             <button
               onClick={goWeekForward}
-              title="Sljedeći tjedan (+7 dana)"
+              title={tr('Sljedeći tjedan (+7 dana)', 'Next week (+7 days)')}
               className="px-2 py-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-100 transition-colors flex flex-col items-center justify-center gap-0.5 group/nav"
             >
               <ChevronRight className="w-4 h-4" />
-              <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-zinc-500 group-hover/nav:text-zinc-300 leading-none">+1 tjedan</span>
+              <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-zinc-500 group-hover/nav:text-zinc-300 leading-none">{tr('+1 tjedan', '+1 week')}</span>
             </button>
           </div>
         </div>
@@ -2555,7 +2670,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
 
         <div className="hidden md:grid grid-cols-8 border-b border-zinc-800 bg-zinc-900/95 font-mono font-bold text-[11px] text-zinc-400 uppercase tracking-[0.18em]">
           {dayNames.map((d, i) => <div key={i} className="py-2.5 short:py-1.5 px-3 border-r border-zinc-800/80">{d}</div>)}
-          <div className="py-2.5 short:py-1.5 text-center bg-volt-400/10 text-volt-400 border-l border-zinc-800">Sažetak</div>
+          <div className="py-2.5 short:py-1.5 text-center bg-volt-400/10 text-volt-400 border-l border-zinc-800">{tr('Sažetak', 'Summary')}</div>
         </div>
       </div>
 

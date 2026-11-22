@@ -1,5 +1,6 @@
 import FitParser from 'fit-file-parser';
 import { calculateCogganMetrics } from './performanceMetrics';
+import { tr } from '../i18n/i18nCore.js';
 
 /**
  * Parsira .fit datoteku u standardizirani stream_data format
@@ -105,12 +106,12 @@ export function parseTCX(xmlString) {
   const xmlDoc = parser.parseFromString(xmlString, "text/xml");
   
   if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
-    throw new Error("Greška pri parsiranju XML/TCX datoteke.");
+    throw new Error(tr("Greška pri parsiranju XML/TCX datoteke.", "Failed to parse XML/TCX file."));
   }
 
   const activities = xmlDoc.getElementsByTagName("Activity");
   if (activities.length === 0) {
-    throw new Error("TCX datoteka ne sadrži aktivnost.");
+    throw new Error(tr("TCX datoteka ne sadrži aktivnost.", "TCX file does not contain an activity."));
   }
 
   const activity = activities[0];
@@ -131,7 +132,7 @@ export function parseTCX(xmlString) {
 
   const trackpoints = xmlDoc.getElementsByTagName("Trackpoint");
   if (trackpoints.length === 0) {
-    throw new Error("TCX datoteka ne sadrži zapisane točke (trackpoints).");
+    throw new Error(tr("TCX datoteka ne sadrži zapisane točke (trackpoints).", "TCX file does not contain any trackpoints."));
   }
 
   const startTimestamp = startedAt.getTime();
@@ -198,7 +199,7 @@ export function processActivityStream(parsedActivity, userFtp = 200, userMass = 
   const { stream_data, title, startedAt, sport } = parsedActivity;
   
   if (!stream_data || stream_data.length === 0) {
-    throw new Error("Aktivnost nema dovoljno podataka za analizu.");
+    throw new Error(tr("Aktivnost nema dovoljno podataka za analizu.", "Activity does not have enough data to analyze."));
   }
 
   const duration_seconds = stream_data[stream_data.length - 1].t;

@@ -7,6 +7,8 @@ import {
 import ActivityDetailModal from './ActivityDetailModal';
 import { extractIntervalsAthleteMetrics } from '../services/intervalsApi';
 import { UI_THEMES } from '../utils/themeConfig';
+import { useI18n } from '../i18n/I18nContext';
+import LanguageSwitcher from '../i18n/LanguageSwitcher';
 
 export default function ProfileTab({ 
   profile, 
@@ -26,6 +28,7 @@ export default function ProfileTab({
   uiQuietGlow = false,
   setUiQuietGlow
 }) {
+  const { tr, isEn, locale } = useI18n();
   const [formData, setFormData] = useState({
     username: profile?.username || 'Odvažni Vozač',
     weight: profile?.weight !== undefined && profile?.weight !== null ? profile.weight : 75.9,
@@ -107,11 +110,11 @@ export default function ProfileTab({
 
   const getWKgCategory = (val) => {
     const num = parseFloat(val);
-    if (num < 2.5) return { label: 'Rekreativac', color: 'text-zinc-400 bg-zinc-800/80 border-zinc-700' };
-    if (num < 3.2) return { label: 'Klupski vozač (Z2/Z3)', color: 'text-sky-400 bg-sky-950/40 border-sky-500/30' };
-    if (num < 4.0) return { label: 'Natjecatelj / Gran Fondo', color: 'text-emerald-400 bg-emerald-950/40 border-emerald-500/30' };
-    if (num < 4.8) return { label: 'Elita (Cat 1/2)', color: 'text-orange-400 bg-orange-950/40 border-orange-500/30' };
-    return { label: 'Pro / UCI razina', color: 'text-purple-400 bg-purple-950/40 border-purple-500/30' };
+    if (num < 2.5) return { label: tr('Rekreativac', 'Recreational'), color: 'text-zinc-400 bg-zinc-800/80 border-zinc-700' };
+    if (num < 3.2) return { label: tr('Klupski vozač (Z2/Z3)', 'Club Rider (Cat 4/5)'), color: 'text-sky-400 bg-sky-950/40 border-sky-500/30' };
+    if (num < 4.0) return { label: tr('Natjecatelj / Gran Fondo', 'Competitive / Gran Fondo'), color: 'text-emerald-400 bg-emerald-950/40 border-emerald-500/30' };
+    if (num < 4.8) return { label: tr('Elita (Cat 1/2)', 'Elite (Cat 1/2)'), color: 'text-orange-400 bg-orange-950/40 border-orange-500/30' };
+    return { label: tr('Pro / UCI razina', 'Pro / UCI Level'), color: 'text-purple-400 bg-purple-950/40 border-purple-500/30' };
   };
 
   const wKgCat = getWKgCategory(wKg);
@@ -177,11 +180,18 @@ export default function ProfileTab({
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">Način rada: Gost</h3>
-                <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-950 text-zinc-400 border border-zinc-800">LOKALNA MEMORIJA</span>
+                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-base">
+                  {tr('Način rada: Gost', 'Mode: Guest')}
+                </h3>
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-950 text-zinc-400 border border-zinc-800">
+                  {tr('LOKALNA MEMORIJA', 'LOCAL STORAGE')}
+                </span>
               </div>
               <p className="text-xs text-zinc-400 mt-1 max-w-xl">
-                Tvoji treninzi i profil spremaju se lokalno u ovom pregledniku. Prijavi se ili registriraj mailom za trajno čuvanje i sinkronizaciju među uređajima (svi trenutni lokalni podaci bit će automatski preneseni).
+                {tr(
+                  'Tvoji treninzi i profil spremaju se lokalno u ovom pregledniku. Prijavi se ili registriraj mailom za trajno čuvanje i sinkronizaciju među uređajima (svi trenutni lokalni podaci bit će automatski preneseni).',
+                  'Your workouts and profile are stored locally in this browser. Sign in with Intervals.icu or email to sync across devices (all local data transfers automatically).'
+                )}
               </p>
             </div>
           </div>
@@ -190,7 +200,7 @@ export default function ProfileTab({
               onClick={onOpenAuthModal}
               className="shrink-0 flex items-center gap-2 bg-volt-400 hover:bg-volt-300 text-zinc-950 px-5 py-2.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs shadow-volt-glow transition-all"
             >
-              <LogIn className="w-4 h-4" /> Prijavi se / Registriraj
+              <LogIn className="w-4 h-4" /> {tr('Prijavi se / Registriraj', 'Sign In / Sign Up')}
             </button>
           )}
         </div>
@@ -202,11 +212,17 @@ export default function ProfileTab({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-sm">ErgVibe Oblak Račun</h3>
-                <span className="font-mono text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">SYNC AKTIVAN</span>
+                <h3 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-sm">
+                  {tr('ErgVibe Oblak Račun', 'ErgVibe Cloud Account')}
+                </h3>
+                <span className="font-mono text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                  {tr('SYNC AKTIVAN', 'SYNC ACTIVE')}
+                </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Prijavljen: <span className="text-zinc-200 font-mono font-bold">{userEmail || 'Korisnik'}</span>. Podaci i treninzi automatski se čuvaju u bazi.
+                {tr('Prijavljen:', 'Signed in:')}{' '}
+                <span className="text-zinc-200 font-mono font-bold">{userEmail || tr('Korisnik', 'User')}</span>.{' '}
+                {tr('Podaci i treninzi automatski se čuvaju u bazi.', 'Your profile and rides sync automatically to the cloud.')}
               </p>
             </div>
           </div>
@@ -220,18 +236,21 @@ export default function ProfileTab({
             <div className="w-2.5 h-2.5 rounded-full bg-volt-400 animate-pulse shrink-0" />
             <div>
               <span className="font-bold text-zinc-200">
-                Intervals.icu je povezan
+                {tr('Intervals.icu je povezan', 'Intervals.icu Connected')}
               </span>
               {athleteInfo?.name && (
                 <span className="text-zinc-400 ml-1.5 font-medium">
-                  (Sportaš: <strong className="text-volt-400 font-mono">{athleteInfo.name}</strong>
+                  ({tr('Sportaš:', 'Athlete:')} <strong className="text-volt-400 font-mono">{athleteInfo.name}</strong>
                   {athleteMetrics?.ftp && (
-                    <> · FTP na ICU: <strong className="text-volt-400 font-mono">{athleteMetrics.ftp}W</strong></>
+                    <> · {tr('FTP na ICU:', 'ICU FTP:')} <strong className="text-volt-400 font-mono">{athleteMetrics.ftp}W</strong></>
                   )})
                 </span>
               )}
               <span className="text-zinc-500 block text-[11px] mt-0.5">
-                Aktivnosti i planirani treninzi sinkroniziraju se s Intervals.icu računom.
+                {tr(
+                  'Aktivnosti i planirani treninzi sinkroniziraju se s Intervals.icu računom.',
+                  'Activities and planned workouts stay synced with your Intervals.icu account.'
+                )}
               </span>
             </div>
           </div>
@@ -239,9 +258,9 @@ export default function ProfileTab({
             <button
               onClick={handleRefreshFromIntervals}
               className="shrink-0 flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-volt-400 border border-volt-400/35 px-3 py-1.5 rounded-lg font-bold text-xs transition-all"
-              title="Povuci svježi FTP, težinu i puls s Intervals.icu profila"
+              title={tr('Povuci svježi FTP, težinu i puls s Intervals.icu profila', 'Pull latest FTP, weight & HR from Intervals.icu')}
             >
-              <RefreshCw className="w-3.5 h-3.5" /> Osvježi profil s Intervals.icu
+              <RefreshCw className="w-3.5 h-3.5" /> {tr('Osvježi profil s Intervals.icu', 'Refresh from Intervals.icu')}
             </button>
           )}
         </div>
@@ -252,22 +271,28 @@ export default function ProfileTab({
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-1.5">
             <div className="bg-volt-400/15 border border-volt-400/40 p-2 rounded-lg text-volt-400"><User className="w-6 h-6" /></div>
-            <h2 className="text-2xl font-display font-bold uppercase tracking-wide text-zinc-100">Profil i Postavke</h2>
+            <h2 className="text-2xl font-display font-bold uppercase tracking-wide text-zinc-100">
+              {tr('Profil i Postavke', 'Profile & Settings')}
+            </h2>
           </div>
           <p className="text-zinc-400 font-medium max-w-xl text-sm leading-relaxed">
-            Fiziološki parametri za upravljanje trenažerom, izračun zona snage, analitiku treninga i izgled telemetrije.
+            {tr(
+              'Fiziološki parametri za upravljanje trenažerom, izračun zona snage, analitiku treninga i izgled telemetrije.',
+              'Physiological metrics for trainer control, power & HR zones, analytics, language, and telemetry theme.'
+            )}
           </p>
         </div>
 
         <div className="relative z-10 flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+          <LanguageSwitcher />
           {onOpenOnboarding && (
             <button
               onClick={onOpenOnboarding}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-bold bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 transition-all text-xs"
-              title="Pokreni vodič za početnike ponovno"
+              title={tr('Pokreni vodič za početnike ponovno', 'Replay onboarding guide')}
             >
               <HelpCircle className="w-4 h-4 text-volt-400" />
-              Vodič za početnike
+              {tr('Vodič za početnike', 'Quick Guide')}
             </button>
           )}
 
@@ -280,7 +305,7 @@ export default function ProfileTab({
             }`}
           >
             {isSaved ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {isSaved ? 'Spremljeno (Zaključano)' : 'Spremi Promjene'}
+            {isSaved ? tr('Spremljeno (Zaključano)', 'Saved (Locked)') : tr('Spremi Promjene', 'Save Changes')}
           </button>
         </div>
       </div>
@@ -291,10 +316,10 @@ export default function ProfileTab({
           <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 flex-wrap gap-2">
             <div className="flex items-center gap-2 text-zinc-100 font-display font-bold uppercase tracking-wide">
               <Palette className="w-5 h-5 text-volt-400" />
-              <span>Boja Telemetrije (Vizualni Identitet)</span>
+              <span>{tr('Boja Telemetrije (Vizualni Identitet)', 'Telemetry Accent Theme')}</span>
             </div>
             <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-zinc-950 text-zinc-400 border border-zinc-800">
-              AKTIVNO: {UI_THEMES.find(t => t.id === uiTheme)?.name || 'Carbon & Acid Volt'}
+              {tr('AKTIVNO:', 'ACTIVE:')} {UI_THEMES.find(t => t.id === uiTheme)?.name || 'Carbon & Acid Volt'}
             </span>
           </div>
 
@@ -330,11 +355,11 @@ export default function ProfileTab({
                         ? 'bg-volt-400/15 text-volt-400 border-volt-400/40'
                         : 'bg-zinc-900 text-zinc-500 border-zinc-800'
                     }`}>
-                      {active ? 'AKTIVNA' : themeItem.tag}
+                      {active ? tr('AKTIVNA', 'ACTIVE') : (isEn ? themeItem.tagEn : themeItem.tag)}
                     </span>
                   </div>
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    {themeItem.desc}
+                    {isEn ? themeItem.descEn : themeItem.desc}
                   </p>
                 </button>
               );
@@ -365,21 +390,24 @@ export default function ProfileTab({
                 </span>
                 <div>
                   <div className="text-xs font-bold text-zinc-200">
-                    Mat način rada (bez neonskog sjaja)
+                    {tr('Mat način rada (bez neonskog sjaja)', 'Matte Mode (No Neon Glow)')}
                   </div>
                   <div className="text-[11px] text-zinc-400">
-                    Uklanja glow odsjaje oko aktivnih gumbi i kartica za mirniji cjelodnevni pregled.
+                    {tr(
+                      'Uklanja glow odsjaje oko aktivnih gumbi i kartica za mirniji cjelodnevni pregled.',
+                      'Removes accent glow around buttons and cards for a calmer all-day display.'
+                    )}
                   </div>
                 </div>
               </button>
 
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 shrink-0">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Pregled:</span>
+                <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">{tr('Pregled:', 'Preview:')}</span>
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-volt-400 text-zinc-950 shadow-volt-glow">
-                  CTA GUMB
+                  {tr('CTA GUMB', 'CTA BTN')}
                 </span>
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-volt-400/15 text-volt-400 border border-volt-400/35">
-                  OZNAKA
+                  {tr('OZNAKA', 'BADGE')}
                 </span>
                 <span className="text-xs font-mono telemetry-num font-bold text-volt-400">
                   {formData.ftp || 250} W
@@ -395,19 +423,19 @@ export default function ProfileTab({
         <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 flex-wrap gap-2">
           <div className="flex items-center gap-2 text-zinc-100 font-display font-bold uppercase tracking-wide">
             <Zap className="w-5 h-5 text-volt-400" /> 
-            <span>Fiziološki Podaci</span>
+            <span>{tr('Fiziološki Podaci', 'Physiological Metrics')}</span>
           </div>
           
           {/* Status izvora FTP-a */}
           {profile?.isManualFtp ? (
             <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2.5 py-1 rounded">
               <Lock className="w-3.5 h-3.5" />
-              <span>Ručni unos zaključan (prioritet nad Intervals.icu)</span>
+              <span>{tr('Ručni unos zaključan (prioritet nad Intervals.icu)', 'Manual override locked (takes priority over Intervals.icu)')}</span>
             </div>
           ) : intervalsConnected ? (
             <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-volt-400 bg-volt-400/10 border border-volt-400/25 px-2.5 py-1 rounded">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Sinkronizirano s Intervals.icu</span>
+              <span>{tr('Sinkronizirano s Intervals.icu', 'Synced with Intervals.icu')}</span>
             </div>
           ) : null}
         </div>
@@ -415,23 +443,23 @@ export default function ProfileTab({
         {/* Polja unosa */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
           <div className="md:col-span-1">
-            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Korisničko Ime</label>
+            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">{tr('Korisničko Ime', 'Rider Name')}</label>
             <input type="text" name="username" value={formData.username} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-zinc-100 font-bold focus:border-volt-400 focus:outline-none transition-all" />
           </div>
           <div>
-            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Težina (kg)</label>
+            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">{tr('Težina (kg)', 'Weight (kg)')}</label>
             <input type="number" step="0.1" name="weight" value={formData.weight} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 font-mono telemetry-num text-zinc-100 font-bold focus:border-volt-400 focus:outline-none transition-all" />
           </div>
           <div>
-            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Trenutni FTP (W)</label>
+            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">{tr('Trenutni FTP (W)', 'Current FTP (W)')}</label>
             <input type="number" name="ftp" value={formData.ftp} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 font-mono telemetry-num text-volt-400 font-bold focus:border-volt-400 focus:outline-none transition-all" />
           </div>
           <div>
-            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Max Puls (bpm)</label>
+            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">{tr('Max Puls (bpm)', 'Max HR (bpm)')}</label>
             <input type="number" name="maxHr" value={formData.maxHr} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 font-mono telemetry-num text-zinc-100 font-bold focus:border-volt-400 focus:outline-none transition-all" />
           </div>
           <div>
-            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Threshold Puls</label>
+            <label className="block font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">{tr('Threshold Puls', 'Threshold HR (LTHR)')}</label>
             <input type="number" name="thresholdHr" value={formData.thresholdHr} onChange={handleChange} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 font-mono telemetry-num text-zinc-100 font-bold focus:border-volt-400 focus:outline-none transition-all" />
           </div>
         </div>
@@ -444,19 +472,25 @@ export default function ProfileTab({
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-zinc-400 font-medium">Relativna snaga:</span>
+                <span className="text-xs text-zinc-400 font-medium">{tr('Relativna snaga:', 'Power-to-weight:')}</span>
                 <span className="text-xl font-display font-bold telemetry-num text-volt-400">{wKg} W/kg</span>
                 <span className={`font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${wKgCat.color}`}>
                   {wKgCat.label}
                 </span>
               </div>
               <p className="text-[11px] text-zinc-500 mt-0.5">
-                Izračunato na temelju: <strong className="font-mono text-zinc-300">{formData.ftp} W</strong> / <strong className="font-mono text-zinc-300">{formData.weight} kg</strong>. Promjenom brojeva gore omjer se odmah osvježava.
+                {tr('Izračunato na temelju:', 'Calculated from:')}{' '}
+                <strong className="font-mono text-zinc-300">{formData.ftp} W</strong> /{' '}
+                <strong className="font-mono text-zinc-300">{formData.weight} kg</strong>.{' '}
+                {tr('Promjenom brojeva gore omjer se odmah osvježava.', 'Updates live as you edit values above.')}
               </p>
             </div>
           </div>
           <div className="text-[11px] text-zinc-400 sm:text-right">
-            Klikom na <strong className="text-volt-400">"Spremi Promjene"</strong> zaključavaš ove parametre za trenažer i zone snage.
+            {tr(
+              'Klikom na "Spremi Promjene" zaključavaš ove parametre za trenažer i zone snage.',
+              'Click "Save Changes" to lock these metrics for ERG targets and zones.'
+            )}
           </div>
         </div>
       </div>
@@ -465,7 +499,7 @@ export default function ProfileTab({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="carbon-panel rounded-xl p-6">
           <h3 className="text-xs font-display font-bold uppercase tracking-wider text-volt-400 mb-4 flex items-center bg-volt-400/10 border border-volt-400/25 px-3 py-1.5 rounded-md w-fit">
-            <Activity className="w-4 h-4 mr-2" /> Zone Snage (Power)
+            <Activity className="w-4 h-4 mr-2" /> {tr('Zone Snage (Power)', 'Power Zones')}
           </h3>
           <div className="text-xs text-zinc-400 space-y-1">
             {powerZones.map(z => {
@@ -488,7 +522,7 @@ export default function ProfileTab({
         
         <div className="carbon-panel rounded-xl p-6">
           <h3 className="text-xs font-display font-bold uppercase tracking-wider text-rose-400 mb-4 flex items-center bg-rose-500/10 border border-rose-500/25 px-3 py-1.5 rounded-md w-fit">
-            <Heart className="w-4 h-4 mr-2" /> Zone Pulsa (HR)
+            <Heart className="w-4 h-4 mr-2" /> {tr('Zone Pulsa (HR)', 'Heart Rate Zones')}
           </h3>
           <div className="text-xs text-zinc-400 space-y-1">
             {hrZones.map(z => {
@@ -516,21 +550,21 @@ export default function ProfileTab({
           <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 flex-wrap gap-2">
             <div className="flex items-center gap-2 text-zinc-100 font-display font-bold uppercase tracking-wide">
               <Activity className="w-5 h-5 text-volt-400" />
-              <span>Zadnjih 5 Odrađenih Treninga</span>
+              <span>{tr('Zadnjih 5 Odrađenih Treninga', 'Last 5 Completed Rides')}</span>
               <span className="font-mono telemetry-num text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-950 text-zinc-400 border border-zinc-800">
-                UKUPNO: {allCompletedWorkouts.length}
+                {tr('UKUPNO:', 'TOTAL:')} {allCompletedWorkouts.length}
               </span>
             </div>
             <span className="text-[11px] text-zinc-400 font-medium hidden sm:inline">
-              Klikni na trening za analizu, streamove i .FIT izvoz
+              {tr('Klikni na trening za analizu, streamove i .FIT izvoz', 'Click a ride for analysis, streams & .FIT export')}
             </span>
           </div>
           
           <div className="flex flex-col gap-2.5">
             {displayedWorkouts.map((workout, index) => {
               const dateStr = workout.started_at || workout.start_date_local || workout.date;
-              const displayDate = dateStr ? new Date(dateStr).toLocaleDateString('hr-HR') : 'Nepoznat datum';
-              const title = workout.name || workout.title || 'Trening';
+              const displayDate = dateStr ? new Date(dateStr).toLocaleDateString(locale) : tr('Nepoznat datum', 'Unknown date');
+              const title = workout.name || workout.title || tr('Trening', 'Workout');
               const durationSecs = workout.moving_time || workout.elapsed_time || (workout.duration ? workout.duration * 60 : 0);
               const tss = workout.icu_training_load || workout.tss || 0;
               const avgPwr = workout.avg_power || (workout.icu_weighted_avg_watts ? Math.round(workout.icu_weighted_avg_watts) : 0);
@@ -540,7 +574,7 @@ export default function ProfileTab({
                   key={workout.id || index} 
                   onClick={() => setSelectedActivity(workout)}
                   className="flex items-center justify-between p-4 rounded-lg bg-zinc-950 border border-zinc-800/80 hover:border-volt-400/40 hover:bg-zinc-900/70 transition-all cursor-pointer group"
-                  title="Otvori detalje treninga"
+                  title={tr('Otvori detalje treninga', 'Open ride details')}
                 >
                   <div className="flex flex-col">
                     <span className="font-bold text-zinc-100 group-hover:text-volt-400 transition-colors flex items-center gap-2">
@@ -581,7 +615,7 @@ export default function ProfileTab({
 
           <div className="flex items-center justify-between pt-3 border-t border-zinc-800/80 flex-wrap gap-3">
             <span className="text-xs text-zinc-400">
-              Prikazano je zadnjih 5 aktivnosti radi optimalne brzine rada.
+              {tr('Prikazano je zadnjih 5 aktivnosti radi optimalne brzine rada.', 'Showing the 5 most recent rides for optimal performance.')}
             </span>
             {onNavigateToCalendar && (
               <button
@@ -589,7 +623,7 @@ export default function ProfileTab({
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-display font-bold uppercase tracking-wider bg-zinc-900 hover:bg-zinc-800 text-volt-400 border border-volt-400/35 transition-all"
               >
                 <CalendarDays className="w-4 h-4" />
-                Pogledaj cijelu povijest u Kalendaru
+                {tr('Pogledaj cijelu povijest u Kalendaru', 'View Full History in Calendar')}
                 <ChevronRight className="w-4 h-4" />
               </button>
             )}

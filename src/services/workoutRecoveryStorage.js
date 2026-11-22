@@ -7,6 +7,8 @@
  * - Rok čuvanja nezavršenog treninga: 48 sati
  */
 
+import { tr, getLocale, translateStepName } from '../i18n/i18nCore.js';
+
 const DB_NAME = 'ergvibe_workout_recovery';
 const DB_VERSION = 1;
 const STORE_NAME = 'active_sessions';
@@ -358,21 +360,23 @@ export async function loadActiveWorkoutCheckpoint(userId) {
 }
 
 /**
- * Formatira proteklo vrijeme od prekida u čitljiv hrvatski oblik.
+ * Formatira proteklo vrijeme od prekida u lokalizirani oblik (HR / EN).
  */
 export function formatRecoveryAge(ageMs) {
   const safeMs = Math.max(0, Number(ageMs) || 0);
   const mins = Math.floor(safeMs / 60000);
-  if (mins < 1) return 'upravo sada';
-  if (mins < 60) return `prije ${mins} min`;
+  if (mins < 1) return tr('upravo sada', 'just now');
+  if (mins < 60) return tr(`prije ${mins} min`, `${mins} min ago`);
   const hours = Math.floor(mins / 60);
   if (hours < 24) {
     const remMins = mins % 60;
-    return remMins > 0 ? `prije ${hours} h ${remMins} min` : `prije ${hours} h`;
+    return remMins > 0
+      ? tr(`prije ${hours} h ${remMins} min`, `${hours}h ${remMins}m ago`)
+      : tr(`prije ${hours} h`, `${hours}h ago`);
   }
   const days = Math.floor(hours / 24);
-  if (days === 1) return 'jučer';
-  return `prije ${days} dana`;
+  if (days === 1) return tr('jučer', 'yesterday');
+  return tr(`prije ${days} dana`, `${days} days ago`);
 }
 
 /**
@@ -420,18 +424,18 @@ export function buildRecoverySummary(snapshot) {
 
   const savedDate = snapshot.savedAt ? new Date(snapshot.savedAt) : null;
   const savedTimeLocal = savedDate && !Number.isNaN(savedDate.getTime())
-    ? savedDate.toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })
+    ? savedDate.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' })
     : '';
 
   return {
-    title: snapshot.workoutFromCalendar?.title || 'Slobodna Vožnja',
+    title: snapshot.workoutFromCalendar?.title || tr('Slobodna Vožnja', 'Free Ride'),
     elapsedTime,
     totalDuration,
     progressPct,
     isAtEnd: totalDuration > 0 && elapsedTime >= totalDuration,
     currentStepIndex,
     totalSteps: recipe.length,
-    currentStepName: currentStep?.name || 'Interval',
+    currentStepName: translateStepName(currentStep?.name || 'Interval'),
     sampleCount: history.length,
     avgPower,
     avgHr,

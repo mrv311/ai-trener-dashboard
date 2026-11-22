@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { Activity, TrendingUp, AlertTriangle, Zap, CalendarDays } from 'lucide-react';
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { useI18n } from '../i18n/I18nContext';
 
 const CHART_MARGIN = { top: 10, right: 10, left: -20, bottom: 0 };
 const AXIS_TICK = { fontSize: 11, fill: '#71717a', fontFamily: 'JetBrains Mono, monospace' };
@@ -24,11 +25,11 @@ function getFormColor(tsb) {
   return "text-rose-500";
 }
 
-function getFormStatus(tsb) {
-  if (tsb > 25) return "Tranzicija / Gubitak forme";
-  if (tsb >= 5 && tsb <= 25) return "Optimalno · Spreman za utrku";
-  if (tsb >= -10 && tsb < 5) return "Produktivna zona treninga";
-  return "Visoki zamor · Potreban odmor";
+function getFormStatus(tsb, tr) {
+  if (tsb > 25) return tr('Tranzicija / Gubitak forme', 'Transition / Detraining');
+  if (tsb >= 5 && tsb <= 25) return tr('Optimalno · Spreman za utrku', 'Optimal · Race Ready');
+  if (tsb >= -10 && tsb < 5) return tr('Produktivna zona treninga', 'Optimal Training Zone');
+  return tr('Visoki zamor · Potreban odmor', 'High Fatigue · Recovery Needed');
 }
 
 function FilterButton({ label, value, active, onClick }) {
@@ -48,6 +49,7 @@ function FilterButton({ label, value, active, onClick }) {
 }
 
 export default function FitnessTab({ wellnessData }) {
+  const { tr, isEn } = useI18n();
   const [timeFilter, setTimeFilter] = useState('3M'); // '1M', '3M', '6M', '1Y'
   const [visibleLines, setVisibleLines] = useState({
     Fitness: true,
@@ -131,8 +133,8 @@ export default function FitnessTab({ wellnessData }) {
     if (timeFilter === '1Y') {
       return `${d.getMonth() + 1}/${d.getFullYear().toString().slice(-2)}`;
     }
-    return `${d.getDate()}.${d.getMonth() + 1}.`;
-  }, [timeFilter]);
+    return isEn ? `${d.getMonth() + 1}/${d.getDate()}` : `${d.getDate()}.${d.getMonth() + 1}.`;
+  }, [timeFilter, isEn]);
 
   const toggleLine = useCallback((key) => {
     setVisibleLines(prev => ({ ...prev, [key]: !prev[key] }));
@@ -148,7 +150,7 @@ export default function FitnessTab({ wellnessData }) {
           <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity"><TrendingUp className="w-12 h-12 short:w-9 short:h-9 text-sky-400"/></div>
           <div className="text-[10px] font-mono font-bold text-sky-400 uppercase tracking-[0.2em] mb-1 short:mb-0.5 flex items-center gap-1.5"><Activity className="w-3.5 h-3.5"/> Fitness · CTL</div>
           <div className="text-4xl md:text-5xl short:text-3xl font-display font-bold telemetry-num text-zinc-100 my-1.5 short:my-0.5">{latest.Fitness}</div>
-          <div className="text-xs font-mono text-zinc-500 mt-auto">42-dnevno kronično opterećenje</div>
+          <div className="text-xs font-mono text-zinc-500 mt-auto">{tr('42-dnevno kronično opterećenje', '42-day chronic training load')}</div>
         </div>
 
         <div className="carbon-panel rounded-xl p-5 short:p-3.5 flex flex-col relative overflow-hidden group hover:border-purple-500/40 transition-colors">
@@ -156,7 +158,7 @@ export default function FitnessTab({ wellnessData }) {
           <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity"><Zap className="w-12 h-12 short:w-9 short:h-9 text-purple-400"/></div>
           <div className="text-[10px] font-mono font-bold text-purple-400 uppercase tracking-[0.2em] mb-1 short:mb-0.5 flex items-center gap-1.5"><Activity className="w-3.5 h-3.5"/> Fatigue · ATL</div>
           <div className="text-4xl md:text-5xl short:text-3xl font-display font-bold telemetry-num text-zinc-100 my-1.5 short:my-0.5">{latest.Fatigue}</div>
-          <div className="text-xs font-mono text-zinc-500 mt-auto">7-dnevni akutni zamor</div>
+          <div className="text-xs font-mono text-zinc-500 mt-auto">{tr('7-dnevni akutni zamor', '7-day acute training load')}</div>
         </div>
 
         <div className="carbon-panel rounded-xl p-5 short:p-3.5 flex flex-col relative overflow-hidden group hover:border-volt-400/40 transition-colors">
@@ -164,7 +166,7 @@ export default function FitnessTab({ wellnessData }) {
           <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity"><AlertTriangle className="w-12 h-12 short:w-9 short:h-9 text-volt-400"/></div>
           <div className="text-[10px] font-mono font-bold text-volt-400 uppercase tracking-[0.2em] mb-1 short:mb-0.5 flex items-center gap-1.5"><Activity className="w-3.5 h-3.5"/> Form · TSB</div>
           <div className={`text-4xl md:text-5xl short:text-3xl font-display font-bold telemetry-num my-1.5 short:my-0.5 ${getFormColor(latest.Form)}`}>{latest.Form > 0 ? `+${latest.Form}` : latest.Form}</div>
-          <div className="text-xs font-mono font-bold mt-auto text-zinc-400">{getFormStatus(latest.Form)}</div>
+          <div className="text-xs font-mono font-bold mt-auto text-zinc-400">{getFormStatus(latest.Form, tr)}</div>
         </div>
       </div>
 
@@ -174,7 +176,7 @@ export default function FitnessTab({ wellnessData }) {
         {/* ZAGLAVLJE GRAFA S FILTERIMA */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 md:mb-6 short:mb-2.5 gap-3">
           <div>
-            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400">PMC TELEMETRIJA</span>
+            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400">{tr('PMC TELEMETRIJA', 'PMC TELEMETRY')}</span>
             <h3 className="text-zinc-100 font-display font-bold uppercase tracking-wide text-lg md:text-xl">Performance Management Chart</h3>
           </div>
           
@@ -307,8 +309,15 @@ export default function FitnessTab({ wellnessData }) {
           </div>
         ) : (
           <div className="h-64 flex flex-col items-center justify-center text-center px-4 text-zinc-500 font-medium gap-1.5 bg-zinc-950/60 rounded-xl border border-dashed border-zinc-800">
-            <p className="text-zinc-300 font-display font-bold uppercase tracking-wide text-base">Nema zabilježene telemetrije forme</p>
-            <p className="text-xs font-mono text-zinc-500">Odvozi trening na trenažeru, sinkroniziraj Intervals.icu ili uvezi .FIT/.TCX datoteku.</p>
+            <p className="text-zinc-300 font-display font-bold uppercase tracking-wide text-base">
+              {tr('Nema zabilježene telemetrije forme', 'No fitness telemetry recorded yet')}
+            </p>
+            <p className="text-xs font-mono text-zinc-500">
+              {tr(
+                'Odvozi trening na trenažeru, sinkroniziraj Intervals.icu ili uvezi .FIT/.TCX datoteku.',
+                'Complete a ride on the trainer, sync Intervals.icu, or import a .FIT/.TCX file.'
+              )}
+            </p>
           </div>
         )}
       </div>

@@ -6,6 +6,8 @@
  * za pohranu, već se šalju samo izravno u Gemini API poziv dok traje analiza.
  */
 
+import { tr } from '../i18n/i18nCore.js';
+
 const DB_NAME = 'ergvibe_ai_files';
 const DB_VERSION = 1;
 const STORE_NAME = 'attachments';
@@ -192,12 +194,15 @@ async function optimizeImageForAi(file) {
  * provjerava tip i veličinu, te vraća strukturirani objekt spreman za spremanje.
  */
 export async function processFileForAi(file) {
-  if (!file) throw new Error('Datoteka nije odabrana.');
+  if (!file) throw new Error(tr('Datoteka nije odabrana.', 'No file selected.'));
 
   const MAX_SIZE_MB = 20;
   if (file.size > MAX_SIZE_MB * 1024 * 1024) {
     throw new Error(
-      `Datoteka '${file.name || 'Prilog'}' je prevelika (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maksimalna dopuštena veličina je ${MAX_SIZE_MB} MB.`
+      tr(
+        `Datoteka '${file.name || 'Prilog'}' je prevelika (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maksimalna dopuštena veličina je ${MAX_SIZE_MB} MB.`,
+        `File '${file.name || 'Attachment'}' is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum allowed size is ${MAX_SIZE_MB} MB.`
+      )
     );
   }
 
@@ -206,7 +211,12 @@ export async function processFileForAi(file) {
   const isPdf = type === 'application/pdf' || (file.name && file.name.toLowerCase().endsWith('.pdf'));
 
   if (!isImage && !isPdf) {
-    throw new Error(`Format datoteke '${file.name || ''}' nije podržan. Možete priložiti slike (JPG, PNG, WEBP) ili PDF dokumente.`);
+    throw new Error(
+      tr(
+        `Format datoteke '${file.name || ''}' nije podržan. Možete priložiti slike (JPG, PNG, WEBP) ili PDF dokumente.`,
+        `Unsupported file format '${file.name || ''}'. Please attach images (JPG, PNG, WEBP) or PDF documents.`
+      )
+    );
   }
 
   const resolvedMime = isPdf ? 'application/pdf' : type;
@@ -253,7 +263,7 @@ export async function processFileForAi(file) {
 
       resolve(attachment);
     };
-    reader.onerror = () => reject(new Error('Greška pri čitanju datoteke s vašeg uređaja.'));
+    reader.onerror = () => reject(new Error(tr('Greška pri čitanju datoteke s vašeg uređaja.', 'Failed to read file from your device.')));
     reader.readAsDataURL(file);
   });
 }

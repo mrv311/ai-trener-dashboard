@@ -32,6 +32,8 @@ import {
   gearToResistancePercent,
   gearToSimulatedGrade
 } from '../services/zwiftClickService';
+import { useI18n } from '../i18n/I18nContext';
+import { tr as coreTr } from '../i18n/i18nCore.js';
 
 let sharedAudioCtx = null;
 const getAudioCtx = () => {
@@ -186,28 +188,46 @@ const isUserCancelledBle = (err) => {
   return err.name === 'NotFoundError' && /cancel|canceled|cancelled|dismiss|abort/i.test(msg);
 };
 
-const formatBleErrorMessage = (err, deviceLabel) => {
+const formatBleErrorMessage = (err, deviceLabel, isPowerMeter = false) => {
   if (isUserCancelledBle(err)) return null;
-  const msg = String(err?.message || err || 'Nepoznata greška');
+  const msg = String(err?.message || err || coreTr('Nepoznata greška', 'Unknown error'));
   if (/adapter not available|globally disabled|not supported/i.test(msg)) {
-    return `Bluetooth nije dostupan ili je isključen (${deviceLabel}). Provjeri je li Bluetooth uključen u Windows postavkama.`;
+    return coreTr(
+      `Bluetooth nije dostupan ili je isključen (${deviceLabel}). Provjeri je li Bluetooth uključen u Windows postavkama.`,
+      `Bluetooth is unavailable or disabled (${deviceLabel}). Check that Bluetooth is enabled in your system settings.`
+    );
   }
   if (/gesture|activation/i.test(msg)) {
-    return `Preglednik traži izravan klik na gumb za otvaranje Bluetooth popisa (${deviceLabel}). Klikni ponovno.`;
+    return coreTr(
+      `Preglednik traži izravan klik na gumb za otvaranje Bluetooth popisa (${deviceLabel}). Klikni ponovno.`,
+      `The browser requires a direct button click to open the Bluetooth device list (${deviceLabel}). Click again.`
+    );
   }
   if (/already in progress/i.test(msg)) {
-    return `Bluetooth traženje je već u tijeku u pregledniku. Pričekaj trenutak ili osvježi stranicu (F5).`;
+    return coreTr(
+      'Bluetooth traženje je već u tijeku u pregledniku. Pričekaj trenutak ili osvježi stranicu (F5).',
+      'A Bluetooth scan is already in progress in the browser. Wait a moment or refresh the page (F5).'
+    );
   }
-  if (/ne emitira Cycling Power/i.test(msg)) {
+  if (/ne emitira Cycling Power|does not broadcast Cycling Power/i.test(msg)) {
     return msg;
   }
   if (/gatt|connection attempt failed|disconnected/i.test(msg)) {
-    if (deviceLabel === 'PowerMeter') {
-      return 'Spajanje na PowerMeter (Assioma) nije uspjelo. Provjeri: (1) zavrti pedale 2 kruga, (2) ugasi Bluetooth na mobitelu / zatvori Favero aplikaciju i Garmin, (3) ukloni Assioma iz Windows Bluetooth postavki ako je tamo uparena.';
+    if (isPowerMeter || deviceLabel === 'PowerMeter') {
+      return coreTr(
+        'Spajanje na PowerMeter (Assioma) nije uspjelo. Provjeri: (1) zavrti pedale 2 kruga, (2) ugasi Bluetooth na mobitelu / zatvori Favero aplikaciju i Garmin, (3) ukloni Assioma iz Windows Bluetooth postavki ako je tamo uparena.',
+        'Connecting to PowerMeter (Assioma) failed. Check: (1) spin the pedals 2 revolutions, (2) turn off Bluetooth on your phone / close the Favero app and Garmin, (3) remove Assioma from OS Bluetooth settings if paired there.'
+      );
     }
-    return `Spajanje na ${deviceLabel} nije uspjelo. Provjeri je li uređaj budan i da nije već spojen na mobitel, Garmin ili Zwift.`;
+    return coreTr(
+      `Spajanje na ${deviceLabel} nije uspjelo. Provjeri je li uređaj budan i da nije već spojen na mobitel, Garmin ili Zwift.`,
+      `Connecting to ${deviceLabel} failed. Check that the device is awake and not already connected to your phone, Garmin, or Zwift.`
+    );
   }
-  return `Nije uspjelo spajanje na ${deviceLabel}: ${msg}`;
+  return coreTr(
+    `Nije uspjelo spajanje na ${deviceLabel}: ${msg}`,
+    `Failed to connect to ${deviceLabel}: ${msg}`
+  );
 };
 
 export default function TrainerTab({
@@ -226,7 +246,24 @@ export default function TrainerTab({
   onRecoveryConsumed,
   onActiveSessionPersisted
 }) {
+  const { isEn, locale, tr, tStep } = useI18n();
   const [isPlaying, setIsPlaying] = useState(false);
+
+  const displayStepName = (name) => {
+    if (!name) return '';
+    if (isEn) {
+      if (name === 'Z2 Aerobna Baza') return 'Z2 Aerobic Base';
+      if (name === 'Radni Interval') return 'Work Interval';
+    }
+    return tStep(name);
+  };
+
+  const localizeSensorName = (name) => {
+    if (name === 'FTMS Trenažer' || name === 'FTMS Trainer') return tr('FTMS Trenažer', 'FTMS Trainer');
+    if (name === 'Trenažer' || name === 'Trainer') return tr('Trenažer', 'Trainer');
+    if (name === 'Pulsmetar' || name === 'HR Monitor') return tr('Pulsmetar', 'HR Monitor');
+    return name;
+  };
 
   useEffect(() => {
     if (onPlayingChange) onPlayingChange(isPlaying);
@@ -1009,13 +1046,13 @@ export default function TrainerTab({
 
   // setup helperi za BLE uređaje
   const setupHRDevice = async (device) => {
-    const devLabel = device?.name || 'Pulsmetar';
+    const devLabel = device?.name || coreTr('Pulsmetar', 'HR Monitor');
     hrDeviceRef.current = device;
     device.addEventListener('gattserverdisconnected', () => {
       if (hrDeviceRef.current === device) {
         setIsHrConnected(false);
         setCurrentHR(0);
-        logBleEvent('warn', 'HR', 'Pulsmetar odspojen', devLabel);
+        logBleEvent('warn', 'HR', coreTr('Pulsmetar odspojen', 'HR monitor disconnected'), devLabel);
       }
     });
     const server = await device.gatt.connect();
@@ -1023,7 +1060,7 @@ export default function TrainerTab({
     const char = await service.getCharacteristic('heart_rate_measurement');
     await char.startNotifications();
     setIsHrConnected(true);
-    logBleEvent('ok', 'HR', 'Pulsmetar spojen (0x180D)', devLabel);
+    logBleEvent('ok', 'HR', coreTr('Pulsmetar spojen (0x180D)', 'HR monitor connected (0x180D)'), devLabel);
     char.addEventListener('characteristicvaluechanged', (e) => {
       const val = e.target.value;
       const flags = val.getUint8(0);
@@ -1032,7 +1069,7 @@ export default function TrainerTab({
   };
 
   const setupTrainerDevice = async (device) => {
-    const devLabel = device?.name || 'Trenažer';
+    const devLabel = device?.name || coreTr('Trenažer', 'Trainer');
     trainerDeviceRef.current = device;
     setTrainerDeviceName(devLabel);
     setFtmsStatus('connecting');
@@ -1045,11 +1082,11 @@ export default function TrainerTab({
         setFtmsControlChar(null);
         setFtmsStatus('idle');
         if (!isPmConnectedRef.current) setCurrentCadence(0);
-        logBleEvent('warn', 'TRAINER', 'Trenažer odspojen (gattserverdisconnected)', devLabel);
+        logBleEvent('warn', 'TRAINER', coreTr('Trenažer odspojen (gattserverdisconnected)', 'Trainer disconnected (gattserverdisconnected)'), devLabel);
       }
     });
 
-    logBleEvent('info', 'TRAINER', 'GATT spajanje na trenažer', devLabel);
+    logBleEvent('info', 'TRAINER', coreTr('GATT spajanje na trenažer', 'GATT connecting to trainer'), devLabel);
     const server = await device.gatt.connect();
     let hasCpsPower = false;
     let hasCpsCadence = false;
@@ -1165,15 +1202,15 @@ export default function TrainerTab({
       setIsPowerConnected(true);
       setFtmsStatus('ready');
       setFtmsControlChar(controlPoint);
-      logBleEvent('ok', 'TRAINER', 'FTMS kontrola (0x00) i Start (0x07) uspješno preuzeti', devLabel);
+      logBleEvent('ok', 'TRAINER', coreTr('FTMS kontrola (0x00) i Start (0x07) uspješno preuzeti', 'FTMS control (0x00) & Start (0x07) acquired'), devLabel);
     } catch (ftmsErr) {
-      logBleEvent('warn', 'TRAINER', 'FTMS kontrola otpora nije dostupna', ftmsErr);
+      logBleEvent('warn', 'TRAINER', coreTr('FTMS kontrola otpora nije dostupna', 'FTMS resistance control unavailable'), ftmsErr);
       if (hasCpsPower) {
         setIsPowerConnected(true);
         setFtmsStatus('unsupported');
       } else {
         setFtmsStatus('error');
-        throw new Error('Odabrani uređaj ne podržava ni FTMS ni Cycling Power.');
+        throw new Error(coreTr('Odabrani uređaj ne podržava ni FTMS ni Cycling Power.', 'Selected device supports neither FTMS nor Cycling Power.'));
       }
     }
   };
@@ -1184,7 +1221,7 @@ export default function TrainerTab({
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        logBleEvent('info', 'PM', `GATT spajanje (${attempt}/${maxAttempts})`, devLabel);
+        logBleEvent('info', 'PM', coreTr(`GATT spajanje (${attempt}/${maxAttempts})`, `GATT connecting (${attempt}/${maxAttempts})`), devLabel);
         if (attempt > 1) {
           try {
             if (device.gatt?.connected) device.gatt.disconnect();
@@ -1202,13 +1239,16 @@ export default function TrainerTab({
         try {
           powerService = await server.getPrimaryService('cycling_power');
         } catch (svcErr1) {
-          logBleEvent('warn', 'PM', 'Alias cycling_power nije odmah pronađen, tražim puni 0x1818 UUID', svcErr1);
+          logBleEvent('warn', 'PM', coreTr('Alias cycling_power nije odmah pronađen, tražim puni 0x1818 UUID', 'cycling_power alias not immediately found, trying full 0x1818 UUID'), svcErr1);
           try {
             powerService = await server.getPrimaryService(CYCLING_POWER_SERVICE_UUID);
           } catch (svcErr2) {
             if (attempt >= 2 && /No Services matching|NotFoundError/i.test(`${svcErr2?.name} ${svcErr2?.message}`)) {
               throw new Error(
-                `Odabrani uređaj (${devLabel}) ne emitira Cycling Power servis (0x1818). Provjeri jesi li odabrao Assioma pedalu i da Favero aplikacija na mobitelu nije spojena na nju.`
+                coreTr(
+                  `Odabrani uređaj (${devLabel}) ne emitira Cycling Power servis (0x1818). Provjeri jesi li odabrao Assioma pedalu i da Favero aplikacija na mobitelu nije spojena na nju.`,
+                  `Selected device (${devLabel}) does not broadcast Cycling Power service (0x1818). Check that you selected the Assioma pedal and that the Favero app on your phone is not connected to it.`
+                )
               );
             }
             throw svcErr2;
@@ -1267,7 +1307,7 @@ export default function TrainerTab({
             const pct = battVal.getUint8(0);
             if (pct >= 0 && pct <= 100) {
               setPmBatteryLevel(pct);
-              logBleEvent('info', 'PM', `Baterija pedale: ${pct}%`, devLabel);
+              logBleEvent('info', 'PM', coreTr(`Baterija pedale: ${pct}%`, `Pedal battery: ${pct}%`), devLabel);
             }
           }
         } catch {
@@ -1277,11 +1317,11 @@ export default function TrainerTab({
         return true;
       } catch (err) {
         lastError = err;
-        logBleEvent('warn', 'PM', `GATT pokušaj ${attempt}/${maxAttempts} neuspješan`, err);
+        logBleEvent('warn', 'PM', coreTr(`GATT pokušaj ${attempt}/${maxAttempts} neuspješan`, `GATT attempt ${attempt}/${maxAttempts} failed`), err);
       }
     }
 
-    throw lastError || new Error('GATT spajanje na PowerMeter nije uspjelo.');
+    throw lastError || new Error(coreTr('GATT spajanje na PowerMeter nije uspjelo.', 'GATT connection to PowerMeter failed.'));
   };
 
   const setupPmDevice = async (device) => {
@@ -1311,11 +1351,11 @@ export default function TrainerTab({
       pidController.reset();
 
       if (pmIntentionalDisconnectRef.current) {
-        logBleEvent('info', 'PM', 'PowerMeter ručno odspojen', devLabel);
+        logBleEvent('info', 'PM', coreTr('PowerMeter ručno odspojen', 'PowerMeter manually disconnected'), devLabel);
         return;
       }
 
-      logBleEvent('warn', 'PM', 'Prekid BLE veze s pedalom — pokrećem auto-reconnect', devLabel);
+      logBleEvent('warn', 'PM', coreTr('Prekid BLE veze s pedalom — pokrećem auto-reconnect', 'BLE connection to pedal dropped — starting auto-reconnect'), devLabel);
       if (pmReconnectingRef.current) return;
       pmReconnectingRef.current = true;
 
@@ -1328,15 +1368,15 @@ export default function TrainerTab({
             isPmConnectedRef.current = true;
             setIsPmConnected(true);
             pidController.reset();
-            logBleEvent('ok', 'PM', `Auto-reconnect uspio (pokušaj ${r}/4)`, devLabel);
-            showHudToast('PowerMeter ponovno spojen!', devLabel, 'emerald');
+            logBleEvent('ok', 'PM', coreTr(`Auto-reconnect uspio (pokušaj ${r}/4)`, `Auto-reconnect succeeded (attempt ${r}/4)`), devLabel);
+            showHudToast(coreTr('PowerMeter ponovno spojen!', 'PowerMeter reconnected!'), devLabel, 'emerald');
             return;
           } catch (reErr) {
-            logBleEvent('warn', 'PM', `Auto-reconnect ${r}/4 nije uspio`, reErr);
+            logBleEvent('warn', 'PM', coreTr(`Auto-reconnect ${r}/4 nije uspio`, `Auto-reconnect ${r}/4 failed`), reErr);
           }
         }
-        logBleEvent('error', 'PM', 'Auto-reconnect odustao nakon 4 pokušaja', devLabel);
-        showHudToast('PowerMeter odspojen', 'Klikni PowerMeter za ponovno spajanje', 'amber');
+        logBleEvent('error', 'PM', coreTr('Auto-reconnect odustao nakon 4 pokušaja', 'Auto-reconnect gave up after 4 attempts'), devLabel);
+        showHudToast(coreTr('PowerMeter odspojen', 'PowerMeter disconnected'), coreTr('Klikni PowerMeter za ponovno spajanje', 'Click PowerMeter to reconnect'), 'amber');
       } finally {
         pmReconnectingRef.current = false;
       }
@@ -1353,7 +1393,7 @@ export default function TrainerTab({
       setIsPmConnected(true);
       setPowerMatchEnabled(true);
       pidController.reset();
-      logBleEvent('ok', 'PM', 'PowerMeter uspješno spojen (0x1818 Cycling Power + Power Match ON)', devLabel);
+      logBleEvent('ok', 'PM', coreTr('PowerMeter uspješno spojen (0x1818 Cycling Power + Power Match ON)', 'PowerMeter connected (0x1818 Cycling Power + Power Match ON)'), devLabel);
     } catch (err) {
       pmIntentionalDisconnectRef.current = true;
       if (pmDisconnectCleanupRef.current) {
@@ -1365,7 +1405,7 @@ export default function TrainerTab({
       setIsPmConnected(false);
       setPmDeviceName('');
       setPmBatteryLevel(null);
-      logBleEvent('error', 'PM', 'Inicijalno spajanje PowerMetra nije uspjelo', err);
+      logBleEvent('error', 'PM', coreTr('Inicijalno spajanje PowerMetra nije uspjelo', 'Initial PowerMeter connection failed'), err);
       throw err;
     }
   };
@@ -1373,12 +1413,12 @@ export default function TrainerTab({
 
   const connectHRDirect = async () => {
     if (bleConnectingRef.current) {
-      showHudToast('Bluetooth zauzet', 'Pričekaj završetak trenutnog traženja', 'amber');
+      showHudToast(coreTr('Bluetooth zauzet', 'Bluetooth busy'), coreTr('Pričekaj završetak trenutnog traženja', 'Wait for current scan to finish'), 'amber');
       return;
     }
     if (!navigator.bluetooth) {
-      logBleEvent('error', 'HR', 'Web Bluetooth nije podržan u pregledniku');
-      setBleErrorBanner('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).');
+      logBleEvent('error', 'HR', coreTr('Web Bluetooth nije podržan u pregledniku', 'Web Bluetooth not supported in browser'));
+      setBleErrorBanner(coreTr('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).', 'Your browser does not support Web Bluetooth (use Google Chrome or Microsoft Edge).'));
       return;
     }
     try {
@@ -1386,20 +1426,20 @@ export default function TrainerTab({
       bleConnectingRef.current = 'hr';
       setBleConnectingType('hr');
       setBleErrorBanner(null);
-      logBleEvent('info', 'HR', 'Otvoren Bluetooth izbornik (filter: heart_rate)');
+      logBleEvent('info', 'HR', coreTr('Otvoren Bluetooth izbornik (filter: heart_rate)', 'Opened Bluetooth picker (filter: heart_rate)'));
 
       const device = await reqPromise;
-      logBleEvent('info', 'HR', 'Korisnik odabrao uređaj', device.name || device.id || 'bez imena');
+      logBleEvent('info', 'HR', coreTr('Korisnik odabrao uređaj', 'User selected device'), device.name || device.id || coreTr('bez imena', 'unnamed'));
       await setupHRDevice(device);
-      showHudToast('Pulsmetar spojen!', device.name || 'Heart Rate', 'emerald');
-      setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: device.name || 'Pulsmetar' } : null));
+      showHudToast(coreTr('Pulsmetar spojen!', 'HR Monitor connected!'), device.name || 'Heart Rate', 'emerald');
+      setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: device.name || coreTr('Pulsmetar', 'HR Monitor') } : null));
     } catch (err) {
       if (isUserCancelledBle(err)) {
-        logBleEvent('info', 'HR', 'Korisnik zatvorio Bluetooth izbornik bez odabira');
+        logBleEvent('info', 'HR', coreTr('Korisnik zatvorio Bluetooth izbornik bez odabira', 'User closed Bluetooth picker without selecting'));
       } else {
-        logBleEvent('error', 'HR', 'Greška pri spajanju pulsmetra', err);
+        logBleEvent('error', 'HR', coreTr('Greška pri spajanju pulsmetra', 'Error connecting HR monitor'), err);
       }
-      const msg = formatBleErrorMessage(err, 'Pulsmetar');
+      const msg = formatBleErrorMessage(err, coreTr('Pulsmetar', 'HR Monitor'));
       if (msg) setBleErrorBanner(msg);
     } finally {
       bleConnectingRef.current = null;
@@ -1427,12 +1467,12 @@ export default function TrainerTab({
 
   const connectTrainerDirect = async () => {
     if (bleConnectingRef.current) {
-      showHudToast('Bluetooth zauzet', 'Pričekaj završetak trenutnog traženja', 'amber');
+      showHudToast(coreTr('Bluetooth zauzet', 'Bluetooth busy'), coreTr('Pričekaj završetak trenutnog traženja', 'Wait for current scan to finish'), 'amber');
       return;
     }
     if (!navigator.bluetooth) {
-      logBleEvent('error', 'TRAINER', 'Web Bluetooth nije podržan u pregledniku');
-      setBleErrorBanner('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).');
+      logBleEvent('error', 'TRAINER', coreTr('Web Bluetooth nije podržan u pregledniku', 'Web Bluetooth not supported in browser'));
+      setBleErrorBanner(coreTr('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).', 'Your browser does not support Web Bluetooth (use Google Chrome or Microsoft Edge).'));
       return;
     }
     try {
@@ -1446,21 +1486,21 @@ export default function TrainerTab({
       bleConnectingRef.current = 'trainer';
       setBleConnectingType('trainer');
       setBleErrorBanner(null);
-      logBleEvent('info', 'TRAINER', 'Otvoren Bluetooth izbornik (FTMS + Cycling Power)');
+      logBleEvent('info', 'TRAINER', coreTr('Otvoren Bluetooth izbornik (FTMS + Cycling Power)', 'Opened Bluetooth picker (FTMS + Cycling Power)'));
 
       const device = await reqPromise;
-      logBleEvent('info', 'TRAINER', 'Korisnik odabrao trenažer', device.name || device.id || 'bez imena');
+      logBleEvent('info', 'TRAINER', coreTr('Korisnik odabrao trenažer', 'User selected trainer'), device.name || device.id || coreTr('bez imena', 'unnamed'));
       await setupTrainerDevice(device);
-      showHudToast('Trenažer spojen!', device.name || 'FTMS Trenažer', 'emerald');
-      setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: device.name || 'FTMS Trenažer' } : null));
+      showHudToast(coreTr('Trenažer spojen!', 'Trainer connected!'), device.name || coreTr('FTMS Trenažer', 'FTMS Trainer'), 'emerald');
+      setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: device.name || coreTr('FTMS Trenažer', 'FTMS Trainer') } : null));
     } catch (err) {
       setFtmsStatus('idle');
       if (isUserCancelledBle(err)) {
-        logBleEvent('info', 'TRAINER', 'Korisnik zatvorio Bluetooth izbornik bez odabira');
+        logBleEvent('info', 'TRAINER', coreTr('Korisnik zatvorio Bluetooth izbornik bez odabira', 'User closed Bluetooth picker without selecting'));
       } else {
-        logBleEvent('error', 'TRAINER', 'Greška pri spajanju trenažera', err);
+        logBleEvent('error', 'TRAINER', coreTr('Greška pri spajanju trenažera', 'Error connecting trainer'), err);
       }
-      const msg = formatBleErrorMessage(err, 'FTMS Trenažer');
+      const msg = formatBleErrorMessage(err, coreTr('FTMS Trenažer', 'FTMS Trainer'));
       if (msg) setBleErrorBanner(msg);
     } finally {
       bleConnectingRef.current = null;
@@ -1492,12 +1532,12 @@ export default function TrainerTab({
 
   const connectPowerMeterDirect = async (acceptAll = false) => {
     if (bleConnectingRef.current) {
-      showHudToast('Bluetooth zauzet', 'Pričekaj završetak trenutnog traženja', 'amber');
+      showHudToast(coreTr('Bluetooth zauzet', 'Bluetooth busy'), coreTr('Pričekaj završetak trenutnog traženja', 'Wait for current scan to finish'), 'amber');
       return;
     }
     if (!navigator.bluetooth) {
-      logBleEvent('error', 'PM', 'Web Bluetooth nije podržan u pregledniku');
-      setBleErrorBanner('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).');
+      logBleEvent('error', 'PM', coreTr('Web Bluetooth nije podržan u pregledniku', 'Web Bluetooth not supported in browser'));
+      setBleErrorBanner(coreTr('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).', 'Your browser does not support Web Bluetooth (use Google Chrome or Microsoft Edge).'));
       return;
     }
     try {
@@ -1514,15 +1554,18 @@ export default function TrainerTab({
         'info',
         'PM',
         acceptAll === true
-          ? 'Otvoren Bluetooth izbornik (SVI BLE UREĐAJI - Assioma Fallback)'
-          : 'Otvoren Bluetooth izbornik (0x1818 + Favero UUID + Assioma/PM prefiksi)',
-        `Aktivni senzori: Trenažer=${isPowerConnected ? 'DA' : 'NE'}, HR=${isHrConnected ? 'DA' : 'NE'}, Click=${zwiftClickState.connected ? 'DA' : 'NE'}`
+          ? coreTr('Otvoren Bluetooth izbornik (SVI BLE UREĐAJI - Assioma Fallback)', 'Opened Bluetooth picker (ALL BLE DEVICES - Assioma Fallback)')
+          : coreTr('Otvoren Bluetooth izbornik (0x1818 + Favero UUID + Assioma/PM prefiksi)', 'Opened Bluetooth picker (0x1818 + Favero UUID + Assioma/PM prefixes)'),
+        coreTr(
+          `Aktivni senzori: Trenažer=${isPowerConnected ? 'DA' : 'NE'}, HR=${isHrConnected ? 'DA' : 'NE'}, Click=${zwiftClickState.connected ? 'DA' : 'NE'}`,
+          `Active sensors: Trainer=${isPowerConnected ? 'YES' : 'NO'}, HR=${isHrConnected ? 'YES' : 'NO'}, Click=${zwiftClickState.connected ? 'YES' : 'NO'}`
+        )
       );
 
       const device = await reqPromise;
-      logBleEvent('info', 'PM', 'Korisnik odabrao PowerMeter u izborniku', `${device.name || '(bez imena)'} [id=${device.id || '?'}]`);
+      logBleEvent('info', 'PM', coreTr('Korisnik odabrao PowerMeter u izborniku', 'User selected PowerMeter in picker'), `${device.name || coreTr('(bez imena)', '(unnamed)')} [id=${device.id || '?'}]`);
       await setupPmDevice(device);
-      showHudToast('PowerMeter spojen!', device.name || 'PowerMeter', 'emerald');
+      showHudToast(coreTr('PowerMeter spojen!', 'PowerMeter connected!'), device.name || 'PowerMeter', 'emerald');
       setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: device.name || 'PowerMeter' } : null));
     } catch (err) {
       if (isUserCancelledBle(err)) {
@@ -1530,13 +1573,13 @@ export default function TrainerTab({
           'warn',
           'PM',
           acceptAll === true
-            ? 'Izbornik (Svi BLE uređaji) zatvoren bez odabira — pedala možda spava ili je spojena na mobitel/Windows'
-            : 'Izbornik zatvoren bez odabira — probaj gumb "Svi BLE uređaji (Assioma)" ili provjeri je li pedala spojena na mobitel'
+            ? coreTr('Izbornik (Svi BLE uređaji) zatvoren bez odabira — pedala možda spava ili je spojena na mobitel/Windows', 'Picker (All BLE devices) closed without selection — pedal may be asleep or connected to phone/OS')
+            : coreTr('Izbornik zatvoren bez odabira — probaj gumb "Svi BLE uređaji (Assioma)" ili provjeri je li pedala spojena na mobitel', 'Picker closed without selection — try "All BLE Devices (Assioma)" or check if pedal is connected to phone')
         );
       } else {
-        logBleEvent('error', 'PM', 'Greška pri spajanju PowerMetra', err);
+        logBleEvent('error', 'PM', coreTr('Greška pri spajanju PowerMetra', 'Error connecting PowerMeter'), err);
       }
-      const msg = formatBleErrorMessage(err, 'PowerMeter');
+      const msg = formatBleErrorMessage(err, 'PowerMeter', true);
       if (msg) setBleErrorBanner(msg);
     } finally {
       bleConnectingRef.current = null;
@@ -1559,7 +1602,7 @@ export default function TrainerTab({
       if (pmDeviceRef.current && pmDeviceRef.current.gatt?.connected) {
         pmDeviceRef.current.gatt.disconnect();
       }
-      logBleEvent('info', 'PM', 'Korisnik ručno odspojio PowerMeter', pmDeviceName || 'PowerMeter');
+      logBleEvent('info', 'PM', coreTr('Korisnik ručno odspojio PowerMeter', 'User manually disconnected PowerMeter'), pmDeviceName || 'PowerMeter');
       sessionSensorsRef.current.pm = null;
       isPmConnectedRef.current = false;
       setIsPmConnected(false);
@@ -1762,10 +1805,10 @@ export default function TrainerTab({
       const nextPct = gearToResistancePercent(next);
       const nextGrade = gearToSimulatedGrade(next);
       const modeDetail = resParamsRef.current.resPhysicsMode === 'SIM'
-        ? `Nagib ${nextGrade > 0 ? '+' : ''}${nextGrade.toFixed(1)}%`
-        : `Otpor ${nextPct}%`;
+        ? coreTr(`Nagib ${nextGrade > 0 ? '+' : ''}${nextGrade.toFixed(1)}%`, `Grade ${nextGrade > 0 ? '+' : ''}${nextGrade.toFixed(1)}%`)
+        : coreTr(`Otpor ${nextPct}%`, `Resistance ${nextPct}%`);
       showHudToast(
-        `Brzina ${next} / ${VIRTUAL_GEAR_MAX}`,
+        coreTr(`Brzina ${next} / ${VIRTUAL_GEAR_MAX}`, `Gear ${next} / ${VIRTUAL_GEAR_MAX}`),
         `${source ? `${source} · ` : ''}${modeDetail}`,
         'indigo'
       );
@@ -1789,11 +1832,11 @@ export default function TrainerTab({
     const controller = zwiftClickRef.current;
     if (!controller) return;
     if (bleConnectingRef.current) {
-      showHudToast('Bluetooth zauzet', 'Pričekaj završetak trenutnog traženja', 'amber');
+      showHudToast(coreTr('Bluetooth zauzet', 'Bluetooth busy'), coreTr('Pričekaj završetak trenutnog traženja', 'Wait for current scan to finish'), 'amber');
       return;
     }
     if (!navigator.bluetooth) {
-      setBleErrorBanner('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).');
+      setBleErrorBanner(coreTr('Tvoj preglednik ne podržava Web Bluetooth (koristi Google Chrome ili Microsoft Edge).', 'Your browser does not support Web Bluetooth (use Google Chrome or Microsoft Edge).'));
       return;
     }
     try {
@@ -1801,17 +1844,17 @@ export default function TrainerTab({
       bleConnectingRef.current = 'click';
       setBleConnectingType('click');
       setBleErrorBanner(null);
-      logBleEvent('info', 'CLICK', 'Otvoren Bluetooth izbornik za Zwift Click');
+      logBleEvent('info', 'CLICK', coreTr('Otvoren Bluetooth izbornik za Zwift Click', 'Opened Bluetooth picker for Zwift Click'));
 
       const snap = await connectPromise;
-      logBleEvent('ok', 'CLICK', 'Zwift Click spojen', snap?.deviceName || 'Zwift Click');
-      showHudToast('Zwift Click spojen!', 'Spremno za virtualne brzine i ERG kontrolu', 'emerald');
+      logBleEvent('ok', 'CLICK', coreTr('Zwift Click spojen', 'Zwift Click connected'), snap?.deviceName || 'Zwift Click');
+      showHudToast(coreTr('Zwift Click spojen!', 'Zwift Click connected!'), coreTr('Spremno za virtualne brzine i ERG kontrolu', 'Ready for virtual shifting & ERG control'), 'emerald');
       setFullscreenBleModal(prev => (prev ? { ...prev, lastConnectedLabel: snap?.deviceName || 'Zwift Click' } : null));
     } catch (err) {
       if (isUserCancelledBle(err)) {
-        logBleEvent('info', 'CLICK', 'Korisnik zatvorio Zwift Click izbornik bez odabira');
+        logBleEvent('info', 'CLICK', coreTr('Korisnik zatvorio Zwift Click izbornik bez odabira', 'User closed Zwift Click picker without selecting'));
       } else {
-        logBleEvent('error', 'CLICK', 'Greška pri spajanju Zwift Clicka', err);
+        logBleEvent('error', 'CLICK', coreTr('Greška pri spajanju Zwift Clicka', 'Error connecting Zwift Click'), err);
       }
       const msg = formatBleErrorMessage(err, 'Zwift Click');
       if (msg) setBleErrorBanner(msg);
@@ -1886,7 +1929,7 @@ export default function TrainerTab({
         const newRecord = {
           id: Date.now().toString(),
           date: new Date().toISOString(),
-          title: effectiveWorkout.title || 'Nepoznat trening',
+          title: effectiveWorkout.title || coreTr('Nepoznat trening', 'Unknown workout'),
           category: effectiveWorkout.category || 'Endurance',
           difficulty_score: effectiveWorkout.difficulty_score || 1.0,
           duration_seconds: effectiveElapsed
@@ -1947,7 +1990,7 @@ export default function TrainerTab({
       startedAt.setSeconds(startedAt.getSeconds() - effectiveElapsed);
     }
 
-    const workoutTitle = effectiveWorkout ? effectiveWorkout.title : 'Slobodna Vožnja';
+    const workoutTitle = effectiveWorkout ? effectiveWorkout.title : coreTr('Slobodna Vožnja', 'Free Ride');
     let workoutSource = 'free_ride';
     if (effectiveWorkout) {
       workoutSource = effectiveWorkout.workout_doc ? 'calendar' : 'library';
@@ -2034,11 +2077,11 @@ export default function TrainerTab({
             .catch((upErr) => {
               console.error('[TrainerTab] Intervals.icu upload error:', upErr);
               setIntervalsUploadStatus('error');
-              setIntervalsUploadError(upErr.message || 'Greška pri slanju na Intervals.icu');
+              setIntervalsUploadError(upErr.message || coreTr('Greška pri slanju na Intervals.icu', 'Failed to upload to Intervals.icu'));
             });
         } else {
           setIntervalsUploadStatus('error');
-          setIntervalsUploadError('Nema podataka za .FIT datoteku.');
+          setIntervalsUploadError(coreTr('Nema podataka za .FIT datoteku.', 'No data available for .FIT file.'));
         }
       } catch (upErr) {
         setIntervalsUploadStatus('error');
@@ -2053,14 +2096,14 @@ export default function TrainerTab({
     setIntervalsUploadError(null);
     try {
       const mass = profile?.weight || 75;
-      const workoutTitle = workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja';
+      const workoutTitle = workoutFromCalendar ? workoutFromCalendar.title : coreTr('Slobodna Vožnja', 'Free Ride');
       const built = buildFitUint8Array(workoutHistory, sessionStartTime, mass);
-      if (!built || !built.uint8) throw new Error('Nema podataka za .FIT datoteku.');
+      if (!built || !built.uint8) throw new Error(coreTr('Nema podataka za .FIT datoteku.', 'No data available for .FIT file.'));
       await uploadActivityToIntervals(intervalsId, intervalsKey, built.uint8, workoutTitle);
       setIntervalsUploadStatus('uploaded');
     } catch (err) {
       setIntervalsUploadStatus('error');
-      setIntervalsUploadError(err.message || 'Greška pri slanju na Intervals.icu');
+      setIntervalsUploadError(err.message || coreTr('Greška pri slanju na Intervals.icu', 'Failed to upload to Intervals.icu'));
     }
   }, [intervalsId, intervalsKey, workoutHistory, profile?.weight, workoutFromCalendar, sessionStartTime]);
 
@@ -2092,7 +2135,7 @@ export default function TrainerTab({
   // Pamti sve senzore koji su bili spojeni u ovoj sesiji (ostaje zapamćeno i ako trenažer izgubi struju trenutak prije PC-a)
   useEffect(() => {
     if (isPowerConnected) {
-      sessionSensorsRef.current.trainer = trainerDeviceName || 'FTMS Trenažer';
+      sessionSensorsRef.current.trainer = trainerDeviceName || coreTr('FTMS Trenažer', 'FTMS Trainer');
     }
   }, [isPowerConnected, trainerDeviceName]);
 
@@ -2104,7 +2147,7 @@ export default function TrainerTab({
 
   useEffect(() => {
     if (isHrConnected) {
-      sessionSensorsRef.current.hr = 'Pulsmetar';
+      sessionSensorsRef.current.hr = coreTr('Pulsmetar', 'HR Monitor');
     }
   }, [isHrConnected]);
 
@@ -2275,7 +2318,7 @@ export default function TrainerTab({
     setRecoveredSensors(null);
     setIsPlaying(true);
     playBeep(980, 0.14);
-    showHudToast('Trening nastavljen!', formatTime(autosaveStateRef.current.elapsedTime), 'emerald');
+    showHudToast(coreTr('Trening nastavljen!', 'Workout resumed!'), formatTime(autosaveStateRef.current.elapsedTime), 'emerald');
     setTimeout(() => {
       if (autosaveStateRef.current.controlMode === 'ERG' && dispatchErgTargetRef.current) {
         dispatchErgTargetRef.current(true);
@@ -2366,7 +2409,7 @@ export default function TrainerTab({
       notifiedParentPersistedRef.current = true;
       setLastAutosaveTime(snap.savedAt ? new Date(snap.savedAt) : new Date());
       requestPersistentStorageOnce();
-      showHudToast('Trening oporavljen!', 'Spoji senzore i klikni Nastavi', 'amber');
+      showHudToast(coreTr('Trening oporavljen!', 'Workout recovered!'), coreTr('Spoji senzore i klikni Nastavi', 'Reconnect sensors and click Resume'), 'amber');
     }
 
     if (onRecoveryConsumed) onRecoveryConsumed();
@@ -2437,7 +2480,7 @@ export default function TrainerTab({
             playBeep(950, 0.12);
             setTimeout(() => playBeep(1280, 0.16), 130);
             liveCtx.handleSkip();
-            liveCtx.showHudToast('Sljedeći interval', 'Zwift Click (dugi +)', 'emerald');
+            liveCtx.showHudToast(coreTr('Sljedeći interval', 'Next interval'), coreTr('Zwift Click (dugi +)', 'Zwift Click (long +)'), 'emerald');
           } else {
             playBeep(720, 0.18);
             if (awaitingManualResumeRef.current) {
@@ -2446,8 +2489,8 @@ export default function TrainerTab({
               setIsPlaying(prev => {
                 const next = !prev;
                 liveCtx.showHudToast(
-                  next ? 'Trening pokrenut' : 'Trening pauziran',
-                  'Zwift Click (dugi -)',
+                  next ? coreTr('Trening pokrenut', 'Workout started') : coreTr('Trening pauziran', 'Workout paused'),
+                  coreTr('Zwift Click (dugi -)', 'Zwift Click (long -)'),
                   next ? 'emerald' : 'amber'
                 );
                 return next;
@@ -2470,14 +2513,14 @@ export default function TrainerTab({
           playShiftSound('up');
           setErgIntensity(prev => {
             const next = prev + 2;
-            ctx.showHudToast(`ERG Intenzitet: ${next}%`, 'Zwift Click (+2%)', 'cyan');
+            ctx.showHudToast(coreTr(`ERG Intenzitet: ${next}%`, `ERG Intensity: ${next}%`), 'Zwift Click (+2%)', 'cyan');
             return next;
           });
         } else {
           playShiftSound('down');
           setErgIntensity(prev => {
             const next = Math.max(50, prev - 2);
-            ctx.showHudToast(`ERG Intenzitet: ${next}%`, 'Zwift Click (-2%)', 'cyan');
+            ctx.showHudToast(coreTr(`ERG Intenzitet: ${next}%`, `ERG Intensity: ${next}%`), 'Zwift Click (-2%)', 'cyan');
             return next;
           });
         }
@@ -2526,7 +2569,7 @@ export default function TrainerTab({
       }
     } catch (err) {
       console.warn('[Fullscreen] Browser fullscreen odbijen, aktivan Cockpit fokus prikaz:', err);
-      showHudToast('Cockpit fokus aktivan', 'Za skrivanje trake preglednika pritisni F11', 'amber');
+      showHudToast(coreTr('Cockpit fokus aktivan', 'Cockpit focus active'), coreTr('Za skrivanje trake preglednika pritisni F11', 'Press F11 to hide the browser bar'), 'amber');
     }
   }, [showHudToast]);
 
@@ -2606,7 +2649,7 @@ export default function TrainerTab({
           playShiftSound('up');
           setErgIntensity(p => p + 2);
         } else {
-          shiftVirtualGear(1, 'Tipkovnica');
+          shiftVirtualGear(1, coreTr('Tipkovnica', 'Keyboard'));
         }
       } else if (e.code === 'ArrowDown' || e.code === 'Minus' || e.code === 'NumpadSubtract') {
         e.preventDefault();
@@ -2614,7 +2657,7 @@ export default function TrainerTab({
           playShiftSound('down');
           setErgIntensity(p => Math.max(50, p - 2));
         } else {
-          shiftVirtualGear(-1, 'Tipkovnica');
+          shiftVirtualGear(-1, coreTr('Tipkovnica', 'Keyboard'));
         }
       } else if (e.code === 'KeyM') {
         e.preventDefault();
@@ -2639,7 +2682,7 @@ export default function TrainerTab({
       setBleLogCopied(true);
       setTimeout(() => setBleLogCopied(false), 2000);
     } catch {
-      showHudToast('Kopiranje nije uspjelo', 'Označi tekst ručno', 'amber');
+      showHudToast(coreTr('Kopiranje nije uspjelo', 'Copy failed'), coreTr('Označi tekst ručno', 'Select text manually'), 'amber');
     }
   };
 
@@ -2656,9 +2699,9 @@ export default function TrainerTab({
   };
 
   const sensorMetaMap = {
-    trainer: { label: 'FTMS Trenažer', connected: isPowerConnected, detail: trainerDeviceName || 'Trenažer' },
+    trainer: { label: tr('FTMS Trenažer', 'FTMS Trainer'), connected: isPowerConnected, detail: localizeSensorName(trainerDeviceName) || tr('Trenažer', 'Trainer') },
     pm: { label: 'PowerMeter', connected: isPmConnected, detail: pmDeviceName || 'PowerMeter' },
-    hr: { label: 'Pulsmetar', connected: isHrConnected, detail: 'Pulsmetar' },
+    hr: { label: tr('Pulsmetar', 'HR Monitor'), connected: isHrConnected, detail: tr('Pulsmetar', 'HR Monitor') },
     click: { label: 'Zwift Click', connected: zwiftClickState.connected, detail: zwiftClickState.deviceName || 'Zwift Click' }
   };
 
@@ -2676,10 +2719,10 @@ export default function TrainerTab({
                 </div>
                 <div>
                   <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-volt-400">
-                    BLUETOOTH UPARIVANJE
+                    {tr('BLUETOOTH UPARIVANJE', 'BLUETOOTH PAIRING')}
                   </div>
                   <h3 className="font-display font-bold text-lg md:text-xl uppercase tracking-wide text-zinc-100">
-                    {sensorMetaMap[fullscreenBleModal.target]?.label || 'Senzor'}
+                    {sensorMetaMap[fullscreenBleModal.target]?.label || tr('Senzor', 'Sensor')}
                   </h3>
                 </div>
               </div>
@@ -2687,15 +2730,19 @@ export default function TrainerTab({
                 type="button"
                 onClick={closeFullscreenBleModal}
                 className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-800"
-                title="Zatvori"
+                title={tr('Zatvori', 'Close')}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <p className="text-xs md:text-sm text-zinc-400 leading-relaxed">
-              Chrome i Edge sigurnosno ne dopuštaju otvaranje Bluetooth popisa dok je skrivena traka preglednika.
-              Spoji željene senzore ispod i vrati se u <strong className="text-zinc-200">TV Puni zaslon</strong> jednim klikom.
+              {tr(
+                'Chrome i Edge sigurnosno ne dopuštaju otvaranje Bluetooth popisa dok je skrivena traka preglednika. Spoji željene senzore ispod i vrati se u ',
+                'For security reasons, Chrome and Edge block the Bluetooth picker while the browser bar is hidden. Connect your sensors below and return to '
+              )}
+              <strong className="text-zinc-200">{tr('TV Puni zaslon', 'TV Fullscreen')}</strong>
+              {tr(' jednim klikom.', ' with one click.')}
             </p>
 
             {bleErrorBanner && (
@@ -2736,7 +2783,7 @@ export default function TrainerTab({
                     ) : info.connected ? (
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     ) : (
-                      <span className="font-mono text-[10px] uppercase text-volt-400 shrink-0">Traži</span>
+                      <span className="font-mono text-[10px] uppercase text-volt-400 shrink-0">{tr('Traži', 'Scan')}</span>
                     )}
                   </button>
                 );
@@ -2746,7 +2793,7 @@ export default function TrainerTab({
             {fullscreenBleModal.target === 'pm' && !isPmConnected && (
               <div className="flex flex-wrap items-center justify-between gap-2 bg-violet-950/30 border border-violet-500/30 rounded-xl px-3 py-2">
                 <span className="text-[11px] text-zinc-300">
-                  Assioma se ne prikazuje na popisu?
+                  {tr('Assioma se ne prikazuje na popisu?', 'Assioma not showing in the list?')}
                 </span>
                 <div className="flex items-center gap-1.5">
                   <button
@@ -2755,7 +2802,7 @@ export default function TrainerTab({
                     onClick={() => triggerDirectBleByKey('pm_all')}
                     className="px-2.5 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-400/40 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors"
                   >
-                    Svi BLE uređaji (Assioma)
+                    {tr('Svi BLE uređaji (Assioma)', 'All BLE Devices (Assioma)')}
                   </button>
                   <button
                     type="button"
@@ -2783,12 +2830,16 @@ export default function TrainerTab({
                   {fsSettling || bleConnectingType ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>{fsSettling ? 'Priprema...' : 'Spajanje...'}</span>
+                      <span>{fsSettling ? tr('Priprema...', 'Preparing...') : tr('Spajanje...', 'Connecting...')}</span>
                     </>
                   ) : (
                     <>
                       <Bluetooth className="w-4 h-4" />
-                      <span>Otvori Bluetooth popis ({sensorMetaMap[fullscreenBleModal.target]?.label})</span>
+                      <span>
+                        {tr('Otvori Bluetooth popis ({sensor})', 'Open Bluetooth list ({sensor})', {
+                          sensor: sensorMetaMap[fullscreenBleModal.target]?.label
+                        })}
+                      </span>
                     </>
                   )}
                 </button>
@@ -2800,7 +2851,7 @@ export default function TrainerTab({
                   className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm transition-all shadow-volt-glow"
                 >
                   <Maximize2 className="w-4 h-4" />
-                  <span>Vrati u TV Puni zaslon</span>
+                  <span>{tr('Vrati u TV Puni zaslon', 'Return to TV Fullscreen')}</span>
                 </button>
               )}
 
@@ -2810,7 +2861,7 @@ export default function TrainerTab({
                   onClick={returnToFullscreenFromModal}
                   className="py-3 px-3.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 text-zinc-300 border border-zinc-800 font-mono text-xs font-bold uppercase tracking-wider transition-colors shrink-0"
                 >
-                  Natrag u Fullscreen
+                  {tr('Natrag u Fullscreen', 'Back to Fullscreen')}
                 </button>
               )}
             </div>
@@ -2829,10 +2880,10 @@ export default function TrainerTab({
                 </div>
                 <div>
                   <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-violet-300">
-                    WEB BLUETOOTH CRNA KUTIJA
+                    {tr('WEB BLUETOOTH CRNA KUTIJA', 'WEB BLUETOOTH BLACK BOX')}
                   </div>
                   <h3 className="font-display font-bold text-base md:text-lg uppercase tracking-wide text-zinc-100">
-                    BLE Dijagnostika &amp; Assioma Spajanje
+                    {tr('BLE Dijagnostika & Assioma Spajanje', 'BLE Diagnostics & Assioma Pairing')}
                   </h3>
                 </div>
               </div>
@@ -2840,7 +2891,7 @@ export default function TrainerTab({
                 type="button"
                 onClick={() => setShowBleLogModal(false)}
                 className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-800"
-                title="Zatvori (Esc)"
+                title={tr('Zatvori (Esc)', 'Close (Esc)')}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2859,7 +2910,7 @@ export default function TrainerTab({
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-500 hover:bg-violet-400 disabled:opacity-50 text-zinc-950 font-mono text-xs font-bold uppercase tracking-wider transition-all"
                 >
                   <Search className="w-3.5 h-3.5" />
-                  <span>Traži sve BLE uređaje (Assioma Fallback)</span>
+                  <span>{tr('Traži sve BLE uređaje (Assioma Fallback)', 'Scan all BLE devices (Assioma Fallback)')}</span>
                 </button>
               )}
               <button
@@ -2868,7 +2919,7 @@ export default function TrainerTab({
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 font-mono text-xs font-bold uppercase tracking-wider transition-colors"
               >
                 <Copy className="w-3.5 h-3.5 text-volt-400" />
-                <span>{bleLogCopied ? 'Kopirano!' : 'Kopiraj Log'}</span>
+                <span>{bleLogCopied ? tr('Kopirano!', 'Copied!') : tr('Kopiraj Log', 'Copy Log')}</span>
               </button>
               <button
                 type="button"
@@ -2876,23 +2927,42 @@ export default function TrainerTab({
                 className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-rose-300 border border-zinc-800 font-mono text-xs font-bold uppercase tracking-wider transition-colors ml-auto"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Očisti</span>
+                <span>{tr('Očisti', 'Clear')}</span>
               </button>
             </div>
 
             {/* Kratki podsjetnik za Favero Assioma UNO / Windows u garaži */}
             <div className="bg-zinc-950/90 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-300 space-y-1.5 shrink-0">
               <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-amber-300">
-                3 najčešća uzroka kad se Assioma UNO ne spaja na PC:
+                {tr('3 najčešća uzroka kad se Assioma UNO ne spaja na PC:', '3 most common reasons Assioma UNO won’t connect to PC:')}
               </div>
               <p className="leading-relaxed">
-                <strong className="text-zinc-100">1. Mobitel / Favero App / Garmin:</strong> Assioma UNO standardno prima samo <strong className="text-amber-300">1 aktivnu BLE vezu</strong>. Ako je ostala spojena na Favero aplikaciju na mobitelu ili Garmin, pedala prestaje emitirati BLE prema PC-u — privremeno isključi Bluetooth na mobitelu.
+                <strong className="text-zinc-100">{tr('1. Mobitel / Favero App / Garmin:', '1. Phone / Favero App / Garmin:')}</strong>{' '}
+                {tr('Assioma UNO standardno prima samo ', 'Assioma UNO normally accepts only ')}
+                <strong className="text-amber-300">{tr('1 aktivnu BLE vezu', '1 active BLE connection')}</strong>
+                {tr(
+                  '. Ako je ostala spojena na Favero aplikaciju na mobitelu ili Garmin, pedala prestaje emitirati BLE prema PC-u — privremeno isključi Bluetooth na mobitelu.',
+                  '. If it stays connected to the Favero mobile app or Garmin, the pedal stops advertising BLE to the PC — temporarily turn off Bluetooth on your phone.'
+                )}
               </p>
               <p className="leading-relaxed">
-                <strong className="text-zinc-100">2. Windows Bluetooth postavke:</strong> Pedala <strong className="text-rose-300">ne smije</strong> biti uparena izravno u <em>Windows Settings &rarr; Bluetooth &amp; devices</em> (ako tamo piše <em>Paired/Connected</em>, klikni <em>Remove device</em> i spajaj isključivo u Chromeu).
+                <strong className="text-zinc-100">{tr('2. Windows Bluetooth postavke:', '2. Windows Bluetooth settings:')}</strong>{' '}
+                {tr('Pedala ', 'The pedal ')}
+                <strong className="text-rose-300">{tr('ne smije', 'must not')}</strong>
+                {tr(' biti uparena izravno u ', ' be paired directly in ')}
+                <em>Windows Settings &rarr; Bluetooth &amp; devices</em>
+                {tr(' (ako tamo piše ', ' (if it shows ')}
+                <em>Paired/Connected</em>
+                {tr(', klikni ', ', click ')}
+                <em>Remove device</em>
+                {tr(' i spajaj isključivo u Chromeu).', ' and pair exclusively inside Chrome).')}
               </p>
               <p className="leading-relaxed">
-                <strong className="text-zinc-100">3. Buđenje pedala:</strong> Zavrti kurblu 2 kruga da bljesnu narančaste LED diode neposredno prije klika na spajanje.
+                <strong className="text-zinc-100">{tr('3. Buđenje pedala:', '3. Wake up pedals:')}</strong>{' '}
+                {tr(
+                  'Zavrti kurblu 2 kruga da bljesnu narančaste LED diode neposredno prije klika na spajanje.',
+                  'Spin the crank 2 revolutions until the orange LEDs flash right before clicking connect.'
+                )}
               </p>
             </div>
 
@@ -2900,7 +2970,7 @@ export default function TrainerTab({
             <div className="flex-1 min-h-[160px] max-h-[280px] overflow-y-auto bg-black/70 border border-zinc-800 rounded-xl p-2.5 font-mono text-[11px] space-y-1">
               {bleLogs.length === 0 ? (
                 <div className="text-zinc-500 py-8 text-center">
-                  Još nema zabilježenih BLE događaja na ovom računalu.
+                  {tr('Još nema zabilježenih BLE događaja na ovom računalu.', 'No BLE events recorded on this computer yet.')}
                 </div>
               ) : (
                 [...bleLogs].reverse().map((entry, idx) => {
@@ -2925,7 +2995,13 @@ export default function TrainerTab({
             </div>
 
             <div className="text-[10px] font-mono text-zinc-500 flex items-center justify-between shrink-0">
-              <span>Ukupno zapisa: {bleLogs.length} (automatski se sinkronizira u Supabase uz spremljeni trening)</span>
+              <span>
+                {tr(
+                  'Ukupno zapisa: {count} (automatski se sinkronizira u Supabase uz spremljeni trening)',
+                  'Total entries: {count} (automatically synced to Supabase with saved workouts)',
+                  { count: bleLogs.length }
+                )}
+              </span>
             </div>
           </div>
         </div>
@@ -2945,8 +3021,8 @@ export default function TrainerTab({
         intervalsUploadError={intervalsUploadError}
         onRetryIntervalsUpload={handleRetryIntervalsUpload}
         handleReset={handleCloseWorkout}
-        handleExportTcx={() => exportToTCX(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime, profile?.weight || 75)}
-        handleExportFit={() => exportToFIT(workoutHistory, workoutFromCalendar?.title || 'Slobodna_voznja', sessionStartTime, profile?.weight || 75)}
+        handleExportTcx={() => exportToTCX(workoutHistory, workoutFromCalendar?.title || tr('Slobodna_voznja', 'Free_Ride'), sessionStartTime, profile?.weight || 75)}
+        handleExportFit={() => exportToFIT(workoutHistory, workoutFromCalendar?.title || tr('Slobodna_voznja', 'Free_Ride'), sessionStartTime, profile?.weight || 75)}
         athleteProfile={profile}
         liveWorkouts={workouts}
         wellnessData={wellnessData}
@@ -2958,7 +3034,11 @@ export default function TrainerTab({
         <button
           type="button"
           onClick={connectTrainer}
-          title={trainerDeviceName ? `Spojen: ${trainerDeviceName}` : 'Spoji pametni trenažer (FTMS / Cycling Power)'}
+          title={
+            trainerDeviceName
+              ? tr('Spojen: {name}', 'Connected: {name}', { name: localizeSensorName(trainerDeviceName) })
+              : tr('Spoji pametni trenažer (FTMS / Cycling Power)', 'Connect smart trainer (FTMS / Cycling Power)')
+          }
           className={`flex items-center gap-2 px-2.5 md:px-3 short:px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg font-bold transition-all border text-xs shrink-0 ${
             isPowerConnected
               ? (ftmsStatus === 'ready'
@@ -2981,10 +3061,10 @@ export default function TrainerTab({
           )}
           <span className="tracking-tight whitespace-nowrap">
             {bleConnectingType === 'trainer'
-              ? 'Spajam trenažer...'
+              ? tr('Spajam trenažer...', 'Connecting trainer...')
               : isPowerConnected
-              ? `${trainerDeviceName || 'Trenažer'} ${ftmsStatus === 'ready' ? '· ERG' : '· NO-ERG'}`
-              : 'FTMS Trenažer'}
+              ? `${localizeSensorName(trainerDeviceName) || tr('Trenažer', 'Trainer')} ${ftmsStatus === 'ready' ? '· ERG' : '· NO-ERG'}`
+              : tr('FTMS Trenažer', 'FTMS Trainer')}
           </span>
         </button>
 
@@ -2992,7 +3072,11 @@ export default function TrainerTab({
           <button
             type="button"
             onClick={connectPowerMeter}
-            title={pmDeviceName ? `Spojen: ${pmDeviceName}` : 'Spoji vanjski PowerMeter (npr. Favero Assioma)'}
+            title={
+              pmDeviceName
+                ? tr('Spojen: {name}', 'Connected: {name}', { name: pmDeviceName })
+                : tr('Spoji vanjski PowerMeter (npr. Favero Assioma)', 'Connect external PowerMeter (e.g. Favero Assioma)')
+            }
             className={`flex items-center gap-2 px-2.5 md:px-3 short:px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg font-bold transition-all border text-xs shrink-0 ${
               isPmConnected
                 ? 'bg-violet-500/12 text-violet-300 border-violet-500/35'
@@ -3006,7 +3090,7 @@ export default function TrainerTab({
               <Activity className="w-3.5 h-3.5 text-violet-400 shrink-0" />
             )}
             <span className="tracking-tight whitespace-nowrap">
-              {bleConnectingType === 'pm' ? 'Spajam PM...' : isPmConnected ? (pmDeviceName || 'PowerMeter') : 'PowerMeter'}
+              {bleConnectingType === 'pm' ? tr('Spajam PM...', 'Connecting PM...') : isPmConnected ? (pmDeviceName || 'PowerMeter') : 'PowerMeter'}
             </span>
             {isPmConnected && pmBatteryLevel != null && (
               <span className="text-[10px] font-mono telemetry-num text-violet-200 bg-violet-500/15 px-1.5 py-0.5 rounded border border-violet-400/30 flex items-center gap-0.5">
@@ -3020,7 +3104,7 @@ export default function TrainerTab({
               <button
                 type="button"
                 onClick={() => { setPowerMatchEnabled(prev => !prev); pidController.reset(); }}
-                title="Uskladi otpor trenažera prema očitanju PowerMetra"
+                title={tr('Uskladi otpor trenažera prema očitanju PowerMetra', 'Match trainer resistance to PowerMeter reading')}
                 className={`px-2 py-1.5 md:py-2 short:py-1 rounded-lg font-mono font-bold transition-all border text-[11px] shrink-0 ${
                   powerMatchEnabled
                     ? 'bg-violet-500 text-zinc-950 border-violet-400 shadow-[0_0_12px_rgba(139,92,246,0.3)]'
@@ -3033,7 +3117,10 @@ export default function TrainerTab({
               <button
                 type="button"
                 onClick={togglePmDoublePower}
-                title="Udvostruči snagu jednostrane pedale (npr. Assioma UNO kada u Favero aplikaciji nije uključen Unified Channel L). Isključi ako Favero aplikacija već udvostručuje snagu!"
+                title={tr(
+                  'Udvostruči snagu jednostrane pedale (npr. Assioma UNO kada u Favero aplikaciji nije uključen Unified Channel L). Isključi ako Favero aplikacija već udvostručuje snagu!',
+                  'Double single-sided pedal power (e.g. Assioma UNO when Unified Channel L is off in the Favero app). Turn off if the Favero app already doubles power!'
+                )}
                 className={`px-2 py-1.5 md:py-2 short:py-1 rounded-lg font-mono font-bold transition-all border text-[11px] shrink-0 ${
                   pmDoublePower
                     ? 'bg-amber-400 text-zinc-950 border-amber-300'
@@ -3061,7 +3148,9 @@ export default function TrainerTab({
           ) : (
             <Heart className="w-3.5 h-3.5 text-rose-500 shrink-0" />
           )}
-          <span className="tracking-tight whitespace-nowrap">{bleConnectingType === 'hr' ? 'Spajam HR...' : 'Pulsmetar'}</span>
+          <span className="tracking-tight whitespace-nowrap">
+            {bleConnectingType === 'hr' ? tr('Spajam HR...', 'Connecting HR...') : tr('Pulsmetar', 'HR Monitor')}
+          </span>
         </button>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -3070,8 +3159,8 @@ export default function TrainerTab({
             onClick={connectZwiftClick}
             title={
               zwiftClickState.connected
-                ? `Spojen: ${zwiftClickState.deviceName} (klikni za odspajanje)`
-                : 'Probudi Zwift Click pritiskom na tipku (plava LED pulsira) i klikni za spajanje'
+                ? tr('Spojen: {name} (klikni za odspajanje)', 'Connected: {name} (click to disconnect)', { name: zwiftClickState.deviceName })
+                : tr('Probudi Zwift Click pritiskom na tipku (plava LED pulsira) i klikni za spajanje', 'Wake Zwift Click by pressing a button (blue LED flashes) and click to connect')
             }
             className={`flex items-center gap-2 px-2.5 md:px-3 short:px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg font-bold transition-all border text-xs shrink-0 ${
               zwiftClickState.connected
@@ -3087,7 +3176,7 @@ export default function TrainerTab({
             )}
             <span className="tracking-tight whitespace-nowrap">
               {bleConnectingType === 'click'
-                ? 'Spajam Click...'
+                ? tr('Spajam Click...', 'Connecting Click...')
                 : zwiftClickState.connected
                 ? (zwiftClickState.deviceName || 'Zwift Click')
                 : 'Zwift Click'}
@@ -3101,7 +3190,7 @@ export default function TrainerTab({
           <button
             type="button"
             onClick={() => setShowClickSettings(v => !v)}
-            title="Postavke virtualnog mjenjača i kalibracija Zwift Click tipki"
+            title={tr('Postavke virtualnog mjenjača i kalibracija Zwift Click tipki', 'Virtual shifting settings & Zwift Click button calibration')}
             className={`p-1.5 md:p-2 short:p-1.5 rounded-lg border text-xs font-bold transition-colors shrink-0 ${
               showClickSettings
                 ? 'bg-volt-400 text-zinc-950 border-volt-400'
@@ -3116,7 +3205,7 @@ export default function TrainerTab({
           <button
             type="button"
             onClick={openBleDiagnosticModal}
-            title="BLE Dijagnostika, povijest grešaka i rezervno traženje Assioma pedala"
+            title={tr('BLE Dijagnostika, povijest grešaka i rezervno traženje Assioma pedala', 'BLE Diagnostics, error history & fallback scan for Assioma pedals')}
             className={`flex items-center gap-1.5 px-2 py-1.5 md:py-2 short:py-1 rounded-lg border font-mono text-[11px] font-bold uppercase tracking-wider transition-all ${
               hasRecentBleError
                 ? 'bg-rose-500/15 text-rose-300 border-rose-500/40 hover:bg-rose-500/25'
@@ -3131,7 +3220,7 @@ export default function TrainerTab({
           <button
             type="button"
             onClick={toggleFullscreen}
-            title={isFullscreen ? 'Izađi iz punog zaslona (tipka F ili Esc)' : 'Puni zaslon za TV / garažu (tipka F)'}
+            title={isFullscreen ? tr('Izađi iz punog zaslona (tipka F ili Esc)', 'Exit fullscreen (key F or Esc)') : tr('Puni zaslon za TV / garažu (tipka F)', 'TV / garage fullscreen mode (key F)')}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 md:py-2 short:py-1 rounded-lg border font-mono text-[11px] font-bold uppercase tracking-wider transition-all ${
               isFullscreen
                 ? 'bg-volt-400/15 text-volt-400 border-volt-400/40'
@@ -3139,14 +3228,14 @@ export default function TrainerTab({
             }`}
           >
             {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            <span className="hidden xl:inline">{isFullscreen ? 'Izlaz' : 'TV Puni zaslon'}</span>
+            <span className="hidden xl:inline">{isFullscreen ? tr('Izlaz', 'Exit') : tr('TV Puni zaslon', 'TV Fullscreen')}</span>
           </button>
 
           <div className="flex items-center bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden shrink-0">
             <div className="px-2.5 md:px-3 py-1.5 md:py-2 short:py-1 text-zinc-500 font-mono text-[11px] md:text-xs truncate max-w-[135px] lg:max-w-[220px]">
-              <span className="hidden lg:inline text-zinc-600">SESIJA // </span>
+              <span className="hidden lg:inline text-zinc-600">{tr('SESIJA // ', 'SESSION // ')}</span>
               <span className="text-zinc-100 font-sans font-bold uppercase tracking-tight">
-                {workoutFromCalendar ? workoutFromCalendar.title : "Slobodna Vožnja"}
+                {workoutFromCalendar ? workoutFromCalendar.title : tr('Slobodna Vožnja', 'Free Ride')}
               </span>
             </div>
             {onClose && (
@@ -3158,7 +3247,7 @@ export default function TrainerTab({
                 }}
                 className="px-2.5 md:px-3 py-1.5 md:py-2 short:py-1 bg-zinc-900 hover:bg-zinc-800 hover:text-white transition-colors text-zinc-400 font-bold text-xs border-l border-zinc-800 flex items-center gap-1.5"
               >
-                <X className="w-3.5 h-3.5 md:w-4 md:h-4" /> <span className="hidden lg:inline">Zatvori</span>
+                <X className="w-3.5 h-3.5 md:w-4 md:h-4" /> <span className="hidden lg:inline">{tr('Zatvori', 'Close')}</span>
               </button>
             )}
           </div>
@@ -3186,7 +3275,7 @@ export default function TrainerTab({
                 }}
                 className="px-2.5 py-1 rounded-lg bg-violet-500/25 hover:bg-violet-500/35 text-violet-200 border border-violet-400/40 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors"
               >
-                Svi BLE uređaji (Assioma)
+                {tr('Svi BLE uređaji (Assioma)', 'All BLE Devices (Assioma)')}
               </button>
             )}
             <button
@@ -3200,7 +3289,7 @@ export default function TrainerTab({
               type="button"
               onClick={() => setBleErrorBanner(null)}
               className="p-1 rounded hover:bg-rose-500/20 text-rose-300 shrink-0"
-              title="Sakrij obavijest"
+              title={tr('Sakrij obavijest', 'Dismiss notice')}
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -3215,15 +3304,18 @@ export default function TrainerTab({
             <div className="flex items-center gap-2 flex-wrap">
               <Gamepad2 className="w-4 h-4 text-volt-400 shrink-0" />
               <span className="text-xs md:text-sm font-display font-bold uppercase tracking-wider text-zinc-100">
-                Virtualni Mjenjač · Zwift Click / Play / Ride
+                {tr('Virtualni Mjenjač · Zwift Click / Play / Ride', 'Virtual Shifting · Zwift Click / Play / Ride')}
               </span>
               {zwiftClickState.connected ? (
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-volt-400/15 text-volt-300 border border-volt-400/30">
-                  SPOJEN · KLIKOVA: {zwiftClickState.clickCount}
+                  {tr('SPOJEN · KLIKOVA: {count}', 'CONNECTED · CLICKS: {count}', { count: zwiftClickState.clickCount })}
                 </span>
               ) : (
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
-                  Nije spojen — pritisni tipku na Clicku (plava LED pulsira) i klikni &quot;Zwift Click&quot;
+                  {tr(
+                    'Nije spojen — pritisni tipku na Clicku (plava LED pulsira) i klikni "Zwift Click"',
+                    'Not connected — press a button on Click (blue LED flashes) and click "Zwift Click"'
+                  )}
                 </span>
               )}
               {zwiftClickState.connected && zwiftClickState.lastPacketHex && (
@@ -3242,10 +3334,10 @@ export default function TrainerTab({
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                     : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-300 border-zinc-800'
                 }`}
-                title="Zamijeni ulogu gornje i donje tipke ako je Zwift Click montiran naopako na volanu"
+                title={tr('Zamijeni ulogu gornje i donje tipke ako je Zwift Click montiran naopako na volanu', 'Swap upper and lower buttons if Zwift Click is mounted upside-down on the handlebar')}
               >
                 <ArrowUpDown className="w-3.5 h-3.5" />
-                {zwiftClickState.swapButtons ? 'Tipke: Obrnuto (-/+)' : 'Tipke: Standard (+/-)'}
+                {zwiftClickState.swapButtons ? tr('Tipke: Obrnuto (-/+)', 'Buttons: Swapped (-/+)') : tr('Tipke: Standard (+/-)', 'Buttons: Standard (+/-)')}
               </button>
 
               <button
@@ -3256,9 +3348,9 @@ export default function TrainerTab({
                     ? 'bg-sky-500/15 text-sky-300 border-sky-500/35'
                     : 'bg-volt-400/15 text-volt-300 border-volt-400/35'
                 }`}
-                title="Odaberi šalje li virtualni mjenjač u RES modu linearni otpor kočnice (FTMS 0x04) ili simulirani nagib ceste (FTMS 0x11)"
+                title={tr('Odaberi šalje li virtualni mjenjač u RES modu linearni otpor kočnice (FTMS 0x04) ili simulirani nagib ceste (FTMS 0x11)', 'Choose whether virtual shifting in RES mode sends linear brake resistance (FTMS 0x04) or simulated road grade (FTMS 0x11)')}
               >
-                {resPhysicsMode === 'RES' ? 'RES: Kočnica (0x04)' : 'RES: Nagib SIM (0x11)'}
+                {resPhysicsMode === 'RES' ? tr('RES: Kočnica (0x04)', 'RES: Resistance (0x04)') : tr('RES: Nagib SIM (0x11)', 'RES: Grade SIM (0x11)')}
               </button>
 
               {zwiftClickState.connected && zwiftClickState.calibrationStep === 'idle' && (
@@ -3266,9 +3358,9 @@ export default function TrainerTab({
                   type="button"
                   onClick={() => zwiftClickRef.current?.startCalibration()}
                   className="px-2.5 py-1 rounded-lg bg-volt-400/15 hover:bg-volt-400/25 text-volt-300 border border-volt-400/35 text-xs font-bold transition-colors"
-                  title="Ručno nauči + i - tipku ako tvoj firmware koristi nestandardni kod"
+                  title={tr('Ručno nauči + i - tipku ako tvoj firmware koristi nestandardni kod', 'Manually teach + and - buttons if your firmware uses non-standard codes')}
                 >
-                  Kalibriraj +/-
+                  {tr('Kalibriraj +/-', 'Calibrate +/-')}
                 </button>
               )}
 
@@ -3277,9 +3369,9 @@ export default function TrainerTab({
                   type="button"
                   onClick={() => zwiftClickRef.current?.clearCustomMap()}
                   className="flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-900 text-zinc-400 border border-zinc-800 text-xs font-bold"
-                  title="Vrati na tvorničko dekodiranje protokola"
+                  title={tr('Vrati na tvorničko dekodiranje protokola', 'Restore factory protocol decoding')}
                 >
-                  <RotateCcw className="w-3 h-3" /> Reset mape
+                  <RotateCcw className="w-3 h-3" /> {tr('Reset mape', 'Reset map')}
                 </button>
               )}
 
@@ -3287,7 +3379,7 @@ export default function TrainerTab({
                 type="button"
                 onClick={() => setShowClickSettings(false)}
                 className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800"
-                title="Sakrij postavke"
+                title={tr('Sakrij postavke', 'Hide settings')}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -3297,26 +3389,32 @@ export default function TrainerTab({
           {zwiftClickState.calibrationStep !== 'idle' && (
             <div className="flex items-center justify-between gap-2 bg-volt-400/10 border border-volt-400/40 rounded-lg px-3 py-2 text-xs font-bold text-volt-300">
               <span>
-                {zwiftClickState.calibrationStep === 'wait_plus' && '1/2 — Pritisni na Zwift Clicku tipku koju želiš za VIŠU brzinu (+)...'}
-                {zwiftClickState.calibrationStep === 'wait_release' && 'Odlično! Pusti tipku...'}
-                {zwiftClickState.calibrationStep === 'wait_minus' && '2/2 — Sada pritisni tipku koju želiš za NIŽU brzinu (-)...'}
+                {zwiftClickState.calibrationStep === 'wait_plus' && tr('1/2 — Pritisni na Zwift Clicku tipku koju želiš za VIŠU brzinu (+)...', '1/2 — Press the button on Zwift Click you want for SHIFT UP (+)...')}
+                {zwiftClickState.calibrationStep === 'wait_release' && tr('Odlično! Pusti tipku...', 'Great! Release the button...')}
+                {zwiftClickState.calibrationStep === 'wait_minus' && tr('2/2 — Sada pritisni tipku koju želiš za NIŽU brzinu (-)...', '2/2 — Now press the button you want for SHIFT DOWN (-)...')}
               </span>
               <button
                 type="button"
                 onClick={() => zwiftClickRef.current?.cancelCalibration()}
                 className="px-2.5 py-1 rounded bg-zinc-950 text-zinc-300 border border-zinc-800 text-xs"
               >
-                Odustani
+                {tr('Odustani', 'Cancel')}
               </button>
             </div>
           )}
 
           <div className="text-[11px] text-zinc-400 flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800/80 pt-2">
             <span>
-              <strong className="text-sky-300">RES mod (Slobodna vožnja):</strong> kratki <code className="font-mono text-zinc-200">+/-</code> = brzine 1–24, držanje = brzi Multi-Shift.
+              <strong className="text-sky-300">{tr('RES mod (Slobodna vožnja):', 'RES Mode (Free Ride):')}</strong>{' '}
+              {tr('kratki ', 'short ')}<code className="font-mono text-zinc-200">+/-</code>{' '}
+              {tr('= brzine 1–24, držanje = brzi Multi-Shift.', '= gears 1–24, hold = fast Multi-Shift.')}
             </span>
             <span>
-              <strong className="text-volt-300">ERG mod (Trening):</strong> kratki <code className="font-mono text-zinc-200">+/-</code> = ±2% intenzitet · dugi <code className="font-mono text-zinc-200">+</code> = preskoči interval · dugi <code className="font-mono text-zinc-200">-</code> = Start/Pauza.
+              <strong className="text-volt-300">{tr('ERG mod (Trening):', 'ERG Mode (Workout):')}</strong>{' '}
+              {tr('kratki ', 'short ')}<code className="font-mono text-zinc-200">+/-</code>{' '}
+              {tr('= ±2% intenzitet · dugi ', '= ±2% bias · long ')}<code className="font-mono text-zinc-200">+</code>{' '}
+              {tr('= preskoči interval · dugi ', '= skip interval · long ')}<code className="font-mono text-zinc-200">-</code>{' '}
+              {tr('= Start/Pauza.', '= Start/Pause.')}
             </span>
           </div>
         </div>
@@ -3326,7 +3424,11 @@ export default function TrainerTab({
       {isPowerConnected && ftmsStatus === 'unsupported' && (
         <div className="bg-amber-950/50 border border-amber-500/40 text-amber-200 rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between gap-2 shrink-0">
           <span>
-            ⚠️ Spojeni uređaj ({trainerDeviceName}) ne nudi FTMS kontrolu otpora (ERG neće mijenjati otpor). Provjeri jesi li slučajno odabrao pedale umjesto Direta ili drži li druga aplikacija (Zwift / MyETraining / Garmin) aktivnu vezu s trenažerom.
+            {tr(
+              '⚠️ Spojeni uređaj ({name}) ne nudi FTMS kontrolu otpora (ERG neće mijenjati otpor). Provjeri jesi li slučajno odabrao pedale umjesto Direta ili drži li druga aplikacija (Zwift / MyETraining / Garmin) aktivnu vezu s trenažerom.',
+              '⚠️ Connected device ({name}) does not offer FTMS resistance control (ERG will not adjust resistance). Check if you accidentally picked pedals instead of your trainer, or if another app (Zwift / MyETraining / Garmin) is holding the trainer connection.',
+              { name: localizeSensorName(trainerDeviceName) }
+            )}
           </span>
         </div>
       )}
@@ -3334,13 +3436,17 @@ export default function TrainerTab({
       {halfPowerDetected && !pmDoublePower && isPmConnected && isPowerConnected && (
         <div className="bg-amber-950/60 border border-amber-500/50 text-amber-200 rounded-xl px-3 py-2 text-xs font-semibold flex flex-wrap items-center justify-between gap-2 shrink-0">
           <span>
-            ⚠️ PowerMeter ({pmPower} W) šalje ~50% snage trenažera ({currentPower} W) — jednostrana pedala (Assioma UNO) bez BLE ×2! Power Match korekcija je automatski pauzirana kako ne bi udvostručila otpor.
+            {tr(
+              '⚠️ PowerMeter ({pm} W) šalje ~50% snage trenažera ({tr} W) — jednostrana pedala (Assioma UNO) bez BLE ×2! Power Match korekcija je automatski pauzirana kako ne bi udvostručila otpor.',
+              '⚠️ PowerMeter ({pm} W) reads ~50% of trainer power ({tr} W) — single-sided pedal (Assioma UNO) without BLE ×2! Power Match correction has been paused automatically to avoid doubling resistance.',
+              { pm: pmPower, tr: currentPower }
+            )}
           </span>
           <button
             onClick={togglePmDoublePower}
             className="px-3 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-black text-xs shrink-0 transition-colors"
           >
-            Uključi ×2 Uno odmah
+            {tr('Uključi ×2 Uno odmah', 'Enable ×2 UNO now')}
           </button>
         </div>
       )}
@@ -3354,10 +3460,13 @@ export default function TrainerTab({
             </div>
             <div className="min-w-0">
               <div className="font-mono text-[10px] md:text-[11px] font-bold uppercase tracking-wider text-amber-300">
-                TRENING OPORAVLJEN · PAUZIRANO NA {formatTime(elapsedTime)}
+                {tr('TRENING OPORAVLJEN · PAUZIRANO NA {time}', 'WORKOUT RECOVERED · PAUSED AT {time}', { time: formatTime(elapsedTime) })}
               </div>
               <div className="text-[11px] md:text-xs text-zinc-300">
-                Sat čeka tvoj ručni klik — mirno spoji senzore (i zavrti pedale za buđenje Assiome) bez automatskog pokretanja.
+                {tr(
+                  'Sat čeka tvoj ručni klik — mirno spoji senzore (i zavrti pedale za buđenje Assiome) bez automatskog pokretanja.',
+                  'Timer is waiting for your manual start — reconnect your sensors (and spin the pedals to wake Assioma) without auto-starting.'
+                )}
               </div>
             </div>
           </div>
@@ -3368,6 +3477,7 @@ export default function TrainerTab({
               if (!savedName) return null;
               const info = sensorMetaMap[sKey];
               const isBusy = bleConnectingType === sKey;
+              const displaySavedName = localizeSensorName(savedName);
               const connectFn =
                 sKey === 'trainer' ? connectTrainer
                 : sKey === 'pm' ? connectPowerMeter
@@ -3387,7 +3497,11 @@ export default function TrainerTab({
                       ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35 cursor-default'
                       : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-200 border-zinc-700 hover:border-amber-400/50'
                   }`}
-                  title={info.connected ? `${savedName} je ponovno spojen` : `Ponovno spoji ${savedName}`}
+                  title={
+                    info.connected
+                      ? tr('{name} je ponovno spojen', '{name} is reconnected', { name: displaySavedName })
+                      : tr('Ponovno spoji {name}', 'Reconnect {name}', { name: displaySavedName })
+                  }
                 >
                   {isBusy ? (
                     <Loader2 className="w-3 h-3 animate-spin text-volt-400" />
@@ -3396,7 +3510,7 @@ export default function TrainerTab({
                   ) : (
                     <Bluetooth className="w-3 h-3 text-sky-400" />
                   )}
-                  <span className="max-w-[120px] truncate">{savedName}</span>
+                  <span className="max-w-[120px] truncate">{displaySavedName}</span>
                 </button>
               );
             })}
@@ -3407,7 +3521,7 @@ export default function TrainerTab({
               className="flex items-center gap-1.5 px-3.5 py-1.5 md:py-2 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs md:text-sm shadow-volt-glow transition-all active:scale-95 shrink-0"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Nastavi trening</span>
+              <span>{tr('Nastavi trening', 'Resume workout')}</span>
             </button>
           </div>
         </div>
@@ -3444,7 +3558,9 @@ export default function TrainerTab({
           <div className="flex justify-between items-start w-full z-10 shrink-0 gap-2">
             <div className="flex items-center gap-1.5 md:gap-2 mt-0.5 flex-wrap">
               <span className="text-zinc-400 font-mono font-bold uppercase tracking-[0.18em] text-[10px] md:text-xs short:text-[10px]">
-                {usePmAsPrimary ? `PM SNAGA${pmDoublePower ? ' (×2)' : ''}` : (isPowerConnected ? 'SNAGA TRENAŽERA' : 'SNAGA // WATTS')}
+                {usePmAsPrimary
+                  ? `${tr('PM SNAGA', 'PM POWER')}${pmDoublePower ? ' (×2)' : ''}`
+                  : (isPowerConnected ? tr('SNAGA TRENAŽERA', 'TRAINER POWER') : tr('SNAGA // WATTS', 'POWER // WATTS'))}
               </span>
               {powerMatchEnabled && isPmConnected && !(halfPowerDetected && !pmDoublePower) && (
                 <span className="bg-violet-500/15 text-violet-300 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-violet-500/30">
@@ -3453,7 +3569,7 @@ export default function TrainerTab({
               )}
               {!powerMatchEnabled && isPmConnected && isPowerConnected && (
                 <span className="bg-sky-500/10 text-sky-300 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-sky-500/25">
-                  TRENAŽER RAW
+                  {tr('TRENAŽER RAW', 'TRAINER RAW')}
                 </span>
               )}
               {zwiftClickState.connected && (
@@ -3466,7 +3582,7 @@ export default function TrainerTab({
             <div className="flex items-center gap-1 md:gap-1.5 bg-zinc-950 p-1 short:p-0.5 rounded-lg border border-zinc-800 shrink-0">
               <button
                 onClick={toggleMode}
-                title="Prebaci između ERG i RES (Virtual Shifting) moda (tipka M)"
+                title={tr('Prebaci između ERG i RES (Virtual Shifting) moda (tipka M)', 'Switch between ERG and RES (Virtual Shifting) mode (key M)')}
                 className={`flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 short:px-2 short:py-0.5 rounded-md text-[10px] md:text-xs font-mono font-bold uppercase tracking-wider transition-all active:scale-95 ${
                   controlMode === 'ERG'
                     ? 'bg-volt-400/15 text-volt-300 border border-volt-400/35'
@@ -3479,17 +3595,17 @@ export default function TrainerTab({
               <div className="w-px h-5 md:h-6 short:h-4 bg-zinc-800 mx-0.5" />
               {controlMode === 'ERG' ? (
                 <div className="flex items-center gap-0.5 md:gap-1">
-                  <button onClick={decreaseErg} className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
+                  <button onClick={decreaseErg} title={tr('Smanji ERG intenzitet (-2%)', 'Decrease ERG bias (-2%)')} className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
                     <Minus className="w-3.5 h-3.5 md:w-4 md:h-4" />
                   </button>
                   <span className="w-11 md:w-14 short:w-11 text-center font-mono font-bold telemetry-num text-zinc-100 text-xs md:text-sm short:text-xs">{ergIntensity}%</span>
-                  <button onClick={increaseErg} className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
+                  <button onClick={increaseErg} title={tr('Povećaj ERG intenzitet (+2%)', 'Increase ERG bias (+2%)')} className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
                     <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" />
                   </button>
                 </div>
               ) : (
                 <div className="flex items-center gap-0.5 md:gap-1">
-                  <button onClick={decreaseRes} title="Niža brzina (-)" className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
+                  <button onClick={decreaseRes} title={tr('Niža brzina (-)', 'Shift down (-)')} className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
                     <Minus className="w-3.5 h-3.5 md:w-4 md:h-4" />
                   </button>
                   <div className="min-w-[60px] md:min-w-[78px] short:min-w-[64px] text-center leading-none">
@@ -3498,7 +3614,7 @@ export default function TrainerTab({
                       {resPhysicsMode === 'SIM' ? `${simulatedGrade > 0 ? '+' : ''}${simulatedGrade.toFixed(1)}%` : `${resistanceLevel}%`}
                     </div>
                   </div>
-                  <button onClick={increaseRes} title="Viša brzina (+)" className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
+                  <button onClick={increaseRes} title={tr('Viša brzina (+)', 'Shift up (+)')} className="p-1 md:p-1.5 short:p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-zinc-100 transition-colors active:scale-95">
                     <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" />
                   </button>
                 </div>
@@ -3523,9 +3639,9 @@ export default function TrainerTab({
 
             {isPmConnected && isPowerConnected && (
               <div className="text-[11px] short:text-[10px] font-mono telemetry-num text-zinc-400 mb-0.5 flex items-center gap-2 flex-wrap justify-center">
-                <span>TRENAŽER: <strong className="text-zinc-200">{currentPower}W</strong></span>
+                <span>{tr('TRENAŽER:', 'TRAINER:')} <strong className="text-zinc-200">{currentPower}W</strong></span>
                 <span className="text-zinc-700">|</span>
-                <span>PEDALE{pmDoublePower ? '(×2)' : ''}: <strong className="text-violet-300">{effectivePmPower}W</strong></span>
+                <span>{tr('PEDALE', 'PEDALS')}{pmDoublePower ? '(×2)' : ''}: <strong className="text-violet-300">{effectivePmPower}W</strong></span>
                 <span className="text-zinc-700">|</span>
                 <span>
                   Δ{' '}
@@ -3540,7 +3656,7 @@ export default function TrainerTab({
               {controlMode === 'ERG' ? (
                 !hasValidFtp ? (
                   <span className="text-rose-400 font-mono font-bold text-xs md:text-sm flex items-center justify-center gap-2">
-                    ⚠️ <span className="hidden sm:inline">Nije unesen FTP — koristi se zadanih 200 W.</span><span className="sm:hidden">Unesi FTP!</span>
+                    ⚠️ <span className="hidden sm:inline">{tr('Nije unesen FTP — koristi se zadanih 200 W.', 'No FTP set — using default 200 W.')}</span><span className="sm:hidden">{tr('Unesi FTP!', 'Set FTP!')}</span>
                   </span>
                 ) : (() => {
                   let powerDelta = 0;
@@ -3574,7 +3690,7 @@ export default function TrainerTab({
                     <div className="flex flex-col gap-1.5 short:gap-1">
                       <div className="flex items-center justify-between gap-2 text-xs md:text-sm short:text-xs font-mono telemetry-num">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-zinc-500 text-[10px] md:text-xs short:text-[10px] uppercase">CILJ</span>
+                          <span className="text-zinc-500 text-[10px] md:text-xs short:text-[10px] uppercase">{tr('CILJ', 'TARGET')}</span>
                           <span className="text-zinc-100 font-bold text-sm md:text-base short:text-sm">
                             {isStepRange ? `${minTargetWatts}–${maxTargetWatts} W` : `${activeTargetPower} W`}
                           </span>
@@ -3595,14 +3711,14 @@ export default function TrainerTab({
                           {!isPlaying && displayPower === 0
                             ? 'READY'
                             : isLocked
-                            ? (isStepRange ? 'LOCKED (U RASPONU)' : `LOCKED (${powerDelta > 0 ? '+' : ''}${powerDelta}W)`)
+                            ? (isStepRange ? tr('LOCKED (U RASPONU)', 'LOCKED (IN RANGE)') : `LOCKED (${powerDelta > 0 ? '+' : ''}${powerDelta}W)`)
                             : `Δ ${powerDelta > 0 ? '+' : ''}${powerDelta}W`}
                         </span>
 
                         <div className="flex items-center gap-1 text-right">
-                          <span className="text-zinc-500 text-[10px] md:text-xs short:text-[10px] uppercase">SLJEDEĆI</span>
+                          <span className="text-zinc-500 text-[10px] md:text-xs short:text-[10px] uppercase">{tr('SLJEDEĆI', 'NEXT')}</span>
                           <span className="text-zinc-300 font-bold text-xs md:text-sm short:text-xs">
-                            {nextWattsStr !== null ? nextWattsStr : 'KRAJ'}
+                            {nextWattsStr !== null ? nextWattsStr : tr('KRAJ', 'END')}
                           </span>
                         </div>
                       </div>
@@ -3631,19 +3747,19 @@ export default function TrainerTab({
                 <div className="flex flex-col items-center gap-1.5 short:gap-1 py-0.5">
                   <div className="flex items-center gap-2.5 flex-wrap justify-center leading-tight font-mono telemetry-num">
                     <span className="text-zinc-200 font-bold text-xs md:text-sm short:text-xs">
-                      BRZINA <span className="text-volt-400 text-sm md:text-base short:text-sm">{virtualGear}</span>
+                      {tr('BRZINA', 'GEAR')} <span className="text-volt-400 text-sm md:text-base short:text-sm">{virtualGear}</span>
                       <span className="text-zinc-500 text-xs">/{VIRTUAL_GEAR_MAX}</span>
                     </span>
                     <span className="text-zinc-700">|</span>
                     <span className="text-sky-300 text-xs md:text-sm short:text-xs font-bold">
                       {resPhysicsMode === 'SIM'
-                        ? `NAGIB ${simulatedGrade > 0 ? '+' : ''}${simulatedGrade.toFixed(1)}%`
-                        : `OTPOR ${resistanceLevel}%`}
+                        ? `${tr('NAGIB', 'GRADE')} ${simulatedGrade > 0 ? '+' : ''}${simulatedGrade.toFixed(1)}%`
+                        : `${tr('OTPOR', 'RESISTANCE')} ${resistanceLevel}%`}
                     </span>
                     <button
                       type="button"
                       onClick={toggleResPhysicsMode}
-                      title="Prebaci način otpora između linearne kočnice (0x04) i simulacije nagiba (0x11)"
+                      title={tr('Prebaci način otpora između linearne kočnice (0x04) i simulacije nagiba (0x11)', 'Switch resistance mode between linear brake (0x04) and grade simulation (0x11)')}
                       className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 transition-colors"
                     >
                       {resPhysicsMode === 'SIM' ? 'SIM 0x11' : 'RES 0x04'}
@@ -3678,7 +3794,7 @@ export default function TrainerTab({
           <div className="carbon-panel rounded-xl p-2.5 md:p-3.5 short:p-2 vshort:py-1.5 vshort:px-2.5 flex-1 flex flex-col justify-between relative group hover:border-rose-500/40 transition-colors min-h-0">
             <div className="flex items-center justify-between w-full">
               <span className="text-rose-400 font-mono font-bold uppercase tracking-[0.16em] text-[10px] flex items-center gap-1.5">
-                <Heart className="w-3.5 h-3.5 text-rose-500" /> PULS
+                <Heart className="w-3.5 h-3.5 text-rose-500" /> {tr('PULS', 'HEART RATE')}
               </span>
               {isHrConnected && profile?.maxHr > 0 && displayHR > 0 && (
                 <span className="text-[10px] font-mono telemetry-num text-rose-300 bg-rose-500/10 border border-rose-500/25 px-1.5 py-0.5 rounded">
@@ -3697,7 +3813,7 @@ export default function TrainerTab({
           <div className="carbon-panel rounded-xl p-2.5 md:p-3.5 short:p-2 vshort:py-1.5 vshort:px-2.5 flex-1 flex flex-col justify-between relative group hover:border-volt-400/40 transition-colors min-h-0">
             <div className="flex items-center justify-between w-full">
               <span className="text-volt-400 font-mono font-bold uppercase tracking-[0.16em] text-[10px] flex items-center gap-1.5">
-                <Zap className="w-3.5 h-3.5 text-volt-400" /> KADENCA
+                <Zap className="w-3.5 h-3.5 text-volt-400" /> {tr('KADENCA', 'CADENCE')}
               </span>
               {(isPmConnected || isPowerConnected) && displayCadence > 0 && (
                 <span className="text-[10px] font-mono telemetry-num text-zinc-400 bg-zinc-950 border border-zinc-800 px-1.5 py-0.5 rounded">
@@ -3745,7 +3861,7 @@ export default function TrainerTab({
               <button
                 onClick={handleStopClick}
                 className="w-8 h-8 md:w-10 md:h-10 short:w-8 short:h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-rose-500/15 text-zinc-400 hover:text-rose-400"
-                title="Prekini trening"
+                title={tr('Prekini trening', 'End workout')}
               >
                 <Square className="w-3.5 h-3.5 md:w-4 md:h-4 short:w-3.5 short:h-3.5" fill="currentColor" />
               </button>
@@ -3756,24 +3872,24 @@ export default function TrainerTab({
                     ? 'bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-volt-400'
                     : 'bg-volt-400 hover:bg-volt-300 text-zinc-950 shadow-volt-glow'
                 }`}
-                title={awaitingManualResume ? 'Nastavi oporavljeni trening (Space)' : 'Pokreni / Pauziraj (Space)'}
+                title={awaitingManualResume ? tr('Nastavi oporavljeni trening (Space)', 'Resume recovered workout (Space)') : tr('Pokreni / Pauziraj (Space)', 'Start / Pause (Space)')}
               >
                 {isPlaying ? <Pause className="w-4 h-4 md:w-5 md:h-5 short:w-4 short:h-4" fill="currentColor" /> : <Play className="w-4 h-4 md:w-5 md:h-5 short:w-4 short:h-4 ml-0.5" fill="currentColor" />}
               </button>
               <button
                 onClick={handleSkip}
                 className="w-8 h-8 md:w-10 md:h-10 short:w-8 short:h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-zinc-900 text-zinc-400 hover:text-zinc-100"
-                title="Preskoči na idući interval (S)"
+                title={tr('Preskoči na idući interval (S)', 'Skip to next interval (S)')}
               >
                 <FastForward className="w-3.5 h-3.5 md:w-4 md:h-4 short:w-3.5 short:h-3.5" fill="currentColor" />
               </button>
             </div>
             <div className="text-center sm:text-left">
               <div className="text-[9px] md:text-[10px] short:text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-[0.18em] mb-0.5 short:mb-0">
-                AKTIVNI BLOK · {currentStepIndex + 1}/{workoutRecipe.length}
+                {tr('AKTIVNI BLOK', 'ACTIVE BLOCK')} · {currentStepIndex + 1}/{workoutRecipe.length}
               </div>
               <div className="text-sm md:text-lg lg:text-xl short:text-base font-display font-bold text-zinc-100 flex flex-wrap items-center justify-center sm:justify-start gap-1.5 md:gap-2 leading-none">
-                <span className="uppercase tracking-wide">{currentStep.name}</span>
+                <span className="uppercase tracking-wide">{displayStepName(currentStep.name)}</span>
                 <span className="text-volt-400 font-mono text-xs md:text-sm short:text-xs font-bold">
                   {isStepRange
                     ? `@${Math.round(currentStep.powerMin * (ergIntensity / 100))}–${Math.round(currentStep.powerMax * (ergIntensity / 100))}% FTP`
@@ -3781,6 +3897,7 @@ export default function TrainerTab({
                 </span>
                 <button
                   onClick={handleExtend}
+                  title={tr('Produži trenutni blok za 5 min', 'Extend current block by 5 min')}
                   className="bg-zinc-950 text-zinc-300 hover:text-volt-300 hover:border-volt-400/40 border border-zinc-800 text-[9px] font-mono uppercase tracking-wider font-bold px-2 py-0.5 rounded transition-colors flex items-center gap-0.5 shrink-0"
                 >
                   <Plus className="w-2.5 h-2.5" /> 5m
@@ -3789,7 +3906,9 @@ export default function TrainerTab({
             </div>
           </div>
           <div className="text-center md:text-right border-t border-zinc-800/60 md:border-t-0 pt-1 md:pt-0 shrink-0 flex md:flex-col items-center md:items-end justify-between md:justify-end gap-2 md:gap-0">
-            <div className="text-[9px] md:text-[10px] short:text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-[0.18em] md:mb-0.5 short:mb-0">PREOSTALO U BLOKU</div>
+            <div className="text-[9px] md:text-[10px] short:text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-[0.18em] md:mb-0.5 short:mb-0">
+              {tr('PREOSTALO U BLOKU', 'INTERVAL REMAINING')}
+            </div>
             <div className={`text-xl md:text-3xl lg:text-4xl short:text-2xl vshort:text-xl font-display font-bold telemetry-num tracking-tight leading-none ${isPlaying ? 'text-volt-400 drop-shadow-[0_0_12px_rgba(var(--accent-400),0.3)]' : 'text-zinc-500'}`}>
               {formatTime(stepRemaining)}
             </div>
@@ -3808,19 +3927,21 @@ export default function TrainerTab({
 
         <div className="flex justify-between items-center px-3 md:px-4 py-1.5 md:py-2 short:py-1 bg-zinc-950 rounded-b-lg border-x border-b border-zinc-800 shrink-0">
           <div className="text-[10px] md:text-xs short:text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-500 flex items-baseline gap-2">
-            <span>PROTEKLO:</span>
+            <span>{tr('PROTEKLO:', 'ELAPSED:')}</span>
             <span className="text-zinc-100 text-sm md:text-lg lg:text-xl short:text-base font-display font-bold telemetry-num tracking-tight leading-none">{formatTime(elapsedTime)}</span>
           </div>
 
           <div className="hidden sm:flex items-center gap-3 font-mono telemetry-num text-[10px] text-zinc-500">
             <div className="flex items-center gap-2">
-              <span>NAPREDAK</span>
+              <span>{tr('NAPREDAK', 'PROGRESS')}</span>
               <span className="text-zinc-300 font-bold">{Math.min(100, Math.round(progressPercent))}%</span>
             </div>
             {hasActiveRecoverableSession && lastAutosaveTime && (
               <span
                 className="inline-flex items-center gap-1 text-emerald-400/80 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded"
-                title={`Lokalni autosave aktivan (zadnji zapis: ${lastAutosaveTime.toLocaleTimeString('hr-HR')})`}
+                title={tr('Lokalni autosave aktivan (zadnji zapis: {time})', 'Local autosave active (last save: {time})', {
+                  time: lastAutosaveTime.toLocaleTimeString(locale)
+                })}
               >
                 <ShieldCheck className="w-3 h-3" />
                 <span>AUTOSAVE</span>
@@ -3829,7 +3950,7 @@ export default function TrainerTab({
           </div>
 
           <div className="text-[10px] md:text-xs short:text-[10px] font-mono font-bold uppercase tracking-widest text-zinc-400 flex items-baseline gap-2 text-right">
-            <span>PREOSTALO UKUPNO:</span>
+            <span>{tr('PREOSTALO UKUPNO:', 'TOTAL REMAINING:')}</span>
             <span className="text-volt-400 text-sm md:text-lg lg:text-xl short:text-base font-display font-bold telemetry-num tracking-tight leading-none">{formatTime(Math.max(0, totalDuration - elapsedTime))}</span>
           </div>
         </div>

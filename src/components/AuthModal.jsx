@@ -4,6 +4,7 @@ import { Mail, Lock, Loader2, AlertCircle, CheckCircle2, X, Link as LinkIcon } f
 import BrandLogo from './BrandLogo';
 import { startIntervalsOAuth } from '../services/intervalsOAuth';
 import { migrateGuestPrivateWorkoutsToSupabase } from '../services/workoutLibraryStorage';
+import { useI18n } from '../i18n/I18nContext';
 
 const ALLOWED_PROFILE_COLS = [
   'weight', 'ftp', 'maxHr', 'thresholdHr', 'birthYear',
@@ -12,6 +13,7 @@ const ALLOWED_PROFILE_COLS = [
 ];
 
 export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSuccess }) {
+  const { tr } = useI18n();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -54,7 +56,12 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
         if (error) throw error;
 
         if (data?.user?.identities?.length === 0) {
-          setErrorMsg('Korisnik s ovom email adresom već postoji. Pokušajte se prijaviti.');
+          setErrorMsg(
+            tr(
+              'Korisnik s ovom email adresom već postoji. Pokušajte se prijaviti.',
+              'An account with this email already exists. Please sign in.'
+            )
+          );
           setIsLogin(true);
         } else if (data?.session) {
           if (currentUserId === 'guest' && data.user.id) {
@@ -63,11 +70,19 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
           if (onAuthSuccess) onAuthSuccess(data.session);
           onClose();
         } else {
-          setSuccessMsg(`Potvrdni email poslan je na ${email.trim()}. Otvorite poveznicu u primljenom mailu za dovršetak.`);
+          setSuccessMsg(
+            tr(
+              `Potvrdni email poslan je na ${email.trim()}. Otvorite poveznicu u primljenom mailu za dovršetak.`,
+              `Confirmation email sent to ${email.trim()}. Open the link in your inbox to finish setup.`
+            )
+          );
         }
       }
     } catch (error) {
-      setErrorMsg(error.message || 'Došlo je do pogreške prilikom autentifikacije.');
+      setErrorMsg(
+        error.message ||
+          tr('Došlo je do pogreške prilikom autentifikacije.', 'An authentication error occurred.')
+      );
     } finally {
       setLoading(false);
     }
@@ -130,9 +145,13 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
         <div className="flex items-center gap-3.5 mb-5">
           <BrandLogo size={42} />
           <div>
-            <h2 className="font-display font-bold text-xl uppercase tracking-wide text-zinc-100">ErgVibe Oblak</h2>
+            <h2 className="font-display font-bold text-xl uppercase tracking-wide text-zinc-100">
+              {tr('ErgVibe Oblak', 'ErgVibe Cloud')}
+            </h2>
             <p className="text-zinc-400 text-xs mt-0.5">
-              {isLogin ? 'Prijava za sinkronizaciju s oblakom' : 'Kreiraj račun i spremaj vožnje u oblak'}
+              {isLogin
+                ? tr('Prijava za sinkronizaciju s oblakom', 'Sign in to sync your data to the cloud')
+                : tr('Kreiraj račun i spremaj vožnje u oblak', 'Create an account to save rides to the cloud')}
             </p>
           </div>
         </div>
@@ -140,7 +159,10 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
         {currentUserId === 'guest' && (
           <div className="mb-5 p-3 rounded-lg bg-volt-400/10 border border-volt-400/25 text-xs text-zinc-200 leading-relaxed">
             <strong className="text-volt-400 font-mono uppercase mr-1">Auto-Sync:</strong>
-            Tvoj dosadašnji profil i odvoženi treninzi kao Gost automatski će se prenijeti na račun.
+            {tr(
+              'Tvoj dosadašnji profil i odvoženi treninzi kao Gost automatski će se prenijeti na račun.',
+              'Your Guest profile, private workouts, and completed rides will transfer automatically to your account.'
+            )}
           </div>
         )}
 
@@ -159,18 +181,26 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
           ) : (
             <LinkIcon className="w-4 h-4 text-volt-400 group-hover:scale-110 transition-transform" />
           )}
-          <span>{isIntervalsLoading ? 'Preusmjeravanje...' : 'Prijavi se putem Intervals.icu'}</span>
+          <span>
+            {isIntervalsLoading
+              ? tr('Preusmjeravanje...', 'Redirecting...')
+              : tr('Prijavi se putem Intervals.icu', 'Sign in with Intervals.icu')}
+          </span>
         </button>
 
         <div className="flex items-center gap-3 mb-4">
           <div className="h-px bg-zinc-800 flex-1" />
-          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">ili emailom</span>
+          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+            {tr('ili emailom', 'or with email')}
+          </span>
           <div className="h-px bg-zinc-800 flex-1" />
         </div>
 
         <form onSubmit={handleAuth} className="space-y-4">
           <div>
-            <label className="block font-mono text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">Email adresa</label>
+            <label className="block font-mono text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+              {tr('Email adresa', 'Email address')}
+            </label>
             <div className="relative">
               <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
               <input
@@ -178,14 +208,16 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="tvoj@email.com"
+                placeholder={tr('tvoj@email.com', 'your@email.com')}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 pl-10 pr-4 text-zinc-100 font-medium focus:border-volt-400 focus:outline-none transition-colors text-sm placeholder:text-zinc-600"
               />
             </div>
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">Lozinka</label>
+            <label className="block font-mono text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+              {tr('Lozinka', 'Password')}
+            </label>
             <div className="relative">
               <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
               <input
@@ -218,7 +250,13 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
             disabled={loading}
             className="w-full bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold py-2.5 rounded-lg shadow-volt-glow transition-all flex justify-center items-center gap-2 mt-2 text-sm uppercase tracking-wider disabled:opacity-50"
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isLogin ? 'Prijavi se' : 'Registriraj se')}
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : isLogin ? (
+              tr('Prijavi se', 'Sign In')
+            ) : (
+              tr('Registriraj se', 'Sign Up')
+            )}
           </button>
         </form>
 
@@ -228,7 +266,9 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
             onClick={() => { setIsLogin(!isLogin); setErrorMsg(''); setSuccessMsg(''); }}
             className="text-xs font-semibold text-zinc-400 hover:text-volt-400 transition-colors"
           >
-            {isLogin ? 'Nemaš račun? Registriraj se besplatno.' : 'Već imaš račun? Prijavi se ovdje.'}
+            {isLogin
+              ? tr('Nemaš račun? Registriraj se besplatno.', "Don't have an account? Sign up for free.")
+              : tr('Već imaš račun? Prijavi se ovdje.', 'Already have an account? Sign in here.')}
           </button>
         </div>
       </div>

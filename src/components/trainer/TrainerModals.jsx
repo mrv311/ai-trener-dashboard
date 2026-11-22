@@ -1,6 +1,7 @@
 import React from 'react';
 import { Square, Award, CheckCircle2, Download, Route, Gauge, Loader2, AlertCircle, Clock, RefreshCw } from 'lucide-react';
 import WorkoutAIAnalysisPanel from '../ai/WorkoutAIAnalysisPanel';
+import { useI18n } from '../../i18n/I18nContext';
 
 const formatDurationClock = (totalSeconds) => {
   const secs = Math.max(0, Math.round(totalSeconds || 0));
@@ -34,6 +35,8 @@ export default function TrainerModals({
   wellnessData = {},
   onAddWorkoutToCalendar
 }) {
+  const { tr } = useI18n();
+
   return (
     <>
       {/* MODAL: Upozorenje prije prekida */}
@@ -43,11 +46,19 @@ export default function TrainerModals({
             <div className="bg-rose-500/10 border border-rose-500/25 p-3.5 short:p-2.5 rounded-xl mb-4 short:mb-3">
               <Square className="w-8 h-8 text-rose-500 fill-current" />
             </div>
-            <h2 className="text-xl md:text-2xl font-display font-bold text-zinc-100 uppercase tracking-wide mb-2">Prekinuti trening?</h2>
-            <p className="text-zinc-400 mb-6 short:mb-4 text-xs md:text-sm">Želiš li ranije završiti sesiju i spremiti dosadašnju telemetriju?</p>
+            <h2 className="text-xl md:text-2xl font-display font-bold text-zinc-100 uppercase tracking-wide mb-2">
+              {tr('Prekinuti trening?', 'End workout?')}
+            </h2>
+            <p className="text-zinc-400 mb-6 short:mb-4 text-xs md:text-sm">
+              {tr('Želiš li ranije završiti sesiju i spremiti dosadašnju telemetriju?', 'Do you want to end the session early and save your telemetry so far?')}
+            </p>
             <div className="flex flex-col gap-2.5 w-full">
-              <button onClick={confirmStop} className="w-full py-3 short:py-2.5 bg-rose-500 text-white rounded-xl font-bold hover:bg-rose-600 transition-colors">Da, završi i spremi</button>
-              <button onClick={cancelStop} className="w-full py-3 short:py-2.5 bg-zinc-900 text-zinc-300 rounded-xl font-bold hover:bg-zinc-800 transition-colors border border-zinc-800">Ne, nastavi vožnju</button>
+              <button onClick={confirmStop} className="w-full py-3 short:py-2.5 bg-rose-500 text-white rounded-xl font-bold hover:bg-rose-600 transition-colors">
+                {tr('Da, završi i spremi', 'Yes, finish & save')}
+              </button>
+              <button onClick={cancelStop} className="w-full py-3 short:py-2.5 bg-zinc-900 text-zinc-300 rounded-xl font-bold hover:bg-zinc-800 transition-colors border border-zinc-800">
+                {tr('Ne, nastavi vožnju', 'No, keep riding')}
+              </button>
             </div>
           </div>
         </div>
@@ -60,9 +71,11 @@ export default function TrainerModals({
             <div className="bg-volt-400/10 border border-volt-400/30 p-3 md:p-3.5 rounded-xl mb-3 shrink-0">
               <Award className="w-9 h-9 md:w-12 md:h-12 text-volt-400" />
             </div>
-            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-volt-400 shrink-0">SESIJA ZAVRŠENA</span>
+            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-volt-400 shrink-0">
+              {tr('SESIJA ZAVRŠENA', 'SESSION COMPLETE')}
+            </span>
             <h2 className="text-2xl md:text-3xl font-display font-bold text-zinc-100 uppercase tracking-wide mt-0.5 shrink-0">
-              {workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja'}
+              {workoutFromCalendar ? workoutFromCalendar.title : tr('Slobodna Vožnja', 'Free Ride')}
             </h2>
             <div className="h-3 shrink-0" />
 
@@ -70,27 +83,33 @@ export default function TrainerModals({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full mb-2.5 shrink-0">
               <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex flex-col items-center justify-center">
                 <p className="text-[9px] font-mono font-bold uppercase text-volt-400 tracking-widest mb-1 flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> Vrijeme
+                  <Clock className="w-3 h-3" /> {tr('Vrijeme', 'Time')}
                 </p>
                 <p className="text-lg md:text-xl font-display font-bold text-zinc-100 telemetry-num">
                   {formatDurationClock(summaryStats.totalDur)}
                 </p>
               </div>
               <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-mono font-bold uppercase text-zinc-400 tracking-widest mb-1">Avg Snaga</p>
+                <p className="text-[9px] font-mono font-bold uppercase text-zinc-400 tracking-widest mb-1">
+                  {tr('Avg Snaga', 'Avg Power')}
+                </p>
                 <p className="text-lg md:text-xl font-display font-bold text-zinc-100 telemetry-num">
                   {summaryStats.avgPower} <span className="text-xs font-mono text-zinc-500">W</span>
                 </p>
                 {isPmConnected && <p className="text-[8px] font-mono text-violet-400 font-bold mt-0.5">POWERMETER</p>}
               </div>
               <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-mono font-bold uppercase text-rose-400 tracking-widest mb-1">Avg Puls</p>
+                <p className="text-[9px] font-mono font-bold uppercase text-rose-400 tracking-widest mb-1">
+                  {tr('Avg Puls', 'Avg HR')}
+                </p>
                 <p className="text-lg md:text-xl font-display font-bold text-zinc-100 telemetry-num">
                   {summaryStats.avgHr || '-'} <span className="text-xs font-mono text-zinc-500">bpm</span>
                 </p>
               </div>
               <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-mono font-bold uppercase text-sky-400 tracking-widest mb-1">Kadenca</p>
+                <p className="text-[9px] font-mono font-bold uppercase text-sky-400 tracking-widest mb-1">
+                  {tr('Kadenca', 'Cadence')}
+                </p>
                 <p className="text-lg md:text-xl font-display font-bold text-zinc-100 telemetry-num">
                   {summaryStats.avgCadence || '-'} <span className="text-xs font-mono text-zinc-500">rpm</span>
                 </p>
@@ -102,14 +121,18 @@ export default function TrainerModals({
               <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex items-center justify-between px-4">
                 <div className="flex items-center gap-2 text-left">
                   <Route className="w-4 h-4 text-volt-400 shrink-0" />
-                  <span className="text-[10px] font-mono font-bold uppercase text-zinc-400 tracking-wider">Udaljenost</span>
+                  <span className="text-[10px] font-mono font-bold uppercase text-zinc-400 tracking-wider">
+                    {tr('Udaljenost', 'Distance')}
+                  </span>
                 </div>
                 <p className="text-lg font-display font-bold text-zinc-100 telemetry-num">{summaryStats.distanceKm || '0.0'} <span className="text-[11px] font-mono text-zinc-500">km</span></p>
               </div>
               <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 flex items-center justify-between px-4">
                 <div className="flex items-center gap-2 text-left">
                   <Gauge className="w-4 h-4 text-sky-400 shrink-0" />
-                  <span className="text-[10px] font-mono font-bold uppercase text-zinc-400 tracking-wider">Avg Brzina</span>
+                  <span className="text-[10px] font-mono font-bold uppercase text-zinc-400 tracking-wider">
+                    {tr('Avg Brzina', 'Avg Speed')}
+                  </span>
                 </div>
                 <p className="text-lg font-display font-bold text-zinc-100 telemetry-num">{summaryStats.avgSpeedKmh || '0.0'} <span className="text-[11px] font-mono text-zinc-500">km/h</span></p>
               </div>
@@ -130,7 +153,7 @@ export default function TrainerModals({
                 <p className="text-sm md:text-base font-bold text-volt-400">{summaryStats.tss || 0}</p>
               </div>
               <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex flex-col items-center justify-center">
-                <p className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest mb-0.5">Rad</p>
+                <p className="text-[9px] font-bold uppercase text-zinc-500 tracking-widest mb-0.5">{tr('Rad', 'Work')}</p>
                 <p className="text-sm md:text-base font-bold text-zinc-100">{summaryStats.workKj || 0} <span className="text-[10px] text-zinc-500">kJ</span></p>
               </div>
               <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex flex-col items-center justify-center">
@@ -155,7 +178,7 @@ export default function TrainerModals({
                 compact
                 activity={{
                   id: `trainer_done_${new Date().toISOString().slice(0, 10)}_${workoutFromCalendar?.title || 'free'}`,
-                  title: workoutFromCalendar ? workoutFromCalendar.title : 'Slobodna Vožnja',
+                  title: workoutFromCalendar ? workoutFromCalendar.title : tr('Slobodna Vožnja', 'Free Ride'),
                   date: new Date().toISOString().slice(0, 10),
                   category: workoutFromCalendar?.category || 'Trenažer'
                 }}
@@ -192,10 +215,10 @@ export default function TrainerModals({
                   (saveStatus === 'saved' || saveStatus === 'saved_local') ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
                   'bg-red-500/10 border-red-500/20 text-red-400'
                 }`}>
-                  {saveStatus === 'saving' && <><Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" /> Spremanje treninga u ErgVibe...</>}
-                  {saveStatus === 'saved' && <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Spremljeno u ErgVibe kalendar</>}
-                  {saveStatus === 'saved_local' && <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Spremljeno lokalno u ErgVibe</>}
-                  {saveStatus === 'error' && <><AlertCircle className="w-3.5 h-3.5 shrink-0" /> Greška pri spremanju — preuzmi .FIT datoteku ispod</>}
+                  {saveStatus === 'saving' && <><Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" /> {tr('Spremanje treninga u ErgVibe...', 'Saving workout to ErgVibe...')}</>}
+                  {saveStatus === 'saved' && <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> {tr('Spremljeno u ErgVibe kalendar', 'Saved to ErgVibe calendar')}</>}
+                  {saveStatus === 'saved_local' && <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> {tr('Spremljeno lokalno u ErgVibe', 'Saved locally in ErgVibe')}</>}
+                  {saveStatus === 'error' && <><AlertCircle className="w-3.5 h-3.5 shrink-0" /> {tr('Greška pri spremanju — preuzmi .FIT datoteku ispod', 'Save failed — download the .FIT file below')}</>}
                 </div>
               )}
 
@@ -206,13 +229,13 @@ export default function TrainerModals({
                   'bg-red-500/10 border-red-500/20 text-red-400'
                 }`}>
                   <div className="flex items-center gap-2 text-left min-w-0">
-                    {intervalsUploadStatus === 'uploading' && <><Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" /> <span>Slanje .FIT datoteke na Intervals.icu...</span></>}
-                    {intervalsUploadStatus === 'uploaded' && <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> <span>Poslano na Intervals.icu</span></>}
+                    {intervalsUploadStatus === 'uploading' && <><Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" /> <span>{tr('Slanje .FIT datoteke na Intervals.icu...', 'Uploading .FIT file to Intervals.icu...')}</span></>}
+                    {intervalsUploadStatus === 'uploaded' && <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> <span>{tr('Poslano na Intervals.icu', 'Uploaded to Intervals.icu')}</span></>}
                     {intervalsUploadStatus === 'error' && (
                       <>
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate" title={intervalsUploadError || ''}>
-                          Intervals.icu prijenos nije uspio
+                          {tr('Intervals.icu prijenos nije uspio', 'Intervals.icu upload failed')}
                         </span>
                       </>
                     )}
@@ -222,7 +245,7 @@ export default function TrainerModals({
                       onClick={onRetryIntervalsUpload}
                       className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-[11px] font-black shrink-0 transition-colors"
                     >
-                      <RefreshCw className="w-3 h-3" /> Ponovi
+                      <RefreshCw className="w-3 h-3" /> {tr('Ponovi', 'Retry')}
                     </button>
                   )}
                 </div>
@@ -237,7 +260,7 @@ export default function TrainerModals({
               >
                 <span className="flex items-center gap-2 text-sm md:text-base font-display uppercase tracking-wide font-bold">
                   <Download className="w-4 h-4 md:w-5 md:h-5" />
-                  Preuzmi .FIT datoteku
+                  {tr('Preuzmi .FIT datoteku', 'Download .FIT File')}
                 </span>
                 <span className="text-[10px] font-mono font-bold text-zinc-900/80 mt-0.5">
                   GARMIN CONNECT · STRAVA · WAHOO
@@ -249,12 +272,12 @@ export default function TrainerModals({
                 className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold transition-all text-xs md:text-sm bg-zinc-950 text-zinc-200 hover:bg-zinc-900 border border-zinc-800"
               >
                 <Download className="w-4 h-4 text-zinc-400" />
-                Preuzmi .TCX
+                {tr('Preuzmi .TCX', 'Download .TCX')}
               </button>
             </div>
 
             <button onClick={handleReset} className="mt-5 text-zinc-400 font-mono font-bold uppercase tracking-wider hover:text-volt-400 text-xs transition-colors">
-              Zatvori i vrati se
+              {tr('Zatvori i vrati se', 'Close & Return')}
             </button>
           </div>
         </div>

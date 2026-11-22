@@ -8,6 +8,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveCo
 import { parseFitFile, validateFitFile, calculateTSS } from '../utils/fitParser';
 import WorkoutAIAnalysisPanel from './ai/WorkoutAIAnalysisPanel';
 import { getWorkoutSportKind, getSportLabel } from '../utils/sportTypes';
+import { useI18n } from '../i18n/I18nContext';
 
 const renderModalSportIcon = (sportKind, className) => {
   switch (sportKind) {
@@ -98,6 +99,7 @@ export default function ActivityDetailModal({
   onAddWorkoutToCalendar,
   onStartWorkoutInTrainer
 }) {
+  const { lang, tr, tCat } = useI18n();
   const [isDownloading, setIsDownloading] = useState(false);
   const [streamsData, setStreamsData] = useState([]);
   const [isLoadingStreams, setIsLoadingStreams] = useState(false);
@@ -130,7 +132,7 @@ export default function ActivityDetailModal({
 
   // Sync displayTitle s activity.title kad se modal otvori
   useEffect(() => {
-    if (activity) setDisplayTitle(activity.title || 'Trening');
+    if (activity) setDisplayTitle(activity.title || tr('Trening', 'Workout'));
   }, [activity?.id]); // Samo kad se aktivnost promijeni, NE na svaki re-render
 
   useEffect(() => {
@@ -425,7 +427,7 @@ export default function ActivityDetailModal({
           ? supabaseMetrics.stream_data
           : parseStreamData(supabaseMetrics.stream_data);
         const startIso = supabaseMetrics.started_at || activity.started_at || (activity.date ? `${activity.date}T12:00:00` : new Date().toISOString());
-        exportFITFromStream(streamForExport, displayTitle || activity.title || 'Trening', startIso);
+        exportFITFromStream(streamForExport, displayTitle || activity.title || tr('Trening', 'Workout'), startIso);
         return;
       }
 
@@ -436,7 +438,7 @@ export default function ActivityDetailModal({
         return;
       }
 
-      throw new Error('Za ovu aktivnost nisu pronađeni detaljni stream podaci za .FIT izvoz.');
+      throw new Error(tr('Za ovu aktivnost nisu pronađeni detaljni stream podaci za .FIT izvoz.', 'No detailed stream data found for .FIT export for this activity.'));
     } catch (error) {
       alert(error.message);
     } finally {
@@ -466,7 +468,7 @@ export default function ActivityDetailModal({
 
       const activityData = {
         started_at: fitData.started_at,
-        title: activity.title || displayTitle || 'Garmin Trening',
+        title: activity.title || displayTitle || tr('Garmin Trening', 'Garmin Workout'),
         workout_source: 'garmin',
         duration_seconds: fitData.duration_seconds,
         avg_power: fitData.avg_power,
@@ -514,7 +516,7 @@ export default function ActivityDetailModal({
       onClose();
     } catch (error) {
       console.error('[ActivityDetailModal] Greška pri uploadu:', error);
-      alert('Greška pri importu FIT datoteke: ' + error.message);
+      alert(tr('Greška pri importu FIT datoteke: ', 'Error importing FIT file: ') + error.message);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -524,7 +526,7 @@ export default function ActivityDetailModal({
   };
 
   const handleDeleteActivity = async () => {
-    if (!window.confirm('Sigurno želiš obrisati ovaj trening? Ova radnja se ne može poništiti.')) {
+    if (!window.confirm(tr('Sigurno želiš obrisati ovaj trening? Ova radnja se ne može poništiti.', 'Are you sure you want to delete this workout? This action cannot be undone.'))) {
       return;
     }
 
@@ -553,11 +555,11 @@ export default function ActivityDetailModal({
         window.dispatchEvent(new CustomEvent('activity-title-updated', { detail: { activityId: 'refresh', newTitle: '' } }));
         onClose();
       } else {
-        alert('Samo lokalno spremljeni treninzi se mogu brisati iz ove aplikacije.');
+        alert(tr('Samo lokalno spremljeni treninzi se mogu brisati iz ove aplikacije.', 'Only locally saved workouts can be deleted from this app.'));
       }
     } catch (error) {
       console.error('[ActivityDetailModal] Greška pri brisanju:', error);
-      alert('Greška pri brisanju: ' + error.message);
+      alert(tr('Greška pri brisanju: ', 'Error deleting: ') + error.message);
     } finally {
       setIsDeleting(false);
     }
@@ -636,6 +638,7 @@ export default function ActivityDetailModal({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={handleSaveTitle}
                   disabled={isSavingTitle}
+                  title={tr('Spremi', 'Save')}
                   className="p-1.5 text-volt-400 hover:text-volt-300 bg-volt-400/10 hover:bg-volt-400/20 rounded-lg transition-colors border border-volt-400/25 shrink-0"
                 >
                   {isSavingTitle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
@@ -643,6 +646,7 @@ export default function ActivityDetailModal({
                 <button
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={handleCancelEdit}
+                  title={tr('Odustani', 'Cancel')}
                   className="p-1.5 text-zinc-500 hover:text-zinc-300 bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors border border-zinc-800 shrink-0"
                 >
                   <X className="w-4 h-4" />
@@ -652,10 +656,10 @@ export default function ActivityDetailModal({
               <h2
                 className="text-xl font-display font-bold uppercase tracking-wide text-zinc-100 leading-tight flex items-center gap-2 group/title cursor-pointer hover:text-volt-400 transition-colors"
                 onClick={handleStartEditTitle}
-                title="Klikni za promjenu naziva"
+                title={tr('Klikni za promjenu naziva', 'Click to rename')}
               >
                 {renderModalSportIcon(sportKind, `w-5 h-5 shrink-0 ${isStrength ? 'text-violet-400' : 'text-volt-400'}`)}
-                <span className="truncate">{displayTitle || "Detalji aktivnosti"}</span>
+                <span className="truncate">{displayTitle || tr('Detalji aktivnosti', 'Activity Details')}</span>
                 <Pencil className="w-3.5 h-3.5 text-zinc-600 group-hover/title:text-volt-400 transition-colors shrink-0" />
               </h2>
             )}
@@ -665,12 +669,12 @@ export default function ActivityDetailModal({
                 <span className={`text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
                   isStrength ? 'bg-violet-500/15 text-violet-300 border-violet-500/30' : 'bg-sky-500/15 text-sky-300 border-sky-500/30'
                 }`}>
-                  {getSportLabel(sportKind)}
+                  {getSportLabel(sportKind, lang)}
                 </span>
               )}
               {dataSource && (
                 <span className={`text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${dataSource === 'supabase' ? 'bg-violet-500/10 text-violet-300 border-violet-500/25' : 'bg-sky-500/10 text-sky-300 border-sky-500/25'}`}>
-                  {dataSource === 'supabase' ? 'LOKALNA TELEMETRIJA' : 'INTERVALS.ICU'}
+                  {dataSource === 'supabase' ? tr('LOKALNA TELEMETRIJA', 'LOCAL TELEMETRY') : 'INTERVALS.ICU'}
                 </span>
               )}
             </div>
@@ -680,13 +684,15 @@ export default function ActivityDetailModal({
               type="button"
               onClick={() => aiSectionRef.current?.scrollIntoView({ behavior: 'smooth' })}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-mono font-bold uppercase tracking-wider bg-volt-400/12 hover:bg-volt-400/25 text-volt-400 border border-volt-400/35 transition-all"
-              title="Skoči na AI analizu treninga"
+              title={tr('Skoči na AI analizu treninga', 'Jump to AI workout analysis')}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">AI Analiza</span>
+              <span className="hidden sm:inline">{tr('AI Analiza', 'AI Analysis')}</span>
             </button>
             <button
               onClick={onClose}
+              title={tr('Zatvori', 'Close')}
+              aria-label={tr('Zatvori', 'Close')}
               className="p-2 text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors border border-zinc-800"
             >
               <X className="w-5 h-5" />
@@ -704,10 +710,17 @@ export default function ActivityDetailModal({
                   <Upload className="w-5 h-5 text-amber-400" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-amber-300">Nema podataka o snazi</p>
+                  <p className="text-sm font-bold text-amber-300">{tr('Nema podataka o snazi', 'No power data available')}</p>
                   <p className="text-xs text-amber-500/80 mt-0.5">
-                    Ova aktivnost je sinkronizirana s Intervals.icu ali nema power stream podatke.
-                    Uploadaj originalnu <strong>.FIT datoteku</strong> s Garmina da dobiješ sve metrike.
+                    {tr(
+                      'Ova aktivnost je sinkronizirana s Intervals.icu ali nema power stream podatke. Uploadaj originalnu ',
+                      'This activity is synced from Intervals.icu but has no power stream data. Upload the original '
+                    )}
+                    <strong>{tr('.FIT datoteku', '.FIT file')}</strong>
+                    {tr(
+                      ' s Garmina da dobiješ sve metrike.',
+                      ' from your head unit to get full telemetry.'
+                    )}
                   </p>
                 </div>
               </div>
@@ -721,7 +734,7 @@ export default function ActivityDetailModal({
                 ) : (
                   <Upload className="w-4 h-4" />
                 )}
-                Uploadaj .FIT
+                {tr('Uploadaj .FIT', 'Upload .FIT')}
               </button>
             </div>
           )}
@@ -731,7 +744,7 @@ export default function ActivityDetailModal({
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center">
                 <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1 flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-violet-400" /> Trajanje
+                  <Clock className="w-3 h-3 text-violet-400" /> {tr('Trajanje', 'Duration')}
                 </span>
                 <span className="text-3xl font-display font-bold telemetry-num text-zinc-100">
                   {actualDur ? formatDur(actualDur) : '-'}
@@ -780,7 +793,7 @@ export default function ActivityDetailModal({
             <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-2">
               <h3 className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-[0.18em] flex items-center gap-2">
                 <FileText className="w-4 h-4 text-violet-400" />
-                {isStrength ? 'Raspored vježbi / Podsjetnik' : 'Bilješke treninga'}
+                {isStrength ? tr('Raspored vježbi / Podsjetnik', 'Exercise Plan / Notes') : tr('Bilješke treninga', 'Workout Notes')}
               </h3>
               <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">
                 {activity.descriptionText}
@@ -791,10 +804,10 @@ export default function ActivityDetailModal({
           {/* Performance Chart */}
           {!hideCyclingTelemetry && (
             <div className="bg-zinc-950 bg-telemetry-grid border border-zinc-800 rounded-xl p-5">
-              <h3 className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-[0.18em] mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-volt-400" /> Telemetrija Snage</h3>
+              <h3 className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-[0.18em] mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-volt-400" /> {tr('Telemetrija Snage', 'Power Telemetry')}</h3>
               <div className="h-64 w-full relative">
                 {isLoadingStreams ? (
-                  <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm font-medium">Dohvaćanje podataka...</div>
+                  <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm font-medium">{tr('Dohvaćanje podataka...', 'Loading data...')}</div>
                 ) : streamsData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={streamsData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
@@ -842,8 +855,8 @@ export default function ActivityDetailModal({
                         itemStyle={{ color: '#e4e4e7' }}
                         labelFormatter={formatSeconds}
                         formatter={(value, name) => {
-                          if (name === 'watts') return [<span className="font-bold text-amber-500">{value} W</span>, 'Snaga'];
-                          if (name === 'hr') return [<span className="font-bold text-rose-500">{value} bpm</span>, 'Puls'];
+                          if (name === 'watts') return [<span className="font-bold text-amber-500">{value} W</span>, tr('Snaga', 'Power')];
+                          if (name === 'hr') return [<span className="font-bold text-rose-500">{value} bpm</span>, tr('Puls', 'Heart Rate')];
                           return [value, name];
                         }}
                       />
@@ -855,16 +868,16 @@ export default function ActivityDetailModal({
                     {needsFitUpload ? (
                       <>
                         <Upload className="w-8 h-8 text-zinc-600" />
-                        <p className="text-zinc-500 font-medium text-sm">Uploadaj .FIT datoteku za prikaz grafa</p>
+                        <p className="text-zinc-500 font-medium text-sm">{tr('Uploadaj .FIT datoteku za prikaz grafa', 'Upload a .FIT file to display the chart')}</p>
                         <button
                           onClick={() => fileInputRef.current?.click()}
                           className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-bold border border-amber-500/20 transition-colors"
                         >
-                          <Upload className="w-3.5 h-3.5" /> Odaberi .FIT datoteku
+                          <Upload className="w-3.5 h-3.5" /> {tr('Odaberi .FIT datoteku', 'Choose .FIT file')}
                         </button>
                       </>
                     ) : (
-                      <p className="text-zinc-600 font-medium text-sm">Graf nije dostupan (nema podataka)</p>
+                      <p className="text-zinc-600 font-medium text-sm">{tr('Graf nije dostupan (nema podataka)', 'Chart unavailable (no data)')}</p>
                     )}
                   </div>
                 )}
@@ -876,20 +889,20 @@ export default function ActivityDetailModal({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             <div className={`flex flex-col gap-3 ${hideCyclingTelemetry ? 'md:col-span-2' : ''}`}>
-              <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">Plan vs Realizacija</h3>
+              <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">{tr('Plan vs Realizacija', 'Planned vs Actual')}</h3>
               <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
                 <table className="w-full text-left text-sm whitespace-nowrap font-mono telemetry-num">
                   <thead className="bg-zinc-900 border-b border-zinc-800 text-zinc-500 text-[10px] uppercase tracking-wider">
                     <tr>
-                      <th className="px-4 py-2.5 font-bold">Metrika</th>
-                      <th className="px-4 py-2.5 font-bold">Planirano</th>
-                      <th className="px-4 py-2.5 font-bold">Ostvareno</th>
-                      <th className="px-4 py-2.5 font-bold">Status</th>
+                      <th className="px-4 py-2.5 font-bold">{tr('Metrika', 'Metric')}</th>
+                      <th className="px-4 py-2.5 font-bold">{tr('Planirano', 'Planned')}</th>
+                      <th className="px-4 py-2.5 font-bold">{tr('Ostvareno', 'Actual')}</th>
+                      <th className="px-4 py-2.5 font-bold">{tr('Status', 'Status')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/70 text-xs">
                     <tr className="hover:bg-zinc-900/50 transition-colors">
-                      <td className="px-4 py-3 font-sans font-bold text-zinc-300 flex items-center gap-2"><Clock className="w-3.5 h-3.5 text-zinc-500" /> Trajanje</td>
+                      <td className="px-4 py-3 font-sans font-bold text-zinc-300 flex items-center gap-2"><Clock className="w-3.5 h-3.5 text-zinc-500" /> {tr('Trajanje', 'Duration')}</td>
                       <td className="px-4 py-3 text-zinc-400">{plannedDur ? formatDur(plannedDur) : '-'}</td>
                       <td className="px-4 py-3 font-bold text-zinc-100">{actualDur ? formatDur(actualDur) : '-'}</td>
                       <td className="px-4 py-3">
@@ -916,16 +929,16 @@ export default function ActivityDetailModal({
             {!hideCyclingTelemetry && (
               <>
                 <div className="flex flex-col gap-3">
-                  <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">Kategorizacija</h3>
+                  <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">{tr('Kategorizacija', 'Categorization')}</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
-                      <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Zona fokusa</span>
+                      <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">{tr('Zona fokusa', 'Focus Zone')}</span>
                       <div className="flex items-baseline gap-2">
-                        <span className="text-lg font-display font-bold uppercase text-zinc-100">{activity.category || 'N/A'}</span>
+                        <span className="text-lg font-display font-bold uppercase text-zinc-100">{activity.category ? tCat(activity.category) : 'N/A'}</span>
                       </div>
                     </div>
                     <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
-                      <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Težina (LVL)</span>
+                      <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">{tr('Težina (LVL)', 'Difficulty (LVL)')}</span>
                       <div className="flex items-baseline gap-1.5 font-mono telemetry-num">
                         <span className="text-2xl font-display font-bold text-volt-400">{activity.difficulty_score ? activity.difficulty_score.toFixed(1) : '-'}</span>
                         <span className="text-xs text-zinc-500">/ 10</span>
@@ -935,7 +948,7 @@ export default function ActivityDetailModal({
                 </div>
 
                 <div className="flex flex-col gap-3 md:col-span-2">
-                  <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">Napredne Metrike</h3>
+                  <h3 className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-[0.18em] border-b border-zinc-800 pb-2">{tr('Napredne Metrike', 'Advanced Metrics')}</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
                       <span className="text-zinc-500 text-[10px] font-mono font-bold uppercase tracking-widest mb-1">Variability Index (VI)</span>
@@ -944,7 +957,11 @@ export default function ActivityDetailModal({
                         <span className="text-[11px] font-mono text-zinc-500">NP / Avg Pwr</span>
                       </div>
                       <div className="text-[10px] text-zinc-500 mt-1">
-                        {vi > 1.1 ? "Neravnomjeran napor (intervali, MTB)" : vi > 1.0 ? "Umjereno ravnomjerno" : "Vrlo glatko (ERG / TT)"}
+                        {vi > 1.1
+                          ? tr('Neravnomjeran napor (intervali, MTB)', 'Variable effort (intervals, MTB)')
+                          : vi > 1.0
+                          ? tr('Umjereno ravnomjerno', 'Moderately steady')
+                          : tr('Vrlo glatko (ERG / TT)', 'Very smooth (ERG / TT)')}
                       </div>
                     </div>
                     <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
@@ -954,7 +971,7 @@ export default function ActivityDetailModal({
                         <span className="text-[11px] font-mono text-zinc-500">NP / Avg HR</span>
                       </div>
                       <div className="text-[10px] text-zinc-500 mt-1">
-                        Pokazatelj aerobne efikasnosti pogona
+                        {tr('Pokazatelj aerobne efikasnosti pogona', 'Indicator of aerobic efficiency')}
                       </div>
                     </div>
                     <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
@@ -972,9 +989,15 @@ export default function ActivityDetailModal({
                       <div className="text-[10px] text-zinc-500 mt-1">
                         {decouplingInfo?.decoupling != null
                           ? decouplingInfo.decoupling <= 5
-                            ? `Stabilna baza (${decouplingInfo.efFirst} → ${decouplingInfo.efSecond})`
-                            : `Kardijalni drift / intervali (${decouplingInfo.efFirst} → ${decouplingInfo.efSecond})`
-                          : 'Zahtijeva snagu i puls (>10 min)'}
+                            ? tr('Stabilna baza ({first} → {second})', 'Stable aerobic base ({first} → {second})', {
+                                first: decouplingInfo.efFirst,
+                                second: decouplingInfo.efSecond
+                              })
+                            : tr('Kardijalni drift / intervali ({first} → {second})', 'Cardiac drift / intervals ({first} → {second})', {
+                                first: decouplingInfo.efFirst,
+                                second: decouplingInfo.efSecond
+                              })
+                          : tr('Zahtijeva snagu i puls (>10 min)', 'Requires power & HR (>10 min)')}
                       </div>
                     </div>
                   </div>
@@ -1037,7 +1060,7 @@ export default function ActivityDetailModal({
                 ) : (
                   <Trash2 className="w-3.5 h-3.5" />
                 )}
-                Obriši
+                {tr('Obriši', 'Delete')}
               </button>
             )}
 
@@ -1052,7 +1075,7 @@ export default function ActivityDetailModal({
               ) : (
                 <Upload className="w-3.5 h-3.5 text-volt-400" />
               )}
-              {activity.isSupabase ? 'Zamijeni .FIT' : 'Importaj .FIT'}
+              {activity.isSupabase ? tr('Zamijeni .FIT', 'Replace .FIT') : tr('Importaj .FIT', 'Import .FIT')}
             </button>
             <input
               ref={fileInputRef}
@@ -1069,7 +1092,7 @@ export default function ActivityDetailModal({
               onClick={onClose}
               className="px-4 py-2 rounded-lg font-mono font-bold uppercase tracking-wider text-xs text-zinc-400 bg-zinc-900 hover:bg-zinc-800 hover:text-zinc-100 transition-all border border-zinc-800"
             >
-              Zatvori
+              {tr('Zatvori', 'Close')}
             </button>
 
             <button
@@ -1082,7 +1105,7 @@ export default function ActivityDetailModal({
               ) : (
                 <Download className="w-3.5 h-3.5" />
               )}
-              Preuzmi .FIT
+              {tr('Preuzmi .FIT', 'Download .FIT')}
             </button>
           </div>
         </div>

@@ -4,6 +4,7 @@ import {
   Bookmark, Plus, Trash2, X, Lock, ToggleLeft, ToggleRight, Sparkles
 } from 'lucide-react';
 import { COACH_NOTE_CATEGORIES } from '../../services/aiChatStorage';
+import { useI18n } from '../../i18n/I18nContext';
 
 export default function CoachNotesDrawer({
   isOpen,
@@ -15,6 +16,7 @@ export default function CoachNotesDrawer({
   onToggleNote,
   onDeleteNote
 }) {
+  const { locale, tr } = useI18n();
   const [noteText, setNoteText] = useState('');
   const [category, setCategory] = useState(COACH_NOTE_CATEGORIES[0]);
   const [error, setError] = useState(null);
@@ -29,13 +31,31 @@ export default function CoachNotesDrawer({
 
   if (!isOpen) return null;
 
+  const translateNoteCategory = (cat) => {
+    switch (cat) {
+      case 'Fiziologija & Zone':
+        return tr('Fiziologija & Zone', 'Physiology & Zones');
+      case 'Zdravlje & Ozljede':
+        return tr('Zdravlje & Ozljede', 'Health & Injuries');
+      case 'Ciljevi & Raspored':
+        return tr('Ciljevi & Raspored', 'Goals & Schedule');
+      case 'Općenito':
+        return tr('Općenito', 'General');
+      default:
+        return cat || tr('Općenito', 'General');
+    }
+  };
+
   const activeCount = notes.filter((n) => n.enabled !== false).length;
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const cleaned = noteText.trim();
     if (!cleaned) {
-      setError('Upiši kratku bilješku (npr. laktatni pragovi, ozljeda, ograničenje vremena).');
+      setError(tr(
+        'Upiši kratku bilješku (npr. laktatni pragovi, ozljeda, ograničenje vremena).',
+        'Enter a short note (e.g., lactate thresholds, injury, schedule constraint).'
+      ));
       return;
     }
     try {
@@ -43,7 +63,7 @@ export default function CoachNotesDrawer({
       setNoteText('');
       setError(null);
     } catch (err) {
-      setError(err.message || 'Greška pri spremanju bilješke.');
+      setError(err.message || tr('Greška pri spremanju bilješke.', 'Failed to save note.'));
     }
   };
 
@@ -65,14 +85,17 @@ export default function CoachNotesDrawer({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-display font-bold text-lg md:text-xl uppercase tracking-wide text-zinc-100">
-                  Bilješke Trenera
+                  {tr('Bilješke Trenera', 'Coach Notes')}
                 </h3>
                 <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-volt-400/15 text-volt-300 border border-volt-400/30">
-                  {activeCount} AKTIVNO
+                  {tr('{count} AKTIVNO', '{count} ACTIVE', { count: activeCount })}
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Trajna memorija koju AI Trener automatski zna u svakom novom razgovoru, analizi i planu.
+                {tr(
+                  'Trajna memorija koju AI Trener automatski zna u svakom novom razgovoru, analizi i planu.',
+                  'Persistent memory that AI Coach automatically remembers across every chat, analysis, and plan.'
+                )}
               </p>
             </div>
           </div>
@@ -81,7 +104,7 @@ export default function CoachNotesDrawer({
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 border border-zinc-800 transition-colors shrink-0"
-            title="Zatvori"
+            title={tr('Zatvori', 'Close')}
           >
             <X className="w-4 h-4" />
           </button>
@@ -91,7 +114,9 @@ export default function CoachNotesDrawer({
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/8 border border-emerald-500/25 text-[11px] text-emerald-300 shrink-0">
           <Lock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
           <span>
-            Bilješke se čuvaju <strong>100% lokalno na ovom uređaju</strong> (ne šalju se u Supabase bazu).
+            {tr('Bilješke se čuvaju ', 'Notes are stored ')}
+            <strong>{tr('100% lokalno na ovom uređaju', '100% locally on this device')}</strong>
+            {tr(' (ne šalju se u Supabase bazu).', ' (never uploaded to the Supabase database).')}
           </span>
         </div>
 
@@ -99,7 +124,7 @@ export default function CoachNotesDrawer({
         <form onSubmit={handleSubmit} className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 flex flex-col gap-2.5 shrink-0">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label className="font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-              Nova trajna bilješka
+              {tr('Nova trajna bilješka', 'New Persistent Note')}
             </label>
             <select
               value={category}
@@ -108,7 +133,7 @@ export default function CoachNotesDrawer({
             >
               {COACH_NOTE_CATEGORIES.map((cat) => (
                 <option key={cat} value={cat}>
-                  {cat}
+                  {translateNoteCategory(cat)}
                 </option>
               ))}
             </select>
@@ -122,7 +147,10 @@ export default function CoachNotesDrawer({
               if (error) setError(null);
             }}
             maxLength={600}
-            placeholder="Npr. Laktatni test 11/2026: LT1 195 W / 142 bpm, LT2 272 W / 168 bpm. Osjetljivo lijevo koljeno ispod 75 rpm..."
+            placeholder={tr(
+              'Npr. Laktatni test 11/2026: LT1 195 W / 142 bpm, LT2 272 W / 168 bpm. Osjetljivo lijevo koljeno ispod 75 rpm...',
+              'e.g., Lactate test 11/2026: LT1 195 W / 142 bpm, LT2 272 W / 168 bpm. Sensitive left knee below 75 rpm...'
+            )}
             className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs md:text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-volt-400 outline-none resize-none"
           />
 
@@ -132,7 +160,7 @@ export default function CoachNotesDrawer({
 
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-[10px] text-zinc-500">
-              {noteText.length}/600 znakova
+              {tr('{len}/600 znakova', '{len}/600 chars', { len: noteText.length })}
             </span>
             <button
               type="submit"
@@ -140,7 +168,7 @@ export default function CoachNotesDrawer({
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-40 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs transition-all"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Spremi bilješku</span>
+              <span>{tr('Spremi bilješku', 'Save Note')}</span>
             </button>
           </div>
         </form>
@@ -150,9 +178,13 @@ export default function CoachNotesDrawer({
           {notes.length === 0 ? (
             <div className="text-center py-8 px-4 bg-zinc-950/60 border border-dashed border-zinc-800 rounded-xl">
               <Sparkles className="w-6 h-6 text-zinc-600 mx-auto mb-2" />
-              <p className="text-xs font-semibold text-zinc-400">Još nemaš spremljenih bilješki trenera.</p>
+              <p className="text-xs font-semibold text-zinc-400">
+                {tr('Još nemaš spremljenih bilješki trenera.', 'No coach notes saved yet.')}
+              </p>
               <p className="text-[11px] text-zinc-500 mt-1 max-w-sm mx-auto">
-                Dodaj ključne nalaze (LT1/LT2, krvna slika, ozljede) ili klikni <strong>&quot;Zapamti u bilješke&quot;</strong> ispod bilo kojeg AI odgovora.
+                {tr('Dodaj ključne nalaze (LT1/LT2, krvna slika, ozljede) ili klikni ', 'Add key findings (LT1/LT2, blood work, injuries) or click ')}
+                <strong>&quot;{tr('Zapamti u bilješke', 'Save to Notes')}&quot;</strong>
+                {tr(' ispod bilo kojeg AI odgovora.', ' beneath any AI response.')}
               </p>
             </div>
           ) : (
@@ -170,11 +202,11 @@ export default function CoachNotesDrawer({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-volt-300">
-                        {note.category || 'Općenito'}
+                        {translateNoteCategory(note.category || 'Općenito')}
                       </span>
                       {note.createdAt && (
                         <span className="font-mono text-[10px] text-zinc-500">
-                          {new Date(note.createdAt).toLocaleDateString('hr-HR')}
+                          {new Date(note.createdAt).toLocaleDateString(locale)}
                         </span>
                       )}
                     </div>
@@ -192,7 +224,11 @@ export default function CoachNotesDrawer({
                           ? 'text-volt-400 hover:bg-volt-400/10'
                           : 'text-zinc-600 hover:text-zinc-300 hover:bg-zinc-900'
                       }`}
-                      title={enabled ? 'Aktivno u AI kontekstu (klikni za pauzu)' : 'Pauzirano (klikni za aktivaciju)'}
+                      title={
+                        enabled
+                          ? tr('Aktivno u AI kontekstu (klikni za pauzu)', 'Active in AI context (click to pause)')
+                          : tr('Pauzirano (klikni za aktivaciju)', 'Paused (click to enable)')
+                      }
                     >
                       {enabled ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
                     </button>
@@ -200,7 +236,7 @@ export default function CoachNotesDrawer({
                       type="button"
                       onClick={() => onDeleteNote(note.id)}
                       className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                      title="Obriši bilješku"
+                      title={tr('Obriši bilješku', 'Delete note')}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

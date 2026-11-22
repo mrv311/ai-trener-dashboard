@@ -21,9 +21,31 @@ import {
   normalizeIntervalsWorkoutText
 } from '../utils/workoutParser';
 import { isCyclingType, isStrengthType, isNonCyclingEvent } from '../utils/sportTypes';
+import { getCurrentLanguage, tr } from '../i18n/i18nCore.js';
 
 const STORAGE_KEY_CUSTOM_API_KEY = 'ergvibe_custom_gemini_key';
 const STORAGE_KEY_ANALYSES_CACHE = 'ergvibe_ai_workout_analyses_v1';
+
+const EN_WEEKDAY_NAMES = {
+  mon: 'Monday',
+  tue: 'Tuesday',
+  wed: 'Wednesday',
+  thu: 'Thursday',
+  fri: 'Friday',
+  sat: 'Saturday',
+  sun: 'Sunday'
+};
+
+function buildLanguageInstruction(isEn) {
+  if (isEn) {
+    return `### MANDATORY OUTPUT LANGUAGE RULE (ENGLISH):
+- Even if some athlete context, historical data labels, or reference knowledge base sections above are written in Croatian, you MUST write your ENTIRE response in crisp, natural, professional **English**!
+- All prose, headings, explanations, coaching tips, workout titles, descriptions, interval step names, plan phase names, week focuses, key session labels, and coach notes MUST be in English.
+- Keep exact JSON schema keys, canonical \`dayKey\` values (\`mon\`, \`tue\`, \`wed\`, \`thu\`, \`fri\`, \`sat\`, \`sun\`), \`phaseType\` values (\`base | build | peak | taper | race\`), \`type\` values (\`ride | strength\`), and structured block markers (\`TITLE:\`, \`AUTHOR:\`, \`CATEGORY:\`, \`SUMMARY:\`, \`CONTENT:\`, \`DURATION:\`, \`TSS:\`, \`STEPS:\`) unchanged.`;
+  }
+  return `### OBAVEZNO PRAVILO JEZIKA ODGOVORA (HRVATSKI):
+- Piši cijeli odgovor na jasnom, stručnom i prirodnom **hrvatskom jeziku** (sve naslove, objašnjenja, savjete, nazive treninga/faza i bilješke).`;
+}
 
 export function getResolvedGeminiApiKey() {
   try {
@@ -172,7 +194,7 @@ async function callGeminiApi({
       if (proxyRes.ok) {
         const data = await proxyRes.json();
         if (data?.text) return data.text;
-        throw new Error('AI poslužitelj nije vratio tekstualni odgovor. Pokušaj ponovno.');
+        throw new Error(tr('AI poslužitelj nije vratio tekstualni odgovor. Pokušaj ponovno.', 'AI server did not return a text response. Please try again.'));
       }
 
       if (proxyRes.status === 404) {
@@ -187,7 +209,9 @@ async function callGeminiApi({
       }
 
       const errJson = await proxyRes.json().catch(() => ({}));
-      const serverErr = new Error(errJson?.error || `AI poslužiteljska greška (HTTP ${proxyRes.status})`);
+      const serverErr = new Error(
+        errJson?.error || tr('AI poslužiteljska greška (HTTP {status})', 'AI server error (HTTP {status})', { status: proxyRes.status })
+      );
       serverErr.isExplicitServerError = true;
       throw serverErr;
     } catch (proxyErr) {
@@ -221,11 +245,20 @@ async function callGeminiApi({
     if (lastNetworkError && !proxyRouteMissing) {
       const msg = String(lastNetworkError?.message || '');
       if (lastNetworkError?.name === 'AbortError' || msg.toLowerCase().includes('aborted')) {
-        throw new Error('AI poslužitelj je predugo obrađivao zahtjev (timeout). Pokušaj ponovno s kraćim upitom.');
+        throw new Error(tr(
+          'AI poslužitelj je predugo obrađivao zahtjev (timeout). Pokušaj ponovno s kraćim upitom.',
+          'AI server request timed out. Please try again with a shorter prompt.'
+        ));
       }
-      throw new Error('Prekid mrežne veze prema AI poslužitelju. Provjeri mobilni internet / VPN i drži zaslon uključenim dok AI priprema odgovor, pa pokušaj ponovno.');
+      throw new Error(tr(
+        'Prekid mrežne veze prema AI poslužitelju. Provjeri mobilni internet / VPN i drži zaslon uključenim dok AI priprema odgovor, pa pokušaj ponovno.',
+        'Network connection to the AI server was interrupted. Check your connection/VPN, keep your screen awake while AI responds, and try again.'
+      ));
     }
-    throw new Error('Gemini AI poslužitelj nije konfiguriran (GEMINI_API_KEY). Postavi varijablu u Vercel Environment Variables ili unesi privremeni ključ u tabu Veze.');
+    throw new Error(tr(
+      'Gemini AI poslužitelj nije konfiguriran (GEMINI_API_KEY). Postavi varijablu u Vercel Environment Variables ili unesi privremeni ključ u tabu Veze.',
+      'Gemini AI server is not configured (GEMINI_API_KEY). Set it in Vercel Environment Variables or enter a temporary API key in the Connections tab.'
+    ));
   }
 
   let effectiveModel = model || 'gemini-3.8-flash';
@@ -283,7 +316,7 @@ async function callGeminiApi({
       const errJson = await response.json();
       if (errJson?.error?.message) errDetail = errJson.error.message;
     } catch {}
-    throw new Error(`Gemini API greška: ${errDetail}`);
+    throw new Error(tr('Gemini API greška: {detail}', 'Gemini API error: {detail}', { detail: errDetail }));
   }
 
   const data = await response.json();
@@ -294,7 +327,7 @@ async function callGeminiApi({
     .trim();
 
   if (!text) {
-    throw new Error('Gemini nije vratio tekstualni odgovor. Pokušaj ponovno.');
+    throw new Error(tr('Gemini nije vratio tekstualni odgovor. Pokušaj ponovno.', 'Gemini did not return a text response. Please try again.'));
   }
 
   return text;
@@ -313,6 +346,7 @@ export async function analyzeWorkoutWithGemini({
   model = 'gemini-3.8-flash',
   userId = null
 }) {
+  const isEn = getCurrentLanguage() === 'en';
   const athleteContextPrompt = await buildAthleteContextPrompt({
     athleteProfile,
     liveWorkouts,
@@ -340,7 +374,31 @@ export async function analyzeWorkoutWithGemini({
   const viVal = metrics.vi ? Number(metrics.vi).toFixed(2) : (activity.icu_variability_index ? Number(activity.icu_variability_index).toFixed(2) : 'N/A');
   const wKgVal = athleteProfile?.weight && avgWatts > 0 ? (avgWatts / athleteProfile.weight).toFixed(2) : 'N/A';
 
-  const userPrompt = `Analiziraj odrađeni biciklistički trening sportaša:
+  const userPrompt = isEn
+    ? `Analyze the athlete's completed cycling workout:
+
+### WORKOUT DETAILS:
+- **Title:** ${activity.name || activity.title || 'Workout'}
+- **Date:** ${(activity.started_at || activity.date || '').slice(0, 10)}
+- **Duration:** ${durationMin} min
+- **Average Power:** ${avgWatts} W (${wKgVal} W/kg)
+- **Normalized Power (NP):** ${npWatts} W
+- **Intensity Factor (IF):** ${ifFactor}
+- **Training Stress Score (TSS):** ${tss}
+- **Average Heart Rate (Avg HR):** ${hrAvg} bpm | Max HR: ${hrMax} bpm
+- **Aerobic Decoupling (Pw:HR):** ${decoupling}
+- **Efficiency Factor (EF = NP / Avg HR):** ${efVal}
+- **Variability Index (VI = NP / Avg Power):** ${viVal}
+- **Activity Source:** ${activity.workout_source || (activity.isSupabase ? 'ErgVibe Database' : 'Intervals.icu')}
+${userNote ? `- **Rider Subjective Note:** "${userNote}"` : ''}
+
+${exactHistory ? `### ENRICHED DATA FROM HISTORICAL / CSV DATABASE FOR THIS ACTIVITY:
+- Date: ${(exactHistory.date || '').slice(0, 10)} | Title: ${exactHistory.name || exactHistory.title || 'Workout'}
+- NP: ${exactHistory.np ?? '-'}W | EF: ${exactHistory.ef ?? '-'} | Decoupling: ${exactHistory.dec ?? exactHistory.decoupling ?? '-'}% | TSS: ${exactHistory.tss ?? '-'}${exactHistory.climb ? ` | Elevation: +${exactHistory.climb}m` : ''}${exactHistory.cad ? ` | Cadence: ${exactHistory.cad}rpm` : ''}${exactHistory.rhr ? ` | RHR: ${exactHistory.rhr}bpm` : ''}${exactHistory.hrr ? ` | HRRc: ${exactHistory.hrr}bpm` : ''}${exactHistory.wFtpKj ? ` | W>FTP: ${exactHistory.wFtpKj}kJ` : ''}${exactHistory.ctl != null ? ` | CTL: ${exactHistory.ctl} / TSB: ${exactHistory.tsb ?? '-'}` : ''}
+- Incorporate these additional physiological metrics into the analysis.` : ''}
+
+Write the analysis in a structured, expert coaching format in English following the coaching guidelines.`
+    : `Analiziraj odrađeni biciklistički trening sportaša:
 
 ### DETALJI TRENINGA:
 - **Naziv:** ${activity.name || activity.title || 'Trening'}
@@ -365,7 +423,7 @@ ${exactHistory ? `### OBOGAĆENI PODACI IZ POVIJESNE / CSV BAZE ZA OVU AKTIVNOST
 Napiši analizu u strukturiranom, stručnom formatu prema zadanim trenerskim uputama.`;
 
   return callGeminiApi({
-    systemInstruction: `${athleteContextPrompt}\n\n${knowledgeBasePrompt}`,
+    systemInstruction: `${athleteContextPrompt}\n\n${knowledgeBasePrompt}\n\n${buildLanguageInstruction(isEn)}`,
     contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
     model,
     temperature: 0.35
@@ -386,9 +444,10 @@ export async function askWorkoutFollowUp({
   model = 'gemini-3.8-flash',
   userId = null
 }) {
+  const isEn = getCurrentLanguage() === 'en';
   const cleanQuestion = String(question || '').trim();
   if (!cleanQuestion) {
-    throw new Error('Pitanje ne može biti prazno.');
+    throw new Error(tr('Pitanje ne može biti prazno.', 'Question cannot be empty.'));
   }
 
   const prevUserFollowUp = [...(Array.isArray(qaHistory) ? qaHistory : [])]
@@ -407,16 +466,27 @@ export async function askWorkoutFollowUp({
 
   const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
-  const systemInstruction = `Ti si ErgVibe AI biciklistički trener. Odgovaraš na dodatno pitanje vozača vezano uz upravo analizirani trening "${activity?.title || activity?.name || 'Trening'}" (${(activity?.started_at || activity?.date || '').slice(0, 10)}).
+  const systemInstruction = isEn
+    ? `You are the ErgVibe AI Cycling Coach. You are answering a rider's follow-up question regarding the just-analyzed workout "${activity?.title || activity?.name || 'Workout'}" (${(activity?.started_at || activity?.date || '').slice(0, 10)}).
+Be specific, clear, and ground your answer in the athlete's telemetry data and coaching knowledge base. Respond in natural, professional English.
+
+${athleteContextPrompt}
+
+${knowledgeBasePrompt}
+
+${buildLanguageInstruction(true)}`
+    : `Ti si ErgVibe AI biciklistički trener. Odgovaraš na dodatno pitanje vozača vezano uz upravo analizirani trening "${activity?.title || activity?.name || 'Trening'}" (${(activity?.started_at || activity?.date || '').slice(0, 10)}).
 Budi konkretan, jasan i osloni se na podatke sportaša i bazu znanja. Odgovaraj na hrvatskom jeziku.
 
 ${athleteContextPrompt}
 
-${knowledgeBasePrompt}`;
+${knowledgeBasePrompt}
+
+${buildLanguageInstruction(false)}`;
 
   const contents = [
-    { role: 'user', parts: [{ text: 'Analiziraj moj trening.' }] },
-    { role: 'model', parts: [{ text: initialAnalysis || 'Analiza spremna.' }] }
+    { role: 'user', parts: [{ text: isEn ? 'Analyze my workout.' : 'Analiziraj moj trening.' }] },
+    { role: 'model', parts: [{ text: initialAnalysis || (isEn ? 'Analysis ready.' : 'Analiza spremna.') }] }
   ];
 
   qaHistory.forEach(msg => {
@@ -451,6 +521,7 @@ export async function chatWithAICoach({
   model = 'gemini-3.8-flash',
   userId = null
 }) {
+  const isEn = getCurrentLanguage() === 'en';
   const fullRawList = Array.isArray(messages) && messages.length > 0
     ? messages
     : [
@@ -477,9 +548,141 @@ export async function chatWithAICoach({
 
   const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
-  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
+  const chatGuide = isEn
+    ? `### SPECIFIC INSTRUCTIONS FOR CHAT & GENERATING ERGVIBE WORKOUTS:
+1. Respond as a world-class cycling coach and exercise physiologist. Be clear, precise, data-driven, and motivating.
+2. Whenever the athlete requests a workout or you prescribe a session for today / the smart trainer, ALWAYS include a structured block at the end of your response in this exact format:
+\`\`\`workout
+TITLE: Workout Title
+CATEGORY: SweetSpot | Endurance | Threshold | VO2max | Anaerobic | Recovery
+DURATION: 60
+TSS: 65
+STEPS:
+Warmup
+- 10m 55%
+Main Set
+3x
+- 8m 90%
+- 4m 50%
+Cooldown
+- 10m 50%
+\`\`\`
+3. STEP, DURATION, AND SET FORMATTING:
+   - For durations with minutes and seconds, use standard format: \`- 1m20s 125%\` or \`- 80s 125%\` (never drop the minutes).
+   - When recreating a workout from an image or description (e.g., TrainerRoad, Zwift), count the exact number of work intervals in every set and preserve the exact stated total duration (e.g., 60 min) and TSS (e.g., 76 TSS). Adjust the Cooldown duration so the sum of steps matches total duration exactly.
+Or in JSON format:
+\`\`\`ergvibe-workout
+{
+  "title": "Workout Title",
+  "description": "Short summary of physiological target and stimulus",
+  "category": "SweetSpot | Endurance | Threshold | VO2max | Anaerobic | Recovery",
+  "durationMinutes": 60,
+  "steps": [
+    { "name": "Warmup", "duration": 600, "power": 55 },
+    { "name": "Z2 Ramp", "duration": 300, "power": 68 },
+    { "name": "Sweet Spot Interval", "duration": 600, "power": 90 },
+    { "name": "Recovery", "duration": 300, "power": 50 }
+  ]
+}
+\`\`\`
+IMPORTANT: DURATION and durationMinutes MUST be IN MINUTES (e.g., 60 or 75, NEVER seconds like 3600). Inside the steps array, each step's "duration" is in seconds and "power" is in % FTP.
 
-### SPECIFIČNA UPUTA ZA CHAT I GENERIRANJE ERGVIBE TRENINGA:
+### 🚴‍♂️ VISUAL WORKOUT REVERSE-ENGINEERING PROTOCOL:
+When the athlete uploads an image or screenshot of a cycling workout (Zwift, TrainerRoad, TrainingPeaks, Intervals.icu, Garmin Connect, Rouvy, Wahoo SYSTM, a paper training plan, or a power chart), YOUR TOP PRIORITY IS:
+DECONSTRUCT THAT IMAGE INTO 100% IDENTICAL, ACCURATE ERGVIBE CODE THAT CAN BE LAUNCHED IN ONE CLICK ON THE SMART TRAINER OR ADDED TO THE CALENDAR!
+
+Follow these strict steps and coaching rules:
+
+1. HEADER & CORE PARAMETERS (Source of Truth):
+   - **Workout Title (TITLE):** Extract the exact title at the top or caption (e.g., "The Gorby", "Carson -2", "4x10min FTP", "Sweet Spot 3x15"). If no title appears, create a clear, recognizable title matching the zone and structure (e.g., "VO2max 5x3min @ 115%").
+   - **Total Duration (DURATION):** Carefully read the total duration shown on the graphic (e.g., "1:00:00", "45:00", "1h 15m").
+     ⚠️ CRITICAL: The sum of minutes of all your steps (Warmup + Repeat Sets + Rests + Cooldown) MUST EQUAL that exact total duration! Never output a 42 min workout if the graphic says 60 min.
+   - **TSS & IF:** If TSS and Intensity Factor are shown on the image, copy them verbatim. Otherwise estimate them from duration and zone.
+
+2. PRIORITY OF TEXT & TABLES OVER PIXELS:
+   - If the image contains a text summary, step legend, or table (e.g., "5 x 3 min @ 110-120% FTP with 3 min rest" or "Warmup 10:00 ramp from 100W to 200W"), ALWAYS use those exact numbers! Explicit text is ground truth.
+   - If watts (W) are shown instead of percentages, compare against the rider's FTP (from the athlete context above) and convert to exact % FTP (e.g., 250W at 277W FTP = 90% FTP).
+
+3. DECODING GRAPHICAL BARS, COLORS, AND RAMPS (WHEN NO TEXT IS PRESENT):
+   - Standard cycling app zone colors (Zwift, TrainerRoad, Intervals, Garmin):
+     * Grey / Dark Grey = Z1 Recovery / Spin (< 55% FTP)
+     * Blue = Z2 Endurance / Aerobic Base (56% - 75% FTP, typically 65-70%)
+     * Green = Z3 Tempo (76% - 90% FTP, typically 80-85%)
+     * Light Green / Yellow-Green = Sweet Spot (88% - 94% FTP, typically 90%)
+     * Yellow = Z4 Threshold / FTP (95% - 105% FTP, typically 100%)
+     * Orange = Z5 VO2max (106% - 120% FTP, typically 110-115%)
+     * Red = Z6 Anaerobic Capacity (121% - 150% FTP, typically 125-130%)
+     * Purple / Bright Red = Z7 Neuromuscular Sprint (> 150% FTP)
+   - Ramps (sloped blocks):
+     * Rising ramp (common in warmups): write as a range, e.g., \`- 10m 50-75%\` or \`- 5m 60-80%\`.
+     * Falling ramp (cooldown): e.g., \`- 5m 70-50%\` or \`- 5m 50%\`.
+   - Cadence (RPM): If cadence cues appear (e.g., "High Cadence 100 RPM" or "Low Cadence 70 RPM"), append them at the end of the step line (e.g., \`- 4m 95% 95rpm\`).
+
+4. GROUPING REPEATING SETS (Nx SYNTAX):
+   - Recognize repeating blocks! If you see e.g. 5 identical work intervals with equal recovery, write them cleanly using \`Nx\` notation:
+     Main Set
+     5x
+     - 3m 115%
+     - 3m 50%
+   - If intervals within a set are NOT equal (e.g., pyramid 1m, 2m, 3m, 2m, 1m or descending power steps), list them line by line without an Nx multiplier.
+
+5. TEMPORAL INTEGRITY CHECK BEFORE OUTPUTTING:
+   - Sum the duration step by step:
+     * Warmup: 10 min
+     * Set 4x (5m work + 5m rest) = 4 x 10 min = 40 min
+     * Cooldown: 10 min
+     * TOTAL = 10 + 40 + 10 = 60 min.
+   - If you are missing time compared to the graphic, check for warmup openers (e.g., 3x30s cadence drills) or a final cooldown block!
+
+6. REQUIRED OUTPUT STRUCTURE FOR IMAGE REVERSE-ENGINEERING:
+   Before writing the workout block, ALWAYS write a concise visual breakdown first:
+   ### 🔍 VISUAL IMAGE ANALYSIS:
+   - **Source / Platform:** (e.g., TrainerRoad, Zwift, TrainingPeaks, Garmin, chart/table)
+   - **Detected Workout Title:** (e.g., Carson, The Wringer, or exact title on screen)
+   - **Total Duration on Graphic:** (e.g., 60 min or 45 min)
+   - **Number of Work Intervals:** (exact counted bars, e.g., 5 or 6)
+   - **Zone & Work Intensity:** (e.g., yellow Z4 / Sweet Spot, ~90% FTP = 249 W)
+   - **Work & Recovery Duration:** (e.g., 6 min @ 90%, 2 min @ 50%)
+   - **Warmup & Cooldown:** (e.g., 10 min ramp 50-75%, 2 min cooldown @ 50%)
+   - **Duration Math Check:** 10m + 6x(6m+2m) + 2m = 60m (must match the image!)
+
+   ONLY AFTER THIS BREAKDOWN, output the ready-to-ride block:
+\`\`\`workout
+TITLE: Exact Workout Title
+CATEGORY: Sweet Spot | VO2 Max | Threshold | Endurance | Anaerobic | Tempo | Recovery | Testing
+DURATION: 60
+TSS: 65
+STEPS:
+Warmup
+- 10m 50-75%
+Main Set
+4x
+- 8m 95%
+- 4m 50%
+Cooldown
+- 6m 50%
+\`\`\`
+   - After the code block, provide 3 concrete coaching tips:
+     1. Exact watt targets for work and rest intervals based on the athlete's current FTP.
+     2. Cadence and biomechanics cue (e.g., steady 90–95 rpm, relaxed upper body).
+     3. Smart trainer execution tip (ERG mode guidance, cooling fan, fueling/hydration).
+
+7. 🔄 FOLLOW-UP CORRECTION PROTOCOL:
+   If the rider replies with a correction (e.g., "actually it's 5x not 4x", "rest is 2 min not 4 min", "it's Sweet Spot not VO2max", "total time is 45 min not 60 min"):
+   - Treat the rider's correction as ABSOLUTE FACT.
+   - Keep all accurate parts unchanged and modify ONLY what the rider specified.
+   - Re-verify total duration and ALWAYS output a NEW updated \`\`\`workout\`\`\` block so the rider can save or launch it immediately!
+
+### SPECIFIC INSTRUCTIONS FOR PHYSIOLOGICAL LAB REPORTS (LACTATE TEST, VO2MAX / CPET, BLOOD WORK):
+If a message includes an attached image or PDF of a spiroergometry / VO2max test, lactate step test, blood panel, or graded exercise table:
+1. Carefully extract all tabular and plotted values: watts per stage, heart rate (HR), lactate (mmol/L), VO2max, ventilation, or cadence.
+2. Accurately identify key physiological landmarks:
+   - **LT1 / Aerobic Threshold:** first sustained lactate rise above baseline (typically ~1.5–2.0 mmol/L or VT1).
+   - **LT2 / MLSS / Anaerobic Threshold (FTP):** point of rapid lactate accumulation (~4.0 mmol/L or sharp inflection point).
+3. Compare findings with the rider's current ErgVibe profile (FTP, weight, zones) and clearly recommend:
+   - Updated FTP or HR thresholds if they differ from current settings.
+   - Exact wattage ranges for Zone 2 endurance below LT1 and Sweet Spot / Threshold around LT2.`
+    : `### SPECIFIČNA UPUTA ZA CHAT I GENERIRANJE ERGVIBE TRENINGA:
 1. Odgovaraj kao vrhunski biciklistički trener i fiziolog. Budi jasan, precizan i motivirajuć.
 2. Ako sportaš zatraži novi trening ili ti predložiš trening za danas/trenažer, na kraju odgovora OBAVEZNO uključi strukturirani blok u formatu:
 \`\`\`workout
@@ -613,6 +816,8 @@ Ako poruka sadrži priloženu sliku ili PDF laboratorijskog nalaza spiroergometr
    - Ažurirani FTP ili pragove pulsa ako se razlikuju od trenutnih.
    - U kojem rasponu watta voziti Zone 2 (izdržljivost) ispod LT1, a u kojem Sweet Spot / Threshold oko LT2.`;
 
+  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}\n\n${chatGuide}\n\n${buildLanguageInstruction(isEn)}`;
+
   // Pametni klizni prozor: cijeli razgovor se čuva lokalno u IndexedDB, a prema AI šaljemo zadnjih 20 poruka
   // kako odgovori ostali brzi i stabilni. Teške slike/PDF-ove prilažemo kao inlineData samo za zadnja 4 turna.
   const MAX_CONTEXT_MESSAGES = 20;
@@ -662,19 +867,21 @@ Ako poruka sadrži priloženu sliku ili PDF laboratorijskog nalaza spiroergometr
               }
             });
           } else if (att?.name) {
-            parts.push({ text: `[Priložena datoteka: ${att.name}]` });
+            parts.push({ text: tr('[Priložena datoteka: {name}]', '[Attached file: {name}]', { name: att.name }) });
           }
         }
       } else {
-        const names = m.attachments.map(a => a?.name || 'datoteka').join(', ');
-        parts.push({ text: `[Ranije priložene datoteke u ovoj poruci: ${names}]` });
+        const names = m.attachments.map(a => a?.name || tr('datoteka', 'file')).join(', ');
+        parts.push({ text: tr('[Ranije priložene datoteke u ovoj poruci: {names}]', '[Previously attached files in this message: {names}]', { names }) });
       }
     }
 
     // Ako korisnik nije upisao tekst nego samo priložio sliku/PDF, postavi pametni upit
     if (parts.length > 0 && !txt && m?.role === 'user') {
       parts.unshift({
-        text: 'Molim te detaljno analiziraj ovu priloženu sliku/dokument u kontekstu mog profila, trenutnog FTP-a i biciklističkog treninga. Ako slika prikazuje profil ili plan biciklističkog treninga (Zwift, TrainerRoad, TrainingPeaks, Intervals.icu, Garmin ekran, trenažni grafikon ili tablicu intervala), DEKONSTRUIRAJ ga i REKREIRAJ u točan ErgVibe ```workout``` blok za trenažer poštujući protokol vizualne dekonstrukcije.'
+        text: isEn
+          ? 'Please analyze this attached image/document in detail in the context of my athlete profile, current FTP, and cycling training. If the image shows a cycling workout profile or plan (Zwift, TrainerRoad, TrainingPeaks, Intervals.icu, Garmin screen, workout chart, or interval table), DECONSTRUCT and RECREATE it as an exact ErgVibe ```workout``` block for the smart trainer following the visual reverse-engineering protocol.'
+          : 'Molim te detaljno analiziraj ovu priloženu sliku/dokument u kontekstu mog profila, trenutnog FTP-a i biciklističkog treninga. Ako slika prikazuje profil ili plan biciklističkog treninga (Zwift, TrainerRoad, TrainingPeaks, Intervals.icu, Garmin ekran, trenažni grafikon ili tablicu intervala), DEKONSTRUIRAJ ga i REKREIRAJ u točan ErgVibe ```workout``` blok za trenažer poštujući protokol vizualne dekonstrukcije.'
       });
     }
 
@@ -702,7 +909,10 @@ Ako poruka sadrži priloženu sliku ili PDF laboratorijskog nalaza spiroergometr
   }
 
   if (formattedContents.length === 0) {
-    throw new Error('Poruka za AI Trenera je prazna. Upiši pitanje ili priloži dokument i pokušaj ponovno.');
+    throw new Error(tr(
+      'Poruka za AI Trenera je prazna. Upiši pitanje ili priloži dokument i pokušaj ponovno.',
+      'Message for AI Coach is empty. Type a question or attach a file and try again.'
+    ));
   }
 
   const hasMultimodal = formattedContents.some(turn =>
@@ -735,6 +945,7 @@ export async function generateStructuredTrainingPlan({
   model = 'gemini-3.8-flash',
   userId = null
 }) {
+  const isEn = getCurrentLanguage() === 'en';
   const resolvedNotes = String(userNotes || notes || '').trim();
   const athleteContextPrompt = await buildAthleteContextPrompt({
     athleteProfile,
@@ -746,9 +957,46 @@ export async function generateStructuredTrainingPlan({
 
   const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
-  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
+  const planPrompt = isEn
+    ? `### TRAINING PLAN GENERATOR TASK:
+Generate a detailed, periodized training plan of ${weeks} weeks (${workoutsPerWeek} workouts/week, ~${hoursPerWeek} hours/week total) starting on ${startDate}.
+Methodology: ${methodology}.
+Athlete's main goal: "${goal}".
+${resolvedNotes ? `Additional rider preferences: "${resolvedNotes}"` : ''}
 
-### ZADATAK GENERATORA TRENAŽNOG PLANA:
+IMPORTANT: Your response MUST be EXCLUSIVELY a valid JSON object (no intro/outro text, no markdown backticks \`\`\`json).
+JSON schema:
+{
+  "planTitle": "Plan Title",
+  "summary": "Expert overview of the mesocycle, goals, and intensity distribution",
+  "weeks": [
+    {
+      "weekNumber": 1,
+      "focus": "Week focus",
+      "targetHours": 6.5,
+      "targetTss": 380,
+      "workouts": [
+        {
+          "dayOffset": 0,
+          "dayName": "Monday",
+          "title": "Workout title",
+          "category": "SweetSpot | Endurance | Threshold | VO2max | Recovery",
+          "durationMinutes": 60,
+          "estimatedTss": 65,
+          "description": "Physiological goal and execution guidance",
+          "intervalsCode": "- 10m 55% Warmup\\n3x\\n- 8m 90% Sweet Spot\\n- 4m 50% Recovery\\n- 10m 45% Cooldown",
+          "steps": [
+            { "name": "Warmup", "duration": 600, "power": 55 },
+            { "name": "Interval 1", "duration": 480, "power": 90 },
+            { "name": "Recovery", "duration": 240, "power": 50 }
+          ]
+        }
+      ]
+    }
+  ]
+}
+Unit rules: 'durationMinutes' MUST be an integer in MINUTES (e.g., 60 or 90, NEVER seconds). Inside steps, 'duration' is in seconds and 'power' is in % FTP.`
+    : `### ZADATAK GENERATORA TRENAŽNOG PLANA:
 Generiraj detaljan, periodizirani trenažni plan od ${weeks} tjedna (${workoutsPerWeek} treninga tjedno, ukupno ~${hoursPerWeek} sati tjedno) počevši od datuma ${startDate}.
 Metodologija: ${methodology}.
 Glavni cilj sportaša: "${goal}".
@@ -787,9 +1035,11 @@ Format JSON-a:
 }
 Napomena za jedinice: 'durationMinutes' je OBAVEZNO cijeli broj minuta (npr. 60 ili 90, NIKAKO sekunde). U steps nizu 'duration' je u sekundama, a 'power' u postotku FTP-a (% FTP).`;
 
+  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}\n\n${planPrompt}\n\n${buildLanguageInstruction(isEn)}`;
+
   const rawJsonText = await callGeminiApi({
     systemInstruction,
-    contents: [{ role: 'user', parts: [{ text: `Generiraj JSON trenažni plan za cilj: ${goal}` }] }],
+    contents: [{ role: 'user', parts: [{ text: isEn ? `Generate a JSON training plan in English for goal: ${goal}` : `Generiraj JSON trenažni plan za cilj: ${goal}` }] }],
     model,
     temperature: 0.3,
     responseMimeType: 'application/json'
@@ -809,7 +1059,7 @@ Napomena za jedinice: 'durationMinutes' je OBAVEZNO cijeli broj minuta (npr. 60 
     return parsedPlan;
   } catch (err) {
     console.error('[geminiService] JSON parse error:', err, rawJsonText);
-    throw new Error('AI nije vratio valjani JSON format plana. Pokušaj ponovno.');
+    throw new Error(tr('AI nije vratio valjani JSON format plana. Pokušaj ponovno.', 'AI did not return a valid JSON training plan. Please try again.'));
   }
 }
 
@@ -914,6 +1164,7 @@ function sanitizePlannedWorkout(wo, dayMaxMinutes, ftp = 200) {
 
   // Krajnji sigurnosni fallback ako AI nije vratio valjane korake
   if (!chosen) {
+    const isEn = getCurrentLanguage() === 'en';
     const fallbackMins = Math.max(30, Math.min(dayLimit, Number(wo?.durationMinutes) || dayLimit));
     const cat = String(wo?.category || 'Endurance').toLowerCase();
     let fallbackCode = '';
@@ -921,14 +1172,20 @@ function sanitizePlannedWorkout(wo, dayMaxMinutes, ftp = 200) {
       const workReps = fallbackMins >= 60 ? 5 : 4;
       const warmupMin = 12;
       const cdMin = Math.max(6, fallbackMins - warmupMin - workReps * 6);
-      fallbackCode = `- ${warmupMin}m 55-70% Zagrijavanje\n\n${workReps}x\n- 3m 115% VO2 Max\n- 3m 50% Oporavak\n\n- ${cdMin}m 50% Hlađenje`;
+      fallbackCode = isEn
+        ? `- ${warmupMin}m 55-70% Warmup\n\n${workReps}x\n- 3m 115% VO2 Max\n- 3m 50% Recovery\n\n- ${cdMin}m 50% Cooldown`
+        : `- ${warmupMin}m 55-70% Zagrijavanje\n\n${workReps}x\n- 3m 115% VO2 Max\n- 3m 50% Oporavak\n\n- ${cdMin}m 50% Hlađenje`;
     } else if (cat.includes('threshold') || cat.includes('prag')) {
       const warmupMin = 12;
       const cdMin = Math.max(6, fallbackMins - warmupMin - 24);
-      fallbackCode = `- ${warmupMin}m 55-70% Zagrijavanje\n\n2x\n- 10m 98% Prag (FTP)\n- 4m 50% Oporavak\n\n- ${cdMin}m 50% Hlađenje`;
+      fallbackCode = isEn
+        ? `- ${warmupMin}m 55-70% Warmup\n\n2x\n- 10m 98% Threshold (FTP)\n- 4m 50% Recovery\n\n- ${cdMin}m 50% Cooldown`
+        : `- ${warmupMin}m 55-70% Zagrijavanje\n\n2x\n- 10m 98% Prag (FTP)\n- 4m 50% Oporavak\n\n- ${cdMin}m 50% Hlađenje`;
     } else {
       const mainMin = Math.max(20, fallbackMins - 15);
-      fallbackCode = `- 10m 55% Zagrijavanje\n- ${mainMin}m 65% Z2 Aerobna baza\n- 5m 50% Hlađenje`;
+      fallbackCode = isEn
+        ? `- 10m 55% Warmup\n- ${mainMin}m 65% Z2 Aerobic Base\n- 5m 50% Cooldown`
+        : `- 10m 55% Zagrijavanje\n- ${mainMin}m 65% Z2 Aerobna baza\n- 5m 50% Hlađenje`;
     }
     chosen = { ...tryParseCode(fallbackCode), cleanCode: fallbackCode, rawMatchesExpanded: true };
   }
@@ -945,7 +1202,7 @@ function sanitizePlannedWorkout(wo, dayMaxMinutes, ftp = 200) {
 
 export async function generateMacrocycleBlueprint({
   goalMode = 'fitness',
-  goalTitle = 'Podizanje FTP-a',
+  goalTitle = '',
   eventDate = null,
   eventType = '',
   eventPriority = 'RACE_A',
@@ -966,6 +1223,8 @@ export async function generateMacrocycleBlueprint({
   model = 'gemini-3.8-flash',
   userId = null
 }) {
+  const isEn = getCurrentLanguage() === 'en';
+  const resolvedGoalTitle = String(goalTitle || '').trim() || tr('Podizanje FTP-a', 'Increase FTP');
   const safeWeeks = Math.max(1, Math.min(40, Number(totalWeeks) || 4));
   const baseMondayIso = getMondayOfWeekIso(startDate || new Date().toISOString().slice(0, 10));
   const scheduleSummary = summarizeWeeklySchedule(weeklySchedule);
@@ -974,41 +1233,115 @@ export async function generateMacrocycleBlueprint({
     athleteProfile,
     liveWorkouts,
     wellnessData,
-    userQuery: [goalTitle, eventType, weakness, notes].filter(Boolean).join(' '),
+    userQuery: [resolvedGoalTitle, eventType, weakness, notes].filter(Boolean).join(' '),
     userId
   });
   const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
   const eventLines = goalMode === 'event'
+    ? (isEn
+      ? [
+          `- Plan Mode: TARGET EVENT / RACE PREPARATION`,
+          `- Event Title: ${resolvedGoalTitle}`,
+          `- Event Date: ${eventDate} (Priority: ${eventPriority})`,
+          eventType ? `- Event Type: ${eventType}` : null,
+          eventDistanceKm ? `- Distance: ${eventDistanceKm} km` : null,
+          eventElevationM ? `- Elevation Gain: ${eventElevationM} m` : null
+        ].filter(Boolean).join('\n')
+      : [
+          `- Način plana: PRIPREMA ZA EVENT / UTRKU`,
+          `- Naziv eventa: ${resolvedGoalTitle}`,
+          `- Datum eventa: ${eventDate} (Prioritet: ${eventPriority})`,
+          eventType ? `- Tip eventa: ${eventType}` : null,
+          eventDistanceKm ? `- Udaljenost: ${eventDistanceKm} km` : null,
+          eventElevationM ? `- Visinska razlika: ${eventElevationM} m` : null
+        ].filter(Boolean).join('\n'))
+    : (isEn
+      ? [
+          `- Plan Mode: GENERAL FITNESS & PROGRESSION`,
+          `- Primary Goal: ${resolvedGoalTitle}`
+        ].join('\n')
+      : [
+          `- Način plana: OPĆI FITNESS I NAPREDAK`,
+          `- Glavni cilj: ${resolvedGoalTitle}`
+        ].join('\n'));
+
+  const isVo2BlockIntent = String(methodology).toLowerCase().includes('vo2') || (goalMode === 'fitness' && String(resolvedGoalTitle).toLowerCase().includes('vo2'));
+  const methodologyInstruction = isEn
     ? [
-        `- Način plana: PRIPREMA ZA EVENT / UTRKU`,
-        `- Naziv eventa: ${goalTitle}`,
-        `- Datum eventa: ${eventDate} (Prioritet: ${eventPriority})`,
-        eventType ? `- Tip eventa: ${eventType}` : null,
-        eventDistanceKm ? `- Udaljenost: ${eventDistanceKm} km` : null,
-        eventElevationM ? `- Visinska razlika: ${eventElevationM} m` : null
+        methodology && methodology !== 'auto'
+          ? `The athlete EXPLICITLY selected methodology: "${methodology}". Strictly follow this methodology.`
+          : `Select and recommend the optimal coaching methodology (e.g., Polarized 80/20, Pyramidal / Sweet Spot, VO2 Max Focus, or Coggan Threshold) based on the goal, experience, and weekly hours.`,
+        isVo2BlockIntent && safeWeeks <= 8
+          ? `SINCE THE ATHLETE WANTS A VO2 MAX BLOCK (${safeWeeks} wks): DO NOT spend the first 3 weeks only on easy Base! Start targeted VO2max development right away (build/peak progression with 1–2 classic VO2max sessions/week + Z2 rides in between, plus a recovery week every 3rd or 4th week).`
+          : null,
+        prioritizeCustomSources
+          ? `IMPORTANT SOURCE PRIORITY: The athlete requested basing this plan PRIMARILY on their custom literature in the "DODATNA KORISNIČKA LITERATURA I BILJEŠKE" section above (if present). Briefly explain in your rationale how those sources were applied.`
+          : null
       ].filter(Boolean).join('\n')
     : [
-        `- Način plana: OPĆI FITNESS I NAPREDAK`,
-        `- Glavni cilj: ${goalTitle}`
-      ].join('\n');
+        methodology && methodology !== 'auto'
+          ? `Sportaš je IZRIČITO odabrao metodologiju: "${methodology}". Strogo se drži te metodologije.`
+          : `Odaberi i preporuči optimalnu trenersku metodologiju (npr. Polarizirani 80/20, Piramidalni / Sweet Spot, VO2 Max Fokus ili Coggan Threshold) s obzirom na cilj, iskustvo i raspoložive sate sportaša.`,
+        isVo2BlockIntent && safeWeeks <= 8
+          ? `BUDUĆI DA SPORTAŠ ŽELI VO2 MAX BLOK (${safeWeeks} tj.): NEMOJ prve 3 tjedne trošiti samo na laganu Bazu! Odmah kreni u ciljani VO2max razvoj (build/peak progresija s 1-2 klasična VO2max treninga tjedno + Z2 vožnje između, uz tjedan rasterećenja svaki 3. ili 4. tjedan).`
+          : null,
+        prioritizeCustomSources
+          ? `VAŽAN PRIORITET IZVORA: Sportaš je označio da ovaj plan PRIMARNO temeljiš na njegovim vlastitim dodanim izvorima iz sekcije "DODATNA KORISNIČKA LITERATURA I BILJEŠKE" (ako postoje u bazi znanja iznad). U obrazloženju kratko navedi kako si primijenio te izvore.`
+          : null
+      ].filter(Boolean).join('\n');
 
-  const isVo2BlockIntent = String(methodology).toLowerCase().includes('vo2') || (goalMode === 'fitness' && String(goalTitle).toLowerCase().includes('vo2'));
-  const methodologyInstruction = [
-    methodology && methodology !== 'auto'
-      ? `Sportaš je IZRIČITO odabrao metodologiju: "${methodology}". Strogo se drži te metodologije.`
-      : `Odaberi i preporuči optimalnu trenersku metodologiju (npr. Polarizirani 80/20, Piramidalni / Sweet Spot, VO2 Max Fokus ili Coggan Threshold) s obzirom na cilj, iskustvo i raspoložive sate sportaša.`,
-    isVo2BlockIntent && safeWeeks <= 8
-      ? `BUDUĆI DA SPORTAŠ ŽELI VO2 MAX BLOK (${safeWeeks} tj.): NEMOJ prve 3 tjedne trošiti samo na laganu Bazu! Odmah kreni u ciljani VO2max razvoj (build/peak progresija s 1-2 klasična VO2max treninga tjedno + Z2 vožnje između, uz tjedan rasterećenja svaki 3. ili 4. tjedan).`
-      : null,
-    prioritizeCustomSources
-      ? `VAŽAN PRIORITET IZVORA: Sportaš je označio da ovaj plan PRIMARNO temeljiš na njegovim vlastitim dodanim izvorima iz sekcije "DODATNA KORISNIČKA LITERATURA I BILJEŠKE" (ako postoje u bazi znanja iznad). U obrazloženju kratko navedi kako si primijenio te izvore.`
-      : null
-  ].filter(Boolean).join('\n');
+  const macroPrompt = isEn
+    ? `### MACROCYCLE ARCHITECT TASK:
+Build a complete long-term periodization plan (MACROCYCLE) lasting exactly ${safeWeeks} weeks starting on Monday ${baseMondayIso}.
+In this step DO NOT generate detailed workout intervals — focus on phases, training load (TSS) progression, recovery weeks (every 3rd or 4th week if >= 4 weeks), and an appropriate taper if targeting an event.
 
-  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
+ATHLETE QUESTIONNAIRE PARAMETERS:
+${eventLines}
+- Plan duration: ${safeWeeks} weeks
+- Available days/week: ${scheduleSummary.workoutsPerWeek}x/week (~${scheduleSummary.hoursPerWeek} h/week)
+${experience ? `- Experience: ${experience} yrs` : ''}
+${riderType ? `- Rider profile: ${riderType}` : ''}
+${weakness ? `- Focus / Weakness to improve: ${weakness}` : ''}
+${notes ? `- Additional notes: ${notes}` : ''}
 
-### ZADATAK ARHITEKTA MAKROCIKLUSA:
+ATHLETE WEEKLY SCHEDULE:
+${scheduleSummary.promptText}
+
+${methodologyInstruction}
+
+IMPORTANT: Return EXCLUSIVELY a valid JSON object with no markdown backticks:
+{
+  "planTitle": "Short motivating cycle title",
+  "recommendedMethodology": "Selected methodology",
+  "methodologyReason": "Concise explanation (1-2 sentences) of why this methodology fits the rider and goal",
+  "summary": "Summary of the full macrocycle and expected adaptations",
+  "physiologicalRationale": "Physiological rationale for periodization given current CTL/TSB and goal",
+  "phases": [
+    {
+      "name": "Base 1 — Aerobic Foundation",
+      "phaseType": "base | build | peak | taper | race",
+      "weekFrom": 1,
+      "weekTo": 4,
+      "focus": "Short description of phase focus",
+      "weeklyHours": 6.0
+    }
+  ],
+  "weeks": [
+    {
+      "weekNumber": 1,
+      "phaseType": "base | build | peak | taper | race",
+      "phaseLabel": "Base 1",
+      "focus": "Specific weekly focus",
+      "targetHours": 6.0,
+      "targetTss": 320,
+      "keySessions": ["Sweet Spot 3x10m", "Long Z2 Ride"],
+      "isRecoveryWeek": false
+    }
+  ]
+}
+The "weeks" array MUST contain exactly ${safeWeeks} elements (weekNumber from 1 to ${safeWeeks}).`
+    : `### ZADATAK ARHITEKTA MAKROCIKLUSA:
 Izradi cjelokupni dugoročni plan periodizacije (MAKROCIKLUS) u trajanju od točno ${safeWeeks} tjedana počevši od tjedna koji započinje u ponedjeljak ${baseMondayIso}.
 U ovoj fazi NE generiraj detaljne intervale pojedinačnih treninga — fokus je na fazama, progresiji opterećenja (TSS), tjednom oporavku (svaki 3. ili 4. tjedan rasterećenja ako ima >= 4 tjedna) i pravilnom taperu ako postoji event.
 
@@ -1058,9 +1391,11 @@ VAŽNO: Vrati ISKLJUČIVO valjani JSON objekt bez markdown backtick oznaka:
 }
 Niz "weeks" MORA sadržavati točno ${safeWeeks} elemenata (weekNumber od 1 do ${safeWeeks}).`;
 
+  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}\n\n${macroPrompt}\n\n${buildLanguageInstruction(isEn)}`;
+
   const rawJsonText = await callGeminiApi({
     systemInstruction,
-    contents: [{ role: 'user', parts: [{ text: `Kreiraj makrociklus (${safeWeeks} tjedana) za cilj: ${goalTitle}` }] }],
+    contents: [{ role: 'user', parts: [{ text: isEn ? `Create a macrocycle (${safeWeeks} weeks) in English for goal: ${resolvedGoalTitle}` : `Kreiraj makrociklus (${safeWeeks} tjedana) za cilj: ${resolvedGoalTitle}` }] }],
     model,
     temperature: 0.25,
     responseMimeType: 'application/json'
@@ -1072,7 +1407,7 @@ Niz "weeks" MORA sadržavati točno ${safeWeeks} elemenata (weekNumber od 1 do $
     parsed = JSON.parse(cleanJson);
   } catch (err) {
     console.error('[geminiService] Macrocycle JSON parse error:', err, rawJsonText);
-    throw new Error('AI nije vratio valjani JSON makrociklusa. Pokušaj ponovno.');
+    throw new Error(tr('AI nije vratio valjani JSON makrociklusa. Pokušaj ponovno.', 'AI did not return a valid macrocycle JSON. Please try again.'));
   }
 
   const rawWeeks = Array.isArray(parsed?.weeks) ? parsed.weeks : [];
@@ -1086,8 +1421,8 @@ Niz "weeks" MORA sadržavati točno ${safeWeeks} elemenata (weekNumber od 1 do $
       startDate: wkStart,
       endDate: wkEnd,
       phaseType: found.phaseType || (w === safeWeeks && goalMode === 'event' ? 'race' : 'base'),
-      phaseLabel: found.phaseLabel || `Tjedan ${w}`,
-      focus: found.focus || 'Kontinuirani razvoj kondicije',
+      phaseLabel: found.phaseLabel || tr('Tjedan {w}', 'Week {w}', { w }),
+      focus: found.focus || tr('Kontinuirani razvoj kondicije', 'Progressive fitness development'),
       targetHours: Number(found.targetHours) > 0 ? Number(found.targetHours) : scheduleSummary.hoursPerWeek,
       targetTss: Number(found.targetTss) > 0 ? Math.round(Number(found.targetTss)) : Math.round(scheduleSummary.hoursPerWeek * 55),
       keySessions: Array.isArray(found.keySessions) ? found.keySessions.slice(0, 4) : [],
@@ -1098,15 +1433,15 @@ Niz "weeks" MORA sadržavati točno ${safeWeeks} elemenata (weekNumber od 1 do $
   return {
     planId: `plan_${Date.now()}`,
     goalMode,
-    goalTitle,
+    goalTitle: resolvedGoalTitle,
     eventDate: goalMode === 'event' ? eventDate : null,
     eventType: goalMode === 'event' ? eventType : '',
     eventPriority: goalMode === 'event' ? eventPriority : null,
     startDate: startDate || baseMondayIso,
     baseMondayIso,
     totalWeeks: safeWeeks,
-    planTitle: parsed?.planTitle || `${goalTitle} (${safeWeeks} tj.)`,
-    recommendedMethodology: parsed?.recommendedMethodology || (methodology !== 'auto' ? methodology : 'Piramidalni / Polarizirani'),
+    planTitle: parsed?.planTitle || tr('{goal} ({weeks} tj.)', '{goal} ({weeks} wks)', { goal: resolvedGoalTitle, weeks: safeWeeks }),
+    recommendedMethodology: parsed?.recommendedMethodology || (methodology !== 'auto' ? methodology : tr('Piramidalni / Polarizirani', 'Pyramidal / Polarized')),
     methodologyReason: parsed?.methodologyReason || '',
     summary: parsed?.summary || '',
     physiologicalRationale: parsed?.physiologicalRationale || '',
@@ -1116,7 +1451,32 @@ Niz "weeks" MORA sadržavati točno ${safeWeeks} elemenata (weekNumber od 1 do $
   };
 }
 
-const PLANNER_WORKOUT_PROTOCOLS_GUIDE = `### KANONSKI BICIKLISTIČKI TRENING PROTOKOLI (KORISTI REALNE, IZVEDIVE STRUKTURE):
+function getPlannerWorkoutProtocolsGuide(isEn) {
+  if (isEn) {
+    return `### CANONICAL CYCLING WORKOUT PROTOCOLS (USE REALISTIC, EXECUTABLE STRUCTURES):
+- **VO2 Max (classic intervals, Z5 108–122% FTP):**
+  * 5x3m @ 112–118% FTP (3m rest @ 50% FTP) -> ideal for a 55–65 min day
+  * 4x4m @ 110–115% FTP (4m rest @ 50% FTP) -> ideal for a 60–65 min day
+  * 5x4m @ 108–114% FTP (3m30s rest @ 50% FTP) -> for a 70–80 min day
+  * Rønnestad micro-intervals: 2 sets x 8–10x (30s @ 120% / 15s @ 50%) with 5m @ 55% rest between sets
+  * 4x5m @ 106–112% FTP -> for an 80–90 min day
+- **Sweet Spot (88–94% FTP):** 3x10m, 3x12m, 2x20m (4–5m rest @ 50–55%).
+- **Threshold (95–103% FTP):** 3x10m, 4x8m, 2x20m (4–5m rest @ 50%).
+- **Over-Under (ONLY in Threshold/Build phases when appropriate — NEVER in a pure VO2max block!):**
+  * Realistic smart trainer structure: 3 sets of 6–9 min (e.g., repeating 2m @ 93–95% + 1m @ 103–105% FTP with 4–5m @ 50% rest between sets).
+  * NEVER invent impossible Over-Unders above 108% or continuous blocks >12 min without rest.
+- **Endurance / Z2 (58–72% FTP):** steady aerobic block after warmup and before cooldown, WITHOUT pointless Z4/Z5 spikes during an easy ride.
+- **Recovery:** 30–50m continuous at 45–55% FTP.
+
+### STRICT RULES FOR \`intervalsCode\` (INTERVALS.ICU SYNTAX):
+1. Every \`Nx\` repeat block MUST have a **BLANK LINE (\\n\\n) BEFORE AND AFTER IT**, otherwise the parser will multiply the Cooldown by N!
+2. NEVER nest \`Nx\` inside \`Mx\`. If a workout has 2 sets of micro-intervals, write Set 1 (\`8x\`), blank line, \`- 5m 55% Set Recovery\`, blank line, Set 2 (\`8x\`), blank line, \`- 10m 50% Cooldown\`.
+3. Example of a VALID VO2max workout (~55 min):
+"- 12m 55-70% Warmup\\n\\n5x\\n- 3m 115% VO2 Max\\n- 3m 50% Recovery\\n\\n- 13m 50% Cooldown"
+4. Leave the \`steps\` array empty \`[]\` or consistent with \`intervalsCode\` — the primary source of truth for the parser is valid \`intervalsCode\` with blank lines around \`Nx\`!`;
+  }
+
+  return `### KANONSKI BICIKLISTIČKI TRENING PROTOKOLI (KORISTI REALNE, IZVEDIVE STRUKTURE):
 - **VO2 Max (klasični intervali, Z5 108–122% FTP):**
   * 5x3m @ 112–118% FTP (odmor 3m @ 50% FTP) -> idealno za 55-65 min dan
   * 4x4m @ 110–115% FTP (odmor 4m @ 50% FTP) -> idealno za 60-65 min dan
@@ -1137,6 +1497,7 @@ const PLANNER_WORKOUT_PROTOCOLS_GUIDE = `### KANONSKI BICIKLISTIČKI TRENING PRO
 3. Primjer ISPRAVNOG VO2max treninga (~55 min):
 "- 12m 55-70% Zagrijavanje\\n\\n5x\\n- 3m 115% VO2 Max\\n- 3m 50% Oporavak\\n\\n- 13m 50% Hlađenje"
 4. \`steps\` niz ostavi prazan \`[]\` ili usklađen s \`intervalsCode\` — primarni izvor istine za parser je valjani \`intervalsCode\` s praznim redovima oko \`Nx\`!`;
+}
 
 /**
  * Korak 2 dvofaznog planera: Generira detaljne strukturirane treninge za jedan blok (2–4 tjedna)
@@ -1158,20 +1519,21 @@ export async function generatePlanBlockWorkouts({
   model = 'gemini-3.8-flash',
   userId = null
 }) {
+  const isEn = getCurrentLanguage() === 'en';
   if (!blueprint || !Array.isArray(blueprint.weeks)) {
-    throw new Error('Nedostaje makrociklus za generiranje bloka treninga.');
+    throw new Error(tr('Nedostaje makrociklus za generiranje bloka treninga.', 'Macrocycle blueprint is missing for generating a workout block.'));
   }
 
   const targetWeeks = blueprint.weeks.filter(
     w => w.weekNumber >= weekFrom && w.weekNumber <= weekTo
   );
   if (targetWeeks.length === 0) {
-    throw new Error('Odabrani blok nema definiranih tjedana u makrociklusu.');
+    throw new Error(tr('Odabrani blok nema definiranih tjedana u makrociklusu.', 'Selected block has no weeks defined in the macrocycle.'));
   }
 
   const scheduleSummary = summarizeWeeklySchedule(weeklySchedule);
   if (scheduleSummary.activeDays.length === 0) {
-    throw new Error('Moraš odabrati barem jedan trening dan u tjednu.');
+    throw new Error(tr('Moraš odabrati barem jedan trening dan u tjednu.', 'You must select at least one training day per week.'));
   }
 
   const ftp = Number(athleteProfile?.ftp) || 200;
@@ -1185,35 +1547,95 @@ export async function generatePlanBlockWorkouts({
   const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
   const weeksBrief = targetWeeks.map(w =>
-    `- Tjedan ${w.weekNumber} (${w.startDate} do ${w.endDate}) | Faza: ${w.phaseLabel} (${w.phaseType}) | Fokus: ${w.focus} | Cilj: ~${w.targetHours}h, ~${w.targetTss} TSS${w.isRecoveryWeek ? ' [TJEDAN OPORAVKA]' : ''}${w.keySessions?.length ? ` | Ključni treninzi: ${w.keySessions.join(', ')}` : ''}`
+    isEn
+      ? `- Week ${w.weekNumber} (${w.startDate} to ${w.endDate}) | Phase: ${w.phaseLabel} (${w.phaseType}) | Focus: ${w.focus} | Target: ~${w.targetHours}h, ~${w.targetTss} TSS${w.isRecoveryWeek ? ' [RECOVERY WEEK]' : ''}${w.keySessions?.length ? ` | Key sessions: ${w.keySessions.join(', ')}` : ''}`
+      : `- Tjedan ${w.weekNumber} (${w.startDate} do ${w.endDate}) | Faza: ${w.phaseLabel} (${w.phaseType}) | Fokus: ${w.focus} | Cilj: ~${w.targetHours}h, ~${w.targetTss} TSS${w.isRecoveryWeek ? ' [TJEDAN OPORAVKA]' : ''}${w.keySessions?.length ? ` | Ključni treninzi: ${w.keySessions.join(', ')}` : ''}`
   ).join('\n');
 
   const eventConstraint = blueprint.goalMode === 'event' && blueprint.eventDate
-    ? `VAŽNO ZA EVENT: Ciljni event "${blueprint.goalTitle}" je dana ${blueprint.eventDate}. Ako taj datum pada u ovaj blok, na sam dan ${blueprint.eventDate} NE generiraj trening (tamo stoji utrka!), a dan prije eventualno kratki "Openers" trening (30-40 min s 2-3 kratka aktivacijska skoka). Također ne generiraj treninge nakon ${blueprint.eventDate}.`
+    ? (isEn
+      ? `IMPORTANT FOR TARGET EVENT: Target event "${blueprint.goalTitle}" is on ${blueprint.eventDate}. If this date falls in this block, DO NOT generate a workout on ${blueprint.eventDate} (that is race day!), and optionally schedule a short "Openers" ride (30–40 min with 2–3 short activation efforts) the day before. Also do not generate workouts after ${blueprint.eventDate}.`
+      : `VAŽNO ZA EVENT: Ciljni event "${blueprint.goalTitle}" je dana ${blueprint.eventDate}. Ako taj datum pada u ovaj blok, na sam dan ${blueprint.eventDate} NE generiraj trening (tamo stoji utrka!), a dan prije eventualno kratki "Openers" trening (30-40 min s 2-3 kratka aktivacijska skoka). Također ne generiraj treninge nakon ${blueprint.eventDate}.`)
     : '';
 
   const minDateConstraint = minWorkoutDate
-    ? `Početni datum od kojeg sportaš kreće je ${minWorkoutDate} — za Tjedan 1 generiraj samo aktivne dane na ili nakon ${minWorkoutDate}.`
+    ? (isEn
+      ? `The athlete starts on ${minWorkoutDate} — for Week 1 only generate active days on or after ${minWorkoutDate}.`
+      : `Početni datum od kojeg sportaš kreće je ${minWorkoutDate} — za Tjedan 1 generiraj samo aktivne dane na ili nakon ${minWorkoutDate}.`)
     : '';
 
   const allowedDayKeys = scheduleSummary.activeDays.map(d => d.key);
 
   const feedbackSection = blockFeedback && String(blockFeedback).trim()
-    ? [
-        '\n### KOREKCIJA SPORTAŠA ZA OVAJ BLOK (OBAVEZNO UVAŽI):',
-        `Sportaš je pregledao trenutni prijedlog i poslao komentar: "${String(blockFeedback).trim()}"`,
-        previousBlockData?.weeks?.length
-          ? `Trenutni treninzi u bloku koji su prikazani sportašu:\n${previousBlockData.weeks.map(w =>
-              `Tjedan ${w.weekNumber}: ${(w.workouts || []).map(x => `${x.dayName}(${x.dayKey}): "${x.title}" [${x.category}, ${x.durationMinutes}m]`).join('; ')}`
-            ).join('\n')}`
-          : null,
-        'Primijeni sportašev komentar izravno na treninge u bloku (npr. zamijeni sporne treninge, prilagodi intenzitet ili trajanje), a ostale dane zadrži smisleno posložene.'
-      ].filter(Boolean).join('\n')
+    ? (isEn
+      ? [
+          '\n### ATHLETE FEEDBACK FOR THIS BLOCK (MUST APPLY):',
+          `The athlete reviewed the current proposal and requested: "${String(blockFeedback).trim()}"`,
+          previousBlockData?.weeks?.length
+            ? `Current workouts shown to the athlete in this block:\n${previousBlockData.weeks.map(w =>
+                `Week ${w.weekNumber}: ${(w.workouts || []).map(x => `${x.dayName}(${x.dayKey}): "${x.title}" [${x.category}, ${x.durationMinutes}m]`).join('; ')}`
+              ).join('\n')}`
+            : null,
+          'Apply the athlete’s feedback directly to the block workouts (e.g., replace specific rides, adjust intensity or duration), keeping other days logically structured.'
+        ].filter(Boolean).join('\n')
+      : [
+          '\n### KOREKCIJA SPORTAŠA ZA OVAJ BLOK (OBAVEZNO UVAŽI):',
+          `Sportaš je pregledao trenutni prijedlog i poslao komentar: "${String(blockFeedback).trim()}"`,
+          previousBlockData?.weeks?.length
+            ? `Trenutni treninzi u bloku koji su prikazani sportašu:\n${previousBlockData.weeks.map(w =>
+                `Tjedan ${w.weekNumber}: ${(w.workouts || []).map(x => `${x.dayName}(${x.dayKey}): "${x.title}" [${x.category}, ${x.durationMinutes}m]`).join('; ')}`
+              ).join('\n')}`
+            : null,
+          'Primijeni sportašev komentar izravno na treninge u bloku (npr. zamijeni sporne treninge, prilagodi intenzitet ili trajanje), a ostale dane zadrži smisleno posložene.'
+        ].filter(Boolean).join('\n'))
     : '';
 
-  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
+  const blockPrompt = isEn
+    ? `### WORKOUT BLOCK GENERATOR TASK:
+Generate detailed, structured cycling workouts for BLOCK (Weeks ${weekFrom}–${weekTo}) from the macrocycle "${blueprint.planTitle}".
+Methodology: ${blueprint.recommendedMethodology || 'Pyramidal / Polarized'}.
+${prioritizeCustomSources ? 'SOURCE PRIORITY: Primarily apply protocols and principles from the athlete’s custom literature section ("DODATNA KORISNIČKA LITERATURA I BILJEŠKE") above.' : ''}
+${notes ? `Additional athlete notes: "${notes}"` : ''}
+${feedbackSection}
 
-### ZADATAK GENERATORA BLOKA TRENINGA:
+WEEKS IN THIS BLOCK:
+${weeksBrief}
+
+STRICT WEEKLY SCHEDULE & MAX DURATION PER DAY (OBEY EXACTLY):
+${scheduleSummary.promptText}
+Allowed day keys ("dayKey") are EXCLUSIVELY: ${allowedDayKeys.join(', ')}.
+NEVER include a "Rest Day" or "Full Rest" entry in the "workouts" array! Rest days must be omitted from "workouts" (even if a day is marked available, omit it if you prescribe complete rest).
+The total duration of EVERY workout (warmup + ALL interval repeats + cooldown) MUST NOT exceed that day's maximum duration!
+${eventConstraint}
+${minDateConstraint}
+
+${getPlannerWorkoutProtocolsGuide(true)}
+
+IMPORTANT: Your response MUST be EXCLUSIVELY a valid JSON object without markdown backticks:
+{
+  "blockSummary": "Short summary of this block (2 sentences)",
+  "weeks": [
+    {
+      "weekNumber": ${weekFrom},
+      "theme": "Week focus",
+      "targetTss": 320,
+      "workouts": [
+        {
+          "dayKey": "tue",
+          "dayName": "Tuesday",
+          "title": "VO2 Max 5x3m",
+          "category": "VO2max | SweetSpot | Endurance | Tempo | Threshold | Recovery | Anaerobic",
+          "durationMinutes": 55,
+          "estimatedTss": 64,
+          "coachNote": "Physiological target and execution tip",
+          "intervalsCode": "- 12m 55-70% Warmup\\n\\n5x\\n- 3m 115% VO2 Max\\n- 3m 50% Recovery\\n\\n- 13m 50% Cooldown"
+        }
+      ]
+    }
+  ]
+}
+Unit rules: 'durationMinutes' is an integer in MINUTES (e.g., 55, NEVER seconds), and the sum of all steps in 'intervalsCode' MUST match 'durationMinutes' and be <= max minutes for that day.`
+    : `### ZADATAK GENERATORA BLOKA TRENINGA:
 Generiraj detaljne, strukturirane biciklističke treninge za BLOK (Tjedni ${weekFrom}–${weekTo}) iz postojećeg makrociklusa "${blueprint.planTitle}".
 Metodologija: ${blueprint.recommendedMethodology || 'Piramidalni / Polarizirani'}.
 ${prioritizeCustomSources ? 'PRIORITET IZVORA: Koristi primarno protokole i principe iz sportaševe DODATNE KORISNIČKE LITERATURE I BILJEŠKI iz baze znanja iznad.' : ''}
@@ -1231,7 +1653,7 @@ Ukupno trajanje SVAKOG treninga (zagrijavanje + SVA ponavljanja intervala + hla�
 ${eventConstraint}
 ${minDateConstraint}
 
-${PLANNER_WORKOUT_PROTOCOLS_GUIDE}
+${getPlannerWorkoutProtocolsGuide(false)}
 
 VAŽNO: Odgovor MORA biti ISKLJUČIVO valjani JSON objekt bez markdown backtick oznaka:
 {
@@ -1258,9 +1680,18 @@ VAŽNO: Odgovor MORA biti ISKLJUČIVO valjani JSON objekt bez markdown backtick 
 }
 Pravila za jedinice: 'durationMinutes' je cijeli broj MINUTA (npr. 55, NIKAKO u sekundama), i zbroj svih koraka u 'intervalsCode' MORA odgovarati 'durationMinutes' te biti <= max minuta za taj dan.`;
 
+  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}\n\n${blockPrompt}\n\n${buildLanguageInstruction(isEn)}`;
+
   const rawJsonText = await callGeminiApi({
     systemInstruction,
-    contents: [{ role: 'user', parts: [{ text: `Generiraj detaljne treninge za Tjedne ${weekFrom}–${weekTo} plana "${blueprint.planTitle}".` }] }],
+    contents: [{
+      role: 'user',
+      parts: [{
+        text: isEn
+          ? `Generate detailed workouts in English for Weeks ${weekFrom}–${weekTo} of plan "${blueprint.planTitle}".`
+          : `Generiraj detaljne treninge za Tjedne ${weekFrom}–${weekTo} plana "${blueprint.planTitle}".`
+      }]
+    }],
     model,
     temperature: 0.25,
     responseMimeType: 'application/json'
@@ -1272,7 +1703,7 @@ Pravila za jedinice: 'durationMinutes' je cijeli broj MINUTA (npr. 55, NIKAKO u 
     parsed = JSON.parse(cleanJson);
   } catch (err) {
     console.error('[geminiService] Block workouts JSON parse error:', err, rawJsonText);
-    throw new Error('AI nije vratio valjani JSON format za blok treninga. Pokušaj ponovno.');
+    throw new Error(tr('AI nije vratio valjani JSON format za blok treninga. Pokušaj ponovno.', 'AI did not return a valid JSON format for the workout block. Please try again.'));
   }
 
   const dayMap = Object.fromEntries(WEEKDAY_DEFS.map(d => [d.key, d]));
@@ -1289,7 +1720,12 @@ Pravila za jedinice: 'durationMinutes' je cijeli broj MINUTA (npr. 55, NIKAKO u 
       let dayKey = String(wo?.dayKey || '').toLowerCase().trim();
       if (!dayMap[dayKey] && wo?.dayName) {
         const lowerName = String(wo.dayName).toLowerCase();
-        const matched = WEEKDAY_DEFS.find(d => lowerName.startsWith(d.short.toLowerCase()) || lowerName.includes(d.name.toLowerCase().slice(0, 3)));
+        const matched = WEEKDAY_DEFS.find(
+          d =>
+            lowerName.startsWith(d.key) ||
+            lowerName.startsWith(d.short.toLowerCase()) ||
+            lowerName.includes(d.name.toLowerCase().slice(0, 3))
+        );
         if (matched) dayKey = matched.key;
       }
 
@@ -1308,9 +1744,9 @@ Pravila za jedinice: 'durationMinutes' je cijeli broj MINUTA (npr. 55, NIKAKO u 
 
       normalizedWorkouts.push({
         dayKey,
-        dayName: dayDef.name,
+        dayName: isEn ? (EN_WEEKDAY_NAMES[dayKey] || dayDef.name) : dayDef.name,
         date: exactDate,
-        title: wo.title || 'AI Trening',
+        title: wo.title || tr('AI Trening', 'AI Workout'),
         category: sanitized.type && !isCyclingType(sanitized.type) ? 'OTHER' : (wo.category || 'Endurance'),
         type: sanitized.type || 'ride',
         durationMinutes: sanitized.durationMinutes,
@@ -1362,9 +1798,10 @@ export async function reviseSinglePlanWorkout({
   model = 'gemini-3.8-flash',
   userId = null
 }) {
+  const isEn = getCurrentLanguage() === 'en';
   const cleanFeedback = String(feedback || '').trim();
   if (!cleanFeedback) {
-    throw new Error('Upiši komentar ili uputu za izmjenu treninga.');
+    throw new Error(tr('Upiši komentar ili uputu za izmjenu treninga.', 'Enter feedback or instructions to revise the workout.'));
   }
 
   const ftp = Number(athleteProfile?.ftp) || 200;
@@ -1379,9 +1816,39 @@ export async function reviseSinglePlanWorkout({
   });
   const knowledgeBasePrompt = compileKnowledgeBasePrompt({ userId });
 
-  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}
+  const revisePrompt = isEn
+    ? `### TASK: REVISE A SINGLE WORKOUT PER ATHLETE FEEDBACK
+The athlete has feedback or a specific change request for a workout within plan "${blueprint?.planTitle || 'Training Plan'}" (${blueprint?.recommendedMethodology || 'Pyramidal / Polarized'}).
+- Week ${weekMeta?.weekNumber || 1} (${weekMeta?.phaseLabel || ''}) | Week focus: ${weekMeta?.focus || weekMeta?.theme || '-'}
+- Day: ${workout?.dayName || ''} (${workout?.date || ''}) | MAX ALLOWED DURATION FOR THIS DAY: ${dayLimit} min
 
-### ZADATAK: IZMJENA JEDNOG TRENINGA PO KOMENTARU SPORTAŠA
+CURRENT WORKOUT TO REVISE:
+- Title: ${workout?.title || ''}
+- Category: ${workout?.category || ''}
+- Duration: ${workout?.durationMinutes || dayLimit} min | TSS: ${workout?.estimatedTss || '-'}
+- Current intervalsCode:
+${workout?.intervalsCode || ''}
+
+ATHLETE FEEDBACK / REQUEST:
+"${cleanFeedback}"
+
+Revise and replace THIS workout so it fully honors the athlete's feedback, is realistic and physiologically executable on a smart trainer, and stays within max ${dayLimit} minutes.
+If the athlete explicitly requests strength / gym training (off the bike), set "type": "strength", "category": "OTHER", "intervalsCode": "", and write the exercise plan in "descriptionText".
+
+${getPlannerWorkoutProtocolsGuide(true)}
+
+IMPORTANT: Return EXCLUSIVELY a single valid JSON object without markdown backticks:
+{
+  "title": "New clear workout title",
+  "type": "ride | strength",
+  "category": "VO2max | SweetSpot | Endurance | Tempo | Threshold | Recovery | Anaerobic | OTHER",
+  "durationMinutes": ${dayLimit},
+  "estimatedTss": 65,
+  "descriptionText": "Optional exercise notes for strength training (empty for cycling)",
+  "coachNote": "Short explanation of what was changed and why",
+  "intervalsCode": "- 12m 55-70% Warmup\\n\\n5x\\n- 3m 115% VO2 Max\\n- 3m 50% Recovery\\n\\n- 13m 50% Cooldown"
+}`
+    : `### ZADATAK: IZMJENA JEDNOG TRENINGA PO KOMENTARU SPORTAŠA
 Sportaš ima prigovor ili poseban zahtjev za trening u okviru plana "${blueprint?.planTitle || 'Trening Plan'}" (${blueprint?.recommendedMethodology || 'Piramidalni / Polarizirani'}).
 - Tjedan ${weekMeta?.weekNumber || 1} (${weekMeta?.phaseLabel || ''}) | Fokus tjedna: ${weekMeta?.focus || weekMeta?.theme || '-'}
 - Dan: ${workout?.dayName || ''} (${workout?.date || ''}) | MAX DOZVOLJENO TRAJANJE DANA: ${dayLimit} min
@@ -1399,7 +1866,7 @@ KOMENTAR / ZAHTJEV SPORTAŠA:
 Popravi i zamijeni OVAJ trening tako da u potpunosti poštuje komentar sportaša, bude realan i fiziološki izvediv na trenažeru te unutar max ${dayLimit} minuta.
 Ako sportaš izričito traži trening snage / teretanu (izvan trenažera), postavi "type": "strength", "category": "OTHER", "intervalsCode": "" i upiši raspored vježbi u "descriptionText".
 
-${PLANNER_WORKOUT_PROTOCOLS_GUIDE}
+${getPlannerWorkoutProtocolsGuide(false)}
 
 VAŽNO: Vrati ISKLJUČIVO jedan valjani JSON objekt bez markdown backtick oznaka:
 {
@@ -1413,9 +1880,18 @@ VAŽNO: Vrati ISKLJUČIVO jedan valjani JSON objekt bez markdown backtick oznaka
   "intervalsCode": "- 12m 55-70% Zagrijavanje\\n\\n5x\\n- 3m 115% VO2 Max\\n- 3m 50% Oporavak\\n\\n- 13m 50% Hlađenje"
 }`;
 
+  const systemInstruction = `${athleteContextPrompt}\n\n${knowledgeBasePrompt}\n\n${revisePrompt}\n\n${buildLanguageInstruction(isEn)}`;
+
   const rawJsonText = await callGeminiApi({
     systemInstruction,
-    contents: [{ role: 'user', parts: [{ text: `Izmijeni trening "${workout?.title}" prema komentaru: "${cleanFeedback}"` }] }],
+    contents: [{
+      role: 'user',
+      parts: [{
+        text: isEn
+          ? `Revise workout "${workout?.title}" in English per feedback: "${cleanFeedback}"`
+          : `Izmijeni trening "${workout?.title}" prema komentaru: "${cleanFeedback}"`
+      }]
+    }],
     model,
     temperature: 0.25,
     responseMimeType: 'application/json'
@@ -1427,14 +1903,14 @@ VAŽNO: Vrati ISKLJUČIVO jedan valjani JSON objekt bez markdown backtick oznaka
     parsed = JSON.parse(cleanJson);
   } catch (err) {
     console.error('[geminiService] Single workout revision JSON parse error:', err, rawJsonText);
-    throw new Error('AI nije vratio valjani JSON za izmijenjeni trening. Pokušaj ponovno.');
+    throw new Error(tr('AI nije vratio valjani JSON za izmijenjeni trening. Pokušaj ponovno.', 'AI did not return a valid JSON for the revised workout. Please try again.'));
   }
 
   const sanitized = sanitizePlannedWorkout(parsed, dayLimit, ftp);
 
   return {
     ...workout,
-    title: parsed?.title || workout?.title || 'Prilagođeni trening',
+    title: parsed?.title || workout?.title || tr('Prilagođeni trening', 'Custom Workout'),
     type: sanitized.type || 'ride',
     category: sanitized.type && !isCyclingType(sanitized.type) ? 'OTHER' : (parsed?.category || workout?.category || 'Endurance'),
     durationMinutes: sanitized.durationMinutes,
@@ -1451,15 +1927,38 @@ VAŽNO: Vrati ISKLJUČIVO jedan valjani JSON objekt bez markdown backtick oznaka
  * Koristi Google Gemini multimodalno razumijevanje videa.
  */
 export async function analyzeYouTubeVideoForKnowledgeBase(youtubeUrl) {
+  const isEn = getCurrentLanguage() === 'en';
   const cleanUrl = String(youtubeUrl || '').trim();
   const match = cleanUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|live\/))([\w-]{11})/);
   if (!match) {
-    throw new Error('Nevažeća YouTube poveznica. Unesi ispravan URL (npr. https://www.youtube.com/watch?v=...)');
+    throw new Error(tr(
+      'Nevažeća YouTube poveznica. Unesi ispravan URL (npr. https://www.youtube.com/watch?v=...)',
+      'Invalid YouTube link. Enter a valid URL (e.g., https://www.youtube.com/watch?v=...)'
+    ));
   }
   const videoId = match[1];
   const standardUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-  const promptText = `Analiziraj ovaj YouTube video s biciklističkom, fiziološkom ili sportskom tematikom. 
+  const promptText = isEn
+    ? `Analyze this cycling, exercise physiology, or endurance sports YouTube video.
+Your task is to extract and structure the knowledge from the video for a personal cycling AI coach knowledge base.
+Write the title, summary, and entire content in crisp, natural English.
+
+Format your response EXACTLY in this structure (keep the uppercase prefix markers intact):
+TITLE: [Topic title or exact video title]
+AUTHOR: [Channel name, speaker, or lecture author]
+CATEGORY: YouTube predavanje / podcast
+SUMMARY: [2-3 sentence summary of what the video covers and the main takeaway for a cyclist]
+CONTENT:
+### 1. KEY SCIENTIFIC & PHYSIOLOGICAL CONCEPTS
+(Main study findings, adaptation mechanisms, mitochondria, lactate, Zone 2, VO2max, etc.)
+
+### 2. COACHING RECOMMENDATIONS & PROTOCOLS
+(Concrete prescriptions from the video: intensities in % FTP / HR, intervals, work-to-rest ratios, fueling/carbs, recovery)
+
+### 3. PRACTICAL APPLICATION
+(How an amateur or competitive cyclist can apply this in their weekly training plan)`
+    : `Analiziraj ovaj YouTube video s biciklističkom, fiziološkom ili sportskom tematikom. 
 Tvoj zadatak je izvući i strukturirati znanje iz videa za potrebe baze znanja osobnog biciklističkog AI trenera.
 
 Formatiraj odgovor točno u ovom formatu (obavezno sačuvaj ključne oznake):
@@ -1528,7 +2027,7 @@ CONTENT:
     author,
     category,
     summary,
-    content: (summary ? `> **Sažetak:** ${summary}\n\n` : '') + content,
+    content: (summary ? `> **${tr('Sažetak', 'Summary')}:** ${summary}\n\n` : '') + content,
     videoId,
     sourceUrl: standardUrl
   };

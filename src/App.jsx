@@ -34,6 +34,8 @@ import { extractIntervalsAthleteMetrics } from './services/intervalsApi';
 import { parseIsoLocal } from './utils/plannerUtils';
 import { VALID_UI_THEME_IDS } from './utils/themeConfig';
 import { canRunInTrainer } from './utils/sportTypes';
+import { useI18n } from './i18n/I18nContext';
+import LanguageSwitcher from './i18n/LanguageSwitcher';
 
 const DEFAULT_GUEST_PROFILE = {
   username: 'Gost Vozač', weight: 75.9, ftp: 200, thresholdHr: 160, maxHr: 180,
@@ -43,17 +45,32 @@ const DEFAULT_GUEST_PROFILE = {
 };
 
 // 1. Centralizirana konfiguracija tabova za lakše održavanje
-const TABS = {
-  calendar: { label: 'Kalendar Treninga', shortLabel: 'Kalendar', code: 'CAL', icon: <CalendarIcon />, component: CalendarTab },
-  library: { label: 'Knjižnica Treninga', shortLabel: 'Knjižnica', code: 'LIB', icon: <Database />, component: LibraryTab },
-  trainer: { label: 'Trenažer · Cockpit', shortLabel: 'Trenažer', code: 'ERG', icon: <Monitor />, component: TrainerTab },
-  aiCoach: { label: 'AI Fiziolog & Planer', shortLabel: 'AI Trener', code: 'LAB', icon: <Sparkles />, component: AICoachTab },
-  fitness: { label: 'Kondicija & Forma (PMC)', shortLabel: 'Kondicija', code: 'PMC', icon: <Activity />, component: FitnessTab },
-  profile: { label: 'Profil & Zone Vozača', shortLabel: 'Profil', code: 'ATH', icon: <User />, component: ProfileTab },
-  connections: { label: 'Senzori & API Veze', shortLabel: 'API Veze', code: 'SYS', icon: <LinkIcon />, component: ConnectionsTab }
+const TAB_CONFIG = {
+  calendar: { labelHr: 'Kalendar Treninga', labelEn: 'Training Calendar', shortHr: 'Kalendar', shortEn: 'Calendar', code: 'CAL', icon: <CalendarIcon />, component: CalendarTab },
+  library: { labelHr: 'Knjižnica Treninga', labelEn: 'Workout Library', shortHr: 'Knjižnica', shortEn: 'Library', code: 'LIB', icon: <Database />, component: LibraryTab },
+  trainer: { labelHr: 'Trenažer · Cockpit', labelEn: 'Smart Trainer · Cockpit', shortHr: 'Trenažer', shortEn: 'Trainer', code: 'ERG', icon: <Monitor />, component: TrainerTab },
+  aiCoach: { labelHr: 'AI Fiziolog & Planer', labelEn: 'AI Physiologist & Planner', shortHr: 'AI Trener', shortEn: 'AI Coach', code: 'LAB', icon: <Sparkles />, component: AICoachTab },
+  fitness: { labelHr: 'Kondicija & Forma (PMC)', labelEn: 'Fitness & Form (PMC)', shortHr: 'Kondicija', shortEn: 'Fitness', code: 'PMC', icon: <Activity />, component: FitnessTab },
+  profile: { labelHr: 'Profil & Zone Vozača', labelEn: 'Rider Profile & Zones', shortHr: 'Profil', shortEn: 'Profile', code: 'ATH', icon: <User />, component: ProfileTab },
+  connections: { labelHr: 'Senzori & API Veze', labelEn: 'Sensors & API Connections', shortHr: 'API Veze', shortEn: 'Connections', code: 'SYS', icon: <LinkIcon />, component: ConnectionsTab }
 };
 
 export default function App() {
+  const { tr, isEn } = useI18n();
+  const TABS = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(TAB_CONFIG).map(([k, v]) => [
+          k,
+          {
+            ...v,
+            label: isEn ? v.labelEn : v.labelHr,
+            shortLabel: isEn ? v.shortEn : v.shortHr
+          }
+        ])
+      ),
+    [isEn]
+  );
   const [activeTab, setActiveTab] = useState('calendar');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useLocalStorage('sidebarCollapsed', false);
@@ -105,8 +122,11 @@ export default function App() {
       setAuthNotice({
         type: 'error',
         text: decoded.toLowerCase().includes('expired') || decoded.toLowerCase().includes('invalid')
-          ? 'Poveznica za potvrdu emaila je istekla ili je već iskorištena. Prijavite se sa svojom lozinkom.'
-          : `Autentifikacija: ${decoded}`
+          ? tr(
+              'Poveznica za potvrdu emaila je istekla ili je već iskorištena. Prijavite se sa svojom lozinkom.',
+              'The email verification link has expired or was already used. Please sign in with your password.'
+            )
+          : tr(`Autentifikacija: ${decoded}`, `Authentication: ${decoded}`)
       });
       window.history.replaceState(null, '', window.location.pathname);
       return;
@@ -116,7 +136,10 @@ export default function App() {
     if (hash.includes('type=signup') || hash.includes('type=email_change')) {
       setAuthNotice({
         type: 'success',
-        text: 'Email adresa je uspješno potvrđena! Račun je aktivan i prijavljeni ste.'
+        text: tr(
+          'Email adresa je uspješno potvrđena! Račun je aktivan i prijavljeni ste.',
+          'Email address confirmed! Your account is active and you are signed in.'
+        )
       });
       window.history.replaceState(null, '', window.location.pathname);
       setTimeout(() => setAuthNotice(null), 8000);
@@ -139,7 +162,7 @@ export default function App() {
 
       setAuthNotice({
         type: 'info',
-        text: 'Povezivanje s Intervals.icu u tijeku...'
+        text: tr('Povezivanje s Intervals.icu u tijeku...', 'Connecting with Intervals.icu...')
       });
 
       handleIntervalsOAuthCallback(code, state)
@@ -183,7 +206,10 @@ export default function App() {
             if (!serverAuthRes.ok || !serverAuthData?.session?.access_token || !serverAuthData?.session?.refresh_token) {
               throw new Error(
                 serverAuthData?.error ||
-                  `Sigurna prijava putem Intervals.icu nije uspjela (HTTP ${serverAuthRes.status}).`
+                  tr(
+                    `Sigurna prijava putem Intervals.icu nije uspjela (HTTP ${serverAuthRes.status}).`,
+                    `Secure Intervals.icu sign-in failed (HTTP ${serverAuthRes.status}).`
+                  )
               );
             }
 
@@ -237,7 +263,10 @@ export default function App() {
 
           setAuthNotice({
             type: 'success',
-            text: `Uspješno prijavljeni putem Intervals.icu! ${athleteName ? `Dobrodošao, ${athleteName}.` : ''}`
+            text: tr(
+              `Uspješno prijavljeni putem Intervals.icu! ${athleteName ? `Dobrodošao, ${athleteName}.` : ''}`,
+              `Signed in via Intervals.icu! ${athleteName ? `Welcome, ${athleteName}.` : ''}`
+            )
           });
           setTimeout(() => setAuthNotice(null), 6000);
         })
@@ -245,7 +274,7 @@ export default function App() {
           console.error('[Intervals OAuth] Greška pri obradi autorizacije:', err);
           setAuthNotice({
             type: 'error',
-            text: `Greška pri prijavi s Intervals.icu: ${err.message}`
+            text: tr(`Greška pri prijavi s Intervals.icu: ${err.message}`, `Intervals.icu sign-in error: ${err.message}`)
           });
         })
         .finally(() => {
@@ -421,7 +450,7 @@ export default function App() {
 
   const pendingRecoverySummary = useMemo(
     () => (pendingRecoverySession ? buildRecoverySummary(pendingRecoverySession) : null),
-    [pendingRecoverySession]
+    [pendingRecoverySession, isEn]
   );
 
   const handleResumeRecoveredWorkout = useCallback(() => {
@@ -596,8 +625,8 @@ export default function App() {
     handleTabChange('trainer');
   };
 
-  const isDefaultGuestName = !athleteProfile?.username || ['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(athleteProfile.username);
-  const displayName = isDefaultGuestName ? 'Gost Vozač' : athleteProfile.username.trim().split(' ')[0];
+  const isDefaultGuestName = !athleteProfile?.username || ['Gost Vozač', 'Guest Rider', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(athleteProfile.username);
+  const displayName = isDefaultGuestName ? tr('Gost Vozač', 'Guest Rider') : athleteProfile.username.trim().split(' ')[0];
   const athleteWkg = ((Number(athleteProfile?.ftp) || 200) / (Number(athleteProfile?.weight) || 75)).toFixed(2);
 
   if (isSessionLoading || isOAuthProcessing) {
@@ -605,7 +634,9 @@ export default function App() {
       <div className="h-screen bg-zinc-950 flex flex-col items-center justify-center gap-3">
         <BrandLogo size={52} spinning />
         <span className="font-mono text-xs uppercase tracking-widest text-zinc-500">
-          {isOAuthProcessing ? 'Povezivanje i prijava putem Intervals.icu...' : 'Inicijalizacija sustava...'}
+          {isOAuthProcessing
+            ? tr('Povezivanje i prijava putem Intervals.icu...', 'Connecting & signing in via Intervals.icu...')
+            : tr('Inicijalizacija sustava...', 'Initializing telemetry suite...')}
         </span>
       </div>
     );
@@ -644,7 +675,7 @@ export default function App() {
               <button
                 onClick={() => setIsSidebarCollapsed(true)}
                 className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors shrink-0"
-                title="Sažmi izbornik"
+                title={tr('Sažmi izbornik', 'Collapse sidebar')}
               >
                 <PanelLeftClose className="w-4 h-4" />
               </button>
@@ -653,7 +684,7 @@ export default function App() {
             <button
               onClick={() => setIsSidebarCollapsed(false)}
               className="group flex flex-col items-center justify-center w-full h-full gap-0.5 text-zinc-400 hover:text-zinc-100 transition-colors"
-              title="Proširi izbornik"
+              title={tr('Proširi izbornik', 'Expand sidebar')}
             >
               <BrandLogo size={32} spinning={isTrainerPlaying} className="group-hover:scale-105 transition-transform" />
             </button>
@@ -664,7 +695,7 @@ export default function App() {
         <nav className="mt-3 short:mt-1.5 flex-1 px-2 space-y-1 short:space-y-0.5 overflow-y-auto hide-scrollbar">
           {!isSidebarCollapsed && (
             <div className="px-2.5 pb-1 text-[10px] font-mono font-semibold uppercase tracking-widest text-zinc-600 short:hidden">
-              Telemetrija &amp; Plan
+              {tr('Telemetrija & Plan', 'Telemetry & Plan')}
             </div>
           )}
           {['calendar', 'library', 'trainer', 'aiCoach', 'fitness', 'profile'].map(tabId => (
@@ -684,7 +715,7 @@ export default function App() {
             <button
               onClick={() => setIsSidebarCollapsed(false)}
               className="w-full flex items-center justify-center py-2 short:py-1.5 mt-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors"
-              title="Proširi bočnu traku"
+              title={tr('Proširi bočnu traku', 'Expand sidebar')}
             >
               <PanelLeftOpen className="w-4 h-4" />
             </button>
@@ -703,7 +734,7 @@ export default function App() {
               </div>
               <div className="flex flex-col min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-xs font-bold text-zinc-100 truncate" title={athleteProfile.username || 'Korisnik'}>
+                  <span className="text-xs font-bold text-zinc-100 truncate" title={athleteProfile.username || tr('Korisnik', 'User')}>
                     {displayName}
                   </span>
                   {intervalsConnected ? (
@@ -712,7 +743,7 @@ export default function App() {
                     </span>
                   ) : currentUserId === 'guest' && !isDefaultGuestName ? (
                     <span className="font-mono text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 shrink-0">
-                      GOST
+                      {tr('GOST', 'GUEST')}
                     </span>
                   ) : null}
                 </div>
@@ -725,7 +756,7 @@ export default function App() {
             <div className="flex justify-center mb-0.5">
               <button
                 onClick={() => handleTabChange('profile')}
-                title={`${athleteProfile.username} · ${athleteProfile.ftp}W`}
+                title={`${displayName} · ${athleteProfile.ftp}W`}
                 className="bg-volt-400 text-zinc-950 rounded-md w-8 h-8 flex items-center justify-center font-display font-bold text-xs shrink-0 hover:bg-volt-300 transition-colors"
               >
                 {(isDefaultGuestName ? 'G' : displayName.charAt(0)).toUpperCase()}
@@ -736,17 +767,17 @@ export default function App() {
           {currentUserId === 'guest' && (
             <button
               onClick={() => setShowAuthModal(true)}
-              title="Prijava ili Registracija mailom"
+              title={tr('Prijava ili Registracija mailom', 'Sign in or Register')}
               className="w-full flex items-center justify-center md:justify-start px-0 md:px-3 py-2 short:py-1.5 rounded-lg transition-all text-volt-400 bg-volt-400/10 hover:bg-volt-400/15 border border-volt-400/30"
             >
               <LogIn className="w-4 h-4 shrink-0" />
-              {!isSidebarCollapsed && <span className="ml-2.5 text-xs font-bold uppercase tracking-wider font-display">Prijava / Oblak</span>}
+              {!isSidebarCollapsed && <span className="ml-2.5 text-xs font-bold uppercase tracking-wider font-display">{tr('Prijava / Oblak', 'Sign In / Cloud')}</span>}
             </button>
           )}
 
           <button
             onClick={() => handleTabChange('connections')}
-            title="API Veze & Integracije"
+            title={tr('API Veze & Integracije', 'API Connections & Integrations')}
             className={`w-full flex items-center justify-center md:justify-start px-0 md:px-3 py-2 short:py-1.5 rounded-lg transition-all ${
               activeTab === 'connections'
                 ? 'bg-volt-400/10 text-volt-400 font-semibold border border-volt-400/25'
@@ -756,7 +787,7 @@ export default function App() {
             <LinkIcon className={`w-4 h-4 shrink-0 ${activeTab === 'connections' ? 'text-volt-400' : 'text-zinc-500'}`} />
             {!isSidebarCollapsed && (
               <span className="ml-2.5 text-xs font-medium flex-1 text-left flex items-center justify-between">
-                <span>API Veze</span>
+                <span>{tr('API Veze', 'Connections')}</span>
                 <span className={`w-2 h-2 rounded-full ${intervalsConnected ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
               </span>
             )}
@@ -764,11 +795,11 @@ export default function App() {
 
           <button
             onClick={handleLogout}
-            title={currentUserId === 'guest' ? 'Izađi' : 'Odjava'}
+            title={currentUserId === 'guest' ? tr('Izađi', 'Exit') : tr('Odjava', 'Sign Out')}
             className="w-full flex items-center justify-center md:justify-start px-0 md:px-3 py-1.5 short:py-1 rounded-lg transition-all text-zinc-500 hover:bg-rose-500/10 hover:text-rose-400"
           >
             <LogOut className="w-4 h-4 shrink-0" />
-            {!isSidebarCollapsed && <span className="ml-2.5 text-xs font-medium">{currentUserId === 'guest' ? 'Izađi iz sesije' : 'Odjava'}</span>}
+            {!isSidebarCollapsed && <span className="ml-2.5 text-xs font-medium">{currentUserId === 'guest' ? tr('Izađi iz sesije', 'Exit Session') : tr('Odjava', 'Sign Out')}</span>}
           </button>
         </div>
       </aside>
@@ -796,11 +827,11 @@ export default function App() {
             )}
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Brzi telemetrijski čip na većim ekranima */}
             <div
               onClick={() => handleTabChange('profile')}
-              title="Fiziološki parametri vozača (klikni za uređenje)"
+              title={tr('Fiziološki parametri vozača (klikni za uređenje)', 'Rider physiological metrics (click to edit)')}
               className="hidden lg:flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-colors font-mono text-xs telemetry-num"
             >
               <span className="text-zinc-500">FTP</span>
@@ -823,9 +854,12 @@ export default function App() {
                 className="flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border border-zinc-800 hover:border-zinc-700 shadow-hardware"
               >
                 <RefreshCw className={`w-3.5 h-3.5 text-volt-400 ${isLoading ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">Sinkroniziraj</span>
+                <span className="hidden sm:inline">{tr('Sinkroniziraj', 'Sync')}</span>
               </button>
             )}
+
+            <LanguageSwitcher className="hidden sm:inline-flex" />
+            <LanguageSwitcher compact className="sm:hidden" />
           </div>
         </header>
 
@@ -857,7 +891,7 @@ export default function App() {
             <div className="flex items-center gap-2 min-w-0">
               <RotateCcw className="w-4 h-4 text-amber-400 shrink-0" />
               <span className="truncate">
-                Nezavršen trening: <strong className="text-zinc-100">{pendingRecoverySummary.title}</strong>{' '}
+                {tr('Nezavršen trening:', 'Unfinished workout:')} <strong className="text-zinc-100">{pendingRecoverySummary.title}</strong>{' '}
                 <span className="font-mono text-amber-300 telemetry-num">
                   ({Math.floor(pendingRecoverySummary.elapsedTime / 60)}:{String(pendingRecoverySummary.elapsedTime % 60).padStart(2, '0')} / {Math.floor(pendingRecoverySummary.totalDuration / 60)}:{String(pendingRecoverySummary.totalDuration % 60).padStart(2, '0')})
                 </span>{' '}
@@ -871,7 +905,7 @@ export default function App() {
                   onClick={handleResumeRecoveredWorkout}
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-mono text-[11px] font-bold uppercase tracking-wider transition-colors"
                 >
-                  <Play className="w-3 h-3 fill-current" /> Nastavi
+                  <Play className="w-3 h-3 fill-current" /> {tr('Nastavi', 'Resume')}
                 </button>
               )}
               <button
@@ -879,7 +913,7 @@ export default function App() {
                 onClick={() => setShowRecoveryModal(true)}
                 className="px-2.5 py-1 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 font-mono text-[11px] font-bold uppercase tracking-wider transition-colors"
               >
-                Opcije
+                {tr('Opcije', 'Options')}
               </button>
             </div>
           </div>
@@ -1008,11 +1042,11 @@ export default function App() {
         {/* MOBILE NAVIGATION */}
         <div className={`${activeTab === 'trainer' && isTrainerFullscreen ? 'hidden' : 'md:hidden'} fixed bottom-0 left-0 right-0 bg-zinc-950/95 border-t border-zinc-800 z-40 px-2 pb-safe-bottom`}>
           <div className="flex justify-around items-center h-14">
-            <MobileTab icon={<CalendarIcon />} label="Kalendar" active={activeTab === 'calendar'} onClick={() => handleTabChange('calendar')} />
-            <MobileTab icon={<Monitor />} label="Trenažer" live={isTrainerPlaying} active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
-            <MobileTab icon={<Sparkles />} label="AI Trener" live={isAiCoachBusy} active={activeTab === 'aiCoach'} onClick={() => handleTabChange('aiCoach')} />
-            <MobileTab icon={<ClipboardList />} label="Kondicija" active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
-            <MobileTab icon={<MoreHorizontal />} label="Više" active={['library', 'profile', 'connections'].includes(activeTab) || isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+            <MobileTab icon={<CalendarIcon />} label={TABS.calendar.shortLabel} active={activeTab === 'calendar'} onClick={() => handleTabChange('calendar')} />
+            <MobileTab icon={<Monitor />} label={TABS.trainer.shortLabel} live={isTrainerPlaying} active={activeTab === 'trainer'} onClick={() => handleTabChange('trainer')} />
+            <MobileTab icon={<Sparkles />} label={TABS.aiCoach.shortLabel} live={isAiCoachBusy} active={activeTab === 'aiCoach'} onClick={() => handleTabChange('aiCoach')} />
+            <MobileTab icon={<ClipboardList />} label={TABS.fitness.shortLabel} active={activeTab === 'fitness'} onClick={() => handleTabChange('fitness')} />
+            <MobileTab icon={<MoreHorizontal />} label={tr('Više', 'More')} active={['library', 'profile', 'connections'].includes(activeTab) || isMobileMenuOpen} onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
           </div>
         </div>
 
@@ -1033,9 +1067,12 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-                <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-100">
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <LanguageSwitcher />
+                  <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-100">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               {currentUserId === 'guest' && (
@@ -1044,7 +1081,7 @@ export default function App() {
                     onClick={() => { setIsMobileMenuOpen(false); setShowAuthModal(true); }}
                     className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm transition-colors"
                   >
-                    <LogIn className="w-4 h-4" /> Prijavi se / Sinkroniziraj Oblak
+                    <LogIn className="w-4 h-4" /> {tr('Prijavi se / Sinkroniziraj Oblak', 'Sign In / Cloud Sync')}
                   </button>
                 </div>
               )}
@@ -1059,7 +1096,7 @@ export default function App() {
                 onClick={() => { setIsMobileMenuOpen(false); handleLogout(); }}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-rose-400 text-xs font-semibold mt-1"
               >
-                <LogOut className="w-4 h-4" /> {currentUserId === 'guest' ? 'Izađi iz sesije' : 'Odjavi se'}
+                <LogOut className="w-4 h-4" /> {currentUserId === 'guest' ? tr('Izađi iz sesije', 'Exit Session') : tr('Odjavi se', 'Sign Out')}
               </button>
             </div>
           </div>

@@ -4,6 +4,7 @@
  */
 
 import { compileCoachNotesPrompt } from './aiChatStorage';
+import { tr } from '../i18n/i18nCore.js';
 
 const STORAGE_KEY_CUSTOM_SOURCES = 'ergvibe_ai_custom_knowledge_v1';
 const STORAGE_KEY_DISABLED_MODULES = 'ergvibe_ai_disabled_modules_v1';
@@ -127,16 +128,16 @@ export function getCustomKnowledgeSources() {
   }
 }
 
-export function addCustomKnowledgeSource({ title, author = '', category = 'Vlastita literatura', content, sourceUrl = '' }) {
+export function addCustomKnowledgeSource({ title, author = '', category = '', content, sourceUrl = '' }) {
   if (!title?.trim() || !content?.trim()) {
-    throw new Error('Naziv i sadržaj izvora su obavezni.');
+    throw new Error(tr('Naziv i sadržaj izvora su obavezni.', 'Source title and content are required.'));
   }
   const existing = getCustomKnowledgeSources();
   const newItem = {
     id: `custom_${Date.now()}`,
     title: title.trim(),
-    author: author.trim() || 'Osobna bilješka / Knjiga',
-    category: category.trim() || 'Vlastita literatura',
+    author: author.trim() || tr('Osobna bilješka / Knjiga', 'Personal Note / Book'),
+    category: category.trim() || tr('Vlastita literatura', 'Custom Literature'),
     content: content.trim().slice(0, 60000), // sigurnosni limit za localStorage (~60k znakova po izvoru)
     sourceUrl: (sourceUrl || '').trim(),
     createdAt: new Date().toISOString()

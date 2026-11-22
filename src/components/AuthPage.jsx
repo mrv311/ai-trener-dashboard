@@ -3,8 +3,11 @@ import { supabase } from '../services/supabaseClient';
 import { Mail, Lock, Loader2, AlertCircle, CheckCircle2, Bluetooth, Cpu, Sparkles, Download, ArrowRight, Link as LinkIcon, X } from 'lucide-react';
 import BrandLogo from './BrandLogo';
 import { startIntervalsOAuth } from '../services/intervalsOAuth';
+import { useI18n } from '../i18n/I18nContext';
+import LanguageSwitcher from '../i18n/LanguageSwitcher';
 
 export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
+  const { tr } = useI18n();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,16 +40,29 @@ export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
         if (error) throw error;
 
         if (data?.user?.identities?.length === 0) {
-          setErrorMsg('Korisnik s ovom email adresom već postoji. Pokušajte se prijaviti.');
+          setErrorMsg(
+            tr(
+              'Korisnik s ovom email adresom već postoji. Pokušajte se prijaviti.',
+              'An account with this email already exists. Please sign in.'
+            )
+          );
           setIsLogin(true);
         } else if (data?.session) {
-          setSuccessMsg('Račun uspješno kreiran! Prijavljivanje...');
+          setSuccessMsg(tr('Račun uspješno kreiran! Prijavljivanje...', 'Account created! Signing in...'));
         } else {
-          setSuccessMsg(`Potvrdni email je poslan na ${email.trim()}. Otvorite poveznicu u primljenom mailu za aktivaciju računa.`);
+          setSuccessMsg(
+            tr(
+              `Potvrdni email je poslan na ${email.trim()}. Otvorite poveznicu u primljenom mailu za aktivaciju računa.`,
+              `Confirmation email sent to ${email.trim()}. Open the link in your inbox to activate your account.`
+            )
+          );
         }
       }
     } catch (error) {
-      setErrorMsg(error.message || 'Došlo je do pogreške prilikom autentifikacije.');
+      setErrorMsg(
+        error.message ||
+          tr('Došlo je do pogreške prilikom autentifikacije.', 'An authentication error occurred.')
+      );
     } finally {
       setLoading(false);
     }
@@ -61,23 +77,30 @@ export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
           <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-volt-400 via-volt-500/50 to-transparent" />
 
           <div>
-            <div className="flex items-center gap-3.5 mb-8">
-              <BrandLogo size={48} spinning />
-              <div>
-                <div className="font-display font-bold text-2xl tracking-wider uppercase text-zinc-100 leading-none">
-                  ERG<span className="text-volt-400">VIBE</span>
-                </div>
-                <div className="font-mono text-[11px] uppercase tracking-widest text-zinc-500 mt-1">
-                  Indoor Cycling Telemetry · FTMS Cockpit
+            <div className="flex items-start justify-between gap-3 mb-8">
+              <div className="flex items-center gap-3.5">
+                <BrandLogo size={48} spinning />
+                <div>
+                  <div className="font-display font-bold text-2xl tracking-wider uppercase text-zinc-100 leading-none">
+                    ERG<span className="text-volt-400">VIBE</span>
+                  </div>
+                  <div className="font-mono text-[11px] uppercase tracking-widest text-zinc-500 mt-1">
+                    Indoor Cycling Telemetry · FTMS Cockpit
+                  </div>
                 </div>
               </div>
+              <LanguageSwitcher />
             </div>
 
             <h1 className="font-display font-bold text-3xl md:text-4xl uppercase tracking-wide text-zinc-100 leading-[1.12] max-w-lg">
-              Precizna kontrola watta. <span className="text-volt-400">Bez suvišne magle.</span>
+              {tr('Precizna kontrola watta.', 'Precision watt control.')}{' '}
+              <span className="text-volt-400">{tr('Bez suvišne magle.', 'Zero fluff.')}</span>
             </h1>
             <p className="text-zinc-400 text-sm md:text-base mt-3.5 max-w-md leading-relaxed">
-              Izravno BLE upravljanje pametnim trenažerom, Power Match PID korekcija pedala, virtualni mjenjač u 24 brzine i AI fiziološka analitika.
+              {tr(
+                'Izravno BLE upravljanje pametnim trenažerom, Power Match PID korekcija pedala, virtualni mjenjač u 24 brzine i AI fiziološka analitika.',
+                'Direct Web Bluetooth FTMS trainer control, Power Match PID pedal sync, 24-speed virtual shifting, and AI physiological analytics.'
+              )}
             </p>
 
             {/* Tehničke kartice mogućnosti */}
@@ -93,20 +116,28 @@ export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
                 <Cpu className="w-4 h-4 text-volt-400 shrink-0 mt-0.5" />
                 <div>
                   <div className="font-mono text-xs font-bold text-zinc-200">Power Match PID</div>
-                  <div className="text-[11px] text-zinc-500">Automatski lock na vanjski PM</div>
+                  <div className="text-[11px] text-zinc-500">
+                    {tr('Automatski lock na vanjski PM', 'Auto lock to external power meter')}
+                  </div>
                 </div>
               </div>
               <div className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 flex items-start gap-2.5">
                 <Sparkles className="w-4 h-4 text-volt-400 shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-mono text-xs font-bold text-zinc-200">AI Fiziolog</div>
-                  <div className="text-[11px] text-zinc-500">Coggan EF, Pw:HR &amp; planovi</div>
+                  <div className="font-mono text-xs font-bold text-zinc-200">
+                    {tr('AI Fiziolog', 'AI Physiologist')}
+                  </div>
+                  <div className="text-[11px] text-zinc-500">
+                    {tr('Coggan EF, Pw:HR & planovi', 'Coggan EF, Pw:HR & plans')}
+                  </div>
                 </div>
               </div>
               <div className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 flex items-start gap-2.5">
                 <Download className="w-4 h-4 text-volt-400 shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-mono text-xs font-bold text-zinc-200">Nativni .FIT + ICU</div>
+                  <div className="font-mono text-xs font-bold text-zinc-200">
+                    {tr('Nativni .FIT + ICU', 'Native .FIT + ICU')}
+                  </div>
                   <div className="text-[11px] text-zinc-500">Garmin, Strava &amp; Intervals.icu</div>
                 </div>
               </div>
@@ -136,15 +167,21 @@ export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
         <div className="lg:col-span-5 p-7 md:p-10 flex flex-col justify-center bg-zinc-900">
           <div className="mb-6">
             <span className="font-mono text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/25">
-              {isLogin ? 'Autentifikacija' : 'Novi Vozač'}
+              {isLogin ? tr('Autentifikacija', 'Authentication') : tr('Novi Vozač', 'New Rider')}
             </span>
             <h2 className="font-display font-bold text-2xl uppercase tracking-wide text-zinc-100 mt-2">
-              {isLogin ? 'Prijava u Cockpit' : 'Kreiraj ErgVibe Račun'}
+              {isLogin ? tr('Prijava u Cockpit', 'Sign In to Cockpit') : tr('Kreiraj ErgVibe Račun', 'Create ErgVibe Account')}
             </h2>
             <p className="text-zinc-400 text-xs mt-1">
               {isLogin
-                ? 'Sinkroniziraj profil, FTP i povijest treninga u oblaku.'
-                : 'Besplatna registracija za trajnu pohranu vožnji na svim uređajima.'}
+                ? tr(
+                    'Sinkroniziraj profil, FTP i povijest treninga u oblaku.',
+                    'Sync your profile, FTP, and training history in the cloud.'
+                  )
+                : tr(
+                    'Besplatna registracija za trajnu pohranu vožnji na svim uređajima.',
+                    'Free account to store your workouts and telemetry across devices.'
+                  )}
             </p>
           </div>
 
@@ -190,19 +227,25 @@ export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
             ) : (
               <LinkIcon className="w-4 h-4 text-volt-400 group-hover:scale-110 transition-transform" />
             )}
-            <span>{isIntervalsLoading ? 'Preusmjeravanje...' : 'Prijavi se putem Intervals.icu'}</span>
+            <span>
+              {isIntervalsLoading
+                ? tr('Preusmjeravanje...', 'Redirecting...')
+                : tr('Prijavi se putem Intervals.icu', 'Sign in with Intervals.icu')}
+            </span>
           </button>
 
           <div className="flex items-center gap-3 mb-4">
             <div className="h-px bg-zinc-800 flex-1" />
-            <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">ili klasičnim računom</span>
+            <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+              {tr('ili klasičnim računom', 'or with email')}
+            </span>
             <div className="h-px bg-zinc-800 flex-1" />
           </div>
 
           <form onSubmit={handleAuth} className="space-y-4">
             <div>
               <label className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                Email adresa
+                {tr('Email adresa', 'Email address')}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -211,7 +254,7 @@ export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="vozac@primjer.hr"
+                  placeholder={tr('vozac@primjer.hr', 'rider@example.com')}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 pl-10 pr-4 text-sm text-zinc-100 font-medium focus:border-volt-400 focus:outline-none transition-colors placeholder:text-zinc-600"
                 />
               </div>
@@ -219,7 +262,7 @@ export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
 
             <div>
               <label className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                Lozinka
+                {tr('Lozinka', 'Password')}
               </label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -257,7 +300,7 @@ export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
                 <>
-                  <span>{isLogin ? 'Prijavi se' : 'Registriraj se'}</span>
+                  <span>{isLogin ? tr('Prijavi se', 'Sign In') : tr('Registriraj se', 'Sign Up')}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -270,14 +313,18 @@ export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
               onClick={() => { setIsLogin(!isLogin); setErrorMsg(''); setSuccessMsg(''); }}
               className="text-xs font-semibold text-zinc-400 hover:text-volt-400 transition-colors block w-full"
             >
-              {isLogin ? 'Nemaš račun? Kreiraj ga ovdje.' : 'Već imaš račun? Prijavi se ovdje.'}
+              {isLogin
+                ? tr('Nemaš račun? Kreiraj ga ovdje.', "Don't have an account? Create one here.")
+                : tr('Već imaš račun? Prijavi se ovdje.', 'Already have an account? Sign in here.')}
             </button>
 
             {onGuestLogin && (
               <>
                 <div className="flex items-center gap-2 justify-center py-1">
                   <div className="h-px bg-zinc-800 flex-1" />
-                  <span className="font-mono text-[10px] text-zinc-600 uppercase tracking-widest">ili bez prijave</span>
+                  <span className="font-mono text-[10px] text-zinc-600 uppercase tracking-widest">
+                    {tr('ili bez prijave', 'or without sign-in')}
+                  </span>
                   <div className="h-px bg-zinc-800 flex-1" />
                 </div>
                 <button
@@ -285,7 +332,7 @@ export default function AuthPage({ onGuestLogin, authNotice, onClearNotice }) {
                   onClick={onGuestLogin}
                   className="text-xs font-display font-bold uppercase tracking-wider text-zinc-200 hover:text-white bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 rounded-lg py-2.5 px-4 w-full transition-all shadow-hardware"
                 >
-                  Nastavi odmah kao Gost
+                  {tr('Nastavi odmah kao Gost', 'Continue Immediately as Guest')}
                 </button>
               </>
             )}

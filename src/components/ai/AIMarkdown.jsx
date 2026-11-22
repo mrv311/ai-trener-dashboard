@@ -8,6 +8,8 @@ import {
   normalizeIntervalsWorkoutText
 } from '../../utils/workoutParser';
 import { isCyclingType, isStrengthType, canRunInTrainer, getWorkoutSportKind, getSportLabel } from '../../utils/sportTypes';
+import { useI18n } from '../../i18n/I18nContext';
+import { tr as trCore } from '../../i18n/i18nCore.js';
 
 export { stepsToIntervalsCode, normalizeIntervalsWorkoutText };
 
@@ -15,7 +17,7 @@ export { stepsToIntervalsCode, normalizeIntervalsWorkoutText };
  * Gradi standardni ErgVibe workout objekt spreman za handleCreateWorkout ili TrainerTab.
  */
 export function buildErgVibeWorkoutObject({
-  title = 'AI Trening',
+  title = '',
   category = '',
   type = 'ride',
   intervalsCode = '',
@@ -29,6 +31,7 @@ export function buildErgVibeWorkoutObject({
 }) {
   const isNonCycling = Boolean((type && !isCyclingType(type)) || isStrengthType(category));
   const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const cleanTitle = String(title || '').trim();
 
   if (isNonCycling) {
     let durMin = Number(durationMinutes) || 45;
@@ -41,7 +44,7 @@ export function buildErgVibeWorkoutObject({
     return {
       id: `local-ai_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       date: date || tomorrowIso,
-      title: title.trim() || 'Trening snage',
+      title: cleanTitle || trCore('Trening snage', 'Strength Training'),
       duration: durMin,
       duration_seconds: durMin * 60,
       plannedDuration: durMin,
@@ -71,12 +74,12 @@ export function buildErgVibeWorkoutObject({
   if (parsed.allSteps && parsed.allSteps.length > 0) {
     enrichedSteps = parsed.allSteps.map((st, idx) => ({
       ...st,
-      name: st.name || (idx === 0 && st.power <= 65 ? 'Zagrijavanje' : st.power >= 85 ? 'Radni Interval' : 'Aerobno / Oporavak')
+      name: st.name || (idx === 0 && st.power <= 65 ? trCore('Zagrijavanje', 'Warmup') : st.power >= 85 ? trCore('Radni Interval', 'Work Interval') : trCore('Aerobno / Oporavak', 'Aerobic / Recovery'))
     }));
   } else if (Array.isArray(steps) && steps.length > 0) {
     enrichedSteps = steps.map((st, idx) => ({
       ...st,
-      name: st.name || (idx === 0 && st.power <= 65 ? 'Zagrijavanje' : st.power >= 85 ? 'Radni Interval' : 'Aerobno / Oporavak')
+      name: st.name || (idx === 0 && st.power <= 65 ? trCore('Zagrijavanje', 'Warmup') : st.power >= 85 ? trCore('Radni Interval', 'Work Interval') : trCore('Aerobno / Oporavak', 'Aerobic / Recovery'))
     }));
   }
 
@@ -111,7 +114,7 @@ export function buildErgVibeWorkoutObject({
   return {
     id: `local-ai_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     date: date || tomorrowIso,
-    title: title.trim() || 'AI Strukturirani Trening',
+    title: cleanTitle || trCore('AI Strukturirani Trening', 'AI Structured Workout'),
     duration: durationMin,
     duration_seconds: durationSec,
     plannedDuration: durationMin,
@@ -143,11 +146,12 @@ export function AIWorkoutCard({
   onAddToCalendar,
   onStartInTrainer
 }) {
+  const { lang, tr, tCat, tStep } = useI18n();
   const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   const [targetDate, setTargetDate] = useState(structuredWorkout?.date || tomorrowIso);
   const [added, setAdded] = useState(false);
 
-  let title = structuredWorkout?.title || 'AI Preporučeni Trening';
+  let title = structuredWorkout?.title || tr('AI Preporučeni Trening', 'AI Recommended Workout');
   let category = structuredWorkout?.category || '';
   let type = structuredWorkout?.type || 'ride';
   let stepsCode = structuredWorkout?.intervalsCode || '';
@@ -223,11 +227,12 @@ export function AIWorkoutCard({
       date: targetDate,
       ftp
     });
-  }, [title, category, type, stepsCode, stepsArray, durationMinutes, estimatedTss, descriptionText, structuredWorkout?.coachNote, targetDate, ftp]);
+  }, [title, category, type, stepsCode, stepsArray, durationMinutes, estimatedTss, descriptionText, structuredWorkout?.coachNote, targetDate, ftp, lang]);
 
   const sportKind = getWorkoutSportKind(built);
   const isNonCycling = sportKind !== 'ride' && sportKind !== 'race';
   const totalSec = built.allSteps.reduce((s, x) => s + (x.duration || 0), 0) || 1;
+  const displayCategory = tCat(built.category === 'SweetSpot' ? 'Sweet Spot' : built.category);
 
   const handleAdd = async () => {
     if (!onAddToCalendar) return;
@@ -244,11 +249,11 @@ export function AIWorkoutCard({
             {isNonCycling ? (
               <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/30">
                 <Dumbbell className="w-3 h-3" />
-                {getSportLabel(sportKind)}
+                {getSportLabel(sportKind, lang)}
               </span>
             ) : (
               <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/30">
-                {built.category}
+                {displayCategory}
               </span>
             )}
             <h4 className="font-display font-bold uppercase tracking-wide text-zinc-100 text-sm md:text-base">{built.title}</h4>
@@ -283,11 +288,12 @@ export function AIWorkoutCard({
             const widthPct = Math.max(1.2, (st.duration / totalSec) * 100);
             const heightPct = Math.min(100, Math.max(18, (st.power / 135) * 100));
             const watts = Math.round((st.power / 100) * ftp);
+            const stepLabel = st.name ? `${tStep(st.name)} · ` : '';
             return (
               <div
                 key={idx}
                 style={{ width: `${widthPct}%`, height: `${heightPct}%` }}
-                title={`${Math.round(st.duration / 60)}m @ ${st.power}% FTP (${watts}W)`}
+                title={`${stepLabel}${Math.round(st.duration / 60)}m @ ${st.power}% FTP (${watts}W)`}
                 className={`${getBarColor(st.power)} rounded-t-[2px] opacity-90 hover:opacity-100 transition-opacity`}
               />
             );
@@ -315,7 +321,7 @@ export function AIWorkoutCard({
               }`}
             >
               {added ? <Check className="w-3.5 h-3.5" /> : <CalendarPlus className="w-3.5 h-3.5" />}
-              {added ? 'Dodano u kalendar!' : 'Dodaj u kalendar'}
+              {added ? tr('Dodano u kalendar!', 'Added to Calendar!') : tr('Dodaj u kalendar', 'Add to Calendar')}
             </button>
           </div>
         )}
@@ -326,7 +332,7 @@ export function AIWorkoutCard({
             onClick={() => onStartInTrainer(built)}
             className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs bg-volt-400 hover:bg-volt-300 text-zinc-950 transition-all shadow-volt-glow"
           >
-            <Play className="w-3.5 h-3.5 fill-current" /> Pokreni u Trenažeru
+            <Play className="w-3.5 h-3.5 fill-current" /> {tr('Pokreni u Trenažeru', 'Start in Trainer')}
           </button>
         )}
       </div>

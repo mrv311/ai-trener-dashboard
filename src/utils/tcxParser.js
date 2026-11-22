@@ -2,6 +2,8 @@
  * TCX Parser - Parsira TCX datoteke i izvlači stream podatke
  */
 
+import { tr } from '../i18n/i18nCore.js';
+
 /**
  * Parsira TCX datoteku i vraća stream podatke
  * @param {string} tcxText - TCX XML sadržaj
@@ -15,14 +17,14 @@ export function parseTCX(tcxText) {
     // Provjeri ima li parsing grešaka
     const parserError = xmlDoc.querySelector('parsererror');
     if (parserError) {
-      throw new Error('Nevažeća TCX datoteka');
+      throw new Error(tr('Nevažeća TCX datoteka', 'Invalid TCX file'));
     }
     
     // Dohvati sve Trackpoint elemente
     const trackpoints = xmlDoc.querySelectorAll('Trackpoint');
     
     if (trackpoints.length === 0) {
-      throw new Error('Nema podataka u TCX datoteci');
+      throw new Error(tr('Nema podataka u TCX datoteci', 'No trackpoint data found in TCX file'));
     }
     
     const stream = [];
@@ -77,7 +79,12 @@ export function parseTCX(tcxText) {
     
     // Provjera kvalitete podataka
     if (skippedPoints > trackpoints.length * 0.5) {
-      throw new Error(`Previše nevažećih točaka u TCX datoteci (${skippedPoints}/${trackpoints.length}). Datoteka može biti oštećena.`);
+      throw new Error(
+        tr(
+          `Previše nevažećih točaka u TCX datoteci (${skippedPoints}/${trackpoints.length}). Datoteka može biti oštećena.`,
+          `Too many invalid points in TCX file (${skippedPoints}/${trackpoints.length}). The file may be corrupted.`
+        )
+      );
     }
     
     if (skippedPoints > 0) {
@@ -130,7 +137,7 @@ export function parseTCX(tcxText) {
     };
   } catch (error) {
     console.error('TCX parsing error:', error);
-    throw new Error(`Greška pri parsiranju TCX datoteke: ${error.message}`);
+    throw new Error(tr(`Greška pri parsiranju TCX datoteke: ${error.message}`, `Failed to parse TCX file: ${error.message}`));
   }
 }
 
@@ -139,5 +146,5 @@ export function parseTCX(tcxText) {
  * Za sada vraća grešku, može se implementirati kasnije
  */
 export function parseFIT(fitBuffer) {
-  throw new Error('FIT parsing još nije implementiran. Molimo koristite TCX format.');
+  throw new Error(tr('FIT parsing još nije implementiran. Molimo koristite TCX format.', 'FIT parsing is not implemented here. Please use TCX format.'));
 }

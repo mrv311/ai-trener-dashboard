@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { getZoneColorForTrainer } from '../../utils/performanceMetrics';
+import { useI18n } from '../../i18n/I18nContext';
 
 export default function TrainerGraph({
   workoutRecipe,
@@ -10,9 +11,19 @@ export default function TrainerGraph({
   ergIntensity = 100,
   currentStepIndex = 0
 }) {
+  const { isEn, tCat, tStep } = useI18n();
   const [hoveredStep, setHoveredStep] = useState(null);
   const [hoverPosition, setHoverPosition] = useState(null);
   const graphRef = useRef(null);
+
+  const displayStepName = (name) => {
+    if (!name) return '';
+    if (isEn) {
+      if (name === 'Z2 Aerobna Baza') return 'Z2 Aerobic Base';
+      if (name === 'Radni Interval') return 'Work Interval';
+    }
+    return tStep(name);
+  };
 
   const handleMouseMove = (e) => {
     if (!graphRef.current) return;
@@ -193,7 +204,7 @@ export default function TrainerGraph({
               }}
             >
               <div className="flex flex-col gap-0.5 font-mono telemetry-num">
-                <span className="text-zinc-300 text-[10px] uppercase tracking-wider font-sans font-bold">{hoveredStep.name}</span>
+                <span className="text-zinc-300 text-[10px] uppercase tracking-wider font-sans font-bold">{displayStepName(hoveredStep.name)}</span>
                 <span className="text-volt-400 text-sm font-bold">
                   {hoveredStep.isRange
                     ? `${hoveredStep.targetMinW}–${hoveredStep.targetMaxW} W `
@@ -214,12 +225,12 @@ export default function TrainerGraph({
       {/* Traka za stvarni postotak vremena proveden u zonama (Z1-Z6) */}
       {workoutHistory.length > 10 && (
         <div className="w-full flex h-1.5 rounded-sm overflow-hidden mt-1.5 bg-zinc-950 border border-zinc-800">
-          {zoneStats.z1 > 0 && <div style={{ width: `${(zoneStats.z1 / totalRecordedSecs) * 100}%` }} className="bg-zinc-500" title={`Z1 Recovery: ${Math.round((zoneStats.z1 / totalRecordedSecs) * 100)}%`} />}
-          {zoneStats.z2 > 0 && <div style={{ width: `${(zoneStats.z2 / totalRecordedSecs) * 100}%` }} className="bg-sky-500" title={`Z2 Endurance: ${Math.round((zoneStats.z2 / totalRecordedSecs) * 100)}%`} />}
-          {zoneStats.z3 > 0 && <div style={{ width: `${(zoneStats.z3 / totalRecordedSecs) * 100}%` }} className="bg-emerald-500" title={`Z3 Tempo: ${Math.round((zoneStats.z3 / totalRecordedSecs) * 100)}%`} />}
-          {zoneStats.z4 > 0 && <div style={{ width: `${(zoneStats.z4 / totalRecordedSecs) * 100}%` }} className="bg-amber-500" title={`Z4 Threshold: ${Math.round((zoneStats.z4 / totalRecordedSecs) * 100)}%`} />}
-          {zoneStats.z5 > 0 && <div style={{ width: `${(zoneStats.z5 / totalRecordedSecs) * 100}%` }} className="bg-rose-500" title={`Z5 VO2Max: ${Math.round((zoneStats.z5 / totalRecordedSecs) * 100)}%`} />}
-          {zoneStats.z6 > 0 && <div style={{ width: `${(zoneStats.z6 / totalRecordedSecs) * 100}%` }} className="bg-purple-500" title={`Z6 Anaerobic: ${Math.round((zoneStats.z6 / totalRecordedSecs) * 100)}%`} />}
+          {zoneStats.z1 > 0 && <div style={{ width: `${(zoneStats.z1 / totalRecordedSecs) * 100}%` }} className="bg-zinc-500" title={`Z1 ${tCat('Oporavak')}: ${Math.round((zoneStats.z1 / totalRecordedSecs) * 100)}%`} />}
+          {zoneStats.z2 > 0 && <div style={{ width: `${(zoneStats.z2 / totalRecordedSecs) * 100}%` }} className="bg-sky-500" title={`Z2 ${tCat('Endurance')}: ${Math.round((zoneStats.z2 / totalRecordedSecs) * 100)}%`} />}
+          {zoneStats.z3 > 0 && <div style={{ width: `${(zoneStats.z3 / totalRecordedSecs) * 100}%` }} className="bg-emerald-500" title={`Z3 ${tCat('Tempo')}: ${Math.round((zoneStats.z3 / totalRecordedSecs) * 100)}%`} />}
+          {zoneStats.z4 > 0 && <div style={{ width: `${(zoneStats.z4 / totalRecordedSecs) * 100}%` }} className="bg-amber-500" title={`Z4 ${tCat('Threshold')}: ${Math.round((zoneStats.z4 / totalRecordedSecs) * 100)}%`} />}
+          {zoneStats.z5 > 0 && <div style={{ width: `${(zoneStats.z5 / totalRecordedSecs) * 100}%` }} className="bg-rose-500" title={`Z5 ${tCat('VO2 Max')}: ${Math.round((zoneStats.z5 / totalRecordedSecs) * 100)}%`} />}
+          {zoneStats.z6 > 0 && <div style={{ width: `${(zoneStats.z6 / totalRecordedSecs) * 100}%` }} className="bg-purple-500" title={`Z6 ${tCat('Anaerobni')}: ${Math.round((zoneStats.z6 / totalRecordedSecs) * 100)}%`} />}
         </div>
       )}
     </div>

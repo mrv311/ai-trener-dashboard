@@ -8,6 +8,7 @@
  */
 
 import { supabase } from './supabaseClient';
+import { tr } from '../i18n/i18nCore.js';
 
 const GUEST_PRIVATE_WORKOUTS_KEY = 'ergvibe_guest_private_workouts_v1';
 const LIBRARY_UPDATED_EVENT = 'ergvibe-library-updated';
@@ -74,7 +75,12 @@ function saveGuestPrivateWorkouts(list) {
     window.localStorage.setItem(GUEST_PRIVATE_WORKOUTS_KEY, JSON.stringify(Array.isArray(list) ? list : []));
   } catch (err) {
     console.warn('[workoutLibraryStorage] Nije moguće spremiti lokalne treninge gosta:', err);
-    throw new Error('Lokalna memorija preglednika je puna. Prijavi se za pohranu u oblaku.');
+    throw new Error(
+      tr(
+        'Lokalna memorija preglednika je puna. Prijavi se za pohranu u oblaku.',
+        'Browser local storage is full. Sign in to save workouts to the cloud.'
+      )
+    );
   }
 }
 
@@ -169,7 +175,10 @@ export async function insertLibraryWorkouts({ workouts, userId, isAdmin = false,
     // Ako user_id stupac još nije dodan u staroj Supabase shemi, javi jasnu poruku
     if (String(error.message || '').includes('user_id')) {
       throw new Error(
-        'Tablica workouts još nema stupac user_id. Pokreni SQL migraciju (supabase_security_and_library_migration.sql) u Supabaseu.'
+        tr(
+          'Tablica workouts još nema stupac user_id. Pokreni SQL migraciju (supabase_security_and_library_migration.sql) u Supabaseu.',
+          'The workouts table is missing the user_id column. Run the SQL migration in Supabase.'
+        )
       );
     }
     throw error;
@@ -183,9 +192,9 @@ export async function insertLibraryWorkouts({ workouts, userId, isAdmin = false,
  * Ažurira naslov, kategoriju, opis ili ocjenu težine treninga.
  */
 export async function updateLibraryWorkout({ workout, patch, userId, isAdmin = false }) {
-  if (!workout?.id) throw new Error('Nedostaje ID treninga.');
+  if (!workout?.id) throw new Error(tr('Nedostaje ID treninga.', 'Missing workout ID.'));
   if (!canManageWorkout(workout, userId, isAdmin)) {
-    throw new Error('Nemaš dopuštenje za uređivanje javnog treninga.');
+    throw new Error(tr('Nemaš dopuštenje za uređivanje javnog treninga.', 'You do not have permission to edit a public catalog workout.'));
   }
 
   if (workout.isLocalOnly || isGuestUser(userId)) {
@@ -205,9 +214,9 @@ export async function updateLibraryWorkout({ workout, patch, userId, isAdmin = f
  * Briše trening (samo vlastiti privatni ili javni ako je korisnik Admin).
  */
 export async function deleteLibraryWorkout({ workout, userId, isAdmin = false }) {
-  if (!workout?.id) throw new Error('Nedostaje ID treninga.');
+  if (!workout?.id) throw new Error(tr('Nedostaje ID treninga.', 'Missing workout ID.'));
   if (!canManageWorkout(workout, userId, isAdmin)) {
-    throw new Error('Nemaš dopuštenje za brisanje javnog treninga.');
+    throw new Error(tr('Nemaš dopuštenje za brisanje javnog treninga.', 'You do not have permission to delete a public catalog workout.'));
   }
 
   if (workout.isLocalOnly || isGuestUser(userId)) {
@@ -228,10 +237,20 @@ export async function deleteLibraryWorkout({ workout, userId, isAdmin = false })
  */
 export async function setWorkoutPublicStatus({ workout, makePublic, userId, isAdmin = false }) {
   if (!isAdmin || isGuestUser(userId)) {
-    throw new Error('Samo administrator može mijenjati vidljivost u javnom katalogu.');
+    throw new Error(
+      tr(
+        'Samo administrator može mijenjati vidljivost u javnom katalogu.',
+        'Only an administrator can change public catalog visibility.'
+      )
+    );
   }
   if (!workout?.id || workout.isLocalOnly) {
-    throw new Error('Ovaj trening nije pohranjen u Supabase bazi.');
+    throw new Error(
+      tr(
+        'Ovaj trening nije pohranjen u Supabase bazi.',
+        'This workout is not stored in the Supabase database.'
+      )
+    );
   }
 
   const nextUserId = makePublic ? null : userId;

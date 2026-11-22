@@ -1,3 +1,5 @@
+import { tr } from '../i18n/i18nCore.js';
+
 const FETCH_PAST_MONTHS = 36;
 const FETCH_FUTURE_MONTHS = 12;
 
@@ -166,9 +168,9 @@ export const fetchIntervalsData = async (intervalsId, intervalsKey, options = {}
 
   const actRes = await fetch(actUrl, { headers });
   
-  if (actRes.status === 401) throw new Error("API ključ ili ID su neispravni.");
-  if (actRes.status === 429) throw new Error("Previše zahtjeva prema serveru. Pričekaj malo.");
-  if (!actRes.ok) throw new Error("Greška pri spajanju na server.");
+  if (actRes.status === 401) throw new Error(tr("API ključ ili ID su neispravni.", "Invalid Intervals.icu API key or Athlete ID."));
+  if (actRes.status === 429) throw new Error(tr("Previše zahtjeva prema serveru. Pričekaj malo.", "Too many requests to Intervals.icu. Please wait a moment."));
+  if (!actRes.ok) throw new Error(tr("Greška pri spajanju na server.", "Failed to connect to Intervals.icu server."));
 
   const [evRes, wellRes, athRes] = await Promise.all([
     fetch(evUrl, { headers }),
@@ -229,7 +231,7 @@ export const updateEventDate = async (intervalsId, intervalsKey, eventId, newDat
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`Greška pri premještanju treninga: ${res.status} ${errText}`);
+    throw new Error(tr(`Greška pri premještanju treninga: ${res.status} ${errText}`, `Failed to move workout: ${res.status} ${errText}`));
   }
 
   return res.json();
@@ -263,7 +265,7 @@ export const createEvent = async (intervalsId, intervalsKey, payload) => {
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`Greška pri kreiranju treninga: ${res.status} ${errText}`);
+    throw new Error(tr(`Greška pri kreiranju treninga: ${res.status} ${errText}`, `Failed to create workout: ${res.status} ${errText}`));
   }
 
   return res.json();
@@ -284,7 +286,7 @@ export const deleteEvent = async (intervalsId, intervalsKey, eventId) => {
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`Greška pri brisanju treninga: ${res.status} ${errText}`);
+    throw new Error(tr(`Greška pri brisanju treninga: ${res.status} ${errText}`, `Failed to delete workout: ${res.status} ${errText}`));
   }
   return res.json().catch(() => ({}));
 };
@@ -308,7 +310,7 @@ export const updateEventDetails = async (intervalsId, intervalsKey, eventId, pay
     Object.keys(auth).forEach(key => headers.append(key, auth[key]));
   }
 
-  if (!payload) throw new Error("Interna greška: Nema podataka.");
+  if (!payload) throw new Error(tr("Interna greška: Nema podataka.", "Internal error: Missing payload."));
   
   // 2. Priprema podataka
   let cleanPayload = typeof payload === 'string' ? JSON.parse(payload) : { ...payload };
@@ -337,7 +339,7 @@ export const updateEventDetails = async (intervalsId, intervalsKey, eventId, pay
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`Greška pri ažuriranju treninga (Status ${res.status}): ${errText}`);
+    throw new Error(tr(`Greška pri ažuriranju treninga (Status ${res.status}): ${errText}`, `Failed to update workout (Status ${res.status}): ${errText}`));
   }
 
   return res.json();
@@ -354,10 +356,15 @@ export const downloadActivityFitFile = async (intervalsId, intervalsKey, activit
   const res = await fetch(url, { headers });
   if (!res.ok) {
     if (res.status === 403 || res.status === 404) {
-      throw new Error(`Datoteka nije dostupna za preuzimanje. Ovo se često događa prenesenim treninzima sa Strave zbog njihovih pravila privatnosti (Status ${res.status}).`);
+      throw new Error(
+        tr(
+          `Datoteka nije dostupna za preuzimanje. Ovo se često događa prenesenim treninzima sa Strave zbog njihovih pravila privatnosti (Status ${res.status}).`,
+          `File is not available for download. This often happens for Strava-synced activities due to Strava privacy rules (Status ${res.status}).`
+        )
+      );
     }
     const errText = await res.text().catch(() => '');
-    throw new Error(`Greška pri preuzimanju datoteke: ${res.status} ${errText}`);
+    throw new Error(tr(`Greška pri preuzimanju datoteke: ${res.status} ${errText}`, `Failed to download file: ${res.status} ${errText}`));
   }
 
   const blob = await res.blob();
@@ -382,7 +389,7 @@ export const getActivityStreams = async (intervalsId, intervalsKey, activityId) 
   const res = await fetch(url, { headers });
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`Greška pri dohvaćanju streamova (Status ${res.status}): ${errText}`);
+    throw new Error(tr(`Greška pri dohvaćanju streamova (Status ${res.status}): ${errText}`, `Failed to fetch activity streams (Status ${res.status}): ${errText}`));
   }
 
   return res.json();
@@ -407,7 +414,7 @@ export const updateActivityName = async (intervalsId, intervalsKey, activityId, 
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`Greška pri preimenovanju aktivnosti (${res.status}): ${errText}`);
+    throw new Error(tr(`Greška pri preimenovanju aktivnosti (${res.status}): ${errText}`, `Failed to rename activity (${res.status}): ${errText}`));
   }
 
   return res.json();
@@ -421,10 +428,10 @@ export const uploadActivityToIntervals = async (intervalsId, intervalsKey, fitUi
   const cleanId = String(intervalsId || '').trim();
   const cleanKey = String(intervalsKey || '').trim();
   if (!cleanId || !cleanKey) {
-    throw new Error('Intervals.icu ID ili API ključ nisu postavljeni.');
+    throw new Error(tr('Intervals.icu ID ili API ključ nisu postavljeni.', 'Intervals.icu ID or API key is not configured.'));
   }
   if (!fitUint8Array || fitUint8Array.byteLength === 0) {
-    throw new Error('Nema podataka treninga za slanje.');
+    throw new Error(tr('Nema podataka treninga za slanje.', 'No workout data to upload.'));
   }
 
   const authHeaders = getAuthHeaders(cleanKey);
@@ -447,11 +454,11 @@ export const uploadActivityToIntervals = async (intervalsId, intervalsKey, fitUi
     body: formData
   });
 
-  if (res.status === 401) throw new Error('Intervals.icu API ključ ili ID su neispravni.');
-  if (res.status === 429) throw new Error('Previše zahtjeva prema Intervals.icu serveru.');
+  if (res.status === 401) throw new Error(tr('Intervals.icu API ključ ili ID su neispravni.', 'Invalid Intervals.icu API key or Athlete ID.'));
+  if (res.status === 429) throw new Error(tr('Previše zahtjeva prema Intervals.icu serveru.', 'Too many requests to Intervals.icu server.'));
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`Greška pri slanju na Intervals.icu (${res.status}): ${errText}`);
+    throw new Error(tr(`Greška pri slanju na Intervals.icu (${res.status}): ${errText}`, `Intervals.icu upload error (${res.status}): ${errText}`));
   }
 
   return res.json().catch(() => ({}));

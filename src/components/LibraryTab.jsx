@@ -21,6 +21,7 @@ import {
   isGuestUser,
   onLibraryUpdated
 } from '../services/workoutLibraryStorage';
+import { useI18n } from '../i18n/I18nContext';
 
 const FAMOUS_CLASSICS = [
   'classic', 'over-under classic', 'rønnestad', 'ronnestad', 'billat', 'seiler',
@@ -36,19 +37,23 @@ export function isClassicWorkout(workout) {
 }
 
 export const DURATION_CHIPS = [
-  { id: 'all', label: 'Sva trajanja' },
-  { id: 'under45', label: '< 45 min' },
-  { id: '45to60', label: '45–60 min' },
-  { id: '60to75', label: '60–75 min' },
-  { id: '75to90', label: '75–90 min' },
-  { id: 'over90', label: '90+ min' },
+  { id: 'all', label: 'Sva trajanja', labelHr: 'Sva trajanja', labelEn: 'All durations' },
+  { id: 'under45', label: '< 45 min', labelHr: '< 45 min', labelEn: '< 45 min' },
+  { id: '45to60', label: '45–60 min', labelHr: '45–60 min', labelEn: '45–60 min' },
+  { id: '60to75', label: '60–75 min', labelHr: '60–75 min', labelEn: '60–75 min' },
+  { id: '75to90', label: '75–90 min', labelHr: '75–90 min', labelEn: '75–90 min' },
+  { id: 'over90', label: '90+ min', labelHr: '90+ min', labelEn: '90+ min' },
 ];
 
 export const SMART_COLLECTIONS = [
   {
     id: 'classics',
     title: 'Zlatni Klasici',
+    titleHr: 'Zlatni Klasici',
+    titleEn: 'Gold Classics',
     subtitle: 'Provjereni recepti i progresije',
+    subtitleHr: 'Provjereni recepti i progresije',
+    subtitleEn: 'Proven workouts & progressions',
     icon: Star,
     color: 'text-amber-400 bg-amber-400/10 border-amber-400/30 hover:border-amber-400/60',
     predicate: (w) => isClassicWorkout(w)
@@ -56,7 +61,11 @@ export const SMART_COLLECTIONS = [
   {
     id: 'time_crunched',
     title: 'Time-Crunched',
+    titleHr: 'Time-Crunched',
+    titleEn: 'Time-Crunched',
     subtitle: '≤ 45 min · Maksimalan efekt',
+    subtitleHr: '≤ 45 min · Maksimalan efekt',
+    subtitleEn: '≤ 45 min · Maximum impact',
     icon: Timer,
     color: 'text-volt-400 bg-volt-400/10 border-volt-400/30 hover:border-volt-400/60',
     predicate: (w) => {
@@ -67,7 +76,11 @@ export const SMART_COLLECTIONS = [
   {
     id: 'ftp_booster',
     title: 'FTP & Prag',
+    titleHr: 'FTP & Prag',
+    titleEn: 'FTP & Threshold',
     subtitle: 'Threshold i Over-Unders',
+    subtitleHr: 'Threshold i Over-Unders',
+    subtitleEn: 'Threshold & Over-Unders',
     icon: Target,
     color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30 hover:border-emerald-400/60',
     predicate: (w) => {
@@ -79,7 +92,11 @@ export const SMART_COLLECTIONS = [
   {
     id: 'winter_base',
     title: 'Zimska Baza',
+    titleHr: 'Zimska Baza',
+    titleEn: 'Winter Base',
     subtitle: 'Z2 Aerobik & Kontrolirani tempo',
+    subtitleHr: 'Z2 Aerobik & Kontrolirani tempo',
+    subtitleEn: 'Z2 Aerobic & Controlled Tempo',
     icon: Compass,
     color: 'text-sky-400 bg-sky-400/10 border-sky-400/30 hover:border-sky-400/60',
     predicate: (w) => {
@@ -90,7 +107,11 @@ export const SMART_COLLECTIONS = [
   {
     id: 'vo2_hiit',
     title: 'VO2 Max Intervali',
+    titleHr: 'VO2 Max Intervali',
+    titleEn: 'VO2 Max Intervals',
     subtitle: '30/30, 40/20 i mikropulsacije',
+    subtitleHr: '30/30, 40/20 i mikropulsacije',
+    subtitleEn: '30/30, 40/20 & micro-intervals',
     icon: Flame,
     color: 'text-rose-400 bg-rose-400/10 border-rose-400/30 hover:border-rose-400/60',
     predicate: (w) => {
@@ -101,7 +122,11 @@ export const SMART_COLLECTIONS = [
   {
     id: 'testing',
     title: 'Testovi & Rampa',
+    titleHr: 'Testovi & Rampa',
+    titleEn: 'Tests & Ramp',
     subtitle: 'FTP provjere & Kalibracija',
+    subtitleHr: 'FTP provjere & Kalibracija',
+    subtitleEn: 'FTP checks & Calibration',
     icon: Activity,
     color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/30 hover:border-cyan-400/60',
     predicate: (w) => {
@@ -113,6 +138,7 @@ export const SMART_COLLECTIONS = [
 ];
 
 export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 250, userId, isAdmin = false }) {
+  const { tr, tCat, tStep, tDesc, locale } = useI18n();
   const [workouts, setWorkouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -165,7 +191,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       await onScheduleWorkout({
         id: `local-${Date.now()}`,
         date: scheduleDate,
-        title: selectedDetailWorkout.title || 'Trening iz knjižnice',
+        title: selectedDetailWorkout.title || tr('Trening iz knjižnice', 'Library Workout'),
         duration: durMin,
         duration_seconds: durSec,
         tss: Math.round(Number(metrics.tss) || 0),
@@ -252,7 +278,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       setSelectedDetailWorkout(null);
     } catch (err) {
       console.error(err);
-      alert('Greška pri spremanju u knjižnicu: ' + err.message);
+      alert(tr('Greška pri spremanju u knjižnicu: {msg}', 'Error saving to library: {msg}', { msg: err.message }));
     } finally {
       setIsSavingAi(false);
     }
@@ -282,7 +308,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       setSelectedDetailWorkout(null);
     } catch (err) {
       console.error(err);
-      alert('Greška pri kopiranju u Moje Treninge: ' + err.message);
+      alert(tr('Greška pri kopiranju u Moje Treninge: {msg}', 'Error copying to My Workouts: {msg}', { msg: err.message }));
     } finally {
       setIsSavingAi(false);
     }
@@ -337,16 +363,16 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
         await fetchWorkouts();
       } catch (err) {
         console.error(err);
-        setError('Greška pri spremanju u bazu: ' + err.message);
+        setError(tr('Greška pri spremanju u bazu: {msg}', 'Error saving to database: {msg}', { msg: err.message }));
       }
     }
 
     let errorMessage = '';
     if (errors.length > 0) {
-      errorMessage += `Neuspješan uvoz nekih datoteka:\n${errors.join('\n')}\n`;
+      errorMessage += tr('Neuspješan uvoz nekih datoteka:\n{errors}\n', 'Failed to import some files:\n{errors}\n', { errors: errors.join('\n') });
     }
     if (duplicateCount > 0) {
-      errorMessage += `Preskočeno duplikata u Mojim Treninzima: ${duplicateCount}`;
+      errorMessage += tr('Preskočeno duplikata u Mojim Treninzima: {count}', 'Skipped duplicates in My Workouts: {count}', { count: duplicateCount });
     }
 
     if (errorMessage) {
@@ -361,7 +387,13 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
     if (!canManageWorkout(workout, userId, isAdmin)) return;
     const isPub = !isPrivateWorkout(workout);
     if (isPub && typeof window !== 'undefined') {
-      const ok = window.confirm(`Obrisati javni trening "${workout.title}" iz ErgVibe Kataloga za sve korisnike?`);
+      const ok = window.confirm(
+        tr(
+          'Obrisati javni trening "{title}" iz ErgVibe Kataloga za sve korisnike?',
+          'Delete public workout "{title}" from the ErgVibe Catalog for all users?',
+          { title: workout.title }
+        )
+      );
       if (!ok) return;
     }
     try {
@@ -372,7 +404,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       await fetchWorkouts();
     } catch (err) {
       console.error(err);
-      setError('Greška pri brisanju: ' + err.message);
+      setError(tr('Greška pri brisanju: {msg}', 'Error deleting workout: {msg}', { msg: err.message }));
     }
   };
 
@@ -401,7 +433,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       await fetchWorkouts();
     } catch (err) {
       console.error(err);
-      setError('Greška pri promjeni: ' + err.message);
+      setError(tr('Greška pri promjeni: {msg}', 'Error updating workout: {msg}', { msg: err.message }));
     }
   };
 
@@ -417,7 +449,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       await fetchWorkouts();
     } catch (err) {
       console.error(err);
-      setError('Greška pri promjeni vidljivosti: ' + err.message);
+      setError(tr('Greška pri promjeni vidljivosti: {msg}', 'Error changing visibility: {msg}', { msg: err.message }));
     } finally {
       setTogglingVisibilityId(null);
     }
@@ -522,10 +554,17 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      base = base.filter(w =>
-        (w.title && w.title.toLowerCase().includes(q)) ||
-        (w.description && w.description.toLowerCase().includes(q))
-      );
+      base = base.filter(w => {
+        const localizedDesc = w.description ? tDesc(w.title, w.description) : '';
+        const localizedCat = w.category ? tCat(w.category) : '';
+        return (
+          (w.title && w.title.toLowerCase().includes(q)) ||
+          (w.description && w.description.toLowerCase().includes(q)) ||
+          (localizedDesc && localizedDesc.toLowerCase().includes(q)) ||
+          (w.category && w.category.toLowerCase().includes(q)) ||
+          (localizedCat && localizedCat.toLowerCase().includes(q))
+        );
+      });
     }
 
     const counts = { all: base.length, under45: 0, '45to60': 0, '60to75': 0, '75to90': 0, over90: 0 };
@@ -538,7 +577,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       else counts.over90++;
     });
     return counts;
-  }, [scopedWorkouts, activeFolder, activeCollection, searchQuery, groupedWorkouts]);
+  }, [scopedWorkouts, activeFolder, activeCollection, searchQuery, groupedWorkouts, tDesc, tCat]);
 
   const sortedCategories = useMemo(() => {
     return Object.keys(groupedWorkouts).sort((a, b) => {
@@ -569,11 +608,17 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      list = list.filter(w =>
-        (w.title && w.title.toLowerCase().includes(q)) ||
-        (w.description && w.description.toLowerCase().includes(q)) ||
-        (w.category && w.category.toLowerCase().includes(q))
-      );
+      list = list.filter(w => {
+        const localizedDesc = w.description ? tDesc(w.title, w.description) : '';
+        const localizedCat = w.category ? tCat(w.category) : '';
+        return (
+          (w.title && w.title.toLowerCase().includes(q)) ||
+          (w.description && w.description.toLowerCase().includes(q)) ||
+          (localizedDesc && localizedDesc.toLowerCase().includes(q)) ||
+          (w.category && w.category.toLowerCase().includes(q)) ||
+          (localizedCat && localizedCat.toLowerCase().includes(q))
+        );
+      });
     }
 
     if (durationFilter !== 'all') {
@@ -590,7 +635,9 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
 
     list.sort((a, b) => {
       if (sortBy === 'name') {
-        return sortOrder === 'asc' ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title);
+        return sortOrder === 'asc'
+          ? a.title.localeCompare(b.title, locale)
+          : b.title.localeCompare(a.title, locale);
       }
       let valA = 0; let valB = 0;
       if (sortBy === 'difficulty') {
@@ -607,7 +654,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
     });
 
     return list;
-  }, [scopedWorkouts, activeFolder, activeCollection, searchQuery, durationFilter, sortBy, sortOrder, groupedWorkouts]);
+  }, [scopedWorkouts, activeFolder, activeCollection, searchQuery, durationFilter, sortBy, sortOrder, groupedWorkouts, tDesc, tCat, locale]);
 
   const handleScopeChange = (nextScope) => {
     setLibraryScope(nextScope);
@@ -625,16 +672,20 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400">
-                STRUKTURIRANI RECEPTI · {publicWorkouts.length} JAVNIH · {privateWorkouts.length} MOJIH
+                {tr(
+                  'STRUKTURIRANI RECEPTI · {pub} JAVNIH · {priv} MOJIH',
+                  'STRUCTURED WORKOUTS · {pub} PUBLIC · {priv} MY WORKOUTS',
+                  { pub: publicWorkouts.length, priv: privateWorkouts.length }
+                )}
               </span>
               {isAdmin && (
                 <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/35">
-                  <ShieldCheck className="w-3 h-3" /> Admin Mod
+                  <ShieldCheck className="w-3 h-3" /> {tr('Admin Mod', 'Admin Mode')}
                 </span>
               )}
             </div>
             <h2 className="text-2xl font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2.5 mt-0.5">
-              <Database className="text-volt-400 w-5 h-5" /> Knjižnica Treninga
+              <Database className="text-volt-400 w-5 h-5" /> {tr('Knjižnica Treninga', 'Workout Library')}
             </h2>
           </div>
 
@@ -645,7 +696,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Pretraži trening ili opis..."
+                placeholder={tr('Pretraži trening ili opis...', 'Search workout or description...')}
                 className="w-full bg-zinc-950 border border-zinc-800 focus:border-volt-400 rounded-lg pl-9 pr-8 py-2 text-xs font-medium text-zinc-100 placeholder-zinc-600 outline-none transition-colors"
               />
               {searchQuery && (
@@ -653,7 +704,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                   type="button"
                   onClick={() => setSearchQuery('')}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200"
-                  title="Očisti pretragu"
+                  title={tr('Očisti pretragu', 'Clear search')}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -666,16 +717,16 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
               className="flex items-center gap-1.5 px-3.5 py-2 bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/50 text-zinc-100 font-mono font-bold text-xs uppercase tracking-wider rounded-lg transition-all"
             >
               <Sparkles className="w-3.5 h-3.5 text-volt-400" />
-              <span className="hidden sm:inline">Generator</span>
+              <span className="hidden sm:inline">{tr('Generator', 'Generator')}</span>
             </button>
 
             <label
-              title="Uvezeni .ZWO/.ERG treninzi spremaju se privatno u Moje Treninge"
+              title={tr('Uvezeni .ZWO/.ERG treninzi spremaju se privatno u Moje Treninge', 'Imported .ZWO/.ERG workouts are saved privately to My Workouts')}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-volt-400 hover:bg-volt-300 text-zinc-950 font-mono font-bold text-xs uppercase tracking-wider rounded-lg cursor-pointer transition-all shadow-volt-glow"
             >
               {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">{isUploading ? 'Uvoz...' : 'Uvezi ZWO/ERG'}</span>
-              <span className="sm:hidden">Uvezi</span>
+              <span className="hidden sm:inline">{isUploading ? tr('Uvoz...', 'Importing...') : tr('Uvezi ZWO/ERG', 'Import ZWO/ERG')}</span>
+              <span className="sm:hidden">{tr('Uvezi', 'Import')}</span>
               <input type="file" multiple className="absolute w-0 h-0 opacity-0 pointer-events-none" onChange={handleFileUpload} disabled={isUploading} />
             </label>
 
@@ -683,7 +734,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
               type="button"
               onClick={fetchWorkouts}
               disabled={loading || isUploading}
-              title="Osvježi knjižnicu"
+              title={tr('Osvježi knjižnicu', 'Refresh library')}
               className="p-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400 hover:text-volt-400 hover:border-zinc-700 transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-volt-400' : ''}`} />
@@ -704,7 +755,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
               }`}
             >
               <Globe className="w-3.5 h-3.5" />
-              <span>ErgVibe Katalog</span>
+              <span>{tr('ErgVibe Katalog', 'ErgVibe Catalog')}</span>
               <span className={`text-[10px] px-1.5 rounded-full ${libraryScope === 'public' ? 'bg-zinc-950/20 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}`}>
                 {publicWorkouts.length}
               </span>
@@ -720,7 +771,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
               }`}
             >
               <Lock className="w-3.5 h-3.5" />
-              <span>Moji Treninzi</span>
+              <span>{tr('Moji Treninzi', 'My Workouts')}</span>
               <span className={`text-[10px] px-1.5 rounded-full ${libraryScope === 'private' ? 'bg-zinc-950/20 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}`}>
                 {privateWorkouts.length}
               </span>
@@ -736,7 +787,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                     : 'text-zinc-500 hover:text-zinc-200'
                 }`}
               >
-                <span>Sve</span>
+                <span>{tCat('Sve')}</span>
                 <span className="text-[10px] px-1.5 rounded-full bg-zinc-900 text-zinc-400">
                   {workouts.length}
                 </span>
@@ -747,25 +798,27 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
           <span className="text-[11px] text-zinc-500 font-mono">
             {libraryScope === 'private'
               ? (isGuestUser(userId)
-                  ? 'Privatno · spremljeno lokalno u ovom pregledniku'
-                  : 'Privatna baza · vidljivo isključivo tebi na svim uređajima')
+                  ? tr('Privatno · spremljeno lokalno u ovom pregledniku', 'Private · saved locally in this browser')
+                  : tr('Privatna baza · vidljivo isključivo tebi na svim uređajima', 'Private library · visible only to you across all devices'))
               : (isAdmin
-                  ? 'Admin: uređuj ili prebacuj treninge između Javnog i Privatnog'
-                  : 'Javni ErgVibe katalog · tvoji uvezeni treninzi idu u Moji Treninzi')}
+                  ? tr('Admin: uređuj ili prebacuj treninge između Javnog i Privatnog', 'Admin: edit or move workouts between Public and Private')
+                  : tr('Javni ErgVibe katalog · tvoji uvezeni treninzi idu u Moji Treninzi', 'Public ErgVibe catalog · your imported workouts go to My Workouts'))}
           </span>
         </div>
       </div>
 
       {error && (
         <div className="bg-rose-500/10 border border-rose-500/25 text-rose-300 p-4 rounded-xl flex items-center gap-3 text-xs font-mono font-bold whitespace-pre-line">
-          Greška pri dohvaćanju baze: {error}
+          {tr('Greška pri dohvaćanju baze: {error}', 'Error loading library: {error}', { error })}
         </div>
       )}
 
       {loading ? (
         <div className="flex flex-col items-center justify-center h-64 gap-3 carbon-panel rounded-xl">
           <Loader2 className="w-8 h-8 text-volt-400 animate-spin" />
-          <span className="text-zinc-500 font-mono font-bold tracking-[0.2em] uppercase text-[11px]">Sinkronizacija recepata...</span>
+          <span className="text-zinc-500 font-mono font-bold tracking-[0.2em] uppercase text-[11px]">
+            {tr('Sinkronizacija recepata...', 'Syncing workouts...')}
+          </span>
         </div>
       ) : (
         <div className="w-full">
@@ -776,9 +829,11 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5" /> Pametne Kolekcije & Ciljani Programi
+                    <Sparkles className="w-3.5 h-3.5" /> {tr('Pametne Kolekcije & Ciljani Programi', 'Smart Collections & Targeted Programs')}
                   </span>
-                  <span className="text-[10px] font-mono text-zinc-500 hidden sm:inline">Brzi odabir prema fiziološkom cilju i vremenu</span>
+                  <span className="text-[10px] font-mono text-zinc-500 hidden sm:inline">
+                    {tr('Brzi odabir prema fiziološkom cilju i vremenu', 'Quick picks by physiological goal and duration')}
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -806,10 +861,10 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                         </div>
                         <div>
                           <h4 className="text-xs font-display font-bold uppercase tracking-wider text-zinc-100 group-hover:text-white line-clamp-1">
-                            {col.title}
+                            {tr(col.titleHr, col.titleEn)}
                           </h4>
                           <p className="text-[9px] text-zinc-400 font-mono mt-0.5 line-clamp-1">
-                            {col.subtitle}
+                            {tr(col.subtitleHr, col.subtitleEn)}
                           </p>
                         </div>
                       </button>
@@ -822,9 +877,9 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-zinc-400 flex items-center gap-1.5">
-                    <Folder className="w-3.5 h-3.5 text-zinc-400" /> Mape po Fiziološkim Zonama
+                    <Folder className="w-3.5 h-3.5 text-zinc-400" /> {tr('Mape po Fiziološkim Zonama', 'Folders by Physiological Zone')}
                   </span>
-                  <span className="text-[10px] font-mono text-zinc-500">8 standardnih Coggan zona</span>
+                  <span className="text-[10px] font-mono text-zinc-500">{tr('8 standardnih Coggan zona', '8 standard Coggan zones')}</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
@@ -851,10 +906,10 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                         </div>
                         <div className="mt-4">
                           <h3 className="text-xl font-display font-bold uppercase tracking-wide text-zinc-100 group-hover:text-white transition-colors">
-                            {cat}
+                            {tCat(cat)}
                           </h3>
                           <p className="text-[11px] font-mono telemetry-num text-zinc-500 uppercase tracking-widest mt-0.5">
-                            {catList.length} {catList.length === 1 ? 'trening' : 'treninga'}
+                            {catList.length} {catList.length === 1 ? tr('trening', 'workout') : tr('treninga', 'workouts')}
                           </p>
                         </div>
                         <div className="mt-3 pt-2.5 border-t border-zinc-800/60 flex items-center gap-1.5 flex-wrap">
@@ -877,17 +932,24 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                         <>
                           <Lock className="w-12 h-12 text-sky-400/50 mb-3" />
                           <h3 className="text-lg font-display font-bold uppercase text-zinc-200 mb-1">
-                            Tvoja privatna knjižnica je prazna
+                            {tr('Tvoja privatna knjižnica je prazna', 'Your private library is empty')}
                           </h3>
                           <p className="text-zinc-500 font-mono text-xs max-w-md leading-relaxed">
-                            Uvezi vlastite .ZWO / .ERG datoteke ili kreiraj trening putem Generatora — svi tvoji treninzi bit će vidljivi isključivo tebi.
+                            {tr(
+                              'Uvezi vlastite .ZWO / .ERG datoteke ili kreiraj trening putem Generatora — svi tvoji treninzi bit će vidljivi isključivo tebi.',
+                              'Import your own .ZWO / .ERG files or build one with the Generator — all your workouts stay visible only to you.'
+                            )}
                           </p>
                         </>
                       ) : (
                         <>
                           <Database className="w-12 h-12 text-zinc-700 mb-3" />
-                          <h3 className="text-lg font-display font-bold uppercase text-zinc-300 mb-1">Knjižnica je prazna</h3>
-                          <p className="text-zinc-500 font-mono text-xs">Uvezi .ZWO ili .ERG datoteke putem gumba u zaglavlju.</p>
+                          <h3 className="text-lg font-display font-bold uppercase text-zinc-300 mb-1">
+                            {tr('Knjižnica je prazna', 'Library is empty')}
+                          </h3>
+                          <p className="text-zinc-500 font-mono text-xs">
+                            {tr('Uvezi .ZWO ili .ERG datoteke putem gumba u zaglavlju.', 'Import .ZWO or .ERG files using the button in the header.')}
+                          </p>
                         </>
                       )}
                     </div>
@@ -910,12 +972,15 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                       <div className="flex items-center gap-2">
                         <h3 className="text-lg font-display font-bold uppercase tracking-wide text-zinc-100">
                           {activeFolder 
-                            ? activeFolder 
+                            ? tCat(activeFolder) 
                             : (activeCollection 
-                                ? SMART_COLLECTIONS.find(c => c.id === activeCollection)?.title || 'Kolekcija'
+                                ? (() => {
+                                    const col = SMART_COLLECTIONS.find(c => c.id === activeCollection);
+                                    return col ? tr(col.titleHr, col.titleEn) : tr('Kolekcija', 'Collection');
+                                  })()
                                 : (searchQuery.trim()
-                                    ? `Pretraga: "${searchQuery}"`
-                                    : (libraryScope === 'private' ? 'Moji Privatni Treninzi' : 'Svi Treninzi')))}
+                                    ? tr('Pretraga: "{q}"', 'Search: "{q}"', { q: searchQuery })
+                                    : (libraryScope === 'private' ? tr('Moji Privatni Treninzi', 'My Private Workouts') : tr('Svi Treninzi', 'All Workouts'))))}
                         </h3>
                         {activeFolder && (
                           <span className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getCategoryMeta(activeFolder).badge}`}>
@@ -924,13 +989,16 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                         )}
                         {activeCollection && (
                           <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-volt-400/20 text-volt-300 border border-volt-400/30">
-                            KOLEKCIJA
+                            {tr('KOLEKCIJA', 'COLLECTION')}
                           </span>
                         )}
                       </div>
                       <p className="text-[10px] font-mono telemetry-num font-bold text-zinc-500 uppercase tracking-widest mt-0.5">
-                        {displayWorkouts.length} {displayWorkouts.length === 1 ? 'trening prikazan' : 'treninga prikazano'} 
-                        {durationFilter !== 'all' ? ` (filter: ${DURATION_CHIPS.find(c => c.id === durationFilter)?.label})` : ''}
+                        {displayWorkouts.length} {displayWorkouts.length === 1 ? tr('trening prikazan', 'workout shown') : tr('treninga prikazano', 'workouts shown')}
+                        {durationFilter !== 'all' ? (() => {
+                          const activeChip = DURATION_CHIPS.find(c => c.id === durationFilter);
+                          return activeChip ? ` (filter: ${tr(activeChip.labelHr, activeChip.labelEn)})` : '';
+                        })() : ''}
                       </p>
                     </div>
                   </div>
@@ -942,17 +1010,17 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                         onChange={(e) => setSortBy(e.target.value)}
                         className="bg-zinc-950 border border-zinc-800 text-zinc-200 rounded-lg px-3 py-1.5 text-xs font-mono font-bold outline-none focus:border-volt-400"
                       >
-                        <option value="name">Naziv</option>
-                        <option value="difficulty">Težina (LVL)</option>
-                        <option value="duration">Trajanje</option>
-                        <option value="tss">TSS Load</option>
+                        <option value="name">{tr('Naziv', 'Name')}</option>
+                        <option value="difficulty">{tr('Težina (LVL)', 'Difficulty (LVL)')}</option>
+                        <option value="duration">{tr('Trajanje', 'Duration')}</option>
+                        <option value="tss">{tr('TSS Load', 'TSS Load')}</option>
                         <option value="np">NP (W)</option>
                       </select>
 
                       <button 
                         onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')} 
                         className="p-1.5 px-2.5 flex items-center justify-center bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400 hover:text-volt-400 hover:border-zinc-700 transition"
-                        title="Promijeni smjer sortiranja"
+                        title={tr('Promijeni smjer sortiranja', 'Toggle sort direction')}
                       >
                         {sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
                       </button>
@@ -969,7 +1037,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                         }}
                         className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 hover:text-volt-400 hover:border-volt-400/40 transition-all font-mono font-bold text-xs uppercase tracking-wider"
                       >
-                        <ArrowLeft className="w-3.5 h-3.5" /> Sve Mape
+                        <ArrowLeft className="w-3.5 h-3.5" /> {tr('Sve Mape', 'All Folders')}
                       </button>
                     )}
                   </div>
@@ -978,7 +1046,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                 {/* VREMENSKI FILTERI (DURATION CHIPS) */}
                 <div className="pt-2.5 border-t border-zinc-800/80 flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 custom-scrollbar">
                   <span className="text-[10px] font-mono font-bold uppercase text-zinc-500 tracking-wider flex items-center gap-1 shrink-0 mr-1">
-                    <Timer className="w-3 h-3 text-volt-400" /> Trajanje:
+                    <Timer className="w-3 h-3 text-volt-400" /> {tr('Trajanje:', 'Duration:')}
                   </span>
                   {DURATION_CHIPS.map(chip => {
                     const count = activeDurationCounts[chip.id] || 0;
@@ -994,7 +1062,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                             : 'bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100'
                         }`}
                       >
-                        <span>{chip.label}</span>
+                        <span>{tr(chip.labelHr, chip.labelEn)}</span>
                         <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isActive ? 'bg-zinc-950/20 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}`}>
                           {count}
                         </span>
@@ -1009,7 +1077,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                 {displayWorkouts.length === 0 ? (
                   <div className="col-span-full py-16 text-center text-zinc-500 font-mono text-xs carbon-panel rounded-xl flex flex-col items-center gap-2">
                     <Database className="w-8 h-8 text-zinc-700" />
-                    <span>Nema treninga koji odgovaraju odabranim kriterijima.</span>
+                    <span>{tr('Nema treninga koji odgovaraju odabranim kriterijima.', 'No workouts match the selected criteria.')}</span>
                     <button
                       onClick={() => {
                         setDurationFilter('all');
@@ -1017,7 +1085,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                       }}
                       className="mt-2 px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-volt-400 hover:border-volt-400/50 text-xs font-bold font-mono uppercase"
                     >
-                      Poništi filtere
+                      {tr('Poništi filtere', 'Reset filters')}
                     </button>
                   </div>
                 ) : (
@@ -1056,12 +1124,22 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                                   onClick={e => e.stopPropagation()}
                                   className="bg-zinc-900 border border-zinc-800 text-white rounded text-xs font-bold flex-1 outline-none px-2 py-1 focus:border-volt-400"
                                 >
-                                  {categoryOrder.map(c => <option key={c} value={c}>{c}</option>)}
+                                  {categoryOrder.map(c => <option key={c} value={c}>{tCat(c)}</option>)}
                                 </select>
-                                <button type="button" onClick={(e) => { e.stopPropagation(); handleUpdateWorkout(); }} className="text-volt-400 hover:text-volt-300 shrink-0 p-1.5 bg-zinc-900 border border-zinc-800 rounded">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleUpdateWorkout(); }}
+                                  title={tr('Spremi', 'Save')}
+                                  className="text-volt-400 hover:text-volt-300 shrink-0 p-1.5 bg-zinc-900 border border-zinc-800 rounded"
+                                >
                                   <Check className="w-3.5 h-3.5" />
                                 </button>
-                                <button type="button" onClick={(e) => { e.stopPropagation(); setEditingWorkoutId(null); }} className="text-rose-400 hover:text-rose-300 shrink-0 p-1.5 bg-zinc-900 border border-zinc-800 rounded">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setEditingWorkoutId(null); }}
+                                  title={tr('Odustani', 'Cancel')}
+                                  className="text-rose-400 hover:text-rose-300 shrink-0 p-1.5 bg-zinc-900 border border-zinc-800 rounded"
+                                >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
                               </div>
@@ -1072,17 +1150,17 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                                 <div className="flex flex-wrap items-center gap-1.5 mb-1">
                                   {!activeFolder && workout.category && (
                                     <span className={`inline-block text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${catMeta.badge}`}>
-                                      {normalizeCategory(workout.category)}
+                                      {tCat(normalizeCategory(workout.category))}
                                     </span>
                                   )}
                                   {isPriv && (
                                     <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-sky-500/15 border border-sky-500/30 text-sky-300">
-                                      <Lock className="w-2.5 h-2.5" /> {workout.isLocalOnly ? 'Lokalno' : 'Moj'}
+                                      <Lock className="w-2.5 h-2.5" /> {workout.isLocalOnly ? tr('Lokalno', 'Local') : tr('Moj', 'Mine')}
                                     </span>
                                   )}
                                   {isClassicWorkout(workout) && (
                                     <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-400/15 border border-amber-400/30 text-amber-300">
-                                      <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" /> Klasik
+                                      <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" /> {tr('Klasik', 'Classic')}
                                     </span>
                                   )}
                                 </div>
@@ -1105,7 +1183,9 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                                         ? 'text-zinc-500 hover:text-volt-400 hover:border-volt-400/40'
                                         : 'text-zinc-500 hover:text-amber-400 hover:border-amber-400/40'
                                     }`}
-                                    title={isPriv ? 'Admin: Objavi u Javni Katalog' : 'Admin: Prebaci u Moje (privatno)'}
+                                    title={isPriv
+                                      ? tr('Admin: Objavi u Javni Katalog', 'Admin: Publish to Public Catalog')
+                                      : tr('Admin: Prebaci u Moje (privatno)', 'Admin: Move to My Workouts (Private)')}
                                   >
                                     {isTogglingVis ? (
                                       <Loader2 className="w-3 h-3 animate-spin" />
@@ -1127,7 +1207,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                                         setEditingWorkoutId(workout.id);
                                       }}
                                       className="flex items-center justify-center w-7 h-7 rounded-md bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-sky-400 hover:border-sky-500/40 md:opacity-0 md:group-hover/card:opacity-100 transition-all"
-                                      title="Uredi trening"
+                                      title={tr('Uredi trening', 'Edit workout')}
                                     >
                                       <Edit2 className="w-3 h-3" />
                                     </button>
@@ -1135,13 +1215,13 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); handleDeleteWorkout(workout); }}
                                       className="flex items-center justify-center w-7 h-7 rounded-md bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-rose-400 hover:border-rose-500/40 md:opacity-0 md:group-hover/card:opacity-100 transition-all"
-                                      title="Obriši"
+                                      title={tr('Obriši', 'Delete')}
                                     >
                                       <Trash2 className="w-3 h-3" />
                                     </button>
                                   </>
                                 )}
-                                <div className="flex items-center justify-center px-2 h-7 rounded-md bg-zinc-950 border border-zinc-800 text-[11px] font-mono telemetry-num font-bold text-volt-400 shrink-0" title="Faktor težine">
+                                <div className="flex items-center justify-center px-2 h-7 rounded-md bg-zinc-950 border border-zinc-800 text-[11px] font-mono telemetry-num font-bold text-volt-400 shrink-0" title={tr('Faktor težine', 'Difficulty score')}>
                                   {typeof workout.difficulty_score === 'number' ? Number(workout.difficulty_score).toFixed(1).replace(/\.0$/, '') : workout.difficulty_score}
                                 </div>
                               </div>
@@ -1151,7 +1231,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                         
                         {workout.description && (
                           <p className="text-zinc-500 text-xs mb-3 leading-relaxed flex-1 line-clamp-2">
-                            {workout.description}
+                            {tDesc(workout.title, workout.description)}
                           </p>
                         )}
 
@@ -1172,7 +1252,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                               return (
                                 <div 
                                   key={i} 
-                                  title={`${wStep.name || 'Segment'}: ${wStep.duration >= 60 ? mins + ' min' : wStep.duration + ' sec'} @ ${targetStr}`}
+                                  title={`${tStep(wStep.name) || tr('Segment', 'Segment')}: ${wStep.duration >= 60 ? mins + ' min' : wStep.duration + ' sec'} @ ${targetStr}`}
                                   style={{ width: `${widthP}%`, height: `${heightP}%` }} 
                                   className="relative overflow-hidden min-w-[2px] border-r border-zinc-950/60"
                                 >
@@ -1182,7 +1262,9 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                               );
                             })
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-zinc-600 text-[10px] font-mono uppercase font-bold">Nema Podataka</div>
+                            <div className="w-full h-full flex items-center justify-center text-zinc-600 text-[10px] font-mono uppercase font-bold">
+                              {tr('Nema Podataka', 'No Data')}
+                            </div>
                           )}
                         </div>
 
@@ -1191,7 +1273,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                             <span className="bg-zinc-950 px-2 py-1 rounded border border-zinc-800 text-zinc-200 font-bold flex items-center gap-1">
                               <Clock className="w-3 h-3 text-zinc-500" /> {formatTime(workout.duration_seconds)}
                             </span>
-                            <span className="bg-zinc-950 px-2 py-1 rounded border border-zinc-800 text-zinc-300 font-bold" title={`Prosječna snaga: ${metrics.avg}W`}>
+                            <span className="bg-zinc-950 px-2 py-1 rounded border border-zinc-800 text-zinc-300 font-bold" title={tr('Prosječna snaga: {avg}W', 'Average power: {avg}W', { avg: metrics.avg })}>
                               NP {metrics.np}W · IF {metrics.if_factor}
                             </span>
                             <span className="bg-zinc-950 px-2 py-1 rounded border border-zinc-800 text-volt-400 font-bold">
@@ -1203,7 +1285,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                             onClick={(e) => { e.stopPropagation(); onSelectWorkout(workout); }}
                             className="flex outline-none shrink-0 items-center justify-center gap-1 bg-volt-400 hover:bg-volt-300 text-zinc-950 font-mono font-bold px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-wider transition-all shadow-volt-glow"
                           >
-                            <Play className="w-3 h-3" fill="currentColor" /> VOZI
+                            <Play className="w-3 h-3" fill="currentColor" /> {tr('VOZI', 'RIDE')}
                           </button>
                         </div>
                       </div>
@@ -1223,13 +1305,17 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
             <div className="flex items-start justify-between p-5 md:p-6 border-b border-zinc-800 bg-zinc-950 shrink-0">
               <div>
                 <p className="text-[10px] font-mono font-bold text-volt-400 uppercase tracking-[0.2em]">
-                  {selectedDetailWorkout.category} · LVL {selectedDetailWorkout.difficulty_score}
+                  {tCat(selectedDetailWorkout.category)} · LVL {selectedDetailWorkout.difficulty_score}
                 </p>
                 <h2 className="text-xl md:text-2xl font-display font-bold uppercase tracking-wide text-zinc-100 pr-4 mt-0.5">
                   {selectedDetailWorkout.title}
                 </h2>
               </div>
-              <button onClick={() => setSelectedDetailWorkout(null)} className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-colors shrink-0">
+              <button
+                onClick={() => setSelectedDetailWorkout(null)}
+                aria-label={tr('Zatvori', 'Close')}
+                className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-colors shrink-0"
+              >
                 <X className="w-5 h-5"/>
               </button>
             </div>
@@ -1237,7 +1323,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
             <div className="p-5 md:p-6 overflow-y-auto max-h-[75vh] custom-scrollbar">
               {selectedDetailWorkout.description && (
                 <p className="text-sm text-zinc-300 mb-5 leading-relaxed border-l-2 border-volt-400 pl-4">
-                  {selectedDetailWorkout.description}
+                  {tDesc(selectedDetailWorkout.title, selectedDetailWorkout.description)}
                 </p>
               )}
               
@@ -1265,7 +1351,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                       return (
                         <div
                           key={i}
-                          title={`${wStep.name || 'Segment'}: ${wStep.duration >= 60 ? mins + ' min' : wStep.duration + ' sec'} @ ${targetStr}`}
+                          title={`${tStep(wStep.name) || tr('Segment', 'Segment')}: ${wStep.duration >= 60 ? mins + ' min' : wStep.duration + ' sec'} @ ${targetStr}`}
                           style={{ width: `${widthP}%`, height: `${heightP}%` }}
                           className="relative overflow-hidden cursor-crosshair min-w-[2px] border-r border-zinc-950/70"
                         >
@@ -1284,19 +1370,19 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                 return (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                     <div className="bg-zinc-950 p-3.5 border border-zinc-800 rounded-xl">
-                      <p className="text-[10px] font-mono font-bold uppercase text-zinc-500 tracking-widest mb-1">Trajanje</p>
+                      <p className="text-[10px] font-mono font-bold uppercase text-zinc-500 tracking-widest mb-1">{tr('Trajanje', 'Duration')}</p>
                       <p className="text-2xl font-display font-bold telemetry-num text-zinc-100">{Math.round(selectedDetailWorkout.duration_seconds / 60)} <span className="text-xs font-mono text-zinc-500">min</span></p>
                     </div>
                     <div className="bg-zinc-950 p-3.5 border border-zinc-800 rounded-xl">
-                      <p className="text-[10px] font-mono font-bold uppercase text-zinc-500 tracking-widest mb-1">TSS Load</p>
+                      <p className="text-[10px] font-mono font-bold uppercase text-zinc-500 tracking-widest mb-1">{tr('TSS Load', 'TSS Load')}</p>
                       <p className="text-2xl font-display font-bold telemetry-num text-volt-400">{m.tss}</p>
                     </div>
                     <div className="bg-zinc-950 p-3.5 border border-zinc-800 rounded-xl">
-                      <p className="text-[10px] font-mono font-bold uppercase text-zinc-500 tracking-widest mb-1">Normalized Pwr</p>
+                      <p className="text-[10px] font-mono font-bold uppercase text-zinc-500 tracking-widest mb-1">{tr('Normalized Pwr', 'Normalized Pwr')}</p>
                       <p className="text-2xl font-display font-bold telemetry-num text-zinc-100">{m.np} <span className="text-xs font-mono text-zinc-500">W</span></p>
                     </div>
                     <div className="bg-zinc-950 p-3.5 border border-zinc-800 rounded-xl">
-                      <p className="text-[10px] font-mono font-bold uppercase text-zinc-500 tracking-widest mb-1">Intensity (IF)</p>
+                      <p className="text-[10px] font-mono font-bold uppercase text-zinc-500 tracking-widest mb-1">{tr('Intensity (IF)', 'Intensity (IF)')}</p>
                       <p className="text-2xl font-display font-bold telemetry-num text-sky-400">{m.if_factor}</p>
                     </div>
                   </div>
@@ -1306,7 +1392,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
               {/* ZAKAZIVANJE I POKRETANJE */}
               <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5 relative overflow-hidden">
                 <h3 className="flex items-center gap-2 text-xs font-mono font-bold text-volt-400 uppercase tracking-[0.18em] mb-4">
-                  <CalendarPlus className="w-4 h-4" /> Planiraj u Kalendar ili Pokreni Odmah
+                  <CalendarPlus className="w-4 h-4" /> {tr('Planiraj u Kalendar ili Pokreni Odmah', 'Schedule to Calendar or Ride Now')}
                 </h3>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <input 
@@ -1326,7 +1412,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                       }`}
                     >
                       {scheduleSuccess ? <CheckSquare className="w-4 h-4"/> : <CalendarDays className="w-4 h-4 text-volt-400" />}
-                      {scheduleSuccess ? 'Dodano u Kalendar!' : 'Spremi u Kalendar'}
+                      {scheduleSuccess ? tr('Dodano u Kalendar!', 'Added to Calendar!') : tr('Spremi u Kalendar', 'Add to Calendar')}
                     </button>
 
                     <button
@@ -1337,7 +1423,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                       }}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-mono uppercase tracking-wider font-bold bg-volt-400 hover:bg-volt-300 text-zinc-950 shadow-volt-glow transition-all"
                     >
-                      <Play className="w-4 h-4" fill="currentColor" /> Vozi u Trenažeru
+                      <Play className="w-4 h-4" fill="currentColor" /> {tr('Vozi u Trenažeru', 'Ride in Trainer')}
                     </button>
                   </div>
                 </div>
@@ -1351,7 +1437,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-mono uppercase tracking-wider font-bold transition-all bg-zinc-900 border border-zinc-800 text-sky-300 hover:border-sky-400/50 disabled:opacity-50"
                     >
                       {isSavingAi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                      {isSavingAi ? 'Spremanje...' : 'Spremi u Moje Treninge'}
+                      {isSavingAi ? tr('Spremanje...', 'Saving...') : tr('Spremi u Moje Treninge', 'Save to My Workouts')}
                     </button>
                     {isAdmin && (
                       <button
@@ -1361,7 +1447,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-mono uppercase tracking-wider font-bold transition-all bg-amber-500/10 border border-amber-400/35 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
                       >
                         {isSavingAi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
-                        Admin: Objavi Javno
+                        {tr('Admin: Objavi Javno', 'Admin: Publish Publicly')}
                       </button>
                     )}
                   </div>
@@ -1375,7 +1461,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider font-bold transition-all bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-sky-300 hover:border-sky-500/40 disabled:opacity-50"
                       >
                         {isSavingAi ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
-                        Kopiraj u Moje Treninge
+                        {tr('Kopiraj u Moje Treninge', 'Copy to My Workouts')}
                       </button>
                     )}
                     {isAdmin && !selectedDetailWorkout.isLocalOnly && (
@@ -1393,8 +1479,8 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                           <Lock className="w-3.5 h-3.5" />
                         )}
                         {isPrivateWorkout(selectedDetailWorkout)
-                          ? 'Admin: Objavi u Javni Katalog'
-                          : 'Admin: Prebaci u Moje (Privatno)'}
+                          ? tr('Admin: Objavi u Javni Katalog', 'Admin: Publish to Public Catalog')
+                          : tr('Admin: Prebaci u Moje (Privatno)', 'Admin: Move to My Workouts (Private)')}
                       </button>
                     )}
                   </div>
@@ -1408,21 +1494,27 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       {showGeneratorModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setShowGeneratorModal(false)}>
           <div className="carbon-panel rounded-2xl p-6 md:p-7 max-w-sm w-full shadow-2xl relative" onClick={e => e.stopPropagation()}>
-            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400">ALGORITAMSKI GENERATOR</span>
+            <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400">
+              {tr('ALGORITAMSKI GENERATOR', 'ALGORITHMIC GENERATOR')}
+            </span>
             <h3 className="text-xl font-display font-bold uppercase tracking-wide text-zinc-100 mb-5 flex items-center gap-2.5 mt-0.5">
-              <Sparkles className="text-volt-400 w-5 h-5" /> Brzi Generator Treninga
+              <Sparkles className="text-volt-400 w-5 h-5" /> {tr('Brzi Generator Treninga', 'Quick Workout Generator')}
             </h3>
             
             <div className="space-y-5">
               <div>
-                <label className="block text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest mb-2">Zona / Tip Treninga</label>
+                <label className="block text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                  {tr('Zona / Tip Treninga', 'Zone / Workout Type')}
+                </label>
                 <select value={genType} onChange={e => setGenType(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-100 outline-none focus:border-volt-400 font-bold">
-                  {['Oporavak', 'Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Anaerobni'].map(t => <option key={t} value={t}>{t}</option>)}
+                  {['Oporavak', 'Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Anaerobni'].map(t => <option key={t} value={t}>{tCat(t)}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="block text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest mb-2">Trajanje (min)</label>
+                <label className="block text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                  {tr('Trajanje (min)', 'Duration (min)')}
+                </label>
                 <div className="grid grid-cols-5 gap-1.5 font-mono telemetry-num">
                   {[30, 45, 60, 90, 120].map(d => (
                     <button key={d} onClick={() => setGenDuration(d)} className={`py-2 rounded-lg text-xs font-bold transition-all border ${genDuration === d ? 'bg-volt-400 text-zinc-950 border-volt-400 shadow-volt-glow' : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:bg-zinc-900'}`}>
@@ -1434,9 +1526,17 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
 
               <div>
                 <label className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest mb-2 flex justify-between">
-                  <span>Faktor Težine</span>
+                  <span>{tr('Faktor Težine', 'Difficulty Level')}</span>
                   <span className={genDifficulty > 3 ? 'text-rose-400' : genDifficulty < 3 ? 'text-sky-400' : 'text-volt-400'}>
-                    {genDifficulty === 1 ? 'Vrlo lagano' : genDifficulty === 2 ? 'Lagano' : genDifficulty === 3 ? 'Srednje' : genDifficulty === 4 ? 'Teško' : 'Ekstremno'}
+                    {genDifficulty === 1
+                      ? tr('Vrlo lagano', 'Very Easy')
+                      : genDifficulty === 2
+                      ? tr('Lagano', 'Easy')
+                      : genDifficulty === 3
+                      ? tr('Srednje', 'Moderate')
+                      : genDifficulty === 4
+                      ? tr('Teško', 'Hard')
+                      : tr('Ekstremno', 'Extreme')}
                   </span>
                 </label>
                 <input 
@@ -1453,8 +1553,12 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
             </div>
 
             <div className="mt-7 flex gap-2.5">
-              <button onClick={() => setShowGeneratorModal(false)} className="flex-1 py-2.5 bg-zinc-950 border border-zinc-800 hover:bg-zinc-900 text-zinc-300 font-mono text-xs uppercase tracking-wider font-bold rounded-lg transition-colors">Odustani</button>
-              <button onClick={handleGenerate} className="flex-1 py-2.5 bg-volt-400 hover:bg-volt-300 text-zinc-950 font-mono text-xs uppercase tracking-wider font-bold rounded-lg transition-all shadow-volt-glow">Generiraj</button>
+              <button onClick={() => setShowGeneratorModal(false)} className="flex-1 py-2.5 bg-zinc-950 border border-zinc-800 hover:bg-zinc-900 text-zinc-300 font-mono text-xs uppercase tracking-wider font-bold rounded-lg transition-colors">
+                {tr('Odustani', 'Cancel')}
+              </button>
+              <button onClick={handleGenerate} className="flex-1 py-2.5 bg-volt-400 hover:bg-volt-300 text-zinc-950 font-mono text-xs uppercase tracking-wider font-bold rounded-lg transition-all shadow-volt-glow">
+                {tr('Generiraj', 'Generate')}
+              </button>
             </div>
           </div>
         </div>

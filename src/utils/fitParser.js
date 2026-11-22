@@ -4,6 +4,7 @@
  */
 
 import FitParser from 'fit-file-parser';
+import { tr } from '../i18n/i18nCore.js';
 
 /**
  * Parsira FIT datoteku i vraća strukturirane podatke
@@ -13,13 +14,13 @@ import FitParser from 'fit-file-parser';
 export const parseFitFile = (file) => {
   return new Promise((resolve, reject) => {
     if (!file) {
-      reject(new Error('Nema datoteke za parsiranje'));
+      reject(new Error(tr('Nema datoteke za parsiranje', 'No file to parse')));
       return;
     }
 
     // Provjeri ekstenziju
     if (!file.name.toLowerCase().endsWith('.fit')) {
-      reject(new Error('Datoteka mora biti .FIT format'));
+      reject(new Error(tr('Datoteka mora biti .FIT format', 'File must be in .FIT format')));
       return;
     }
 
@@ -40,7 +41,7 @@ export const parseFitFile = (file) => {
         fitParser.parse(arrayBuffer, (error, data) => {
           if (error) {
             console.error('[FIT Parser] Greška:', error);
-            reject(new Error('Greška pri parsiranju FIT datoteke: ' + error.message));
+            reject(new Error(tr('Greška pri parsiranju FIT datoteke: ', 'Failed to parse FIT file: ') + error.message));
             return;
           }
 
@@ -52,7 +53,7 @@ export const parseFitFile = (file) => {
           
           // Provjera da li postoje timestamp podaci
           if (!session.start_time && !activity.timestamp) {
-            reject(new Error('FIT datoteka ne sadrži timestamp podatke'));
+            reject(new Error(tr('FIT datoteka ne sadrži timestamp podatke', 'FIT file does not contain timestamp data')));
             return;
           }
           
@@ -139,12 +140,12 @@ export const parseFitFile = (file) => {
         });
       } catch (err) {
         console.error('[FIT Parser] Catch error:', err);
-        reject(new Error('Greška pri čitanju datoteke: ' + err.message));
+        reject(new Error(tr('Greška pri čitanju datoteke: ', 'Failed to read file: ') + err.message));
       }
     };
 
     reader.onerror = () => {
-      reject(new Error('Greška pri čitanju datoteke'));
+      reject(new Error(tr('Greška pri čitanju datoteke', 'Failed to read file')));
     };
 
     reader.readAsArrayBuffer(file);
@@ -202,21 +203,21 @@ export const calculateTSS = (np, durationSeconds, ftp) => {
  */
 export const validateFitFile = (file) => {
   if (!file) {
-    return { valid: false, error: 'Nema datoteke' };
+    return { valid: false, error: tr('Nema datoteke', 'No file selected') };
   }
 
   if (!file.name.toLowerCase().endsWith('.fit')) {
-    return { valid: false, error: 'Datoteka mora biti .FIT format' };
+    return { valid: false, error: tr('Datoteka mora biti .FIT format', 'File must be in .FIT format') };
   }
 
   // Provjeri veličinu (max 50MB)
   const maxSize = 50 * 1024 * 1024; // 50MB
   if (file.size > maxSize) {
-    return { valid: false, error: 'Datoteka je prevelika (max 50MB)' };
+    return { valid: false, error: tr('Datoteka je prevelika (max 50MB)', 'File is too large (max 50MB)') };
   }
 
   if (file.size === 0) {
-    return { valid: false, error: 'Datoteka je prazna' };
+    return { valid: false, error: tr('Datoteka je prazna', 'File is empty') };
   }
 
   return { valid: true };

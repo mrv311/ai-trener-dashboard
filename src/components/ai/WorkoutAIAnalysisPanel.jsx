@@ -8,6 +8,7 @@ import {
   saveCachedWorkoutAnalysis
 } from '../../services/geminiService';
 import AIMarkdown from './AIMarkdown';
+import { useI18n } from '../../i18n/I18nContext';
 
 export default function WorkoutAIAnalysisPanel({
   activity,
@@ -20,6 +21,7 @@ export default function WorkoutAIAnalysisPanel({
   onStartWorkoutInTrainer,
   compact = false
 }) {
+  const { tr } = useI18n();
   const cacheKey = buildActivityCacheKey(activity);
 
   const [analysisText, setAnalysisText] = useState('');
@@ -83,7 +85,7 @@ export default function WorkoutAIAnalysisPanel({
         userNote
       }, userId);
     } catch (err) {
-      setError(err.message || 'Došlo je do greške pri AI analizi.');
+      setError(err.message || tr('Došlo je do greške pri AI analizi.', 'An error occurred during AI analysis.'));
     } finally {
       setIsAnalyzing(false);
     }
@@ -120,7 +122,7 @@ export default function WorkoutAIAnalysisPanel({
         userNote
       }, userId);
     } catch (err) {
-      setError(err.message || 'Greška pri slanju potpitanja.');
+      setError(err.message || tr('Greška pri slanju potpitanja.', 'Failed to send follow-up question.'));
       setQaHistory(prevHistory);
       setFollowUpInput(q);
     } finally {
@@ -140,13 +142,16 @@ export default function WorkoutAIAnalysisPanel({
           </div>
           <div>
             <h3 className="text-sm font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2">
-              ErgVibe AI Trener Analiza
+              {tr('ErgVibe AI Trener Analiza', 'ErgVibe AI Coach Analysis')}
               <span className="font-mono text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-volt-400/10 text-volt-400 border border-volt-400/25">
                 GEMINI 3.8
               </span>
             </h3>
             <p className="text-[11px] text-zinc-400">
-              Analiza prema Coggan metrikama (EF, Decoupling, NP), trenutnom opterećenju i povijesti vožnji
+              {tr(
+                'Analiza prema Coggan metrikama (EF, Decoupling, NP), trenutnom opterećenju i povijesti vožnji',
+                'Analysis based on Coggan metrics (EF, Decoupling, NP), current training load, and ride history'
+              )}
             </p>
           </div>
         </div>
@@ -156,9 +161,9 @@ export default function WorkoutAIAnalysisPanel({
             type="button"
             onClick={handleGenerateAnalysis}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 transition-colors"
-            title="Ponovno generiraj AI analizu"
+            title={tr('Ponovno generiraj AI analizu', 'Regenerate AI analysis')}
           >
-            <RefreshCw className="w-3.5 h-3.5" /> Ponovi analizu
+            <RefreshCw className="w-3.5 h-3.5" /> {tr('Ponovi analizu', 'Re-analyze')}
           </button>
         )}
       </div>
@@ -170,7 +175,10 @@ export default function WorkoutAIAnalysisPanel({
             type="text"
             value={userNote}
             onChange={(e) => setUserNote(e.target.value)}
-            placeholder="Opcionalno: kakav je bio subjektivni osjećaj? (npr. RPE 7/10, teške noge, vruće u sobi...)"
+            placeholder={tr(
+              'Opcionalno: kakav je bio subjektivni osjećaj? (npr. RPE 7/10, teške noge, vruće u sobi...)',
+              'Optional: how did it feel? (e.g., RPE 7/10, heavy legs, hot room...)'
+            )}
             className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-volt-400 focus:outline-none transition-colors"
           />
           <button
@@ -178,7 +186,7 @@ export default function WorkoutAIAnalysisPanel({
             onClick={handleGenerateAnalysis}
             className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs md:text-sm bg-volt-400 hover:bg-volt-300 text-zinc-950 shadow-volt-glow transition-all"
           >
-            <Sparkles className="w-4 h-4" /> Analiziraj trening s AI Trenerom
+            <Sparkles className="w-4 h-4" /> {tr('Analiziraj trening s AI Trenerom', 'Analyze Workout with AI Coach')}
           </button>
         </div>
       )}
@@ -192,8 +200,12 @@ export default function WorkoutAIAnalysisPanel({
             </div>
           </div>
           <div>
-            <p className="text-sm font-display font-bold uppercase tracking-wide text-zinc-200">AI Trener analizira trening i fiziološke parametre...</p>
-            <p className="text-xs text-zinc-500 mt-0.5">Analiza snage, Efficiency Factora, Aerobic Decouplinga i oporavka</p>
+            <p className="text-sm font-display font-bold uppercase tracking-wide text-zinc-200">
+              {tr('AI Trener analizira trening i fiziološke parametre...', 'AI Coach is analyzing your workout and physiology...')}
+            </p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {tr('Analiza snage, Efficiency Factora, Aerobic Decouplinga i oporavka', 'Evaluating power, Efficiency Factor, Aerobic Decoupling, and recovery')}
+            </p>
           </div>
         </div>
       )}
@@ -220,7 +232,7 @@ export default function WorkoutAIAnalysisPanel({
           {qaHistory.length > 0 && (
             <div className="space-y-3 pt-3 border-t border-zinc-800/80">
               <div className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5 text-volt-400" /> Razgovor o ovom treningu
+                <MessageSquare className="w-3.5 h-3.5 text-volt-400" /> {tr('Razgovor o ovom treningu', 'Follow-up Discussion')}
               </div>
               {qaHistory.map((msg, idx) => (
                 <div
@@ -258,7 +270,10 @@ export default function WorkoutAIAnalysisPanel({
               value={followUpInput}
               onChange={(e) => setFollowUpInput(e.target.value)}
               disabled={isAsking}
-              placeholder="Postavi potpitanje treneru o ovoj vožnji (npr. zašto je decoupling bio takav, što sutra voziti?)"
+              placeholder={tr(
+                'Postavi potpitanje treneru o ovoj vožnji (npr. zašto je decoupling bio takav, što sutra voziti?)',
+                'Ask a follow-up about this ride (e.g., why was decoupling high, what should I ride tomorrow?)'
+              )}
               className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-volt-400 outline-none disabled:opacity-50"
             />
             <button
@@ -267,7 +282,7 @@ export default function WorkoutAIAnalysisPanel({
               className="px-4 py-2.5 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-40 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs flex items-center gap-1.5 transition-colors shrink-0 shadow-volt-glow"
             >
               {isAsking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-              Pitaj
+              {tr('Pitaj', 'Ask')}
             </button>
           </form>
         </div>

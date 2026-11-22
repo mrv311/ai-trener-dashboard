@@ -6,11 +6,16 @@ import {
   Layers, Activity, Clock, Zap, Check, Plus, Cloud, HardDrive,
   MessageSquare, Send, X, SlidersHorizontal
 } from 'lucide-react';
+import { useI18n } from '../../i18n/I18nContext';
 import {
   PHASE_META,
   WEEKDAY_DEFS,
   DURATION_TIERS,
   DEFAULT_WEEKLY_SCHEDULE,
+  getWeekdayShort,
+  getWeekdayName,
+  getLocalizedPhaseLabel,
+  getLocalizedEventType,
   chunkWeeksIntoBlocks,
   getLocalIsoToday,
   diffDaysIso,
@@ -55,6 +60,7 @@ export default function TrainingPlannerView({
   onAnalyzePlanInCoach,
   onGeneratingChange
 }) {
+  const { lang, isEn, tr } = useI18n();
   const todayIso = getLocalIsoToday();
   const ftp = Number(profile?.ftp) || 200;
 
@@ -279,15 +285,15 @@ export default function TrainingPlannerView({
   const buildRaceEventPayload = () => {
     if (!blueprint || blueprint.goalMode !== 'event' || !blueprint.eventDate) return null;
     const descParts = [
-      blueprint.eventType || 'Ciljni Event',
+      getLocalizedEventType(blueprint.eventType, lang) || tr('Ciljni Event', 'Target Event'),
       blueprint.eventDistanceKm ? `${blueprint.eventDistanceKm} km` : '',
-      blueprint.eventElevationM ? `${blueprint.eventElevationM} m uspona` : ''
+      blueprint.eventElevationM ? tr('{m} m uspona', '{m} m elevation', { m: blueprint.eventElevationM }) : ''
     ].filter(Boolean);
 
     return {
-      title: blueprint.goalTitle || 'Ciljni Event',
+      title: blueprint.goalTitle || tr('Ciljni Event', 'Target Event'),
       date: blueprint.eventDate,
-      category: blueprint.eventType || 'Utrka / Event',
+      category: blueprint.eventType || tr('Utrka / Event', 'Race / Event'),
       eventCategory: blueprint.eventPriority || 'RACE_A',
       duration: 0,
       tss: 0,
@@ -368,7 +374,7 @@ export default function TrainingPlannerView({
       setShowWizard(false);
       onClearPrefill?.();
     } catch (err) {
-      setGenError(err?.message || 'Greška pri generiranju makro-plana.');
+      setGenError(err?.message || tr('Greška pri generiranju makro-plana.', 'Error generating macrocycle plan.'));
     } finally {
       setIsGenerating(false);
       setGenerationStage(null);
@@ -435,18 +441,30 @@ export default function TrainingPlannerView({
           type: isAlreadySynced ? 'warning' : 'success',
           canQuickUpdate: isAlreadySynced,
           text: isAlreadySynced
-            ? `Blok ${blockMeta.blockIndex} je ažuriran prema komentaru. Klikni "Ažuriraj blok u Kalendaru" da se nova verzija odmah prenese.`
-            : `Blok ${blockMeta.blockIndex} je ažuriran prema tvom komentaru!`
+            ? tr(
+                'Blok {idx} je ažuriran prema komentaru. Klikni "Ažuriraj blok u Kalendaru" da se nova verzija odmah prenese.',
+                'Block {idx} has been updated based on your feedback. Click "Update Block in Calendar" to sync the new version now.',
+                { idx: blockMeta.blockIndex }
+              )
+            : tr(
+                'Blok {idx} je ažuriran prema tvom komentaru!',
+                'Block {idx} has been updated based on your feedback!',
+                { idx: blockMeta.blockIndex }
+              )
         });
       } else if (isAlreadySynced) {
         setSyncStatus({
           type: 'warning',
           canQuickUpdate: true,
-          text: `Blok ${blockMeta.blockIndex} je ponovno generiran. Klikni "Ažuriraj blok u Kalendaru" za zamjenu stare verzije.`
+          text: tr(
+            'Blok {idx} je ponovno generiran. Klikni "Ažuriraj blok u Kalendaru" za zamjenu stare verzije.',
+            'Block {idx} has been regenerated. Click "Update Block in Calendar" to replace the previous version.',
+            { idx: blockMeta.blockIndex }
+          )
         });
       }
     } catch (err) {
-      setGenError(err?.message || `Greška pri generiranju Bloka ${blockMeta.blockIndex}.`);
+      setGenError(err?.message || tr('Greška pri generiranju Bloka {idx}.', 'Error generating Block {idx}.', { idx: blockMeta.blockIndex }));
     } finally {
       setIsGeneratingBlock(false);
     }
@@ -520,7 +538,7 @@ export default function TrainingPlannerView({
     if (!draftSchedule || !savedPlan) return;
     const summary = summarizeWeeklySchedule(draftSchedule);
     if (summary.workoutsPerWeek === 0) {
-      setScheduleEditorError('Označi barem jedan dan u tjednu kad možeš trenirati.');
+      setScheduleEditorError(tr('Označi barem jedan dan u tjednu kad možeš trenirati.', 'Select at least one day per week when you can train.'));
       return;
     }
 
@@ -551,7 +569,11 @@ export default function TrainingPlannerView({
     } else {
       setSyncStatus({
         type: 'success',
-        text: `Tjedni raspored je spremljen (${summary.workoutsPerWeek}× tj., ~${summary.hoursPerWeek} h/tj.). Primijenit će se na sve nove ili regenerirane blokove.`
+        text: tr(
+          'Tjedni raspored je spremljen ({perWeek}× tj., ~{hours} h/tj.). Primijenit će se na sve nove ili regenerirane blokove.',
+          'Weekly schedule saved ({perWeek}×/wk, ~{hours} h/wk). It will apply to all new or regenerated blocks.',
+          { perWeek: summary.workoutsPerWeek, hours: summary.hoursPerWeek }
+        )
       });
     }
   };
@@ -596,7 +618,7 @@ export default function TrainingPlannerView({
 
       const currentBlockData = generatedBlocks[activeBlockMeta.key];
       if (!currentBlockData) {
-        throw new Error('Aktivni blok nije pronađen za spremanje izmjene.');
+        throw new Error(tr('Aktivni blok nije pronađen za spremanje izmjene.', 'Active block not found to save the revision.'));
       }
 
       const updatedWeeks = (currentBlockData.weeks || []).map(wk => {
@@ -634,11 +656,19 @@ export default function TrainingPlannerView({
         type: isAlreadySynced ? 'warning' : 'success',
         canQuickUpdate: isAlreadySynced,
         text: isAlreadySynced
-          ? `Trening "${revisedWorkout.title}" (${formatShortHrDate(revisedWorkout.date)}) je zamijenjen u planu. Klikni "Ažuriraj blok u Kalendaru" da se izmjena odmah prenese.`
-          : `Trening za ${formatShortHrDate(revisedWorkout.date)} je ažuriran: "${revisedWorkout.title}".`
+          ? tr(
+              'Trening "{title}" ({date}) je zamijenjen u planu. Klikni "Ažuriraj blok u Kalendaru" da se izmjena odmah prenese.',
+              'Workout "{title}" ({date}) has been updated in the plan. Click "Update Block in Calendar" to sync the change now.',
+              { title: revisedWorkout.title, date: formatShortHrDate(revisedWorkout.date, lang) }
+            )
+          : tr(
+              'Trening za {date} je ažuriran: "{title}".',
+              'Workout for {date} updated: "{title}".',
+              { date: formatShortHrDate(revisedWorkout.date, lang), title: revisedWorkout.title }
+            )
       });
     } catch (err) {
-      setGenError(err?.message || 'Greška pri korekciji odabranog treninga.');
+      setGenError(err?.message || tr('Greška pri korekciji odabranog treninga.', 'Error revising the selected workout.'));
     } finally {
       setRevisingWorkoutKey(null);
     }
@@ -655,14 +685,22 @@ export default function TrainingPlannerView({
       setSyncStatus({
         type: 'success',
         text: res.intervalsSynced
-          ? `Event "${payload.title}" (${formatShortHrDate(payload.date)}) dodan u Kalendar i Intervals.icu!`
-          : `Event "${payload.title}" (${formatShortHrDate(payload.date)}) dodan u lokalni Kalendar.`,
+          ? tr(
+              'Event "{title}" ({date}) dodan u Kalendar i Intervals.icu!',
+              'Event "{title}" ({date}) added to Calendar and Intervals.icu!',
+              { title: payload.title, date: formatShortHrDate(payload.date, lang) }
+            )
+          : tr(
+              'Event "{title}" ({date}) dodan u lokalni Kalendar.',
+              'Event "{title}" ({date}) added to local Calendar.',
+              { title: payload.title, date: formatShortHrDate(payload.date, lang) }
+            ),
         targetDate: payload.date
       });
     } else {
       setSyncStatus({
         type: 'error',
-        text: res?.error || 'Nije uspjelo dodavanje eventa u kalendar.'
+        text: res?.error || tr('Nije uspjelo dodavanje eventa u kalendar.', 'Failed to add event to calendar.')
       });
     }
   };
@@ -693,13 +731,13 @@ export default function TrainingPlannerView({
           mode: 'delete',
           done: 0,
           total: oldTotal,
-          message: `Uklanjanje stare verzije Bloka ${activeBlockMeta.blockIndex}...`
+          message: tr('Uklanjanje stare verzije Bloka {idx}...', 'Removing previous version of Block {idx}...', { idx: activeBlockMeta.blockIndex })
         });
         await onDeletePlanBlock(activeSyncedRecord.blockKey, {
           onProgress: createProgressHandler(
             'delete',
             oldTotal,
-            ({ done, total }) => `Uklanjanje stare verzije bloka (${done}/${total})...`
+            ({ done, total }) => tr('Uklanjanje stare verzije bloka ({done}/{total})...', 'Removing previous block version ({done}/{total})...', { done, total })
           )
         });
       } else if (collisionMode === 'replace' && overlappingRegistryBlocks.length > 0 && onDeletePlanBlock) {
@@ -710,13 +748,13 @@ export default function TrainingPlannerView({
             mode: 'delete',
             done: 0,
             total: oldTotal,
-            message: `Uklanjanje starog bloka (${oldBlock.title})...`
+            message: tr('Uklanjanje starog bloka ({title})...', 'Removing previous block ({title})...', { title: oldBlock.title })
           });
           await onDeletePlanBlock(oldBlock.blockKey, {
             onProgress: createProgressHandler(
               'delete',
               oldTotal,
-              ({ done, total }) => `Uklanjanje prethodnog bloka (${done}/${total})...`
+              ({ done, total }) => tr('Uklanjanje prethodnog bloka ({done}/{total})...', 'Removing previous block ({done}/{total})...', { done, total })
             )
           });
         }
@@ -755,7 +793,10 @@ export default function TrainingPlannerView({
       if (workoutPayloads.length === 0 && !shouldAddRaceEventSeparately) {
         setSyncStatus({
           type: 'warning',
-          text: 'Svi datumi ovog bloka već su zauzeti postojećim treninzima pa ništa nije dodano. Odaberi "Dodaj uz postojeće" ili oslobodi dane u kalendaru.'
+          text: tr(
+            'Svi datumi ovog bloka već su zauzeti postojećim treninzima pa ništa nije dodano. Odaberi "Dodaj uz postojeće" ili oslobodi dane u kalendaru.',
+            'All dates in this block already have scheduled workouts, so nothing was added. Choose "Add alongside existing" or free up days in your calendar.'
+          )
         });
         setSyncProgress(null);
         return;
@@ -770,8 +811,8 @@ export default function TrainingPlannerView({
           done: 0,
           total: workoutPayloads.length,
           message: useIntervals
-            ? `Sinkronizacija s Kalendarom i Intervals.icu (0/${workoutPayloads.length})...`
-            : `Spremanje treninga u ErgVibe Kalendar...`
+            ? tr('Sinkronizacija s Kalendarom i Intervals.icu (0/{total})...', 'Syncing with Calendar & Intervals.icu (0/{total})...', { total: workoutPayloads.length })
+            : tr('Spremanje treninga u ErgVibe Kalendar...', 'Saving workouts to ErgVibe Calendar...')
         });
 
         const firstWorkoutDate = workoutsToSync
@@ -782,7 +823,11 @@ export default function TrainingPlannerView({
         result = await onCreatePlanBatch(workoutPayloads, {
           planId: blueprint.planId,
           blockKey: registryBlockKey,
-          blockTitle: `${blueprint.planTitle} • Blok ${activeBlockMeta.blockIndex} (Tj. ${activeBlockMeta.weekFrom}–${activeBlockMeta.weekTo})`,
+          blockTitle: tr(
+            '{plan} • Blok {idx} (Tj. {from}–{to})',
+            '{plan} • Block {idx} (Wks {from}–{to})',
+            { plan: blueprint.planTitle, idx: activeBlockMeta.blockIndex, from: activeBlockMeta.weekFrom, to: activeBlockMeta.weekTo }
+          ),
           planTitle: blueprint.planTitle,
           planStartDate: blueprint.startDate || questionnaire?.startDate || activeBlockDateRange.start,
           methodology: blueprint.recommendedMethodology || '',
@@ -800,8 +845,8 @@ export default function TrainingPlannerView({
             ({ done, total, currentName }) => {
               const label = currentName ? `: ${currentName}` : '';
               return useIntervals
-                ? `Slanje na Intervals.icu (${done}/${total})${label}`
-                : `Spremanje u kalendar (${done}/${total})${label}`;
+                ? tr('Slanje na Intervals.icu ({done}/{total}){label}', 'Pushing to Intervals.icu ({done}/{total}){label}', { done, total, label })
+                : tr('Spremanje u kalendar ({done}/{total}){label}', 'Saving to calendar ({done}/{total}){label}', { done, total, label });
             }
           )
         });
@@ -819,25 +864,37 @@ export default function TrainingPlannerView({
 
       setSyncProgress(null);
 
-      const raceNote = raceEventAdded ? ' + ciljni event dodan zasebno' : '';
-      const actionVerb = replaceCurrentSynced ? 'Ažurirano' : 'Dodano';
+      const raceNote = raceEventAdded ? tr(' + ciljni event dodan zasebno', ' + target event added separately') : '';
+      const actionVerb = replaceCurrentSynced ? tr('Ažurirano', 'Updated') : tr('Dodano', 'Added');
 
       if (result.errors?.length > 0 && result.intervalsCount === 0 && useIntervals) {
         setSyncStatus({
           type: 'warning',
-          text: `${result.total} treninga spremljeno lokalno${raceNote}, ali Intervals.icu sinkronizacija je javila grešku (${result.errors[0]?.error || 'API greška'}).`,
+          text: tr(
+            '{total} treninga spremljeno lokalno{raceNote}, ali Intervals.icu sinkronizacija je javila grešku ({err}).',
+            '{total} workouts saved locally{raceNote}, but Intervals.icu sync reported an error ({err}).',
+            { total: result.total, raceNote, err: result.errors[0]?.error || tr('API greška', 'API error') }
+          ),
           targetDate: activeBlockDateRange.start
         });
       } else if (useIntervals) {
         setSyncStatus({
           type: 'success',
-          text: `${actionVerb} ${result.total} treninga u Kalendar (${result.intervalsCount} sinkronizirano na Intervals.icu${raceNote}).`,
+          text: tr(
+            '{verb} {total} treninga u Kalendar ({ic} sinkronizirano na Intervals.icu{raceNote}).',
+            '{verb} {total} workouts to Calendar ({ic} synced to Intervals.icu{raceNote}).',
+            { verb: actionVerb, total: result.total, ic: result.intervalsCount, raceNote }
+          ),
           targetDate: activeBlockDateRange.start
         });
       } else {
         setSyncStatus({
           type: 'success',
-          text: `${actionVerb} ${result.total} treninga u lokalni ErgVibe Kalendar${raceNote}.`,
+          text: tr(
+            '{verb} {total} treninga u lokalni ErgVibe Kalendar{raceNote}.',
+            '{verb} {total} workouts to local ErgVibe Calendar{raceNote}.',
+            { verb: actionVerb, total: result.total, raceNote }
+          ),
           targetDate: activeBlockDateRange.start
         });
       }
@@ -845,7 +902,7 @@ export default function TrainingPlannerView({
       setSyncProgress(null);
       setSyncStatus({
         type: 'error',
-        text: err?.message || 'Greška pri sinkronizaciji bloka.'
+        text: err?.message || tr('Greška pri sinkronizaciji bloka.', 'Error syncing training block.')
       });
     }
   };
@@ -860,7 +917,7 @@ export default function TrainingPlannerView({
       mode: 'delete',
       done: 0,
       total: deleteTotal,
-      message: 'Uklanjanje sinkroniziranog bloka iz Kalendara...'
+      message: tr('Uklanjanje sinkroniziranog bloka iz Kalendara...', 'Removing synced block from Calendar...')
     });
 
     try {
@@ -868,19 +925,23 @@ export default function TrainingPlannerView({
         onProgress: createProgressHandler(
           'delete',
           deleteTotal,
-          ({ done, total }) => `Brisanje stavki (${done}/${total})...`
+          ({ done, total }) => tr('Brisanje stavki ({done}/{total})...', 'Deleting items ({done}/{total})...', { done, total })
         )
       });
       setSyncProgress(null);
       setSyncStatus({
         type: 'success',
-        text: `Uklonjeno ${res.deletedLocal} lokalnih i ${res.deletedIntervals} Intervals.icu stavki za ovaj blok.`
+        text: tr(
+          'Uklonjeno {loc} lokalnih i {ic} Intervals.icu stavki za ovaj blok.',
+          'Removed {loc} local and {ic} Intervals.icu items for this block.',
+          { loc: res.deletedLocal, ic: res.deletedIntervals }
+        )
       });
     } catch (err) {
       setSyncProgress(null);
       setSyncStatus({
         type: 'error',
-        text: err?.message || 'Greška pri uklanjanju bloka.'
+        text: err?.message || tr('Greška pri uklanjanju bloka.', 'Error removing training block.')
       });
     }
   };
@@ -904,7 +965,7 @@ export default function TrainingPlannerView({
           mode: 'delete',
           done: 0,
           total: totalCount,
-          message: 'Uklanjanje sinkroniziranih treninga plana iz Kalendara...'
+          message: tr('Uklanjanje sinkroniziranih treninga plana iz Kalendara...', 'Removing synced plan workouts from Calendar...')
         });
 
         if (onDeletePlanBlocks) {
@@ -912,7 +973,7 @@ export default function TrainingPlannerView({
             onProgress: createProgressHandler(
               'delete',
               totalCount,
-              ({ done, total }) => `Brisanje treninga (${done}/${total})...`
+              ({ done, total }) => tr('Brisanje treninga ({done}/{total})...', 'Deleting workouts ({done}/{total})...', { done, total })
             )
           });
         } else if (onDeletePlanBlock) {
@@ -943,14 +1004,20 @@ export default function TrainingPlannerView({
 
       if (calStats) {
         setPlanDeletedNotice(
-          `Plan "${deletedTitle}" je obrisan (uklonjeno ${calStats.deletedLocal} lokalnih i ${calStats.deletedIntervals} Intervals.icu stavki).`
+          tr(
+            'Plan "{title}" je obrisan (uklonjeno {loc} lokalnih i {ic} Intervals.icu stavki).',
+            'Plan "{title}" deleted (removed {loc} local and {ic} Intervals.icu items).',
+            { title: deletedTitle, loc: calStats.deletedLocal, ic: calStats.deletedIntervals }
+          )
         );
       } else {
-        setPlanDeletedNotice(`Plan "${deletedTitle}" je obrisan iz AI Planera.`);
+        setPlanDeletedNotice(
+          tr('Plan "{title}" je obrisan iz AI Planera.', 'Plan "{title}" deleted from AI Planner.', { title: deletedTitle })
+        );
       }
     } catch (err) {
       setSyncProgress(null);
-      setGenError(err?.message || 'Greška pri brisanju plana.');
+      setGenError(err?.message || tr('Greška pri brisanju plana.', 'Error deleting plan.'));
     } finally {
       setIsDeletingPlan(false);
     }
@@ -1004,7 +1071,7 @@ export default function TrainingPlannerView({
               type="button"
               onClick={() => setPlanDeletedNotice('')}
               className="text-emerald-300/70 hover:text-emerald-100 p-0.5"
-              title="Zatvori"
+              title={tr('Zatvori', 'Close')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -1050,17 +1117,19 @@ export default function TrainingPlannerView({
                 {blueprint.goalMode === 'event' ? (
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
                     <Trophy className="w-3.5 h-3.5" />
-                    {blueprint.eventPriority === 'RACE_B' ? 'Prioritet B' : 'Cilj A'} • {blueprint.eventType}
+                    {blueprint.eventPriority === 'RACE_B' ? tr('Prioritet B', 'B-Priority') : tr('Cilj A', 'A-Goal')} • {getLocalizedEventType(blueprint.eventType, lang)}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                     <Activity className="w-3.5 h-3.5" />
-                    Opći Fitness Makro-Plan
+                    {tr('Opći Fitness Makro-Plan', 'General Fitness Macrocycle')}
                   </span>
                 )}
 
                 <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-volt-400/15 text-volt-400 border border-volt-400/30">
-                  {blueprint.totalWeeks} tjedana
+                  {isEn
+                    ? `${blueprint.totalWeeks} ${blueprint.totalWeeks === 1 ? 'week' : 'weeks'}`
+                    : `${blueprint.totalWeeks} ${blueprint.totalWeeks === 1 ? 'tjedan' : (blueprint.totalWeeks < 5 ? 'tjedna' : 'tjedana')}`}
                 </span>
 
                 {blueprint.recommendedMethodology && (
@@ -1071,7 +1140,9 @@ export default function TrainingPlannerView({
 
                 {daysToEvent !== null && (
                   <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-zinc-950 text-zinc-200 border border-zinc-700">
-                    {daysToEvent > 0 ? `${daysToEvent} dana do eventa (${formatShortHrDate(blueprint.eventDate)})` : `Event: ${formatShortHrDate(blueprint.eventDate)}`}
+                    {daysToEvent > 0
+                      ? tr('{days} dana do eventa ({date})', '{days} days to event ({date})', { days: daysToEvent, date: formatShortHrDate(blueprint.eventDate, lang) })
+                      : tr('Event: {date}', 'Event: {date}', { date: formatShortHrDate(blueprint.eventDate, lang) })}
                   </span>
                 )}
               </div>
@@ -1084,7 +1155,7 @@ export default function TrainingPlannerView({
               </p>
               {blueprint.methodologyReason && (
                 <p className="text-xs text-zinc-400">
-                  <span className="text-volt-400 font-semibold">Metodologija:</span> {blueprint.methodologyReason}
+                  <span className="text-volt-400 font-semibold">{tr('Metodologija:', 'Methodology:')}</span> {blueprint.methodologyReason}
                 </p>
               )}
             </div>
@@ -1095,7 +1166,7 @@ export default function TrainingPlannerView({
                 isEventInCalendar ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/25">
                     <Check className="w-3.5 h-3.5" />
-                    Event u kalendaru
+                    {tr('Event u kalendaru', 'Event in Calendar')}
                   </span>
                 ) : (
                   <button
@@ -1104,7 +1175,7 @@ export default function TrainingPlannerView({
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition-colors"
                   >
                     <Flag className="w-3.5 h-3.5" />
-                    Dodaj Event u Kalendar
+                    {tr('Dodaj Event u Kalendar', 'Add Event to Calendar')}
                   </button>
                 )
               )}
@@ -1116,7 +1187,7 @@ export default function TrainingPlannerView({
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-colors"
                 >
                   <Calendar className="w-3.5 h-3.5 text-volt-400" />
-                  Otvori u Kalendaru
+                  {tr('Otvori u Kalendaru', 'Open in Calendar')}
                 </button>
               )}
 
@@ -1125,11 +1196,11 @@ export default function TrainingPlannerView({
                   type="button"
                   disabled={isGenerating || isGeneratingBlock || Boolean(revisingWorkoutKey) || isDeletingPlan}
                   onClick={handleAnalyzeCurrentPlan}
-                  title="Pošalji ovaj plan na detaljnu analizu AI Treneru"
+                  title={tr('Pošalji ovaj plan na detaljnu analizu AI Treneru', 'Send this plan to AI Coach for a detailed review')}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 transition-colors disabled:opacity-50"
                 >
                   <Activity className="w-3.5 h-3.5" />
-                  Analiziraj s AI
+                  {tr('Analiziraj s AI', 'Analyze with AI')}
                 </button>
               )}
 
@@ -1143,7 +1214,7 @@ export default function TrainingPlannerView({
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-volt-400/15 hover:bg-volt-400/25 text-volt-400 border border-volt-400/30 transition-colors disabled:opacity-50"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                Novi plan / Upitnik
+                {tr('Novi plan / Upitnik', 'New Plan / Setup')}
               </button>
 
               <button
@@ -1153,11 +1224,11 @@ export default function TrainingPlannerView({
                   setDeleteAlsoCalendar(syncedPlanBlocksForCurrentPlan.length > 0);
                   setShowDeletePlanConfirm(true);
                 }}
-                title="Obriši cijeli stvoreni plan"
+                title={tr('Obriši cijeli stvoreni plan', 'Delete the entire generated plan')}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition-colors disabled:opacity-50"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Obriši plan
+                {tr('Obriši plan', 'Delete Plan')}
               </button>
             </div>
           </div>
@@ -1166,14 +1237,14 @@ export default function TrainingPlannerView({
           {Array.isArray(blueprint.phases) && blueprint.phases.length > 0 && (
             <div className="space-y-2 pt-1">
               <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-zinc-500 font-semibold">
-                <span>Makrociklus i Faze Periodizacije</span>
+                <span>{tr('Makrociklus i Faze Periodizacije', 'Macrocycle & Periodization Phases')}</span>
                 <button
                   type="button"
                   onClick={() => setShowRationale(v => !v)}
                   className="inline-flex items-center gap-1 text-zinc-400 hover:text-volt-400 transition-colors normal-case font-medium"
                 >
                   <Info className="w-3.5 h-3.5" />
-                  {showRationale ? 'Sakrij objašnjenje trenera' : 'Zašto ovakva periodizacija?'}
+                  {showRationale ? tr('Sakrij objašnjenje trenera', 'Hide coach rationale') : tr('Zašto ovakva periodizacija?', 'Why this periodization?')}
                 </button>
               </div>
 
@@ -1182,11 +1253,12 @@ export default function TrainingPlannerView({
                   const span = Math.max(1, (phase.weekTo || 1) - (phase.weekFrom || 1) + 1);
                   const pct = (span / blueprint.totalWeeks) * 100;
                   const meta = PHASE_META[phase.type] || PHASE_META.base;
+                  const phaseTitle = getLocalizedPhaseLabel(phase.type, phase.label, lang);
                   return (
                     <div
                       key={`${phase.type}-${idx}`}
                       style={{ width: `${pct}%` }}
-                      title={`${phase.label || meta.label} (Tj. ${phase.weekFrom}–${phase.weekTo}): ${phase.focus || ''}`}
+                      title={`${phaseTitle} (${tr('Tj.', 'Wk')} ${phase.weekFrom}–${phase.weekTo}): ${phase.focus || ''}`}
                       className={`${meta.bar} rounded-full transition-all`}
                     />
                   );
@@ -1196,14 +1268,15 @@ export default function TrainingPlannerView({
               <div className="flex flex-wrap gap-2 pt-1">
                 {blueprint.phases.map((phase, idx) => {
                   const meta = PHASE_META[phase.type] || PHASE_META.base;
+                  const phaseTitle = getLocalizedPhaseLabel(phase.type, phase.label, lang);
                   return (
                     <div
                       key={`legend-${idx}`}
                       className={`text-[11px] px-2.5 py-1 rounded-lg border flex items-center gap-1.5 ${meta.cls}`}
                     >
                       <span className={`w-2 h-2 rounded-full ${meta.bar}`} />
-                      <span className="font-bold">{phase.label || meta.label}</span>
-                      <span className="opacity-80">Tj. {phase.weekFrom === phase.weekTo ? phase.weekFrom : `${phase.weekFrom}–${phase.weekTo}`}</span>
+                      <span className="font-bold">{phaseTitle}</span>
+                      <span className="opacity-80">{tr('Tj.', 'Wk')} {phase.weekFrom === phase.weekTo ? phase.weekFrom : `${phase.weekFrom}–${phase.weekTo}`}</span>
                       {phase.focus && <span className="hidden sm:inline opacity-75">• {phase.focus}</span>}
                     </div>
                   );
@@ -1238,13 +1311,13 @@ export default function TrainingPlannerView({
                       }`}
                     >
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-[11px] font-bold text-white">Tj. {wk.weekNumber}</span>
+                        <span className="text-[11px] font-bold text-white">{tr('Tj.', 'Wk')} {wk.weekNumber}</span>
                         <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${meta.cls}`}>
-                          {wk.isRecoveryWeek ? 'Rest' : meta.label}
+                          {wk.isRecoveryWeek ? 'Rest' : getLocalizedPhaseLabel(wk.phaseType, null, lang)}
                         </span>
                       </div>
                       <div className="text-[10px] text-zinc-400 mt-1">
-                        {formatShortHrDate(wk.startDate)}
+                        {formatShortHrDate(wk.startDate, lang)}
                       </div>
                       <div className="text-[11px] font-semibold text-zinc-200 mt-0.5">
                         ~{wk.targetTss} TSS
@@ -1284,19 +1357,19 @@ export default function TrainingPlannerView({
                   >
                     <Layers className="w-3.5 h-3.5" />
                     <span>
-                      Blok {meta.blockIndex} ({meta.weekFrom === meta.weekTo ? `Tj. ${meta.weekFrom}` : `Tj. ${meta.weekFrom}–${meta.weekTo}`})
+                      {tr('Blok', 'Block')} {meta.blockIndex} ({meta.weekFrom === meta.weekTo ? `${tr('Tj.', 'Wk')} ${meta.weekFrom}` : `${tr('Tj.', 'Wks')} ${meta.weekFrom}–${meta.weekTo}`})
                     </span>
                     {isSynced ? (
                       <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
                         isActive ? 'bg-zinc-950/20 text-zinc-950' : 'bg-emerald-500/20 text-emerald-300'
                       }`}>
-                        U kalendaru ✓
+                        {tr('U kalendaru ✓', 'In Calendar ✓')}
                       </span>
                     ) : isGenerated ? (
-                      <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-zinc-950' : 'bg-volt-400'}`} title="Treninzi generirani" />
+                      <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-zinc-950' : 'bg-volt-400'}`} title={tr('Treninzi generirani', 'Workouts generated')} />
                     ) : (
                       <span className={`text-[10px] opacity-75 ${isActive ? 'text-zinc-900' : 'text-zinc-500'}`}>
-                        Nacrt
+                        {tr('Nacrt', 'Draft')}
                       </span>
                     )}
                   </button>
@@ -1309,10 +1382,10 @@ export default function TrainingPlannerView({
                 <div className="text-[11px] text-zinc-400 flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 text-zinc-400" />
                   <span>
-                    Aktivni dani:{' '}
+                    {tr('Aktivni dani:', 'Active days:')}{' '}
                     <strong className="text-zinc-200">
                       {WEEKDAY_DEFS.filter(d => questionnaire.weeklySchedule[d.key]?.enabled)
-                        .map(d => d.short)
+                        .map(d => getWeekdayShort(d, lang))
                         .join(', ')}
                     </strong>
                   </span>
@@ -1334,10 +1407,10 @@ export default function TrainingPlannerView({
                     ? 'bg-volt-400/15 text-volt-300 border-volt-400/40'
                     : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-volt-300 border-zinc-800 hover:border-zinc-700'
                 }`}
-                title="Prilagodi slobodne dane i trajanje po danu za iduće ili aktivni blok"
+                title={tr('Prilagodi slobodne dane i trajanje po danu za iduće ili aktivni blok', 'Adjust available days and daily time limits for upcoming or active blocks')}
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span>Uredi dane / sate</span>
+                <span>{tr('Uredi dane / sate', 'Edit Days / Hours')}</span>
               </button>
             </div>
           </div>
@@ -1352,19 +1425,19 @@ export default function TrainingPlannerView({
                 <div>
                   <h4 className="text-sm font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2">
                     <SlidersHorizontal className="w-4 h-4 text-volt-400" />
-                    Prilagodba tjednog rasporeda
+                    {tr('Prilagodba tjednog rasporeda', 'Edit Weekly Schedule')}
                   </h4>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Promijeni slobodne dane ili dostupno vrijeme po danu — novi raspored vrijedi za sve buduće blokove bez izrade novog makrociklusa.
+                    {tr('Promijeni slobodne dane ili dostupno vrijeme po danu — novi raspored vrijedi za sve buduće blokove bez izrade novog makrociklusa.', 'Update your available days or daily time limits — the new schedule applies to all future blocks without rebuilding your macrocycle.')}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[10px] font-mono text-zinc-500 uppercase mr-1">Brzo:</span>
+                  <span className="text-[10px] font-mono text-zinc-500 uppercase mr-1">{tr('Brzo:', 'Quick:')}</span>
                   {[
-                    { id: '3x', label: '3× tj.' },
-                    { id: '4x', label: '4× tj.' },
-                    { id: '5x', label: '5× tj.' }
+                    { id: '3x', label: tr('3× tj.', '3×/wk') },
+                    { id: '4x', label: tr('4× tj.', '4×/wk') },
+                    { id: '5x', label: tr('5× tj.', '5×/wk') }
                   ].map((p) => (
                     <button
                       key={p.id}
@@ -1379,7 +1452,7 @@ export default function TrainingPlannerView({
                     type="button"
                     onClick={() => setShowScheduleEditor(false)}
                     className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 ml-1"
-                    title="Zatvori"
+                    title={tr('Zatvori', 'Close')}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1406,14 +1479,14 @@ export default function TrainingPlannerView({
                         <span className={`font-display font-bold uppercase tracking-wider text-xs ${
                           cfg.enabled ? 'text-volt-400' : 'text-zinc-400'
                         }`}>
-                          {day.short}
+                          {getWeekdayShort(day, lang)}
                         </span>
                         <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
                           cfg.enabled
                             ? 'bg-volt-400/15 text-volt-300 border-volt-400/30'
                             : 'bg-zinc-900 text-zinc-500 border-zinc-800'
                         }`}>
-                          {cfg.enabled ? 'TRENING' : 'ODMOR'}
+                          {cfg.enabled ? tr('TRENING', 'WORKOUT') : tr('ODMOR', 'REST')}
                         </span>
                       </button>
 
@@ -1426,7 +1499,7 @@ export default function TrainingPlannerView({
                                 key={tier.id}
                                 type="button"
                                 onClick={() => setDraftDayMinutes(day.key, tier.minutes)}
-                                title={tier.desc}
+                                title={tr(tier.descHr, tier.descEn)}
                                 className={`flex-1 md:flex-none px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all border ${
                                   isSelected
                                     ? 'bg-volt-400 text-zinc-950 border-volt-400'
@@ -1453,7 +1526,7 @@ export default function TrainingPlannerView({
 
               <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-zinc-800/80">
                 <div className="font-mono text-xs text-zinc-300 telemetry-num">
-                  Novi raspored: <strong className="text-volt-400">{draftSummary.workoutsPerWeek}× tj.</strong> · ~<strong className="text-zinc-100">{draftSummary.hoursPerWeek} h</strong> tjedno
+                  {tr('Novi raspored:', 'New schedule:')} <strong className="text-volt-400">{draftSummary.workoutsPerWeek}{tr('× tj.', '×/wk')}</strong> · ~<strong className="text-zinc-100">{draftSummary.hoursPerWeek} h</strong> {tr('tjedno', 'per week')}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -1462,14 +1535,14 @@ export default function TrainingPlannerView({
                     onClick={() => setShowScheduleEditor(false)}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-950 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 transition-colors"
                   >
-                    Odustani
+                    {tr('Odustani', 'Cancel')}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSaveSchedule({ regenerateActiveBlock: false })}
                     className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-colors"
                   >
-                    Spremi raspored
+                    {tr('Spremi raspored', 'Save Schedule')}
                   </button>
                   {activeBlockMeta && activeBlockData && (
                     <button
@@ -1479,7 +1552,7 @@ export default function TrainingPlannerView({
                       className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-volt-400 hover:bg-volt-300 text-zinc-950 transition-colors disabled:opacity-50"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingBlock ? 'animate-spin' : ''}`} />
-                      Spremi i regeneriraj Blok {activeBlockMeta.blockIndex}
+                      {tr('Spremi i regeneriraj Blok {idx}', 'Save & Regenerate Block {idx}', { idx: activeBlockMeta.blockIndex })}
                     </button>
                   )}
                 </div>
@@ -1517,7 +1590,7 @@ export default function TrainingPlannerView({
               type="button"
               onClick={() => setSyncStatus(null)}
               className="text-zinc-400 hover:text-zinc-100 p-0.5"
-              title="Zatvori"
+              title={tr('Zatvori', 'Close')}
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -1533,10 +1606,17 @@ export default function TrainingPlannerView({
 
             <div className="space-y-1.5 max-w-xl mx-auto">
               <h3 className="text-lg font-bold text-white">
-                Blok {activeBlockMeta.blockIndex} (Tjedni {activeBlockMeta.weekFrom}–{activeBlockMeta.weekTo}) još nije raspisan po danima
+                {tr(
+                  'Blok {idx} (Tjedni {from}–{to}) još nije raspisan po danima',
+                  'Block {idx} (Weeks {from}–{to}) has not been scheduled day-by-day yet',
+                  { idx: activeBlockMeta.blockIndex, from: activeBlockMeta.weekFrom, to: activeBlockMeta.weekTo }
+                )}
               </h3>
               <p className="text-xs sm:text-sm text-zinc-400">
-                Makrociklus je već isplanirao faze i ciljani tjedni volumen za ovaj blok. Klikni ispod kada želiš da AI trener raspiše konkretne strukturirane treninge za svaki tvoj slobodan dan.
+                {tr(
+                  'Makrociklus je već isplanirao faze i ciljani tjedni volumen za ovaj blok. Klikni ispod kada želiš da AI trener raspiše konkretne strukturirane treninge za svaki tvoj slobodan dan.',
+                  'The macrocycle has already mapped out the phases and target weekly volume for this block. Click below whenever you want the AI coach to build structured workouts for each available training day.'
+                )}
               </p>
             </div>
 
@@ -1548,16 +1628,16 @@ export default function TrainingPlannerView({
                   return (
                     <div key={wk.weekNumber} className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-white">Tjedan {wk.weekNumber}</span>
+                        <span className="text-xs font-bold text-white">{tr('Tjedan', 'Week')} {wk.weekNumber}</span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${meta.cls}`}>
-                          {meta.label}
+                          {getLocalizedPhaseLabel(wk.phaseType, null, lang)}
                         </span>
                       </div>
                       <div className="text-[11px] text-zinc-400">
-                        {formatShortHrDate(wk.startDate)} – {formatShortHrDate(wk.endDate)}
+                        {formatShortHrDate(wk.startDate, lang)} – {formatShortHrDate(wk.endDate, lang)}
                       </div>
                       <div className="text-xs font-semibold text-volt-400">
-                        Cilj: ~{wk.targetTss} TSS {wk.isRecoveryWeek ? '• Oporavak' : ''}
+                        {tr('Cilj:', 'Target:')} ~{wk.targetTss} TSS {wk.isRecoveryWeek ? tr('• Oporavak', '• Recovery') : ''}
                       </div>
                       <p className="text-[11px] text-zinc-400 line-clamp-2">{wk.theme}</p>
                     </div>
@@ -1575,12 +1655,12 @@ export default function TrainingPlannerView({
                 {isGeneratingBlock ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Generiranje treninga za Blok {activeBlockMeta.blockIndex}...
+                    {tr('Generiranje treninga za Blok {idx}...', 'Generating workouts for Block {idx}...', { idx: activeBlockMeta.blockIndex })}
                   </>
                 ) : (
                   <>
                     <Zap className="w-4 h-4" />
-                    Generiraj detaljne treninge za Blok {activeBlockMeta.blockIndex}
+                    {tr('Generiraj detaljne treninge za Blok {idx}', 'Generate Detailed Workouts for Block {idx}', { idx: activeBlockMeta.blockIndex })}
                   </>
                 )}
               </button>
@@ -1596,23 +1676,35 @@ export default function TrainingPlannerView({
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm sm:text-base font-bold text-white">
-                      Sinkronizacija Bloka {activeBlockMeta.blockIndex} (Tjedni {activeBlockMeta.weekFrom}–{activeBlockMeta.weekTo})
+                      {tr(
+                        'Sinkronizacija Bloka {idx} (Tjedni {from}–{to})',
+                        'Block {idx} Sync (Weeks {from}–{to})',
+                        { idx: activeBlockMeta.blockIndex, from: activeBlockMeta.weekFrom, to: activeBlockMeta.weekTo }
+                      )}
                     </h3>
                     {activeSyncedRecord && !hasUnsyncedBlockChanges && (
                       <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                         <CheckCircle2 className="w-3 h-3" />
-                        Sinkronizirano
+                        {tr('Sinkronizirano', 'Synced')}
                       </span>
                     )}
                     {activeSyncedRecord && hasUnsyncedBlockChanges && (
                       <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/35">
                         <AlertTriangle className="w-3 h-3" />
-                        Izmjene čekaju ažuriranje
+                        {tr('Izmjene čekaju ažuriranje', 'Changes pending sync')}
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-zinc-400">
-                    {activeBlockData.blockSummary || `${activeBlockWorkouts.length} strukturiranih treninga (${formatShortHrDate(activeBlockDateRange.start)} – ${formatShortHrDate(activeBlockDateRange.end)})`}
+                    {activeBlockData.blockSummary || tr(
+                      '{count} strukturiranih treninga ({start} – {end})',
+                      '{count} structured workouts ({start} – {end})',
+                      {
+                        count: activeBlockWorkouts.length,
+                        start: formatShortHrDate(activeBlockDateRange.start, lang),
+                        end: formatShortHrDate(activeBlockDateRange.end, lang)
+                      }
+                    )}
                   </p>
                 </div>
 
@@ -1629,13 +1721,13 @@ export default function TrainingPlannerView({
                       />
                       <Cloud className={`w-4 h-4 ${syncToIntervals ? 'text-sky-400' : 'text-zinc-500'}`} />
                       <span className="text-xs font-semibold text-zinc-200">
-                        Pošalji i na Intervals.icu
+                        {tr('Pošalji i na Intervals.icu', 'Also push to Intervals.icu')}
                       </span>
                     </label>
                   ) : (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-400">
                       <HardDrive className="w-4 h-4 text-zinc-500" />
-                      <span>Samo lokalni Kalendar (Intervals.icu nije spojen)</span>
+                      <span>{tr('Samo lokalni Kalendar (Intervals.icu nije spojen)', 'Local Calendar only (Intervals.icu not connected)')}</span>
                     </div>
                   )}
 
@@ -1649,7 +1741,7 @@ export default function TrainingPlannerView({
                           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black bg-volt-400 hover:bg-volt-300 text-zinc-950 transition-all shadow-lg shadow-volt-400/20 disabled:opacity-50"
                         >
                           {isSyncBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                          Ažuriraj blok u Kalendaru
+                          {tr('Ažuriraj blok u Kalendaru', 'Update Block in Calendar')}
                         </button>
                       )}
                       <button
@@ -1659,7 +1751,11 @@ export default function TrainingPlannerView({
                         className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition-colors disabled:opacity-50"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        Ukloni blok iz Kalendara{activeSyncedRecord.intervalsIds?.length > 0 ? ' & Intervals.icu' : ''}
+                        {tr(
+                          'Ukloni blok iz Kalendara{intervals}',
+                          'Remove Block from Calendar{intervals}',
+                          { intervals: activeSyncedRecord.intervalsIds?.length > 0 ? ' & Intervals.icu' : '' }
+                        )}
                       </button>
                     </>
                   ) : (
@@ -1670,7 +1766,11 @@ export default function TrainingPlannerView({
                       className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black bg-volt-400 hover:bg-volt-300 text-zinc-950 transition-all shadow-lg shadow-volt-400/15 disabled:opacity-50"
                     >
                       {isSyncBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                      Dodaj Blok {activeBlockMeta.blockIndex} ({activeBlockWorkouts.length} treninga) u Kalendar
+                      {tr(
+                        'Dodaj Blok {idx} ({count} treninga) u Kalendar',
+                        'Add Block {idx} ({count} workouts) to Calendar',
+                        { idx: activeBlockMeta.blockIndex, count: activeBlockWorkouts.length }
+                      )}
                     </button>
                   )}
 
@@ -1678,7 +1778,7 @@ export default function TrainingPlannerView({
                     type="button"
                     disabled={isGeneratingBlock || isSyncBusy || Boolean(revisingWorkoutKey)}
                     onClick={() => setShowBlockFeedbackBox(prev => !prev)}
-                    title="Upiši komentar ili uputu AI treneru za prilagodbu cijelog bloka"
+                    title={tr('Upiši komentar ili uputu AI treneru za prilagodbu cijelog bloka', 'Give the AI coach instructions to adjust the entire block')}
                     className={`inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-colors disabled:opacity-50 ${
                       showBlockFeedbackBox
                         ? 'bg-volt-400/15 border-volt-400/40 text-volt-300'
@@ -1686,18 +1786,18 @@ export default function TrainingPlannerView({
                     }`}
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
-                    Komentiraj / Prilagodi blok
+                    {tr('Komentiraj / Prilagodi blok', 'Comment / Adjust Block')}
                   </button>
 
                   <button
                     type="button"
                     disabled={isGeneratingBlock || isSyncBusy || Boolean(revisingWorkoutKey)}
                     onClick={() => handleGenerateBlock(activeBlockMeta)}
-                    title="Ponovno generiraj treninge samo za ovaj blok"
+                    title={tr('Ponovno generiraj treninge samo za ovaj blok', 'Regenerate workouts for this block only')}
                     className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingBlock ? 'animate-spin' : ''}`} />
-                    Regeneriraj blok
+                    {tr('Regeneriraj blok', 'Regenerate Block')}
                   </button>
                 </div>
               </div>
@@ -1709,10 +1809,17 @@ export default function TrainingPlannerView({
                     <div className="space-y-0.5">
                       <div className="text-xs font-bold text-volt-300 flex items-center gap-1.5">
                         <Sparkles className="w-3.5 h-3.5" />
-                        Komentar za AI trenera — prilagodba Bloka {activeBlockMeta.blockIndex}
+                        {tr(
+                          'Komentar za AI trenera — prilagodba Bloka {idx}',
+                          'AI Coach Feedback — Adjust Block {idx}',
+                          { idx: activeBlockMeta.blockIndex }
+                        )}
                       </div>
                       <p className="text-[11px] text-zinc-400">
-                        Napiši što ne štima u trenutnom bloku (npr. nerealni over-under intervali, prejak intenzitet, trajanje ili raspored) i AI će regenerirati blok uz uvažavanje tvoje upute.
+                        {tr(
+                          'Napiši što ne štima u trenutnom bloku (npr. nerealni over-under intervali, prejak intenzitet, trajanje ili raspored) i AI će regenerirati blok uz uvažavanje tvoje upute.',
+                          'Tell the AI coach what to change in this block (e.g. unrealistic over-under intervals, too intense, duration, or day order) and it will regenerate the block accordingly.'
+                        )}
                       </p>
                     </div>
                     <button
@@ -1720,7 +1827,7 @@ export default function TrainingPlannerView({
                       disabled={isGeneratingBlock}
                       onClick={() => setShowBlockFeedbackBox(false)}
                       className="text-zinc-500 hover:text-zinc-300 p-1 disabled:opacity-50"
-                      title="Zatvori"
+                      title={tr('Zatvori', 'Close')}
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -1728,10 +1835,10 @@ export default function TrainingPlannerView({
 
                   <div className="flex flex-wrap gap-1.5">
                     {[
-                      'Zamijeni over-under s klasičnim intervalima',
-                      'Smanji intenzitet za ~10%',
-                      'Više Z2 izdržljivosti, manje stresa',
-                      'Skraćuj treninge na ~45-50m'
+                      tr('Zamijeni over-under s klasičnim intervalima', 'Replace over-unders with classic intervals'),
+                      tr('Smanji intenzitet za ~10%', 'Reduce intensity by ~10%'),
+                      tr('Više Z2 izdržljivosti, manje stresa', 'More Z2 endurance, less training stress'),
+                      tr('Skraćuj treninge na ~45-50m', 'Shorten workouts to ~45–50m')
                     ].map(chip => (
                       <button
                         key={chip}
@@ -1750,7 +1857,10 @@ export default function TrainingPlannerView({
                     value={blockFeedbackText}
                     onChange={(e) => setBlockFeedbackText(e.target.value)}
                     disabled={isGeneratingBlock}
-                    placeholder="Npr. Ukloni čudne over-under treninge i stavi klasične 4x4m / 5x3m VO2max intervale, a srijedu smanji na lakši oporavak..."
+                    placeholder={tr(
+                      'Npr. Ukloni čudne over-under treninge i stavi klasične 4x4m / 5x3m VO2max intervale, a srijedu smanji na lakši oporavak...',
+                      'e.g. Replace awkward over-unders with classic 4x4m / 5x3m VO2 Max intervals, and make Wednesday an easier recovery ride...'
+                    )}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-volt-400/50 focus:outline-none text-xs text-white placeholder:text-zinc-500 resize-y"
                   />
 
@@ -1764,7 +1874,7 @@ export default function TrainingPlannerView({
                       }}
                       className="px-3 py-2 rounded-xl text-xs font-semibold bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 transition-colors disabled:opacity-50"
                     >
-                      Odustani
+                      {tr('Odustani', 'Cancel')}
                     </button>
                     <button
                       type="button"
@@ -1775,12 +1885,12 @@ export default function TrainingPlannerView({
                       {isGeneratingBlock ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          Prilagođavam blok...
+                          {tr('Prilagođavam blok...', 'Adjusting block...')}
                         </>
                       ) : (
                         <>
                           <Send className="w-3.5 h-3.5" />
-                          Primijeni korekciju na blok
+                          {tr('Primijeni korekciju na blok', 'Apply Changes to Block')}
                         </>
                       )}
                     </button>
@@ -1800,7 +1910,8 @@ export default function TrainingPlannerView({
                   />
                   <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span>
-                    Uključi i ciljni event <strong>{blueprint.goalTitle}</strong> ({formatShortHrDate(blueprint.eventDate)})
+                    {tr('Uključi i ciljni event', 'Also include target event')}{' '}
+                    <strong>{blueprint.goalTitle}</strong> ({formatShortHrDate(blueprint.eventDate, lang)})
                   </span>
                 </label>
               )}
@@ -1811,10 +1922,16 @@ export default function TrainingPlannerView({
                   <div className="flex items-start gap-2.5 text-xs text-amber-200">
                     <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                     <div>
-                      <span className="font-bold">Pronađena preklapanja u kalendaru ({collidingDates.length} dana):</span>{' '}
+                      <span className="font-bold">
+                        {tr(
+                          'Pronađena preklapanja u kalendaru ({count} dana):',
+                          'Calendar overlaps detected ({count} days):',
+                          { count: collidingDates.length }
+                        )}
+                      </span>{' '}
                       <span className="text-amber-300/90">
-                        {collidingDates.slice(0, 6).map(formatShortHrDate).join(', ')}
-                        {collidingDates.length > 6 ? ` i još ${collidingDates.length - 6}` : ''}
+                        {collidingDates.slice(0, 6).map(d => formatShortHrDate(d, lang)).join(', ')}
+                        {collidingDates.length > 6 ? tr(' i još {n}', ' and {n} more', { n: collidingDates.length - 6 }) : ''}
                       </span>
                     </div>
                   </div>
@@ -1828,7 +1945,7 @@ export default function TrainingPlannerView({
                           : 'bg-zinc-950/80 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      Preskoči zauzete dane
+                      {tr('Preskoči zauzete dane', 'Skip occupied days')}
                     </button>
                     <button
                       type="button"
@@ -1839,7 +1956,7 @@ export default function TrainingPlannerView({
                           : 'bg-zinc-950/80 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      Dodaj uz postojeće
+                      {tr('Dodaj uz postojeće', 'Add alongside existing')}
                     </button>
                     {overlappingRegistryBlocks.length > 0 && (
                       <button
@@ -1851,7 +1968,11 @@ export default function TrainingPlannerView({
                             : 'bg-zinc-950/80 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                         }`}
                       >
-                        Zamijeni prethodni AI blok ({overlappingRegistryBlocks.length})
+                        {tr(
+                          'Zamijeni prethodni AI blok ({count})',
+                          'Replace previous AI block ({count})',
+                          { count: overlappingRegistryBlocks.length }
+                        )}
                       </button>
                     )}
                   </div>
@@ -1905,7 +2026,7 @@ export default function TrainingPlannerView({
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-bold transition-colors disabled:opacity-50"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
-                        Ažuriraj blok u Kalendaru
+                        {tr('Ažuriraj blok u Kalendaru', 'Update Block in Calendar')}
                       </button>
                     )}
                     {syncStatus.targetDate && onNavigateToCalendar && (
@@ -1914,7 +2035,7 @@ export default function TrainingPlannerView({
                         onClick={() => onNavigateToCalendar(getMondayOfWeekIso(syncStatus.targetDate))}
                         className="inline-flex items-center gap-1 font-bold underline hover:text-white"
                       >
-                        Pogledaj u Kalendaru
+                        {tr('Pogledaj u Kalendaru', 'View in Calendar')}
                         <ExternalLink className="w-3 h-3" />
                       </button>
                     )}
@@ -1937,17 +2058,17 @@ export default function TrainingPlannerView({
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-base font-black text-white">
-                            Tjedan {week.weekNumber}
+                            {tr('Tjedan', 'Week')} {week.weekNumber}
                           </span>
                           <span className="text-xs text-zinc-400 font-medium">
-                            {formatShortHrDate(week.startDate)} – {formatShortHrDate(week.endDate)}
+                            {formatShortHrDate(week.startDate, lang)} – {formatShortHrDate(week.endDate, lang)}
                           </span>
                           <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${phaseMeta.cls}`}>
-                            {week.phaseLabel || phaseMeta.label}
+                            {getLocalizedPhaseLabel(week.phaseType, week.phaseLabel, lang)}
                           </span>
                           {week.isRecoveryWeek && (
                             <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                              Tjedan oporavka
+                              {tr('Tjedan oporavka', 'Recovery Week')}
                             </span>
                           )}
                         </div>
@@ -1958,7 +2079,7 @@ export default function TrainingPlannerView({
 
                       <div className="flex items-center gap-3 text-xs text-zinc-300 shrink-0">
                         <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800">
-                          {weekWorkouts.length} treninga
+                          {weekWorkouts.length} {tr('treninga', weekWorkouts.length === 1 ? 'workout' : 'workouts')}
                         </span>
                         <span className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800">
                           {(totalWeekMins / 60).toFixed(1)}h
@@ -1971,7 +2092,10 @@ export default function TrainingPlannerView({
 
                     {weekWorkouts.length === 0 ? (
                       <div className="text-xs text-zinc-500 py-4 text-center">
-                        Nema zakazanih treninga u ovom tjednu (npr. tjedan završava prije odabranih dana ili počinje kasnije).
+                        {tr(
+                          'Nema zakazanih treninga u ovom tjednu (npr. tjedan završava prije odabranih dana ili počinje kasnije).',
+                          'No workouts scheduled in this week (e.g. week ends before your chosen days or starts later).'
+                        )}
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -1985,7 +2109,7 @@ export default function TrainingPlannerView({
                               <div className="flex items-center justify-between gap-2 px-1 text-[11px]">
                                 <span className="font-bold text-zinc-200 flex items-center gap-1.5">
                                   <ChevronRight className="w-3.5 h-3.5 text-volt-400" />
-                                  {w.dayName} • {formatShortHrDate(w.date)}
+                                  {getWeekdayName(w.dayKey || w.dayName, lang) || w.dayName} • {formatShortHrDate(w.date, lang)}
                                 </span>
 
                                 <button
@@ -2009,12 +2133,12 @@ export default function TrainingPlannerView({
                                   {isRevisingThis ? (
                                     <>
                                       <Loader2 className="w-3 h-3 animate-spin text-volt-400" />
-                                      <span>Popravljam...</span>
+                                      <span>{tr('Popravljam...', 'Revising...')}</span>
                                     </>
                                   ) : (
                                     <>
                                       <MessageSquare className="w-3 h-3" />
-                                      <span>Komentiraj / Popravi</span>
+                                      <span>{tr('Komentiraj / Popravi', 'Comment / Revise')}</span>
                                     </>
                                   )}
                                 </button>
@@ -2031,7 +2155,7 @@ export default function TrainingPlannerView({
                                   <div className="flex items-center justify-between gap-2">
                                     <span className="text-[11px] font-bold text-volt-300 flex items-center gap-1.5">
                                       <Sparkles className="w-3.5 h-3.5" />
-                                      Uputa AI treneru za ovaj trening
+                                      {tr('Uputa AI treneru za ovaj trening', 'Instruction to AI coach for this workout')}
                                     </span>
                                     <button
                                       type="button"
@@ -2041,7 +2165,7 @@ export default function TrainingPlannerView({
                                         setWorkoutFeedbackText('');
                                       }}
                                       className="text-zinc-500 hover:text-zinc-300 p-0.5 disabled:opacity-50"
-                                      title="Zatvori"
+                                      title={tr('Zatvori', 'Close')}
                                     >
                                       <X className="w-3.5 h-3.5" />
                                     </button>
@@ -2049,10 +2173,10 @@ export default function TrainingPlannerView({
 
                                   <div className="flex flex-wrap gap-1.5">
                                     {[
-                                      'Klasični VO2max (5x3m)',
-                                      'Lakši Sweet Spot',
-                                      'Prebaci u Z2',
-                                      'Skraćeno (45m)'
+                                      tr('Klasični VO2max (5x3m)', 'Classic VO2 Max (5x3m)'),
+                                      tr('Lakši Sweet Spot', 'Easier Sweet Spot'),
+                                      tr('Prebaci u Z2', 'Switch to Z2 Endurance'),
+                                      tr('Skraćeno (45m)', 'Shorter (45m)')
                                     ].map(chip => (
                                       <button
                                         key={chip}
@@ -2072,7 +2196,10 @@ export default function TrainingPlannerView({
                                       value={workoutFeedbackText}
                                       onChange={(e) => setWorkoutFeedbackText(e.target.value)}
                                       disabled={isRevisingThis}
-                                      placeholder="Npr. ovaj over-under nije izvediv, stavi klasični VO2max 5x3m ili lakši Sweet Spot..."
+                                      placeholder={tr(
+                                        'Npr. ovaj over-under nije izvediv, stavi klasični VO2max 5x3m ili lakši Sweet Spot...',
+                                        'e.g. this over-under is too hard, swap for classic 5x3m VO2 Max or easier Sweet Spot...'
+                                      )}
                                       className="flex-1 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 focus:border-volt-400/50 focus:outline-none text-xs text-white placeholder:text-zinc-500"
                                     />
                                     <button
@@ -2083,12 +2210,12 @@ export default function TrainingPlannerView({
                                       {isRevisingThis ? (
                                         <>
                                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                          Popravljam...
+                                          {tr('Popravljam...', 'Revising...')}
                                         </>
                                       ) : (
                                         <>
                                           <Send className="w-3.5 h-3.5" />
-                                          Popravi trening
+                                          {tr('Popravi trening', 'Revise Workout')}
                                         </>
                                       )}
                                     </button>
@@ -2147,7 +2274,7 @@ export default function TrainingPlannerView({
                   <Trash2 className="w-4 h-4 text-rose-400" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Obriši stvoreni plan?</h3>
+                  <h3 className="text-base font-bold text-white">{tr('Obriši stvoreni plan?', 'Delete training plan?')}</h3>
                   <p className="text-xs text-zinc-400 line-clamp-1">{blueprint.planTitle}</p>
                 </div>
               </div>
@@ -2156,7 +2283,7 @@ export default function TrainingPlannerView({
                   type="button"
                   onClick={() => setShowDeletePlanConfirm(false)}
                   className="text-zinc-500 hover:text-zinc-200 p-1"
-                  title="Zatvori"
+                  title={tr('Zatvori', 'Close')}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -2164,7 +2291,10 @@ export default function TrainingPlannerView({
             </div>
 
             <p className="text-xs text-zinc-300 leading-relaxed">
-              Ova radnja trajno briše makrociklus i sve generirane blokove iz AI Planera. Nakon brisanja možeš odmah izraditi novi plan.
+              {tr(
+                'Ova radnja trajno briše makrociklus i sve generirane blokove iz AI Planera. Nakon brisanja možeš odmah izraditi novi plan.',
+                'This permanently deletes the macrocycle and all generated blocks from AI Planner. You can create a new plan immediately afterward.'
+              )}
             </p>
 
             {syncedPlanBlocksForCurrentPlan.length > 0 && (() => {
@@ -2180,9 +2310,9 @@ export default function TrainingPlannerView({
                     className="mt-0.5 accent-rose-500 w-4 h-4 rounded shrink-0"
                   />
                   <span>
-                    Ukloni i sinkronizirane treninge iz Kalendara ({syncedPlanBlocksForCurrentPlan.length} blok(a)
-                    {totalInt > 0 ? ` • ${totalInt} na Intervals.icu` : ''}
-                    {totalLoc > 0 ? ` • ${totalLoc} lokalno` : ''}).
+                    {isEn
+                      ? `Also remove synced workouts from Calendar (${syncedPlanBlocksForCurrentPlan.length} ${syncedPlanBlocksForCurrentPlan.length === 1 ? 'block' : 'blocks'}${totalInt > 0 ? ` • ${totalInt} on Intervals.icu` : ''}${totalLoc > 0 ? ` • ${totalLoc} local` : ''}).`
+                      : `Ukloni i sinkronizirane treninge iz Kalendara (${syncedPlanBlocksForCurrentPlan.length} blok(a)${totalInt > 0 ? ` • ${totalInt} na Intervals.icu` : ''}${totalLoc > 0 ? ` • ${totalLoc} lokalno` : ''}).`}
                   </span>
                 </label>
               );
@@ -2215,7 +2345,7 @@ export default function TrainingPlannerView({
                 onClick={() => setShowDeletePlanConfirm(false)}
                 className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-colors disabled:opacity-50"
               >
-                Odustani
+                {tr('Odustani', 'Cancel')}
               </button>
               <button
                 type="button"
@@ -2226,12 +2356,12 @@ export default function TrainingPlannerView({
                 {isDeletingPlan ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Brišem plan...
+                    {tr('Brišem plan...', 'Deleting plan...')}
                   </>
                 ) : (
                   <>
                     <Trash2 className="w-3.5 h-3.5" />
-                    Trajno obriši plan
+                    {tr('Trajno obriši plan', 'Permanently Delete Plan')}
                   </>
                 )}
               </button>

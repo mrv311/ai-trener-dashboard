@@ -12,6 +12,7 @@ import { supabase } from '../services/supabaseClient';
 import { parseWorkoutDoc, categorizeWorkout, calculateCategoryDifficulty } from '../utils/workoutParser';
 import { isRestDayWorkout } from '../utils/plannerUtils';
 import { isCyclingType, isNonCyclingEvent, toIntervalsSportType } from '../utils/sportTypes';
+import { tr } from '../i18n/i18nCore.js';
 
 const formatLocalDate = (d = new Date()) => {
   const yr = d.getFullYear();
@@ -76,7 +77,7 @@ const buildIntervalsEventPayload = (workoutObj) => {
   const payload = {
     start_date_local: `${workoutObj.date}T08:00:00`,
     category: eventCategory,
-    name: workoutObj.title || (isRace ? 'Ciljni Event' : 'Trening'),
+    name: workoutObj.title || (isRace ? tr('Ciljni Event', 'Target Event') : tr('Trening', 'Workout')),
     description: isRace
       ? (workoutObj.descriptionText || workoutObj.description || '')
       : (workoutObj.description ?? workoutObj.descriptionText ?? ''),
@@ -140,10 +141,16 @@ const buildIntervalSummary = (steps) => {
     if (sameWork.length > 1) {
       return `${sameWork.length}x ${formatDur(firstWork.duration)} @ ${formatStepPwr(firstWork)}`;
     }
-    return `${workSteps.length} intervala (vrh ${Math.max(...workSteps.map(s => s.powerMax || s.power || 0))}%)`;
+    return tr('{count} intervala (vrh {peak}%)', '{count} intervals (peak {peak}%)', {
+      count: workSteps.length,
+      peak: Math.max(...workSteps.map(s => s.powerMax || s.power || 0))
+    });
   }
 
-  return `${steps.length} segmenata · ${formatDur(steps.reduce((a, b) => a + (b.duration || 0), 0))}`;
+  return tr('{count} segmenata · {dur}', '{count} segments · {dur}', {
+    count: steps.length,
+    dur: formatDur(steps.reduce((a, b) => a + (b.duration || 0), 0))
+  });
 };
 
 const extractEventPlannedMetrics = (ev, userFtp = 250) => {
@@ -860,7 +867,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         separatedEventIds,
         date: actDate,
         started_at: sbAct.started_at,
-        title: sbAct.title || matchedIntervalsAct?.name || 'Lokalni Trening',
+        title: sbAct.title || matchedIntervalsAct?.name || tr('Lokalni Trening', 'Local Workout'),
         type: matchedIntervalsAct?.type || pairedType || (isCycling ? 'Ride' : 'Other'),
         duration: actualDur,
         plannedDuration: plannedDurDisplay,
@@ -1006,7 +1013,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         separatedEventIds,
         date: actDate,
         started_at: act.start_date_local || act.start_date,
-        title: act.name || 'Trening',
+        title: act.name || tr('Trening', 'Workout'),
         type: act.type || null,
         duration: actualDur,
         plannedDuration: plannedDurDisplay,
@@ -1047,7 +1054,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         eventCategory: ev.category || 'WORKOUT',
         type: ev.type || (isRace ? ev.category : (isEvCycling ? 'Ride' : 'WeightTraining')),
         date: evDate,
-        title: ev.name || (isRace ? 'Utrka' : 'Planirano'),
+        title: ev.name || (isRace ? tr('Utrka', 'Race') : tr('Planirano', 'Planned')),
         duration: isRace ? (evMetrics.durationMin || 0) : evMetrics.durationMin,
         plannedDuration: isRace ? (evMetrics.durationMin || 0) : evMetrics.durationMin,
         tss: evMetrics.tss,
@@ -1086,7 +1093,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         planId: sched.planId || null,
         blockKey: sched.blockKey || null,
         date: sched.date,
-        title: sched.title || (isRace ? 'Ciljni Event' : 'Planirani trening'),
+        title: sched.title || (isRace ? tr('Ciljni Event', 'Target Event') : tr('Planirani trening', 'Planned Workout')),
         duration: cleanDuration,
         plannedDuration: cleanDuration,
         tss: locMetrics.tss,
@@ -1428,7 +1435,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
         return { success: false, error: err.message };
       }
     } else {
-      return { success: false, error: 'Ovu aktivnost nije moguće obrisati.' };
+      return { success: false, error: tr('Ovu aktivnost nije moguće obrisati.', 'This activity cannot be deleted.') };
     }
   }, [userId]);
 
@@ -1473,7 +1480,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
               : e
           ));
         }
-        onRescheduleError?.(err.message || 'Greška pri premještanju treninga');
+        onRescheduleError?.(err.message || tr('Greška pri premještanju treninga', 'Error rescheduling workout'));
       }
     }
   }, [rawEvents, intervalsId, intervalsKey, onRescheduleError, userId]);
@@ -1637,7 +1644,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       return { success: true, id: `ev-${newEvent.id}`, intervalsSynced: true, intervalsEventId: newEvent.id };
     } catch (err) {
       console.error('Create Workout API error:', err);
-      return { success: true, id: `local-${newLocalWorkout.id}`, intervalsSynced: false, error: err?.message || 'Greška pri slanju na Intervals.icu' };
+      return { success: true, id: `local-${newLocalWorkout.id}`, intervalsSynced: false, error: err?.message || tr('Greška pri slanju na Intervals.icu', 'Error pushing to Intervals.icu') };
     }
   }, [intervalsId, intervalsKey, userId, buildLocalScheduledRecord]);
 
@@ -1650,7 +1657,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
     {
       planId,
       blockKey,
-      blockTitle = 'AI Trenažni Blok',
+      blockTitle = tr('AI Trenažni Blok', 'AI Training Block'),
       planTitle = '',
       planStartDate = '',
       methodology = '',
@@ -1705,7 +1712,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       }
 
       batchErrors.forEach(errItem => {
-        errors.push({ title: errItem.payload?.name || 'Trening', error: errItem.error });
+        errors.push({ title: errItem.payload?.name || tr('Trening', 'Workout'), error: errItem.error });
       });
 
       // Ako neka stavka nije prošla na Intervals.icu, sačuvaj je lokalno da ništa ne nestane
@@ -1722,7 +1729,7 @@ export function useIntervalsData(intervalsId, intervalsKey, userId, { onReschedu
       });
     } else {
       itemsList.forEach((wo, idx) => {
-        if (onProgress) onProgress({ done: idx + 1, total: itemsList.length, currentName: wo.title || 'Trening' });
+        if (onProgress) onProgress({ done: idx + 1, total: itemsList.length, currentName: wo.title || tr('Trening', 'Workout') });
         const rec = buildLocalScheduledRecord(wo, {
           idFallback: `local-ai_${Date.now()}_${idx}`,
           planIdOverride: planId,

@@ -60,6 +60,7 @@ import AIMarkdown from './ai/AIMarkdown';
 import ChatSessionsSidebar from './ai/ChatSessionsSidebar';
 import CoachNotesDrawer from './ai/CoachNotesDrawer';
 import TrainingPlannerView from './planner/TrainingPlannerView';
+import { useI18n } from '../i18n/I18nContext';
 
 function buildNoteExcerpt(markdownText) {
   return String(markdownText || '')
@@ -79,12 +80,39 @@ function YoutubeIcon(props) {
   );
 }
 
-const QUICK_PROMPTS = [
-  'Analiziraj moja zadnja 2 tjedna treninga, trenutni fitness (CTL) i formu (TSB).',
-  'Analiziraj moju Z2 aerobnu efikasnost (EF) i aerobni decoupling (drift pulsa) na treninzima.',
-  'Predloži mi optimalan strukturirani trening za danas na trenažeru (60 min) s obzirom na zadnje vožnje.',
-  'Kako mogu optimalno strukturirati tjedan s 4 treninga za stabilan napredak i podizanje FTP-a?'
+const QUICK_PROMPTS_DATA = [
+  {
+    hr: 'Analiziraj moja zadnja 2 tjedna treninga, trenutni fitness (CTL) i formu (TSB).',
+    en: 'Analyze my last 2 weeks of training, current Fitness (CTL), and Form (TSB).'
+  },
+  {
+    hr: 'Analiziraj moju Z2 aerobnu efikasnost (EF) i aerobni decoupling (drift pulsa) na treninzima.',
+    en: 'Analyze my Zone 2 aerobic Efficiency Factor (EF) and aerobic decoupling (cardiac drift) across rides.'
+  },
+  {
+    hr: 'Predloži mi optimalan strukturirani trening za danas na trenažeru (60 min) s obzirom na zadnje vožnje.',
+    en: 'Suggest an optimal 60-minute structured indoor trainer workout for today based on my recent rides.'
+  },
+  {
+    hr: 'Kako mogu optimalno strukturirati tjedan s 4 treninga za stabilan napredak i podizanje FTP-a?',
+    en: 'How should I structure a 4-ride training week for steady progression and raising my FTP?'
+  }
 ];
+
+const BUILT_IN_MODULE_EN = {
+  coggan_allen: {
+    category: 'Power Physiology & Metrics',
+    summary: 'Power zones (Z1–Z7 + Sweet Spot), NP, IF, TSS, Efficiency Factor (EF), Variability Index (VI), Aerobic Decoupling (Pw:HR), and W\' balance.'
+  },
+  friel_periodization: {
+    category: 'Periodization & Performance Management (PMC)',
+    summary: 'Macro/meso/micro-cycles, load progression, CTL/ATL/TSB curve interpretation, recovery, and adaptation for experienced cyclists.'
+  },
+  seiler_polarized: {
+    category: 'Intensity Distribution & Z2 Metabolism',
+    summary: 'Polarized (80/20) vs. pyramidal model, LT1/VT1 threshold role, lactate oxidation (MCT1 transporters), and avoiding the "grey zone" trap.'
+  }
+};
 
 export default function AICoachTab({
   profile,
@@ -107,6 +135,29 @@ export default function AICoachTab({
   onAnalyzePlanInCoach,
   onBusyChange
 }) {
+  const { isEn, locale, tr } = useI18n();
+
+  const translateSourceCategory = useCallback((cat) => {
+    switch (cat) {
+      case 'PDF literatura':
+        return tr('PDF literatura', 'PDF Literature');
+      case 'EPUB knjiga':
+        return tr('EPUB e-knjiga', 'EPUB E-Book');
+      case 'YouTube predavanje / podcast':
+        return tr('YouTube predavanje / podcast', 'YouTube Lecture / Podcast');
+      case 'Knjiga / poglavlje':
+        return tr('Knjiga / poglavlje', 'Book / Chapter');
+      case 'Trenažni protokol':
+        return tr('Trenažni protokol', 'Training Protocol');
+      case 'Vlastita literatura':
+        return tr('Vlastita literatura', 'Personal Literature');
+      case 'Tekstualni dokument':
+        return tr('Tekstualni dokument', 'Text Document');
+      default:
+        return cat || tr('Vlastiti izvor', 'Custom Source');
+    }
+  }, [tr]);
+
   const [subTab, setSubTab] = useState(() => (
     coachLaunchRequest ? 'chat' : (plannerLaunchRequest ? 'planner' : 'chat')
   )); // 'chat' | 'planner' | 'knowledge'
@@ -309,7 +360,7 @@ export default function AICoachTab({
       }
       setPendingAttachments(prev => [...prev, ...processed]);
     } catch (err) {
-      setChatError(err.message || 'Greška pri čitanju datoteke.');
+      setChatError(err.message || tr('Greška pri čitanju datoteke.', 'Failed to read file.'));
     } finally {
       setIsUploadingFile(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -332,7 +383,7 @@ export default function AICoachTab({
           await saveAttachmentToLocalDB(att);
           processed.push({
             id: att.id,
-            name: att.name || 'snimka_zaslona.png',
+            name: att.name || tr('snimka_zaslona.png', 'screenshot.png'),
             type: att.type,
             size: att.size,
             dataUrl: att.dataUrl,
@@ -342,7 +393,7 @@ export default function AICoachTab({
       }
       setPendingAttachments(prev => [...prev, ...processed]);
     } catch (err) {
-      setChatError(err.message || 'Greška pri lijepljenju datoteke.');
+      setChatError(err.message || tr('Greška pri lijepljenju datoteke.', 'Failed to paste file.'));
     } finally {
       setIsUploadingFile(false);
     }
@@ -395,7 +446,11 @@ export default function AICoachTab({
   const handleDeleteSession = useCallback(async (sessionObj) => {
     if (!sessionObj?.id) return;
     const confirmed = window.confirm(
-      `Obrisati razgovor "${sessionObj.title || 'Razgovor'}" i njegove priložene datoteke s ovog uređaja?`
+      tr(
+        'Obrisati razgovor "{title}" i njegove priložene datoteke s ovog uređaja?',
+        'Delete conversation "{title}" and its attached files from this device?',
+        { title: sessionObj.title || tr('Razgovor', 'Conversation') }
+      )
     );
     if (!confirmed) return;
 
@@ -411,7 +466,7 @@ export default function AICoachTab({
       setActiveChatSessionId(userId, nextId);
       setChatError(null);
     }
-  }, [userId]);
+  }, [userId, tr]);
 
   const handleExportSession = useCallback((sessionObj) => {
     exportChatSessionAsMarkdown(sessionObj);
@@ -492,7 +547,11 @@ export default function AICoachTab({
       : {
           id: targetSessionId,
           userId: userId || 'guest',
-          title: generateSessionTitle(content, cleanAttachments),
+          title: content
+            ? generateSessionTitle(content, cleanAttachments)
+            : cleanAttachments.length > 0
+              ? tr('Analiza: {name}', 'Analysis: {name}', { name: cleanAttachments[0]?.name || tr('datoteka', 'file') }).slice(0, 52)
+              : tr('Novi razgovor', 'New Chat'),
           isCustomTitle: false,
           createdAt: nowIso,
           updatedAt: nowIso,
@@ -551,7 +610,7 @@ export default function AICoachTab({
       upsertSessionInState(completedSession);
       await saveChatSession(completedSession);
     } catch (err) {
-      setChatError(err.message || 'Greška u komunikaciji s Gemini AI.');
+      setChatError(err.message || tr('Greška u komunikaciji s Gemini AI.', 'Error communicating with Gemini AI.'));
       if (isBrandNewSession) {
         await deleteChatSession(userId, targetSessionId);
         const cleaned = sessionsRef.current.filter((s) => s.id !== targetSessionId);
@@ -596,7 +655,11 @@ export default function AICoachTab({
       setHistStats(updatedStats);
       setCsvImportStatus({
         type: 'success',
-        msg: `Uspješno obrađeno! Dodano ${res.addedCount} novih treninga (ukupno u CSV bazi: ${res.totalExtraCount}).`
+        msg: tr(
+          'Uspješno obrađeno! Dodano {added} novih treninga (ukupno u CSV bazi: {total}).',
+          'Successfully processed! Added {added} new workouts (total in CSV database: {total}).',
+          { added: res.addedCount, total: res.totalExtraCount }
+        )
       });
     } catch (err) {
       setCsvImportStatus({ type: 'error', msg: err.message });
@@ -609,7 +672,11 @@ export default function AICoachTab({
     const count = getExtraImportedHistory(userId).length;
     if (count === 0) return;
     const confirmed = window.confirm(
-      `Jeste li sigurni da želite ukloniti sve uvezene CSV treninge (${count} aktivnosti)?\n\nNakon brisanja ostat će samo vaše redovne vožnje zabilježene kroz aplikaciju ili ugrađenu bazu.`
+      tr(
+        'Jeste li sigurni da želite ukloniti sve uvezene CSV treninge ({count} aktivnosti)?\n\nNakon brisanja ostat će samo vaše redovne vožnje zabilježene kroz aplikaciju ili ugrađenu bazu.',
+        'Are you sure you want to remove all imported CSV workouts ({count} activities)?\n\nOnly your regular app-recorded rides and built-in database will remain.',
+        { count }
+      )
     );
     if (!confirmed) return;
 
@@ -619,13 +686,23 @@ export default function AICoachTab({
     setHistStats(updatedStats);
     setCsvImportStatus({
       type: 'info',
-      msg: `Uvezeni CSV podaci (${count} aktivnosti) su uspješno uklonjeni iz lokalne memorije.`
+      msg: tr(
+        'Uvezeni CSV podaci ({count} aktivnosti) su uspješno uklonjeni iz lokalne memorije.',
+        'Imported CSV data ({count} activities) has been removed from local storage.',
+        { count }
+      )
     });
     if (csvInputRef.current) csvInputRef.current.value = '';
   };
 
   const handleDeleteCustomSource = (id, title) => {
-    const confirmed = window.confirm(`Jeste li sigurni da želite ukloniti izvor "${title || 'Nepoznat'}" iz Baze Znanja?`);
+    const confirmed = window.confirm(
+      tr(
+        'Jeste li sigurni da želite ukloniti izvor "{title}" iz Baze Znanja?',
+        'Are you sure you want to remove "{title}" from the Knowledge Base?',
+        { title: title || tr('Nepoznat', 'Unknown') }
+      )
+    );
     if (!confirmed) return;
     const updated = removeCustomKnowledgeSource(id);
     setCustomSources(updated);
@@ -634,7 +711,11 @@ export default function AICoachTab({
   const handleClearAllCustomSources = () => {
     if (!customSources.length) return;
     const confirmed = window.confirm(
-      `Jeste li sigurni da želite obrisati sve vlastite dodane izvore (${customSources.length} izvora/knjiga)? Ova radnja je nepovratna.`
+      tr(
+        'Jeste li sigurni da želite obrisati sve vlastite dodane izvore ({count} izvora/knjiga)? Ova radnja je nepovratna.',
+        'Are you sure you want to delete all custom sources ({count} sources/books)? This action cannot be undone.',
+        { count: customSources.length }
+      )
     );
     if (!confirmed) return;
     const updated = clearAllCustomKnowledgeSources();
@@ -663,21 +744,21 @@ export default function AICoachTab({
 
     try {
       if (ext === 'pdf') {
-        setSourceProcessingStatus('Čitam PDF dokument i izvlačim tekst...');
+        setSourceProcessingStatus(tr('Čitam PDF dokument i izvlačim tekst...', 'Reading PDF document and extracting text...'));
         const res = await parsePdfFile(file);
         setNewSourceTitle(res.title || file.name);
         setNewSourceAuthor(res.author || '');
         setNewSourceCategory(res.category || 'PDF literatura');
         setNewSourceContent(res.content || '');
       } else if (ext === 'epub') {
-        setSourceProcessingStatus('Otvaram EPUB e-knjigu i pripremam poglavlja...');
+        setSourceProcessingStatus(tr('Otvaram EPUB e-knjigu i pripremam poglavlja...', 'Opening EPUB e-book and extracting chapters...'));
         const res = await parseEpubFile(file);
         setNewSourceTitle(res.title || file.name);
         setNewSourceAuthor(res.author || '');
         setNewSourceCategory(res.category || 'EPUB knjiga');
         setNewSourceContent(res.content || '');
       } else {
-        setSourceProcessingStatus('Učitavam tekstualni dokument...');
+        setSourceProcessingStatus(tr('Učitavam tekstualni dokument...', 'Loading text document...'));
         const res = await parseTextFile(file);
         setNewSourceTitle(res.title || file.name);
         setNewSourceAuthor(res.author || '');
@@ -687,7 +768,11 @@ export default function AICoachTab({
       setSourceImportMode('manual');
     } catch (err) {
       console.error('[AICoachTab] Greška pri parsiranju dokumenta:', err);
-      setSourceProcessError('Greška pri čitanju datoteke: ' + (err.message || 'Nepoznata greška'));
+      setSourceProcessError(
+        tr('Greška pri čitanju datoteke: {msg}', 'Error reading file: {msg}', {
+          msg: err.message || tr('Nepoznata greška', 'Unknown error')
+        })
+      );
     } finally {
       setIsProcessingSource(false);
       setSourceProcessingStatus('');
@@ -701,11 +786,14 @@ export default function AICoachTab({
 
     setIsProcessingSource(true);
     setSourceProcessError(null);
-    setSourceProcessingStatus('Gemini AI gleda videozapis i priprema stručni trenerski sažetak...');
+    setSourceProcessingStatus(tr(
+      'Gemini AI gleda videozapis i priprema stručni trenerski sažetak...',
+      'Gemini AI is analyzing the video and preparing a coaching summary...'
+    ));
 
     try {
       const res = await analyzeYouTubeVideoForKnowledgeBase(youtubeInputUrl);
-      setNewSourceTitle(res.title || 'YouTube predavanje');
+      setNewSourceTitle(res.title || tr('YouTube predavanje', 'YouTube Lecture'));
       setNewSourceAuthor(res.author || 'YouTube');
       setNewSourceCategory(res.category || 'YouTube predavanje / podcast');
       setNewSourceUrl(res.sourceUrl || youtubeInputUrl);
@@ -714,8 +802,11 @@ export default function AICoachTab({
     } catch (err) {
       console.error('[AICoachTab] Greška pri analizi YouTube videa:', err);
       setSourceProcessError(
-        'Gemini nije uspio automatski analizirati video: ' + (err.message || '') +
-        '. Možete otvoriti video, kopirati transkript s YouTubea i zalijepiti ga u polje sadržaja.'
+        tr(
+          'Gemini nije uspio automatski analizirati video: {msg}. Možete otvoriti video, kopirati transkript s YouTubea i zalijepiti ga u polje sadržaja.',
+          'Gemini could not automatically analyze the video: {msg}. You can open the video, copy the YouTube transcript, and paste it into the content field.',
+          { msg: err.message || '' }
+        )
       );
     } finally {
       setIsProcessingSource(false);
@@ -757,26 +848,31 @@ export default function AICoachTab({
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg md:text-xl font-display font-bold uppercase tracking-wide text-zinc-100">ErgVibe AI Trener</h2>
+              <h2 className="text-lg md:text-xl font-display font-bold uppercase tracking-wide text-zinc-100">
+                {tr('ErgVibe AI Trener', 'ErgVibe AI Coach')}
+              </h2>
               <span className={`font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border flex items-center gap-1.5 ${
                 geminiStatus.configured
                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
                   : 'bg-amber-500/10 text-amber-400 border-amber-500/25'
               }`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${geminiStatus.configured ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                {geminiStatus.configured ? 'GEMINI ONLINE' : 'KLJUČ NEDOSTAJE'}
+                {geminiStatus.configured ? 'GEMINI ONLINE' : tr('KLJUČ NEDOSTAJE', 'API KEY MISSING')}
               </span>
               <span className="font-mono telemetry-num text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-950 text-volt-400 border border-zinc-800">
                 FTP {ftp}W{Number(profile?.weight) > 0 ? ` · ${(ftp / Number(profile.weight)).toFixed(2)} W/kg` : ''}
               </span>
               {histStats && (
                 <span className="font-mono telemetry-num text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-950 text-zinc-300 border border-zinc-800">
-                  {histStats.totalWorkouts} VOŽNJI U MEMORIJI
+                  {tr('{count} VOŽNJI U MEMORIJI', '{count} RIDES IN MEMORY', { count: histStats.totalWorkouts })}
                 </span>
               )}
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Osobni biciklistički fiziolog s uvidom u vaše odrađene treninge, trenersku literaturu i kalendar
+              {tr(
+                'Osobni biciklistički fiziolog s uvidom u vaše odrađene treninge, trenersku literaturu i kalendar',
+                'Personal cycling physiologist with insight into your completed rides, coaching literature, and calendar'
+              )}
             </p>
           </div>
         </div>
@@ -792,7 +888,7 @@ export default function AICoachTab({
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              <MessageSquare className="w-3.5 h-3.5" /> Konzultacije
+              <MessageSquare className="w-3.5 h-3.5" /> {tr('Konzultacije', 'Coach Chat')}
             </button>
             <button
               type="button"
@@ -803,7 +899,7 @@ export default function AICoachTab({
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              <ClipboardList className="w-3.5 h-3.5" /> Planer
+              <ClipboardList className="w-3.5 h-3.5" /> {tr('Planer', 'Planner')}
             </button>
             <button
               type="button"
@@ -814,22 +910,22 @@ export default function AICoachTab({
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              <BookOpen className="w-3.5 h-3.5" /> Baza & Povijest
+              <BookOpen className="w-3.5 h-3.5" /> {tr('Baza & Povijest', 'Knowledge & History')}
             </button>
           </div>
 
           <select
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
-            title="Odaberi Gemini model"
+            title={tr('Odaberi Gemini model', 'Select Gemini model')}
             className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 font-mono text-xs font-bold text-zinc-300 focus:border-volt-400 outline-none"
           >
-            <option value="gemini-3.8-flash">GEMINI FLASH · BRZI</option>
+            <option value="gemini-3.8-flash">{tr('GEMINI FLASH · BRZI', 'GEMINI FLASH · FAST')}</option>
             {geminiStatus.source === 'custom' ? (
-              <option value="gemini-3.1-pro-preview">GEMINI PRO · DUBINSKA ANALIZA</option>
+              <option value="gemini-3.1-pro-preview">{tr('GEMINI PRO · DUBINSKA ANALIZA', 'GEMINI PRO · DEEP ANALYSIS')}</option>
             ) : (
               <option value="gemini-3.8-flash" disabled className="text-zinc-600">
-                GEMINI PRO (Vlastiti ključ u tabu Veze)
+                {tr('GEMINI PRO (Vlastiti ključ u tabu Veze)', 'GEMINI PRO (Custom key in Connections)')}
               </option>
             )}
           </select>
@@ -897,7 +993,7 @@ export default function AICoachTab({
                       ? 'bg-zinc-900 text-volt-400 border-volt-400/30'
                       : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 border-zinc-800'
                   }`}
-                  title={showSessionsSidebar ? 'Sakrij povijest razgovora' : 'Prikaži povijest razgovora'}
+                  title={showSessionsSidebar ? tr('Sakrij povijest razgovora', 'Hide chat history') : tr('Prikaži povijest razgovora', 'Show chat history')}
                 >
                   <PanelLeft className="w-3.5 h-3.5" />
                   <span>{sessions.length}</span>
@@ -908,21 +1004,25 @@ export default function AICoachTab({
                   type="button"
                   onClick={() => setShowMobileSessionsDrawer(true)}
                   className="lg:hidden inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 text-[11px] font-mono font-bold shrink-0"
-                  title="Otvori povijest razgovora"
+                  title={tr('Otvori povijest razgovora', 'Open chat history')}
                 >
                   <History className="w-3.5 h-3.5 text-volt-400" />
-                  <span>Povijest ({sessions.length})</span>
+                  <span>{tr('Povijest ({count})', 'History ({count})', { count: sessions.length })}</span>
                 </button>
 
                 <span className="font-mono text-[11px] uppercase tracking-wider font-bold text-zinc-300 truncate">
-                  {activeSession ? activeSession.title : 'Novi razgovor'}
+                  {activeSession
+                    ? (!activeSession.isCustomTitle && activeSession.title === 'Novi razgovor'
+                        ? tr('Novi razgovor', 'New Chat')
+                        : activeSession.title)
+                    : tr('Novi razgovor', 'New Chat')}
                 </span>
 
                 <span
                   className="hidden xl:inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400/80 bg-emerald-500/8 border border-emerald-500/20 px-1.5 py-0.5 rounded shrink-0"
-                  title="Razgovori i nalazi ostaju isključivo lokalno na ovom uređaju"
+                  title={tr('Razgovori i nalazi ostaju isključivo lokalno na ovom uređaju', 'Conversations and lab results stay strictly local on this device')}
                 >
-                  <Lock className="w-2.5 h-2.5" /> Lokalno
+                  <Lock className="w-2.5 h-2.5" /> {tr('Lokalno', 'Local')}
                 </span>
               </div>
 
@@ -932,9 +1032,9 @@ export default function AICoachTab({
                     type="button"
                     onClick={() => handleSelectSession(sendingSessionId)}
                     className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-volt-400/12 border border-volt-400/35 text-volt-300 font-mono text-[10px] font-bold"
-                    title="Vrati se na razgovor u kojem AI trenutno generira odgovor"
+                    title={tr('Vrati se na razgovor u kojem AI trenutno generira odgovor', 'Return to the conversation where AI is currently responding')}
                   >
-                    <Loader2 className="w-3 h-3 animate-spin" /> AI piše...
+                    <Loader2 className="w-3 h-3 animate-spin" /> {tr('AI piše...', 'AI typing...')}
                   </button>
                 )}
 
@@ -946,10 +1046,10 @@ export default function AICoachTab({
                       ? 'bg-volt-400/12 text-volt-300 border-volt-400/35 hover:bg-volt-400/20'
                       : 'bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 border-zinc-800'
                   }`}
-                  title="Trajne lokalne bilješke koje AI automatski zna u svakom razgovoru"
+                  title={tr('Trajne lokalne bilješke koje AI automatski zna u svakom razgovoru', 'Persistent local notes that AI automatically remembers in every conversation')}
                 >
                   <Bookmark className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Bilješke</span>
+                  <span className="hidden sm:inline">{tr('Bilješke', 'Notes')}</span>
                   {activeNotesCount > 0 && (
                     <span className="px-1 rounded bg-volt-400/20 text-volt-300 text-[10px]">
                       {activeNotesCount}
@@ -963,17 +1063,17 @@ export default function AICoachTab({
                       type="button"
                       onClick={handleNewChat}
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-950 hover:bg-zinc-900 text-zinc-300 hover:text-volt-400 border border-zinc-800 text-[11px] font-mono font-bold transition-colors"
-                      title="Započni novi čisti razgovor (stari ostaje sačuvan)"
+                      title={tr('Započni novi čisti razgovor (stari ostaje sačuvan)', 'Start a fresh conversation (previous one stays saved)')}
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span className="hidden md:inline">Novi</span>
+                      <span className="hidden md:inline">{tr('Novi', 'New')}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleExportSession(activeSession)}
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-100 border border-zinc-800 text-[11px] font-mono font-bold transition-colors"
-                      title="Izvezi ovaj razgovor kao Markdown (.md)"
+                      title={tr('Izvezi ovaj razgovor kao Markdown (.md)', 'Export this conversation as Markdown (.md)')}
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span className="hidden xl:inline">.md</span>
@@ -983,7 +1083,7 @@ export default function AICoachTab({
                       type="button"
                       onClick={() => handleDeleteSession(activeSession)}
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-950 hover:bg-rose-500/15 text-zinc-500 hover:text-rose-400 border border-zinc-800 hover:border-rose-500/30 text-[11px] font-mono font-bold transition-colors"
-                      title="Obriši samo ovaj razgovor i njegove priloge"
+                      title={tr('Obriši samo ovaj razgovor i njegove priloge', 'Delete this conversation and its attachments')}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -999,7 +1099,7 @@ export default function AICoachTab({
               {isLoadingSessions ? (
                 <div className="my-auto flex items-center justify-center gap-2 text-xs font-mono text-zinc-500">
                   <Loader2 className="w-4 h-4 animate-spin text-volt-400" />
-                  Učitavanje lokalne povijesti razgovora...
+                  {tr('Učitavanje lokalne povijesti razgovora...', 'Loading local conversation history...')}
                 </div>
               ) : messages.length === 0 && !(isSendingChat && sendingSessionId === activeSessionId) && (
                 <div className="my-auto flex flex-col items-center justify-center py-1 text-center max-w-2xl mx-auto w-full">
@@ -1007,27 +1107,43 @@ export default function AICoachTab({
                     <Sparkles className="w-5 h-5" />
                   </div>
                   <h3 className="text-base md:text-lg font-display font-bold uppercase tracking-wide text-zinc-100 mb-1">
-                    Spreman za analizu, {profile?.username || 'Vozač'}
+                    {tr('Spreman za analizu, {name}', 'Ready to analyze, {name}', {
+                      name: profile?.username || tr('Vozač', 'Rider')
+                    })}
                   </h3>
                   <p className="text-xs text-zinc-400 mb-3 max-w-xl leading-relaxed">
-                    Učitao sam vaše dostupne treninge, trenutni FTP (<span className="font-mono font-bold text-volt-400">{ftp} W</span>) i kalendar
+                    {tr('Učitao sam vaše dostupne treninge, trenutni FTP (', 'I have loaded your available rides, current FTP (')}
+                    <span className="font-mono font-bold text-volt-400">{ftp} W</span>
+                    {tr(') i kalendar', ') and calendar')}
                     {activeNotesCount > 0 && (
-                      <> uz <button type="button" onClick={() => setShowNotesDrawer(true)} className="font-mono font-bold text-volt-400 hover:underline">{activeNotesCount} {activeNotesCount === 1 ? 'bilješku' : 'bilješke'} trenera</button></>
-                    )}. Svi razgovori i nalazi ostaju <strong className="text-zinc-200">100% lokalno na ovom uređaju</strong>.
+                      <>
+                        {tr(' uz ', ' along with ')}
+                        <button type="button" onClick={() => setShowNotesDrawer(true)} className="font-mono font-bold text-volt-400 hover:underline">
+                          {isEn
+                            ? `${activeNotesCount} coach ${activeNotesCount === 1 ? 'note' : 'notes'}`
+                            : `${activeNotesCount} ${activeNotesCount === 1 ? 'bilješku' : 'bilješke'} trenera`}
+                        </button>
+                      </>
+                    )}
+                    {tr('. Svi razgovori i nalazi ostaju ', '. All conversations and lab results stay ')}
+                    <strong className="text-zinc-200">{tr('100% lokalno na ovom uređaju', '100% local on this device')}</strong>.
                   </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full text-left">
-                    {QUICK_PROMPTS.map((qp, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => sendMessage(qp)}
-                        className="p-2.5 md:p-3 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/40 text-xs text-zinc-300 hover:text-zinc-100 font-medium transition-all flex items-start gap-2 group"
-                      >
-                        <Zap className="w-3.5 h-3.5 text-volt-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
-                        <span>{qp}</span>
-                      </button>
-                    ))}
+                    {QUICK_PROMPTS_DATA.map((qpObj, idx) => {
+                      const qp = tr(qpObj.hr, qpObj.en);
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => sendMessage(qp)}
+                          className="p-2.5 md:p-3 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/40 text-xs text-zinc-300 hover:text-zinc-100 font-medium transition-all flex items-start gap-2 group"
+                        >
+                          <Zap className="w-3.5 h-3.5 text-volt-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                          <span>{qp}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1072,21 +1188,21 @@ export default function AICoachTab({
                               type="button"
                               onClick={() => handleCopyMessage(msgKey, m.text)}
                               className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
-                              title="Kopiraj odgovor"
+                              title={tr('Kopiraj odgovor', 'Copy response')}
                             >
                               {copiedMsgId === msgKey ? (
-                                <><Check className="w-3 h-3 text-emerald-400" /> <span className="text-emerald-400">Kopirano</span></>
+                                <><Check className="w-3 h-3 text-emerald-400" /> <span className="text-emerald-400">{tr('Kopirano', 'Copied')}</span></>
                               ) : (
-                                <><Copy className="w-3 h-3" /> Kopiraj</>
+                                <><Copy className="w-3 h-3" /> {tr('Kopiraj', 'Copy')}</>
                               )}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleSaveMessageAsNote(m.text)}
                               className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 hover:text-volt-300 hover:bg-volt-400/10 transition-colors"
-                              title="Spremi ključni zaključak u trajne lokalne bilješke trenera"
+                              title={tr('Spremi ključni zaključak u trajne lokalne bilješke trenera', 'Save key takeaway to persistent local coach notes')}
                             >
-                              <BookmarkPlus className="w-3 h-3" /> Zapamti u bilješke
+                              <BookmarkPlus className="w-3 h-3" /> {tr('Zapamti u bilješke', 'Save to Notes')}
                             </button>
                           </div>
                         </>
@@ -1102,7 +1218,7 @@ export default function AICoachTab({
                 <div className="flex justify-start">
                   <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex items-center gap-3 text-xs font-mono font-bold text-volt-300">
                     <Loader2 className="w-4 h-4 animate-spin text-volt-400" />
-                    AI TRENER ANALIZIRA TELEMETRIJU I PRIPREMA ODGOVOR...
+                    {tr('AI TRENER ANALIZIRA TELEMETRIJU I PRIPREMA ODGOVOR...', 'AI COACH IS ANALYZING TELEMETRY AND PREPARING A RESPONSE...')}
                   </div>
                 </div>
               )}
@@ -1122,7 +1238,7 @@ export default function AICoachTab({
             <div className="px-4 py-2.5 bg-zinc-950/95 border-t border-zinc-800/80 flex flex-col gap-2">
               <div className="flex flex-wrap gap-2 items-center">
                 <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest mr-1 flex items-center gap-1.5 font-bold">
-                  <Paperclip className="w-3.5 h-3.5 text-volt-400" /> Priloženo ({pendingAttachments.length}):
+                  <Paperclip className="w-3.5 h-3.5 text-volt-400" /> {tr('Priloženo ({count}):', 'Attached ({count}):', { count: pendingAttachments.length })}
                 </span>
                 {pendingAttachments.map((att) => (
                   <div
@@ -1140,7 +1256,7 @@ export default function AICoachTab({
                       type="button"
                       onClick={() => removePendingAttachment(att.id)}
                       className="p-1 text-zinc-500 hover:text-rose-400 rounded transition-colors"
-                      title="Ukloni privitak"
+                      title={tr('Ukloni privitak', 'Remove attachment')}
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -1151,24 +1267,30 @@ export default function AICoachTab({
               {/* Brze trenerske naredbe za priloženu sliku/dokument */}
               <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-zinc-900">
                 <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
-                  Brza akcija:
+                  {tr('Brza akcija:', 'Quick action:')}
                 </span>
                 <button
                   type="button"
                   disabled={isSendingChat}
-                  onClick={() => sendMessage('Rekreiraj ovaj trening s priložene slike u točan strukturirani ErgVibe workout za moj trenažer (korak po korak s watima i postocima).')}
+                  onClick={() => sendMessage(tr(
+                    'Rekreiraj ovaj trening s priložene slike u točan strukturirani ErgVibe workout za moj trenažer (korak po korak s watima i postocima).',
+                    'Recreate this workout from the attached image as an exact structured ErgVibe workout for my smart trainer (step-by-step with watts and % FTP).'
+                  ))}
                   className="px-2.5 py-1 rounded-md bg-volt-400/10 hover:bg-volt-400/20 border border-volt-400/30 text-volt-300 hover:text-volt-200 text-xs font-semibold flex items-center gap-1.5 transition-all"
-                  title="AI će dekonstruirati grafikon sa slike u izvedivi trenažni workout"
+                  title={tr('AI će dekonstruirati grafikon sa slike u izvedivi trenažni workout', 'AI will reverse-engineer the chart from the image into a rideable trainer workout')}
                 >
-                  <Zap className="w-3 h-3 text-volt-400" /> Pretvori sliku u workout
+                  <Zap className="w-3 h-3 text-volt-400" /> {tr('Pretvori sliku u workout', 'Convert Image to Workout')}
                 </button>
                 <button
                   type="button"
                   disabled={isSendingChat}
-                  onClick={() => sendMessage('Detaljno analiziraj ovaj priloženi fiziološki nalaz (laktati, VO2max ili puls) u kontekstu mog profila i ažuriraj moje trenažne zone.')}
+                  onClick={() => sendMessage(tr(
+                    'Detaljno analiziraj ovaj priloženi fiziološki nalaz (laktati, VO2max ili puls) u kontekstu mog profila i ažuriraj moje trenažne zone.',
+                    'Analyze this attached physiological report (lactate, VO2max, or heart rate) in detail in the context of my profile and recommend updated training zones.'
+                  ))}
                   className="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 text-xs font-medium flex items-center gap-1.5 transition-all"
                 >
-                  <Activity className="w-3 h-3 text-sky-400" /> Analiziraj fiziološki nalaz
+                  <Activity className="w-3 h-3 text-sky-400" /> {tr('Analiziraj fiziološki nalaz', 'Analyze Physiological Report')}
                 </button>
               </div>
             </div>
@@ -1194,7 +1316,10 @@ export default function AICoachTab({
               onClick={() => fileInputRef.current?.click()}
               disabled={isSendingChat || isUploadingFile}
               className="p-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-volt-400/40 text-zinc-400 hover:text-volt-400 transition-all shrink-0 flex items-center justify-center cursor-pointer disabled:opacity-40"
-              title="Priloži sliku ili PDF (Zwift/Garmin/TR grafikon, laktati, spiroergometrija...)"
+              title={tr(
+                'Priloži sliku ili PDF (Zwift/Garmin/TR grafikon, laktati, spiroergometrija...)',
+                'Attach an image or PDF (Zwift/Garmin/TR chart, lactate test, VO2max lab report...)'
+              )}
             >
               {isUploadingFile ? (
                 <Loader2 className="w-4 h-4 animate-spin text-volt-400" />
@@ -1209,7 +1334,11 @@ export default function AICoachTab({
               onChange={(e) => setChatInput(e.target.value)}
               onPaste={handlePaste}
               disabled={isSendingChat}
-              placeholder={pendingAttachments.length > 0 ? "Opiši upute ili klikni 'Pretvori sliku u workout' iznad..." : "Postavi pitanje ili priloži sliku/PDF (možeš zalijepiti sliku i s Ctrl+V)..."}
+              placeholder={
+                pendingAttachments.length > 0
+                  ? tr("Opiši upute ili klikni 'Pretvori sliku u workout' iznad...", "Add instructions or click 'Convert Image to Workout' above...")
+                  : tr('Postavi pitanje ili priloži sliku/PDF (možeš zalijepiti sliku i s Ctrl+V)...', 'Ask a question or attach an image/PDF (you can also paste images with Ctrl+V)...')
+              }
               className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-volt-400 outline-none disabled:opacity-50"
             />
             <button
@@ -1218,7 +1347,7 @@ export default function AICoachTab({
               className="px-5 py-2.5 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-40 text-zinc-950 font-display font-bold uppercase tracking-wider text-sm flex items-center gap-2 transition-all shadow-volt-glow shrink-0"
             >
               {isSendingChat ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              <span className="hidden sm:inline">Pošalji</span>
+              <span className="hidden sm:inline">{tr('Pošalji', 'Send')}</span>
             </button>
           </form>
           </div>
@@ -1266,10 +1395,10 @@ export default function AICoachTab({
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-4">
               <div>
                 <h3 className="text-base font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2">
-                  <History className="w-4 h-4 text-volt-400" /> Povijest Treninga
+                  <History className="w-4 h-4 text-volt-400" /> {tr('Povijest Treninga', 'Training History')}
                 </h3>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Pregled zabilježenih vožnji, opterećenja i uvezenih CSV treninga
+                  {tr('Pregled zabilježenih vožnji, opterećenja i uvezenih CSV treninga', 'Overview of recorded rides, training load, and imported CSV workouts')}
                 </p>
               </div>
 
@@ -1279,7 +1408,7 @@ export default function AICoachTab({
                   onClick={() => csvInputRef.current?.click()}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-volt-400 border border-volt-400/35 text-xs font-bold transition-all"
                 >
-                  <Upload className="w-3.5 h-3.5" /> Učitaj CSV
+                  <Upload className="w-3.5 h-3.5" /> {tr('Učitaj CSV', 'Upload CSV')}
                 </button>
                 <input
                   ref={csvInputRef}
@@ -1293,10 +1422,10 @@ export default function AICoachTab({
                   <button
                     type="button"
                     onClick={handleClearCsv}
-                    title="Ukloni sve uvezene CSV treninge iz lokalne memorije"
+                    title={tr('Ukloni sve uvezene CSV treninge iz lokalne memorije', 'Remove all imported CSV workouts from local storage')}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all"
                   >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Obriši CSV ({extraCsvCount})
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" /> {tr('Obriši CSV ({count})', 'Clear CSV ({count})', { count: extraCsvCount })}
                   </button>
                 )}
               </div>
@@ -1318,19 +1447,19 @@ export default function AICoachTab({
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3.5">
-                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">Ukupno vožnji</span>
+                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">{tr('Ukupno vožnji', 'Total Rides')}</span>
                     <p className="text-2xl font-display font-bold telemetry-num text-zinc-100 mt-0.5">{histStats.totalWorkouts}</p>
                   </div>
                   <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3.5">
-                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">Ukupni TSS</span>
-                    <p className="text-2xl font-display font-bold telemetry-num text-amber-400 mt-0.5">{histStats.totalTss.toLocaleString('hr-HR')}</p>
+                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">{tr('Ukupni TSS', 'Total TSS')}</span>
+                    <p className="text-2xl font-display font-bold telemetry-num text-amber-400 mt-0.5">{histStats.totalTss.toLocaleString(locale)}</p>
                   </div>
                   <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3.5">
-                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">Rekordni FTP</span>
+                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">{tr('Rekordni FTP', 'Peak FTP')}</span>
                     <p className="text-2xl font-display font-bold telemetry-num text-volt-400 mt-0.5">{histStats.peakFtp} W</p>
                   </div>
                   <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3.5">
-                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">Z2 Prosj. EF</span>
+                    <span className="font-mono text-[10px] font-bold uppercase text-zinc-500">{tr('Z2 Prosj. EF', 'Z2 Avg EF')}</span>
                     <p className="text-2xl font-display font-bold telemetry-num text-emerald-400 mt-0.5">{histStats.benchmarks.z2AvgEfAllTime ?? '-'}</p>
                   </div>
                 </div>
@@ -1339,12 +1468,12 @@ export default function AICoachTab({
                   <table className="w-full text-left text-xs font-mono telemetry-num whitespace-nowrap">
                     <thead className="bg-zinc-900/90 text-zinc-400 uppercase text-[10px] border-b border-zinc-800">
                       <tr>
-                        <th className="px-3.5 py-2.5 font-bold">Sezona</th>
-                        <th className="px-3.5 py-2.5 font-bold">Treninzi</th>
-                        <th className="px-3.5 py-2.5 font-bold">Sati</th>
+                        <th className="px-3.5 py-2.5 font-bold">{tr('Sezona', 'Season')}</th>
+                        <th className="px-3.5 py-2.5 font-bold">{tr('Treninzi', 'Rides')}</th>
+                        <th className="px-3.5 py-2.5 font-bold">{tr('Sati', 'Hours')}</th>
                         <th className="px-3.5 py-2.5 font-bold">Load (TSS)</th>
-                        <th className="px-3.5 py-2.5 font-bold">Uspon</th>
-                        <th className="px-3.5 py-2.5 font-bold">FTP raspon</th>
+                        <th className="px-3.5 py-2.5 font-bold">{tr('Uspon', 'Elevation')}</th>
+                        <th className="px-3.5 py-2.5 font-bold">{tr('FTP raspon', 'FTP Range')}</th>
                         <th className="px-3.5 py-2.5 font-bold">Peak CTL</th>
                         <th className="px-3.5 py-2.5 font-bold">Z2 EF</th>
                       </tr>
@@ -1355,9 +1484,9 @@ export default function AICoachTab({
                           <td className="px-3.5 py-2.5 font-bold text-zinc-100">{yr.year}</td>
                           <td className="px-3.5 py-2.5 text-zinc-300">{yr.count}</td>
                           <td className="px-3.5 py-2.5 text-zinc-300">{yr.hours} h</td>
-                          <td className="px-3.5 py-2.5 font-bold text-amber-400">{yr.tss.toLocaleString('hr-HR')}</td>
+                          <td className="px-3.5 py-2.5 font-bold text-amber-400">{yr.tss.toLocaleString(locale)}</td>
                           <td className="px-3.5 py-2.5 text-sky-300">
-                            {yr.climb > 0 ? `+${yr.climb.toLocaleString('hr-HR')} m` : '-'}
+                            {yr.climb > 0 ? `+${yr.climb.toLocaleString(locale)} m` : '-'}
                           </td>
                           <td className="px-3.5 py-2.5 text-volt-400 font-semibold">
                             {yr.minFtp ? `${yr.minFtp}–${yr.maxFtp} W` : '-'}
@@ -1374,7 +1503,7 @@ export default function AICoachTab({
                   <div className="bg-zinc-950/90 border border-zinc-800 rounded-lg p-3.5 space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                        <Activity className="w-3.5 h-3.5 text-volt-400" /> Osobni rekordi iz CSV baze
+                        <Activity className="w-3.5 h-3.5 text-volt-400" /> {tr('Osobni rekordi iz CSV baze', 'Personal Records from CSV History')}
                       </span>
                       <span className="font-mono text-[10px] text-zinc-500">
                         {histStats.minDate} – {histStats.maxDate}
@@ -1383,7 +1512,7 @@ export default function AICoachTab({
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                       {histStats.records.longestRide && (
                         <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
-                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Najduža vožnja</span>
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">{tr('Najduža vožnja', 'Longest Ride')}</span>
                           <span className="font-mono font-bold text-zinc-100">{(histStats.records.longestRide.durMin / 60).toFixed(1)} h</span>
                           <span className="block text-[10px] text-zinc-400 truncate mt-0.5" title={histStats.records.longestRide.name}>
                             {histStats.records.longestRide.name}
@@ -1392,7 +1521,7 @@ export default function AICoachTab({
                       )}
                       {histStats.records.highestTss && (
                         <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
-                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Najveći TSS</span>
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">{tr('Najveći TSS', 'Highest TSS')}</span>
                           <span className="font-mono font-bold text-amber-400">{histStats.records.highestTss.tss} TSS</span>
                           <span className="block text-[10px] text-zinc-400 truncate mt-0.5" title={histStats.records.highestTss.name}>
                             {histStats.records.highestTss.name}
@@ -1401,8 +1530,8 @@ export default function AICoachTab({
                       )}
                       {histStats.records.biggestClimb && (
                         <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
-                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Najveći uspon</span>
-                          <span className="font-mono font-bold text-sky-300">+{histStats.records.biggestClimb.climb.toLocaleString('hr-HR')} m</span>
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">{tr('Najveći uspon', 'Biggest Climb')}</span>
+                          <span className="font-mono font-bold text-sky-300">+{histStats.records.biggestClimb.climb.toLocaleString(locale)} m</span>
                           <span className="block text-[10px] text-zinc-400 truncate mt-0.5" title={histStats.records.biggestClimb.name}>
                             {histStats.records.biggestClimb.name}
                           </span>
@@ -1410,7 +1539,7 @@ export default function AICoachTab({
                       )}
                       {histStats.records.peakCtl && (
                         <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
-                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Vršni Fitness (CTL)</span>
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">{tr('Vršni Fitness (CTL)', 'Peak Fitness (CTL)')}</span>
                           <span className="font-mono font-bold text-emerald-400">{histStats.records.peakCtl.ctl}</span>
                           <span className="block text-[10px] text-zinc-400 truncate mt-0.5">
                             {(histStats.records.peakCtl.date || '').slice(0, 10)}
@@ -1419,7 +1548,7 @@ export default function AICoachTab({
                       )}
                       {histStats.records.highestNp45 && (
                         <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
-                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Najviši NP (≥45m)</span>
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">{tr('Najviši NP (≥45m)', 'Highest NP (≥45m)')}</span>
                           <span className="font-mono font-bold text-volt-400">{histStats.records.highestNp45.np} W</span>
                           <span className="block text-[10px] text-zinc-400 truncate mt-0.5" title={histStats.records.highestNp45.name}>
                             {histStats.records.highestNp45.name}
@@ -1428,7 +1557,7 @@ export default function AICoachTab({
                       )}
                       {histStats.records.peakPmax && (
                         <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-md p-2.5">
-                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">Vršni Sprint (pMax)</span>
+                          <span className="font-mono text-[10px] uppercase text-zinc-500 block">{tr('Vršni Sprint (pMax)', 'Peak Sprint (pMax)')}</span>
                           <span className="font-mono font-bold text-rose-300">{histStats.records.peakPmax.pMax} W</span>
                           <span className="block text-[10px] text-zinc-400 truncate mt-0.5" title={histStats.records.peakPmax.name}>
                             {histStats.records.peakPmax.name}
@@ -1442,17 +1571,30 @@ export default function AICoachTab({
                 <div className="flex items-start gap-2.5 p-3 rounded-lg bg-volt-400/5 border border-volt-400/20 text-[11px] text-zinc-300">
                   <Sparkles className="w-4 h-4 text-volt-400 shrink-0 mt-0.5" />
                   <p className="leading-relaxed">
-                    <span className="font-bold text-volt-400">Dubinsko čitanje CSV-a aktivno:</span> AI automatski dobiva zadnjih 40 treninga (s usponom, kadencom, RHR, HRRc i W&gt;FTP), mjesečni (12 mj.) i tjedni (10 tj.) pregled te osobne rekorde. Kada pitaš za konkretan mjesec, sezonu, rutu ili zonu (npr. <em>„svibanj 2025.“</em>, <em>„zadnja 3 mjeseca“</em>, <em>„Učka“</em>), lokalno pretražuje svih <strong>{histStats.totalWorkouts}</strong> vožnji i šalje točne zapise.
+                    <span className="font-bold text-volt-400">{tr('Dubinsko čitanje CSV-a aktivno:', 'Deep CSV Reading Active:')}</span>{' '}
+                    {isEn ? (
+                      <>
+                        AI automatically receives your last 40 workouts (with elevation, cadence, RHR, HRRc, and W&gt;FTP), 12-month and 10-week summaries, and personal records. When you ask about a specific month, season, route, or zone (e.g., <em>&ldquo;May 2025&rdquo;</em>, <em>&ldquo;last 3 months&rdquo;</em>, <em>&ldquo;Alpe d&apos;Huez&rdquo;</em>), it locally searches all <strong>{histStats.totalWorkouts}</strong> rides and sends exact records.
+                      </>
+                    ) : (
+                      <>
+                        AI automatski dobiva zadnjih 40 treninga (s usponom, kadencom, RHR, HRRc i W&gt;FTP), mjesečni (12 mj.) i tjedni (10 tj.) pregled te osobne rekorde. Kada pitaš za konkretan mjesec, sezonu, rutu ili zonu (npr. <em>„svibanj 2025.“</em>, <em>„zadnja 3 mjeseca“</em>, <em>„Učka“</em>), lokalno pretražuje svih <strong>{histStats.totalWorkouts}</strong> vožnji i šalje točne zapise.
+                      </>
+                    )}
                   </p>
                 </div>
               </>
             ) : (
               <div className="p-6 bg-zinc-950 rounded-lg border border-zinc-800 text-center space-y-2">
                 <History className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
-                <h4 className="text-sm font-display font-bold uppercase tracking-wide text-zinc-200">Nema učitanih povijesnih treninga za ovaj profil</h4>
+                <h4 className="text-sm font-display font-bold uppercase tracking-wide text-zinc-200">
+                  {tr('Nema učitanih povijesnih treninga za ovaj profil', 'No historical workouts loaded for this profile')}
+                </h4>
                 <p className="text-xs text-zinc-400 max-w-md mx-auto">
-                  AI vaše treninge i planove korigira prema vašem zadanom FTP-u, težini, raspoloživom vremenu i odrađenim vožnjama na trenažeru.
-                  Možete učitati svoj Intervals.icu CSV izvoz klikom na "Učitaj CSV" iznad ili bilježiti vožnje kroz trenažer.
+                  {tr(
+                    'AI vaše treninge i planove korigira prema vašem zadanom FTP-u, težini, raspoloživom vremenu i odrađenim vožnjama na trenažeru. Možete učitati svoj Intervals.icu CSV izvoz klikom na "Učitaj CSV" iznad ili bilježiti vožnje kroz trenažer.',
+                    'AI tailors your workouts and plans based on your FTP, weight, available hours, and completed trainer rides. You can import your Intervals.icu CSV export by clicking "Upload CSV" above or record rides in the trainer.'
+                  )}
                 </p>
               </div>
             )}
@@ -1463,10 +1605,10 @@ export default function AICoachTab({
             <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
               <div>
                 <h3 className="text-base font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-volt-400" /> Baza Znanja (Literatura)
+                  <BookOpen className="w-4 h-4 text-volt-400" /> {tr('Baza Znanja (Literatura)', 'Knowledge Base (Literature)')}
                 </h3>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Izvori na kojima Gemini temelji analizu i periodizaciju
+                  {tr('Izvori na kojima Gemini temelji analizu i periodizaciju', 'Sources Gemini relies on for analysis and periodization')}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -1475,9 +1617,9 @@ export default function AICoachTab({
                     type="button"
                     onClick={handleClearAllCustomSources}
                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all"
-                    title="Obriši sve vlastite izvore"
+                    title={tr('Obriši sve vlastite izvore', 'Delete all custom sources')}
                   >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Obriši sve ({customSources.length})
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" /> {tr('Obriši sve ({count})', 'Delete all ({count})', { count: customSources.length })}
                   </button>
                 )}
                 <button
@@ -1485,7 +1627,7 @@ export default function AICoachTab({
                   onClick={() => setShowAddSourceForm(v => !v)}
                   className="flex items-center gap-1 px-3 py-2 rounded-lg bg-volt-400 hover:bg-volt-300 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs transition-all shadow-volt-glow"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Dodaj izvor
+                  <Plus className="w-3.5 h-3.5" /> {tr('Dodaj izvor', 'Add Source')}
                 </button>
               </div>
             </div>
@@ -1496,10 +1638,10 @@ export default function AICoachTab({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
                   <div>
                     <span className="font-mono text-xs font-bold text-volt-400 uppercase tracking-wider block">
-                      Novi izvor znanja za AI Trenera
+                      {tr('Novi izvor znanja za AI Trenera', 'New Knowledge Source for AI Coach')}
                     </span>
                     <span className="text-[11px] text-zinc-400">
-                      Učitajte PDF, EPUB, YouTube video ili ručno unesite bilješke
+                      {tr('Učitajte PDF, EPUB, YouTube video ili ručno unesite bilješke', 'Upload PDF, EPUB, YouTube video, or enter notes manually')}
                     </span>
                   </div>
 
@@ -1513,7 +1655,7 @@ export default function AICoachTab({
                           : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      <Upload className="w-3.5 h-3.5" /> Datoteka
+                      <Upload className="w-3.5 h-3.5" /> {tr('Datoteka', 'File')}
                     </button>
                     <button
                       type="button"
@@ -1535,7 +1677,7 @@ export default function AICoachTab({
                           : 'text-zinc-400 hover:text-zinc-200'
                       }`}
                     >
-                      <FileText className="w-3.5 h-3.5" /> Obrazac
+                      <FileText className="w-3.5 h-3.5" /> {tr('Obrazac', 'Manual')}
                     </button>
                   </div>
                 </div>
@@ -1551,10 +1693,10 @@ export default function AICoachTab({
                         <Upload className="w-6 h-6" />
                       </div>
                       <h4 className="text-sm font-bold text-zinc-100 mb-1">
-                        Kliknite za odabir PDF, EPUB, TXT ili Markdown datoteke
+                        {tr('Kliknite za odabir PDF, EPUB, TXT ili Markdown datoteke', 'Click to select a PDF, EPUB, TXT, or Markdown file')}
                       </h4>
                       <p className="text-xs text-zinc-400 max-w-sm mx-auto mb-3">
-                        Aplikacija u pregledniku automatski čita stranice ili poglavlja i priprema tekst za bazu.
+                        {tr('Aplikacija u pregledniku automatski čita stranice ili poglavlja i priprema tekst za bazu.', 'The app extracts pages or chapters locally in your browser and prepares text for the knowledge base.')}
                       </p>
                       <div className="flex items-center justify-center gap-2 flex-wrap font-mono">
                         <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">
@@ -1586,11 +1728,13 @@ export default function AICoachTab({
                   <form onSubmit={handleAnalyzeYouTube} className="space-y-3">
                     <div className="p-3 bg-zinc-900/60 rounded-lg border border-zinc-800 space-y-1">
                       <p className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-volt-400" /> Automatska AI analiza YouTube videa
+                        <Sparkles className="w-3.5 h-3.5 text-volt-400" /> {tr('Automatska AI analiza YouTube videa', 'Automatic AI YouTube Video Analysis')}
                       </p>
                       <p className="text-[11px] text-zinc-400 leading-relaxed">
-                        Zalijepite poveznicu na biciklistički podcast, studiju ili predavanje (npr. Dylan Johnson, Empirical Cycling, TrainerRoad). 
-                        Gemini će pogledati video i strukturirati ključne fiziološke koncepte, nalaze i trenažne protokole.
+                        {tr(
+                          'Zalijepite poveznicu na biciklistički podcast, studiju ili predavanje (npr. Dylan Johnson, Empirical Cycling, TrainerRoad). Gemini će pogledati video i strukturirati ključne fiziološke koncepte, nalaze i trenažne protokole.',
+                          'Paste a link to a cycling podcast, study, or lecture (e.g., Dylan Johnson, Empirical Cycling, TrainerRoad). Gemini will analyze the video and structure key physiological concepts, findings, and training protocols.'
+                        )}
                       </p>
                     </div>
 
@@ -1612,7 +1756,7 @@ export default function AICoachTab({
                         className="px-4 py-2 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-50 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-1.5 shrink-0 transition-all shadow-volt-glow"
                       >
                         {isProcessingSource ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                        Analiziraj video
+                        {tr('Analiziraj video', 'Analyze Video')}
                       </button>
                     </div>
                   </form>
@@ -1622,7 +1766,7 @@ export default function AICoachTab({
                 {isProcessingSource && (
                   <div className="p-4 rounded-lg bg-volt-400/10 border border-volt-400/30 flex items-center gap-3 text-xs font-mono font-bold text-volt-300">
                     <Loader2 className="w-4 h-4 animate-spin text-volt-400 shrink-0" />
-                    <span>{sourceProcessingStatus || 'Obrada izvora u tijeku...'}</span>
+                    <span>{sourceProcessingStatus || tr('Obrada izvora u tijeku...', 'Processing source...')}</span>
                   </div>
                 )}
 
@@ -1639,26 +1783,26 @@ export default function AICoachTab({
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <div className="sm:col-span-2">
                       <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                        Naslov izvora / knjige / videa *
+                        {tr('Naslov izvora / knjige / videa *', 'Source / Book / Video Title *')}
                       </label>
                       <input
                         type="text"
                         required
                         value={newSourceTitle}
                         onChange={(e) => setNewSourceTitle(e.target.value)}
-                        placeholder="npr. Fast After 50 ili Z2 Mitochondria Study"
+                        placeholder={tr('npr. Fast After 50 ili Z2 Mitochondria Study', 'e.g., Fast After 50 or Z2 Mitochondria Study')}
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-volt-400"
                       />
                     </div>
                     <div>
                       <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                        Autor / Kanal / Izvor
+                        {tr('Autor / Kanal / Izvor', 'Author / Channel / Source')}
                       </label>
                       <input
                         type="text"
                         value={newSourceAuthor}
                         onChange={(e) => setNewSourceAuthor(e.target.value)}
-                        placeholder="npr. Joe Friel ili Dylan Johnson"
+                        placeholder={tr('npr. Joe Friel ili Dylan Johnson', 'e.g., Joe Friel or Dylan Johnson')}
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-volt-400"
                       />
                     </div>
@@ -1667,24 +1811,24 @@ export default function AICoachTab({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
                       <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                        Kategorija izvora
+                        {tr('Kategorija izvora', 'Source Category')}
                       </label>
                       <select
                         value={newSourceCategory}
                         onChange={(e) => setNewSourceCategory(e.target.value)}
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 outline-none focus:border-volt-400"
                       >
-                        <option value="PDF literatura">PDF literatura</option>
-                        <option value="EPUB knjiga">EPUB e-knjiga</option>
-                        <option value="YouTube predavanje / podcast">YouTube predavanje / podcast</option>
-                        <option value="Knjiga / poglavlje">Knjiga / poglavlje</option>
-                        <option value="Trenažni protokol">Trenažni protokol</option>
-                        <option value="Vlastita literatura">Vlastita literatura</option>
+                        <option value="PDF literatura">{tr('PDF literatura', 'PDF Literature')}</option>
+                        <option value="EPUB knjiga">{tr('EPUB e-knjiga', 'EPUB E-Book')}</option>
+                        <option value="YouTube predavanje / podcast">{tr('YouTube predavanje / podcast', 'YouTube Lecture / Podcast')}</option>
+                        <option value="Knjiga / poglavlje">{tr('Knjiga / poglavlje', 'Book / Chapter')}</option>
+                        <option value="Trenažni protokol">{tr('Trenažni protokol', 'Training Protocol')}</option>
+                        <option value="Vlastita literatura">{tr('Vlastita literatura', 'Personal Literature')}</option>
                       </select>
                     </div>
                     <div>
                       <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                        Poveznica / URL (opcionalno)
+                        {tr('Poveznica / URL (opcionalno)', 'Link / URL (optional)')}
                       </label>
                       <input
                         type="url"
@@ -1699,10 +1843,12 @@ export default function AICoachTab({
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                        Sadržaj izvora i trenerska pravila *
+                        {tr('Sadržaj izvora i trenerska pravila *', 'Source Content & Coaching Rules *')}
                       </label>
                       <span className="text-[10px] text-zinc-500 font-mono telemetry-num">
-                        {newSourceContent.length.toLocaleString('hr-HR')} / 55.000 znakova
+                        {tr('{count} / 55.000 znakova', '{count} / 55,000 chars', {
+                          count: newSourceContent.length.toLocaleString(locale)
+                        })}
                       </span>
                     </div>
                     <textarea
@@ -1710,14 +1856,20 @@ export default function AICoachTab({
                       required
                       value={newSourceContent}
                       onChange={(e) => setNewSourceContent(e.target.value)}
-                      placeholder="Zalijepite ključne principe, pravila, zone ili bilješke koje želite da AI Trener uvijek uvažava..."
+                      placeholder={tr(
+                        'Zalijepite ključne principe, pravila, zone ili bilješke koje želite da AI Trener uvijek uvažava...',
+                        'Paste key principles, rules, zones, or notes you want AI Coach to always consider...'
+                      )}
                       className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 outline-none focus:border-volt-400 resize-y font-mono leading-relaxed"
                     />
                   </div>
 
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
                     <span className="text-[11px] text-zinc-500">
-                      Spremljeno u vašu privatnu bazu znanja (AI uzima u obzir pri analizi i planovima).
+                      {tr(
+                        'Spremljeno u vašu privatnu bazu znanja (AI uzima u obzir pri analizi i planovima).',
+                        'Saved to your private knowledge base (used by AI during analysis and planning).'
+                      )}
                     </span>
                     <div className="flex items-center gap-2 self-end sm:self-auto">
                       <button
@@ -1725,14 +1877,14 @@ export default function AICoachTab({
                         onClick={handleCancelAddSource}
                         className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-zinc-400 hover:text-zinc-200 transition-colors"
                       >
-                        Odustani
+                        {tr('Odustani', 'Cancel')}
                       </button>
                       <button
                         type="submit"
                         disabled={isProcessingSource || !newSourceTitle.trim() || !newSourceContent.trim()}
                         className="px-4 py-1.5 rounded-lg bg-volt-400 hover:bg-volt-300 disabled:opacity-50 text-zinc-950 font-display font-bold uppercase tracking-wider text-xs flex items-center gap-1.5 shadow-volt-glow"
                       >
-                        <Check className="w-3.5 h-3.5" /> Spremi u Bazu Znanja
+                        <Check className="w-3.5 h-3.5" /> {tr('Spremi u Bazu Znanja', 'Save to Knowledge Base')}
                       </button>
                     </div>
                   </div>
@@ -1745,10 +1897,10 @@ export default function AICoachTab({
               <div className="space-y-3 pb-3 border-b border-zinc-800">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-volt-400 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-volt-400" /> Vlastita literatura i izvori ({customSources.length})
+                    <Sparkles className="w-3.5 h-3.5 text-volt-400" /> {tr('Vlastita literatura i izvori ({count})', 'Personal Literature & Sources ({count})', { count: customSources.length })}
                   </span>
                   <span className="text-[10px] text-zinc-500">
-                    Spremljeno u pregledniku
+                    {tr('Spremljeno u pregledniku', 'Saved in browser')}
                   </span>
                 </div>
                 {customSources.map(src => {
@@ -1759,7 +1911,7 @@ export default function AICoachTab({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-volt-400 bg-volt-400/10 px-2 py-0.5 rounded border border-volt-400/25">
-                              {src.category || 'Vlastiti izvor'}
+                              {translateSourceCategory(src.category)}
                             </span>
                             {src.sourceUrl && (
                               <a
@@ -1768,20 +1920,20 @@ export default function AICoachTab({
                                 rel="noopener noreferrer"
                                 className="text-[10px] text-volt-400 hover:underline flex items-center gap-1 font-semibold"
                               >
-                                <ExternalLink className="w-3 h-3" /> Poveznica
+                                <ExternalLink className="w-3 h-3" /> {tr('Poveznica', 'Link')}
                               </a>
                             )}
                           </div>
                           <h4 className="text-xs md:text-sm font-bold text-zinc-100 mt-1 truncate">{src.title}</h4>
-                          <p className="text-[11px] text-zinc-400">{src.author || 'Nepoznat autor'}</p>
+                          <p className="text-[11px] text-zinc-400">{src.author || tr('Nepoznat autor', 'Unknown author')}</p>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleDeleteCustomSource(src.id, src.title)}
                           className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition-colors shrink-0"
-                          title="Ukloni ovaj izvor iz baze znanja"
+                          title={tr('Ukloni ovaj izvor iz baze znanja', 'Remove this source from the knowledge base')}
                         >
-                          <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Ukloni
+                          <Trash2 className="w-3.5 h-3.5 text-rose-400" /> {tr('Ukloni', 'Remove')}
                         </button>
                       </div>
                       <button
@@ -1790,7 +1942,7 @@ export default function AICoachTab({
                         className="text-[11px] font-bold text-zinc-400 hover:text-zinc-200 flex items-center gap-1"
                       >
                         {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                        {isExpanded ? 'Sakrij sadržaj' : 'Prikaži sadržaj bilješke / sažetka'}
+                        {isExpanded ? tr('Sakrij sadržaj', 'Hide content') : tr('Prikaži sadržaj bilješke / sažetka', 'Show note / summary content')}
                       </button>
                       {isExpanded ? (
                         <pre className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-60 overflow-y-auto custom-scrollbar">
@@ -1809,15 +1961,16 @@ export default function AICoachTab({
             <div className="space-y-2.5">
               <div className="flex items-center justify-between pt-1">
                 <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-volt-400">
-                  Ugrađeni trenerski moduli ({BUILT_IN_KNOWLEDGE_MODULES.length})
+                  {tr('Ugrađeni trenerski moduli ({count})', 'Built-in Coaching Modules ({count})', { count: BUILT_IN_KNOWLEDGE_MODULES.length })}
                 </span>
                 <span className="text-[10px] text-zinc-500">
-                  Aktivni i predefinirani
+                  {tr('Aktivni i predefinirani', 'Active & built-in')}
                 </span>
               </div>
               {BUILT_IN_KNOWLEDGE_MODULES.map(mod => {
                 const isEnabled = !disabledModules.includes(mod.id);
                 const isExpanded = expandedModuleId === mod.id;
+                const enMeta = BUILT_IN_MODULE_EN[mod.id];
                 return (
                   <div
                     key={mod.id}
@@ -1830,7 +1983,7 @@ export default function AICoachTab({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-volt-400">
-                          {mod.category}
+                          {isEn && enMeta ? enMeta.category : mod.category}
                         </span>
                         <h4 className="text-xs md:text-sm font-bold text-zinc-100">{mod.title}</h4>
                         <p className="text-[11px] text-zinc-500 font-medium">{mod.author}</p>
@@ -1839,19 +1992,21 @@ export default function AICoachTab({
                         type="button"
                         onClick={() => setDisabledModules(toggleBuiltInModule(mod.id))}
                         className="text-volt-400 hover:text-volt-300 shrink-0"
-                        title={isEnabled ? 'Isključi modul' : 'Uključi modul'}
+                        title={isEnabled ? tr('Isključi modul', 'Disable module') : tr('Uključi modul', 'Enable module')}
                       >
                         {isEnabled ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6 text-zinc-600" />}
                       </button>
                     </div>
-                    <p className="text-xs text-zinc-400 mt-1.5">{mod.summary}</p>
+                    <p className="text-xs text-zinc-400 mt-1.5">
+                      {isEn && enMeta ? enMeta.summary : mod.summary}
+                    </p>
                     <button
                       type="button"
                       onClick={() => setExpandedModuleId(isExpanded ? null : mod.id)}
                       className="mt-2 text-[11px] font-bold text-zinc-500 hover:text-zinc-300 flex items-center gap-1"
                     >
                       {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                      {isExpanded ? 'Sakrij sažetak pravila' : 'Prikaži ugrađena pravila'}
+                      {isExpanded ? tr('Sakrij sažetak pravila', 'Hide rules summary') : tr('Prikaži ugrađena pravila', 'Show built-in rules')}
                     </button>
                     {isExpanded && (
                       <pre className="mt-2 p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-56 overflow-y-auto custom-scrollbar">
@@ -1897,15 +2052,16 @@ export default function AICoachTab({
                     href={selectedPreviewAttachment.dataUrl}
                     download={selectedPreviewAttachment.name}
                     className="p-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors text-xs flex items-center gap-1 px-2.5 font-medium"
-                    title="Preuzmi datoteku"
+                    title={tr('Preuzmi datoteku', 'Download file')}
                   >
-                    <Download className="w-3.5 h-3.5" /> Preuzmi
+                    <Download className="w-3.5 h-3.5" /> {tr('Preuzmi', 'Download')}
                   </a>
                 )}
                 <button
                   type="button"
                   onClick={() => setSelectedPreviewAttachment(null)}
                   className="p-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+                  title={tr('Zatvori', 'Close')}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1952,6 +2108,7 @@ export default function AICoachTab({
  * automatski je povlači iz lokalnog IndexedDB-a.
  */
 function ChatAttachmentItem({ attachment, onPreview }) {
+  const { tr } = useI18n();
   const [dataUrl, setDataUrl] = useState(attachment.dataUrl || null);
   const [loading, setLoading] = useState(!attachment.dataUrl);
 
@@ -1978,7 +2135,7 @@ function ChatAttachmentItem({ attachment, onPreview }) {
       <div
         onClick={() => onPreview && onPreview({ ...attachment, dataUrl })}
         className="group relative cursor-pointer rounded-lg overflow-hidden border border-zinc-800 hover:border-volt-400/60 transition-all bg-zinc-950 max-w-[200px]"
-        title="Klikni za uvećanje slike"
+        title={tr('Klikni za uvećanje slike', 'Click to enlarge image')}
       >
         {dataUrl ? (
           <img
@@ -1997,7 +2154,7 @@ function ChatAttachmentItem({ attachment, onPreview }) {
           </div>
         )}
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-volt-300 font-mono text-[10px] font-bold">
-          <Eye className="w-3.5 h-3.5" /> Uvećaj
+          <Eye className="w-3.5 h-3.5" /> {tr('Uvećaj', 'Zoom')}
         </div>
       </div>
     );
@@ -2008,7 +2165,7 @@ function ChatAttachmentItem({ attachment, onPreview }) {
     <div
       onClick={() => onPreview && onPreview({ ...attachment, dataUrl })}
       className="flex items-center gap-2.5 p-2.5 rounded-lg bg-zinc-950 border border-zinc-800 hover:border-rose-500/50 cursor-pointer transition-all max-w-xs group"
-      title="Klikni za pregled PDF dokumenta"
+      title={tr('Klikni za pregled PDF dokumenta', 'Click to preview PDF document')}
     >
       <div className="p-2 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 group-hover:scale-105 transition-transform">
         <FileText className="w-4 h-4" />

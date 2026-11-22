@@ -4,8 +4,9 @@ import {
   Monitor, Database, Download, User, Scale
 } from 'lucide-react';
 import BrandLogo from './BrandLogo';
+import { useI18n } from '../i18n/I18nContext';
 
-const GENERIC_USERNAMES = ['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač', 'Vozač'];
+const GENERIC_USERNAMES = ['Gost Vozač', 'Guest Rider', 'Gost', 'Korisnik', 'Odvažni Vozač', 'Vozač'];
 
 const getEditableUsername = (name) => {
   const trimmed = typeof name === 'string' ? name.trim() : '';
@@ -13,6 +14,7 @@ const getEditableUsername = (name) => {
 };
 
 export default function OnboardingModal({ isOpen, onClose, initialProfile, onSaveProfile, onComplete }) {
+  const { tr } = useI18n();
   const [step, setStep] = useState(1);
   const [username, setUsername] = useState(() => getEditableUsername(initialProfile?.username));
   const [ftp, setFtp] = useState(initialProfile?.ftp || 200);
@@ -95,7 +97,9 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
               0{step}/02
             </span>
             <span className="font-mono text-xs font-bold uppercase tracking-wider text-zinc-400">
-              {step === 1 ? 'Kalibracija vozača & FTP' : 'Kratki vodič kroz Cockpit'}
+              {step === 1
+                ? tr('Kalibracija vozača & FTP', 'Rider Calibration & FTP')
+                : tr('Kratki vodič kroz Cockpit', 'Quick Cockpit Tour')}
             </span>
           </div>
           <button
@@ -103,7 +107,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
             onClick={handleSkip}
             className="text-zinc-500 hover:text-zinc-200 text-xs font-semibold px-2.5 py-1 rounded-md hover:bg-zinc-800 transition-colors"
           >
-            Preskoči
+            {tr('Preskoči', 'Skip')}
           </button>
         </div>
 
@@ -115,10 +119,13 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
                 <BrandLogo size={42} />
                 <div>
                   <h2 id="onboarding-modal-title" className="font-display font-bold text-2xl uppercase tracking-wide text-zinc-100">
-                    Dobrodošli u ErgVibe
+                    {tr('Dobrodošli u ErgVibe', 'Welcome to ErgVibe')}
                   </h2>
                   <p className="text-zinc-400 text-xs md:text-sm">
-                    Unesi osnovne fiziološke parametre za točan izračun ERG otpora i zona snage.
+                    {tr(
+                      'Unesi osnovne fiziološke parametre za točan izračun ERG otpora i zona snage.',
+                      'Enter your baseline metrics for accurate ERG targets and Coggan power zones.'
+                    )}
                   </p>
                 </div>
               </div>
@@ -127,13 +134,20 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
               <div className="bg-zinc-950 border border-zinc-800 border-l-2 border-l-volt-400 rounded-lg p-4 text-xs space-y-1.5">
                 <div className="flex items-center gap-1.5 font-mono font-bold text-volt-400 uppercase tracking-wider text-[11px]">
                   <Zap className="w-3.5 h-3.5" />
-                  Zašto je FTP ključan broj?
+                  {tr('Zašto je FTP ključan broj?', 'Why does FTP matter?')}
                 </div>
                 <p className="text-zinc-300 leading-relaxed">
-                  <strong className="text-white">FTP (Functional Threshold Power)</strong> je maksimalna prosječna snaga koju možeš držati ~1 sat. Svi intervali u ErgVibeu (npr. Z2 65%, Sweet Spot 90%, VO2Max 115%) i otpor trenažera skaliraju se prema ovom broju.
+                  <strong className="text-white">FTP (Functional Threshold Power)</strong>{' '}
+                  {tr(
+                    'je maksimalna prosječna snaga koju možeš držati ~1 sat. Svi intervali u ErgVibeu (npr. Z2 65%, Sweet Spot 90%, VO2Max 115%) i otpor trenažera skaliraju se prema ovom broju.',
+                    'is the highest average power you can sustain for ~1 hour. Every workout interval in ErgVibe (Z2 65%, Sweet Spot 90%, VO2 Max 115%) and ERG resistance scales from this value.'
+                  )}
                 </p>
                 <p className="text-zinc-500 text-[11px]">
-                  Ako još ne znaš točan broj, ostavi procjenu (180–220 W) ili kasnije odvozi Ramp Test u Knjižnici.
+                  {tr(
+                    'Ako još ne znaš točan broj, ostavi procjenu (180–220 W) ili kasnije odvozi Ramp Test u Knjižnici.',
+                    "Not sure yet? Keep an estimate (180–220 W) or run a Ramp Test from the Workout Library later."
+                  )}
                 </p>
               </div>
 
@@ -141,7 +155,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
                   <label htmlFor="onboarding-rider-name" className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-volt-400" /> Ime vozača
+                    <User className="w-3.5 h-3.5 text-volt-400" /> {tr('Ime vozača', 'Rider Name')}
                   </label>
                   <input
                     id="onboarding-rider-name"
@@ -153,7 +167,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
                       editedFieldsRef.current.username = true;
                       setUsername(e.target.value);
                     }}
-                    placeholder="npr. Marko"
+                    placeholder={tr('npr. Marko', 'e.g. Alex')}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2.5 text-zinc-100 font-semibold text-sm focus:border-volt-400 focus:outline-none placeholder:text-zinc-600"
                   />
                 </div>
@@ -179,7 +193,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
 
                 <div>
                   <label htmlFor="onboarding-rider-weight" className="block font-mono text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Scale className="w-3.5 h-3.5 text-emerald-400" /> Težina (kg)
+                    <Scale className="w-3.5 h-3.5 text-emerald-400" /> {tr('Težina (kg)', 'Weight (kg)')}
                   </label>
                   <input
                     id="onboarding-rider-weight"
@@ -201,7 +215,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
               {/* Omjer W/kg i brzi pregled zona */}
               <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-zinc-400 font-medium">Specifična snaga (W/kg):</span>
+                  <span className="text-zinc-400 font-medium">{tr('Specifična snaga (W/kg):', 'Power-to-weight (W/kg):')}</span>
                   <span className="font-mono font-bold text-volt-400 bg-volt-400/10 border border-volt-400/25 px-2.5 py-0.5 rounded telemetry-num">
                     {wKg} W/kg
                   </span>
@@ -209,7 +223,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
 
                 <div>
                   <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-2">
-                    Kalkulirane zone snage:
+                    {tr('Kalkulirane zone snage:', 'Calculated power zones:')}
                   </span>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center font-mono text-[10px] telemetry-num">
                     <div className="bg-zinc-900 border border-zinc-800 border-t-2 border-t-zinc-500 p-1.5 rounded">
@@ -244,10 +258,10 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
             <>
               <div>
                 <h2 id="onboarding-modal-title" className="font-display font-bold text-2xl uppercase tracking-wide text-zinc-100 mb-1">
-                  Tri koraka do treninga
+                  {tr('Tri koraka do treninga', 'Three Steps to Your Ride')}
                 </h2>
                 <p className="text-zinc-400 text-xs md:text-sm">
-                  Brzi pregled radnog tijeka u ErgVibe sustavu:
+                  {tr('Brzi pregled radnog tijeka u ErgVibe sustavu:', 'Quick overview of the ErgVibe workflow:')}
                 </p>
               </div>
 
@@ -257,9 +271,17 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
                     <Database className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-zinc-100 text-sm">1. Odaberi trening iz Knjižnice, Kalendara ili AI Trenera</h3>
+                    <h3 className="font-bold text-zinc-100 text-sm">
+                      {tr(
+                        '1. Odaberi trening iz Knjižnice, Kalendara ili AI Trenera',
+                        '1. Pick a workout from Library, Calendar, or AI Coach'
+                      )}
+                    </h3>
                     <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                      Učitaj .ZWO/.ERG datoteku, odaberi gotovi strukturirani trening iz baze ili zatraži plan od AI Fiziologa.
+                      {tr(
+                        'Učitaj .ZWO/.ERG datoteku, odaberi gotovi strukturirani trening iz baze ili zatraži plan od AI Fiziologa.',
+                        'Import a .ZWO/.ERG file, choose from 250+ structured catalog workouts, or generate a periodized plan with the AI Physiologist.'
+                      )}
                     </p>
                   </div>
                 </div>
@@ -269,9 +291,17 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
                     <Monitor className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-zinc-100 text-sm">2. Spoji FTMS trenažer, PowerMeter i Zwift Click</h3>
+                    <h3 className="font-bold text-zinc-100 text-sm">
+                      {tr(
+                        '2. Spoji FTMS trenažer, PowerMeter i Zwift Click',
+                        '2. Pair your FTMS trainer, Power Meter & Zwift Click'
+                      )}
+                    </h3>
                     <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                      U tabu <strong className="text-zinc-200">Trenažer</strong> poveži senzore preko Web Bluetootha. Uključi <strong className="text-volt-400">ERG</strong> za automatsko zaključavanje watta ili <strong className="text-indigo-400">RES</strong> za virtualno mijenjanje 24 brzine.
+                      {tr(
+                        'U tabu Trenažer poveži senzore preko Web Bluetootha. Uključi ERG za automatsko zaključavanje watta ili RES za virtualno mijenjanje 24 brzine.',
+                        'Connect BLE sensors inside the Trainer cockpit. Use ERG mode for automatic target watt control or RES mode for 24-speed virtual shifting.'
+                      )}
                     </p>
                   </div>
                 </div>
@@ -281,9 +311,17 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
                     <Download className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-zinc-100 text-sm">3. Preuzmi nativni .FIT ili sinkroniziraj s Intervals.icu</h3>
+                    <h3 className="font-bold text-zinc-100 text-sm">
+                      {tr(
+                        '3. Preuzmi nativni .FIT ili sinkroniziraj s Intervals.icu',
+                        '3. Export native .FIT or auto-sync with Intervals.icu'
+                      )}
+                    </h3>
                     <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                      Svaka vožnja se automatski čuva u Kalendaru uz AI analizu i izvoz <strong className="text-emerald-400">.FIT datoteke</strong> spremne za Garmin Connect i Stravu.
+                      {tr(
+                        'Svaka vožnja se automatski čuva u Kalendaru uz AI analizu i izvoz .FIT datoteke spremne za Garmin Connect i Stravu.',
+                        'Every ride is saved to your Calendar with post-ride AI analysis and native .FIT export ready for Garmin Connect, Strava, and Intervals.icu.'
+                      )}
                     </p>
                   </div>
                 </div>
@@ -302,7 +340,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
               onClick={() => setStep(1)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 text-xs font-semibold transition-all"
             >
-              <ArrowLeft className="w-4 h-4" /> Natrag
+              <ArrowLeft className="w-4 h-4" /> {tr('Natrag', 'Back')}
             </button>
           )}
 
@@ -312,7 +350,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
               onClick={() => setStep(2)}
               className="flex items-center gap-2 bg-volt-400 hover:bg-volt-300 text-zinc-950 px-5 py-2.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs transition-all shadow-volt-glow ml-auto"
             >
-              Dalje <ArrowRight className="w-4 h-4" />
+              {tr('Dalje', 'Next')} <ArrowRight className="w-4 h-4" />
             </button>
           ) : (
             <button
@@ -320,7 +358,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
               onClick={handleFinish}
               className="flex items-center gap-2 bg-volt-400 hover:bg-volt-300 text-zinc-950 px-5 py-2.5 rounded-lg font-display font-bold uppercase tracking-wider text-xs transition-all shadow-volt-glow ml-auto"
             >
-              <CheckCircle2 className="w-4 h-4" /> Spremi i otvori Cockpit
+              <CheckCircle2 className="w-4 h-4" /> {tr('Spremi i otvori Cockpit', 'Save & Open Cockpit')}
             </button>
           )}
         </div>
