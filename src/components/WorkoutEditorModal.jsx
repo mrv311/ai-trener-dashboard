@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Save, Pencil, Eye, Database, Check, Dumbbell, Bike, Footprints, Waves, Activity, Clock, Zap, FileText } from 'lucide-react';
 import { parseIntervalsCode, categorizeWorkout, calculateCategoryDifficulty, resolveStepPowerPct } from '../utils/workoutParser';
-import { supabase } from '../services/supabaseClient';
+import { insertLibraryWorkouts } from '../services/workoutLibraryStorage';
 import { getWorkoutSportKind, getSportLabel } from '../utils/sportTypes';
 
 
@@ -355,7 +355,7 @@ function renderEditorSportIcon(sportKind, className) {
 // ============================================================
 // MAIN MODAL
 // ============================================================
-export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, isLoading, userFtp }) {
+export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, isLoading, userFtp, userId }) {
   const [title, setTitle] = useState('');
   const [code, setCode] = useState('');
   const [workoutType, setWorkoutType] = useState('ride');
@@ -494,8 +494,12 @@ export default function WorkoutEditorModal({ workout, isOpen, onClose, onSave, i
         steps: stats.allSteps
       };
 
-      const { error } = await supabase.from('workouts').insert([workoutPayload]);
-      if (error) throw error;
+      await insertLibraryWorkouts({
+        workouts: [workoutPayload],
+        userId,
+        isAdmin: false,
+        asPublic: false
+      });
       
       setLibrarySaveSuccess(true);
       setTimeout(() => setLibrarySaveSuccess(false), 2000);

@@ -2,18 +2,21 @@
  * Vercel Serverless Function: Sigurni Proxy za Intervals.icu OAuth Token Exchange
  */
 
+import { applyStrictCors } from './_security.js';
+
 export const config = {
   maxDuration: 30
 };
 
 export default async function handler(req, res) {
-  // CORS podrška za sve preglednike
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  const originOk = applyStrictCors(req, res, 'POST, OPTIONS');
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return res.status(originOk ? 200 : 403).end();
+  }
+
+  if (!originOk) {
+    return res.status(403).json({ error: 'Zabranjen pristup s neovlaštene domene.' });
   }
 
   if (req.method !== 'POST') {

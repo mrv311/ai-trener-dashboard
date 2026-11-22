@@ -28,7 +28,7 @@ import { runnerImport } from 'vite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const DEFAULT_PATH = 'C:\\Users\\dmalbasa\\OneDrive - Ministarstvo zaštite okoliša i zelene tranzicije\\P R I V A T N O\\B I K E\\E R G';
+const DEFAULT_PATH = process.env.WORKOUTS_IMPORT_PATH || '';
 
 // CLI argumenti
 const args = process.argv.slice(2);

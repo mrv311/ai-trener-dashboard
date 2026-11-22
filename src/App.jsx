@@ -24,6 +24,7 @@ import {
   clearActiveWorkoutCheckpoint,
   buildRecoverySummary
 } from './services/workoutRecoveryStorage';
+import { migrateGuestPrivateWorkoutsToSupabase } from './services/workoutLibraryStorage';
 
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useProfileSync } from './hooks/useProfileSync';
@@ -73,6 +74,7 @@ export default function App() {
   const [isSessionLoading, setIsSessionLoading] = useState(true);
   const [isGuest, setIsGuest] = useLocalStorage('ergvibe_is_guest', false);
   const currentUserId = session?.user?.id || (isGuest ? 'guest' : null);
+  const isAdmin = session?.user?.app_metadata?.role === 'admin';
 
   const [intervalsId, setIntervalsId] = useLocalStorage(currentUserId ? `intervalsId_${currentUserId}` : 'intervalsId', '');
   const [intervalsKey, setIntervalsKey] = useLocalStorage(currentUserId ? `intervalsKey_${currentUserId}` : 'intervalsKey', '');
@@ -155,74 +157,68 @@ export default function App() {
 
           if (activeSession?.user) {
             // Korisnik je već prijavljen u svoj račun (npr. spojio se iz Connections taba)
+            // Tajni Intervals token (authKey) čuvamo isključivo lokalno u pregledniku, NIKADA u Supabase user_metadata!
             try {
               await supabase.auth.updateUser({
                 data: {
                   intervals_id: athleteId,
-                  intervals_key: authKey,
+                  intervals_key: null,
                   intervals_athlete_name: athleteName
                 }
               });
             } catch (metaErr) {
-              console.warn('[Intervals OAuth] Greška pri spremanju u user_metadata:', metaErr);
+              console.warn('[Intervals OAuth] Greška pri ažuriranju user_metadata:', metaErr);
             }
           } else {
-            // Korisnik se prijavljuje s početnog ekrana (AuthPage ili Gost)
-            // Automatski prijavljujemo ili registriramo namjenski račun povezan s Intervals ID-jem
-            const cleanAthleteId = String(athleteId).toLowerCase().replace(/[^a-z0-9]/g, '');
-            const intervalsEmail = `intervals_${cleanAthleteId}@auth.ergvibe.app`;
-            const intervalsPassword = `ErgVibe!${cleanAthleteId}#Auth2026`;
-
-            let authRes = await supabase.auth.signInWithPassword({
-              email: intervalsEmail,
-              password: intervalsPassword
+            // Korisnik se prijavljuje s početnog ekrana (AuthPage ili Gost):
+            // Server (/api/intervals-auth) verificira live OAuth token izravno na Intervals.icu API-ju
+            // i izdaje Supabase sesiju koristeći tajni server-side HMAC (bez lozinke u klijentskom kodu).
+            const serverAuthRes = await fetch('/api/intervals-auth', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ access_token: result.accessToken || authKey })
             });
+            const serverAuthData = await serverAuthRes.json().catch(() => ({}));
 
-            if (authRes.error) {
-              // Ako račun ne postoji, kreiramo ga (signUp odmah vraća sesiju u našem Supabase projektu)
-              authRes = await supabase.auth.signUp({
-                email: intervalsEmail,
-                password: intervalsPassword,
-                options: {
-                  data: {
-                    intervals_id: athleteId,
-                    intervals_key: authKey,
-                    intervals_athlete_name: athleteName,
-                    username: athleteName || 'Vozač'
-                  }
-                }
-              });
-            } else if (authRes.data?.session) {
-              // Ažuriraj token ako je račun već postojao
-              await supabase.auth.updateUser({
-                data: {
-                  intervals_id: athleteId,
-                  intervals_key: authKey,
-                  intervals_athlete_name: athleteName
-                }
-              }).catch(() => {});
+            if (!serverAuthRes.ok || !serverAuthData?.session?.access_token || !serverAuthData?.session?.refresh_token) {
+              throw new Error(
+                serverAuthData?.error ||
+                  `Sigurna prijava putem Intervals.icu nije uspjela (HTTP ${serverAuthRes.status}).`
+              );
             }
 
-            if (authRes.data?.session) {
-              const newSession = authRes.data.session;
+            const { data: setSessionData, error: setSessionErr } = await supabase.auth.setSession({
+              access_token: serverAuthData.session.access_token,
+              refresh_token: serverAuthData.session.refresh_token
+            });
+            if (setSessionErr) throw setSessionErr;
+
+            const newSession = setSessionData?.session;
+            if (newSession?.user) {
               setSession(newSession);
               setIsGuest(false);
 
-              // Pohrani i u per-user localStorage ključeve za trenutnu dostupnost
+              // Pohrani Intervals ključeve isključivo lokalno u per-user localStorage preglednika
               try {
                 localStorage.setItem(`intervalsId_${newSession.user.id}`, athleteId);
                 localStorage.setItem(`intervalsKey_${newSession.user.id}`, authKey);
               } catch (e) {}
 
-              // Migriraj podatke gosta ako su postojali na ovom uređaju
+              // Migriraj podatke gosta ako su postojali na ovom uređaju (samo dopušteni stupci profila + aktivnosti + privatni treninzi)
               try {
+                const ALLOWED_PROFILE_COLS = [
+                  'weight', 'ftp', 'maxHr', 'thresholdHr', 'birthYear',
+                  'height', 'experience', 'riderType', 'hoursPerWeek',
+                  'primaryGoal', 'goalDate', 'weakness', 'username'
+                ];
                 const guestProfile = JSON.parse(localStorage.getItem('ai_trener_profile_guest') || '{}');
                 if (guestProfile && Object.keys(guestProfile).length > 0) {
-                  await supabase.from('profiles').upsert({
-                    user_id: newSession.user.id,
-                    ...guestProfile,
-                    username: athleteName || guestProfile.username || 'Vozač'
-                  });
+                  const cleanProfile = { user_id: newSession.user.id };
+                  for (const col of ALLOWED_PROFILE_COLS) {
+                    if (guestProfile[col] !== undefined) cleanProfile[col] = guestProfile[col];
+                  }
+                  cleanProfile.username = athleteName || cleanProfile.username || 'Vozač';
+                  await supabase.from('profiles').upsert(cleanProfile);
                 }
                 const guestActivities = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities_guest') || '[]');
                 if (guestActivities.length > 0) {
@@ -232,11 +228,10 @@ export default function App() {
                   });
                   await supabase.from('completed_activities').insert(recordsToInsert);
                 }
+                await migrateGuestPrivateWorkoutsToSupabase(newSession.user.id);
               } catch (migErr) {
                 console.warn('[Intervals OAuth] Migracija gost podataka:', migErr);
               }
-            } else if (authRes.error) {
-              throw authRes.error;
             }
           }
 
@@ -379,15 +374,19 @@ export default function App() {
     }
   }, [athleteInfo, intervalsConnected, setAthleteProfile]);
 
-  // Sinkronizacija Intervals podataka iz Supabase user_metadata kad se korisnik prijavi
+  // Jednokratno preuzimanje i brisanje eventualnog starog (legacy) intervals_key iz Supabase user_metadata
   useEffect(() => {
     if (session?.user?.user_metadata && currentUserId && currentUserId !== 'guest') {
       const meta = session.user.user_metadata;
-      if (meta.intervals_key && (!intervalsKey || intervalsKey !== meta.intervals_key)) {
-        setIntervalsKey(meta.intervals_key);
-        if (meta.intervals_id && meta.intervals_id !== intervalsId) {
-          setIntervalsId(meta.intervals_id);
+      if (meta.intervals_id && !intervalsId) {
+        setIntervalsId(meta.intervals_id);
+      }
+      if (meta.intervals_key) {
+        if (!intervalsKey) {
+          setIntervalsKey(meta.intervals_key);
         }
+        // Sigurnosno čišćenje: brišemo tajni token iz Supabase user_metadata (ostaje samo lokalno u pregledniku)
+        supabase.auth.updateUser({ data: { intervals_key: null } }).catch(() => {});
       }
     }
   }, [session, currentUserId, intervalsKey, intervalsId, setIntervalsKey, setIntervalsId]);
@@ -582,10 +581,8 @@ export default function App() {
   };
 
   const handleSetIntervalsKey = (newKey) => {
+    // Tajni Intervals API ključ / OAuth token čuva se isključivo lokalno u pregledniku (nikada u Supabase user_metadata)
     setIntervalsKey(newKey);
-    if (currentUserId && currentUserId !== 'guest') {
-      supabase.auth.updateUser({ data: { intervals_key: newKey } }).catch(() => {});
-    }
   };
 
   const handleOnboardingComplete = () => {
@@ -968,6 +965,7 @@ export default function App() {
                 onSelectWorkout={handleLaunchWorkoutInTrainer}
                 onScheduleWorkout={handleCreateWorkout}
                 userId={currentUserId}
+                isAdmin={isAdmin}
               />
             )}
             {activeTab === 'profile' && (

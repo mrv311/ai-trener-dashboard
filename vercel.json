@@ -5,6 +5,9 @@
     },
     "api/intervals-token.js": {
       "maxDuration": 30
+    },
+    "api/intervals-auth.js": {
+      "maxDuration": 30
     }
   }
 }

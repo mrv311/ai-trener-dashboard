@@ -7,6 +7,7 @@
 import { compileKnowledgeBasePrompt } from './aiKnowledgeBase';
 import { buildAthleteContextPrompt, findExactHistoricalRecord } from './historyService';
 import { getAttachmentFromLocalDB } from './aiFilesStorage';
+import { supabase } from './supabaseClient';
 import {
   WEEKDAY_DEFS,
   addDaysIso,
@@ -138,6 +139,17 @@ async function callGeminiApi({
     customApiKey: customKey || undefined
   });
 
+  let authHeader = null;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (accessToken) {
+      authHeader = `Bearer ${accessToken}`;
+    }
+  } catch {
+    // nastavi kao gost bez Authorization zaglavlja
+  }
+
   let proxyRouteMissing = false;
   let lastNetworkError = null;
 
@@ -145,9 +157,13 @@ async function callGeminiApi({
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 58000);
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (authHeader) {
+        headers.Authorization = authHeader;
+      }
       const proxyRes = await fetch('/api/gemini', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: proxyPayload,
         signal: controller.signal
       });

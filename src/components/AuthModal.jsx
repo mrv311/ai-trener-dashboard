@@ -3,6 +3,13 @@ import { supabase } from '../services/supabaseClient';
 import { Mail, Lock, Loader2, AlertCircle, CheckCircle2, X, Link as LinkIcon } from 'lucide-react';
 import BrandLogo from './BrandLogo';
 import { startIntervalsOAuth } from '../services/intervalsOAuth';
+import { migrateGuestPrivateWorkoutsToSupabase } from '../services/workoutLibraryStorage';
+
+const ALLOWED_PROFILE_COLS = [
+  'weight', 'ftp', 'maxHr', 'thresholdHr', 'birthYear',
+  'height', 'experience', 'riderType', 'hoursPerWeek',
+  'primaryGoal', 'goalDate', 'weakness', 'username'
+];
 
 export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -70,10 +77,11 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
     try {
       const guestProfile = JSON.parse(localStorage.getItem('ai_trener_profile_guest') || '{}');
       if (guestProfile && Object.keys(guestProfile).length > 0) {
-        await supabase.from('profiles').upsert({
-          user_id: newUserId,
-          ...guestProfile
-        });
+        const cleanProfile = { user_id: newUserId };
+        for (const col of ALLOWED_PROFILE_COLS) {
+          if (guestProfile[col] !== undefined) cleanProfile[col] = guestProfile[col];
+        }
+        await supabase.from('profiles').upsert(cleanProfile);
       }
 
       const guestActivities = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities_guest') || '[]');
@@ -87,6 +95,8 @@ export default function AuthModal({ isOpen, onClose, currentUserId, onAuthSucces
         });
         await supabase.from('completed_activities').insert(recordsToInsert);
       }
+
+      await migrateGuestPrivateWorkoutsToSupabase(newUserId);
     } catch (err) {
       console.warn('Upozorenje pri migraciji gost podataka:', err);
     }

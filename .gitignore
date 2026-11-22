@@ -31,3 +31,7 @@ scripts/import-reports/
 
 # Zaostali lokalni folder
 ai-trener-dashboard/
+
+# Promo video Remotion studio (build artifacts & dependencies)
+promo-video/node_modules/
+promo-video/out/

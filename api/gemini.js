@@ -1,21 +1,36 @@
 /**
  * Vercel Serverless Function: Sigurni Backend Proxy za Google Gemini AI
- * 
- * Ključ se čuva na serveru (process.env.GEMINI_API_KEY) i NIKADA se ne šalje u preglednik korisnika.
- * To sprječava krađu ključa i zlouporabu izvan aplikacije.
+ *
+ * - Ključ se čuva isključivo na serveru (process.env.GEMINI_API_KEY)
+ * - Strogi CORS (samo ovlaštene domene)
+ * - Klizni rate-limit za server ključ (gosti vs. prijavljeni korisnici vs. admin)
+ * - Korisnici s vlastitim Gemini ključem (BYOK) nemaju ograničenje server kvote
  */
+
+import {
+  applyStrictCors,
+  checkRateLimit,
+  getClientIp,
+  verifySupabaseUser
+} from './_security.js';
 
 export const config = {
   maxDuration: 60
 };
 
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const MAX_SERVER_PAYLOAD_BYTES = 1_500_000; // ~1.5 MB zaštita od spam payloadova na server ključu
+
 export default async function handler(req, res) {
-  // CORS podrška
+  const originOk = applyStrictCors(req, res, 'GET, POST, OPTIONS');
+
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    return res.status(originOk ? 200 : 403).end();
+  }
+
+  if (!originOk) {
+    return res.status(403).json({ error: 'Zabranjen pristup s neovlaštene domene.' });
   }
 
   if (req.method === 'GET') {
@@ -41,10 +56,12 @@ export default async function handler(req, res) {
       customApiKey = null
     } = req.body || {};
 
-    // 1. Ključ: prioritet ima korisnikov privatni ključ (ako ga je unio u tabu Veze),
+    // 1. Ključ: prioritet ima korisnikov privatni ključ (BYOK u tabu API Veze),
     // inače sigurni tajni ključ s Vercel servera (GEMINI_API_KEY)
     const serverKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-    const resolvedKey = String(customApiKey || serverKey || '').trim();
+    const cleanCustomKey = typeof customApiKey === 'string' ? customApiKey.trim() : '';
+    const isUsingCustomKey = Boolean(cleanCustomKey && cleanCustomKey !== String(serverKey || '').trim());
+    const resolvedKey = isUsingCustomKey ? cleanCustomKey : String(serverKey || '').trim();
 
     if (!resolvedKey) {
       return res.status(500).json({
@@ -52,12 +69,56 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2. ZAŠTITA OD NEŽELJENIH TROŠKOVA:
-    // Ako se koristi server ključ (za frendove i goste), UVIJEK forsiraj Flash model!
-    // Pro model je dopušten isključivo ako je korisnik poslao svoj privatni ključ.
-    const isServerKey = !customApiKey || customApiKey.trim() === serverKey;
+    // 2. Rate-limiting i zaštita troškova
+    const clientIp = getClientIp(req);
+
+    if (isUsingCustomKey) {
+      // BYOK: samo osnovna anti-flood zaštita (60 zahtjeva/min po IP-u)
+      const byokLimit = checkRateLimit(`gemini:byok:${clientIp}`, 60, 60 * 1000);
+      if (!byokLimit.allowed) {
+        res.setHeader('Retry-After', String(byokLimit.retryAfterSec));
+        return res.status(429).json({
+          error: 'Previše zahtjeva u kratkom roku. Pričekaj par sekundi i pokušaj ponovno.'
+        });
+      }
+    } else {
+      // Server ključ: provjeri veličinu payloada + autentifikaciju + hourly/daily kvote
+      const approxBytes = Buffer.byteLength(JSON.stringify(req.body || {}), 'utf8');
+      if (approxBytes > MAX_SERVER_PAYLOAD_BYTES) {
+        return res.status(413).json({
+          error: 'Zahtjev je prevelik za dijeljeni AI poslužitelj. Smanji privitke ili unesi vlastiti Gemini API ključ u tabu API Veze.'
+        });
+      }
+
+      const authUser = await verifySupabaseUser(req);
+      const isAdmin = Boolean(authUser?.isAdmin);
+
+      if (!isAdmin) {
+        const subjectKey = authUser?.id ? `user:${authUser.id}` : `guest:${clientIp}`;
+        const hourlyCap = authUser?.id ? 30 : 6;
+        const dailyCap = authUser?.id ? 80 : 18;
+
+        const hourCheck = checkRateLimit(`gemini:h:${subjectKey}`, hourlyCap, HOUR_MS);
+        const dayCheck = hourCheck.allowed
+          ? checkRateLimit(`gemini:d:${subjectKey}`, dailyCap, DAY_MS)
+          : hourCheck;
+
+        if (!hourCheck.allowed || !dayCheck.allowed) {
+          const retryAfter = !hourCheck.allowed ? hourCheck.retryAfterSec : dayCheck.retryAfterSec;
+          res.setHeader('Retry-After', String(retryAfter));
+          return res.status(429).json({
+            error: authUser?.id
+              ? 'Dosegnuto je privremeno ograničenje besplatnog AI poslužitelja. Pričekaj malo ili u tabu API Veze unesi vlastiti besplatni Google Gemini API ključ za neograničen rad.'
+              : 'Gosti imaju ograničen broj besplatnih AI upita po satu. Prijavi se besplatno ili unesi vlastiti Gemini API ključ u tabu API Veze.'
+          });
+        }
+      }
+    }
+
+    // 3. ZAŠTITA OD NEŽELJENIH TROŠKOVA:
+    // Na server ključu UVIJEK forsiraj Flash model; Pro model samo uz vlastiti (BYOK) ključ.
     let targetModel = model || 'gemini-3.8-flash';
-    if (isServerKey && String(targetModel).toLowerCase().includes('pro')) {
+    if (!isUsingCustomKey && String(targetModel).toLowerCase().includes('pro')) {
       targetModel = 'gemini-3.8-flash';
     }
 
@@ -66,7 +127,7 @@ export default async function handler(req, res) {
       ? Number(thinkingBudget)
       : (isProModel ? 2048 : 512);
 
-    // 3. Priprema tijela za Google Gemini v1beta REST API
+    // 4. Priprema tijela za Google Gemini v1beta REST API
     const buildGoogleBody = (includeThinking = true) => ({
       ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction }] } } : {}),
       contents: Array.isArray(contents) ? contents : [],
@@ -78,7 +139,7 @@ export default async function handler(req, res) {
       }
     });
 
-    // 4. Poziv prema Googleu s automatskim fallbackom ako verzija modela vrati 404
+    // 5. Poziv prema Googleu s automatskim fallbackom ako verzija modela vrati 404
     const execute = async (m, includeThinking = true) => {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(resolvedKey)}`;
       const resFetch = await fetch(url, {
@@ -119,8 +180,8 @@ export default async function handler(req, res) {
 
     const data = await googleRes.json();
     const text = data?.candidates?.[0]?.content?.parts
-      ?.filter(p => !p.thought)
-      ?.map(p => p.text || '')
+      ?.filter((p) => !p.thought)
+      ?.map((p) => p.text || '')
       .join('')
       .trim();
 

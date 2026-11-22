@@ -1,11 +1,26 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { supabase } from '../services/supabaseClient';
-import { Play, Loader2, Database, Clock, RefreshCw, Plus, UploadCloud, Trash2, Activity, Folder, FolderOpen, ArrowLeft, Edit2, Check, X, ArrowUp, ArrowDown, CalendarDays, CalendarPlus, CheckSquare, Sparkles, Search, Star, Timer, Target, Compass, Flame, Filter } from 'lucide-react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import {
+  Play, Loader2, Database, Clock, RefreshCw, UploadCloud, Trash2, Activity,
+  Folder, FolderOpen, ArrowLeft, Edit2, Check, X, ArrowUp, ArrowDown,
+  CalendarDays, CalendarPlus, CheckSquare, Sparkles, Search, Star, Timer,
+  Target, Compass, Flame, Lock, Globe, ShieldCheck, Copy
+} from 'lucide-react';
 import { getZoneColorForTrainer } from '../utils/performanceMetrics';
-import { parseWorkoutFile, normalizeCategory, CANONICAL_CATEGORIES, calculateCategoryDifficulty } from '../utils/workoutParser';
+import { parseWorkoutFile, normalizeCategory, calculateCategoryDifficulty } from '../utils/workoutParser';
 import { calculateCogganMetrics, expandStepsToSeconds } from '../utils/performanceMetrics';
 import { generateLocalWorkout } from '../utils/workoutGenerator';
 import { stepsToIntervalsCode } from './ai/AIMarkdown';
+import {
+  fetchLibraryWorkouts,
+  insertLibraryWorkouts,
+  updateLibraryWorkout,
+  deleteLibraryWorkout,
+  setWorkoutPublicStatus,
+  canManageWorkout,
+  isPrivateWorkout,
+  isGuestUser,
+  onLibraryUpdated
+} from '../services/workoutLibraryStorage';
 
 const FAMOUS_CLASSICS = [
   'carson', 'gorby', 'antelope', 'baxter', 'mary austin', 'rattlesnake',
@@ -99,17 +114,19 @@ export const SMART_COLLECTIONS = [
   }
 ];
 
-export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 250, userId }) {
+export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 250, userId, isAdmin = false }) {
   const [workouts, setWorkouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [libraryScope, setLibraryScope] = useState('public'); // 'public' | 'private' | 'all'
   const [activeFolder, setActiveFolder] = useState(null);
   const [activeCollection, setActiveCollection] = useState(null);
   const [durationFilter, setDurationFilter] = useState('all');
   const [editingWorkoutId, setEditingWorkoutId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editCategory, setEditCategory] = useState('');
+  const [togglingVisibilityId, setTogglingVisibilityId] = useState(null);
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
   const [searchQuery, setSearchQuery] = useState('');
@@ -184,7 +201,31 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
     }, 1500);
   };
 
-  const handleSaveAiToLibrary = async () => {
+  const fetchWorkouts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const allWorkouts = await fetchLibraryWorkouts(userId);
+      setWorkouts(allWorkouts);
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    fetchWorkouts();
+  }, [fetchWorkouts]);
+
+  useEffect(() => {
+    return onLibraryUpdated(() => {
+      fetchWorkouts();
+    });
+  }, [fetchWorkouts]);
+
+  const handleSaveAiToLibrary = async (asPublic = false) => {
     if (!selectedDetailWorkout) return;
     try {
       setIsSavingAi(true);
@@ -197,48 +238,55 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
         steps: selectedDetailWorkout.steps
       };
 
-      const { error } = await supabase.from('workouts').insert([workoutPayload]);
-      if (error) throw error;
-      
+      await insertLibraryWorkouts({
+        workouts: [workoutPayload],
+        userId,
+        isAdmin,
+        asPublic: Boolean(asPublic && isAdmin)
+      });
+
       await fetchWorkouts();
+      if (!asPublic) {
+        setLibraryScope('private');
+        setActiveFolder(null);
+        setActiveCollection(null);
+      }
       setSelectedDetailWorkout(null);
     } catch (err) {
       console.error(err);
-      alert("Greška pri spremanju u knjižnicu: " + err.message);
+      alert('Greška pri spremanju u knjižnicu: ' + err.message);
     } finally {
       setIsSavingAi(false);
     }
   };
 
-  useEffect(() => {
-    fetchWorkouts();
-  }, []);
-
-  const fetchWorkouts = async () => {
-    setLoading(true);
-    setError(null);
+  const handleCopyToPrivate = async (workout) => {
+    if (!workout) return;
     try {
-      let allWorkouts = [];
-      let from = 0;
-      const batchSize = 1000;
-      while (true) {
-        const { data, error } = await supabase
-          .from('workouts')
-          .select('*')
-          .order('difficulty_score', { ascending: true })
-          .range(from, from + batchSize - 1);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        allWorkouts = allWorkouts.concat(data);
-        if (data.length < batchSize) break;
-        from += batchSize;
-      }
-      setWorkouts(allWorkouts);
+      setIsSavingAi(true);
+      await insertLibraryWorkouts({
+        workouts: [{
+          title: workout.title,
+          description: workout.description || '',
+          duration_seconds: workout.duration_seconds,
+          difficulty_score: workout.difficulty_score ?? 1.0,
+          category: workout.category,
+          steps: workout.steps
+        }],
+        userId,
+        isAdmin: false,
+        asPublic: false
+      });
+      await fetchWorkouts();
+      setLibraryScope('private');
+      setActiveFolder(null);
+      setActiveCollection(null);
+      setSelectedDetailWorkout(null);
     } catch (err) {
       console.error(err);
-      setError(err.message);
+      alert('Greška pri kopiranju u Moje Treninge: ' + err.message);
     } finally {
-      setLoading(false);
+      setIsSavingAi(false);
     }
   };
 
@@ -249,20 +297,22 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
     setIsUploading(true);
     setError(null);
 
-        const uploadedWorkouts = [];
+    const uploadedWorkouts = [];
     const errors = [];
     let duplicateCount = 0;
+
+    // Provjera duplikata isključivo unutar korisnikovih privatnih treninga
+    const existingPrivate = workouts.filter((w) => isPrivateWorkout(w));
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
         const text = await file.text();
         const parsedWorkout = await parseWorkoutFile(text, file.name);
-        
-        // Provjera duplikata po naslovu treninga u trenutnoj listi `workouts`
-        const isDuplicate = workouts.some(
-          existing => existing.title.toLowerCase() === parsedWorkout.title.toLowerCase()
-        );
+
+        const isDuplicate =
+          existingPrivate.some((existing) => existing.title.toLowerCase() === parsedWorkout.title.toLowerCase()) ||
+          uploadedWorkouts.some((pending) => pending.title.toLowerCase() === parsedWorkout.title.toLowerCase());
 
         if (isDuplicate) {
           duplicateCount++;
@@ -277,14 +327,19 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
 
     if (uploadedWorkouts.length > 0) {
       try {
-        const { error: insertError } = await supabase.from('workouts').insert(uploadedWorkouts).select();
-        if (insertError) throw insertError;
-        // Osježi listu i vrati se na početak (zatvori mape)
+        await insertLibraryWorkouts({
+          workouts: uploadedWorkouts,
+          userId,
+          isAdmin,
+          asPublic: false // Uvijek u privatnu bazu korisnika (Admin jednim klikom može objaviti u javni katalog)
+        });
+        setLibraryScope('private');
         setActiveFolder(null);
+        setActiveCollection(null);
         await fetchWorkouts();
       } catch (err) {
         console.error(err);
-        setError("Greška pri spremanju u bazu: " + err.message);
+        setError('Greška pri spremanju u bazu: ' + err.message);
       }
     }
 
@@ -293,7 +348,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       errorMessage += `Neuspješan uvoz nekih datoteka:\n${errors.join('\n')}\n`;
     }
     if (duplicateCount > 0) {
-      errorMessage += `Preskočeno duplikata (već postoje u bazi): ${duplicateCount}`;
+      errorMessage += `Preskočeno duplikata u Mojim Treninzima: ${duplicateCount}`;
     }
 
     if (errorMessage) {
@@ -301,18 +356,25 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
     }
 
     setIsUploading(false);
-    // Reset inputa
     event.target.value = null;
   };
 
-  const handleDeleteWorkout = async (workoutId) => {
+  const handleDeleteWorkout = async (workout) => {
+    if (!canManageWorkout(workout, userId, isAdmin)) return;
+    const isPub = !isPrivateWorkout(workout);
+    if (isPub && typeof window !== 'undefined') {
+      const ok = window.confirm(`Obrisati javni trening "${workout.title}" iz ErgVibe Kataloga za sve korisnike?`);
+      if (!ok) return;
+    }
     try {
-      const { error } = await supabase.from('workouts').delete().eq('id', workoutId);
-      if (error) throw error;
+      await deleteLibraryWorkout({ workout, userId, isAdmin });
+      if (selectedDetailWorkout?.id === workout.id) {
+        setSelectedDetailWorkout(null);
+      }
       await fetchWorkouts();
     } catch (err) {
       console.error(err);
-      setError("Greška pri brisanju: " + err.message);
+      setError('Greška pri brisanju: ' + err.message);
     }
   };
 
@@ -320,22 +382,46 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
     if (!editingWorkoutId || !editTitle.trim()) return;
     try {
       const nextCategory = normalizeCategory(editCategory);
-      const targetWorkout = workouts.find(w => w.id === editingWorkoutId);
+      const targetWorkout = workouts.find((w) => w.id === editingWorkoutId);
+      if (!targetWorkout || !canManageWorkout(targetWorkout, userId, isAdmin)) return;
+
       const updatePayload = {
         title: editTitle.trim(),
         category: nextCategory
       };
-      if (targetWorkout && Array.isArray(targetWorkout.steps) && targetWorkout.steps.length > 0) {
+      if (Array.isArray(targetWorkout.steps) && targetWorkout.steps.length > 0) {
         updatePayload.difficulty_score = calculateCategoryDifficulty(targetWorkout.steps, nextCategory);
       }
 
-      const { error } = await supabase.from('workouts').update(updatePayload).eq('id', editingWorkoutId);
-      if (error) throw error;
+      await updateLibraryWorkout({
+        workout: targetWorkout,
+        patch: updatePayload,
+        userId,
+        isAdmin
+      });
       setEditingWorkoutId(null);
       await fetchWorkouts();
     } catch (err) {
       console.error(err);
-      setError("Greška pri promjeni: " + err.message);
+      setError('Greška pri promjeni: ' + err.message);
+    }
+  };
+
+  const handleTogglePublicStatus = async (workout) => {
+    if (!isAdmin || !workout?.id || workout.isLocalOnly) return;
+    const makePublic = isPrivateWorkout(workout);
+    try {
+      setTogglingVisibilityId(workout.id);
+      await setWorkoutPublicStatus({ workout, makePublic, userId, isAdmin });
+      if (selectedDetailWorkout?.id === workout.id) {
+        setSelectedDetailWorkout((prev) => (prev ? { ...prev, user_id: makePublic ? null : userId } : null));
+      }
+      await fetchWorkouts();
+    } catch (err) {
+      console.error(err);
+      setError('Greška pri promjeni vidljivosti: ' + err.message);
+    } finally {
+      setTogglingVisibilityId(null);
     }
   };
 
@@ -387,18 +473,34 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
 
   const categoryOrder = ['Oporavak', 'Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Anaerobni', 'Testiranje', 'Ostalo'];
 
+  const publicWorkouts = useMemo(
+    () => workouts.filter((w) => !isPrivateWorkout(w)),
+    [workouts]
+  );
+
+  const privateWorkouts = useMemo(
+    () => workouts.filter((w) => isPrivateWorkout(w)),
+    [workouts]
+  );
+
+  const scopedWorkouts = useMemo(() => {
+    if (libraryScope === 'public') return publicWorkouts;
+    if (libraryScope === 'private') return privateWorkouts;
+    return workouts;
+  }, [libraryScope, publicWorkouts, privateWorkouts, workouts]);
+
   const groupedWorkouts = useMemo(() => {
-    return workouts.reduce((acc, workout) => {
+    return scopedWorkouts.reduce((acc, workout) => {
       const cat = normalizeCategory(workout.category);
       if (!acc[cat]) acc[cat] = [];
       acc[cat].push(workout);
       return acc;
     }, {});
-  }, [workouts]);
+  }, [scopedWorkouts]);
 
   const categoryDurationStats = useMemo(() => {
     const stats = {};
-    workouts.forEach(w => {
+    scopedWorkouts.forEach(w => {
       const cat = normalizeCategory(w.category);
       if (!stats[cat]) stats[cat] = { under45: 0, std60: 0, long75: 0 };
       const mins = Math.round((w.duration_seconds || 3600) / 60);
@@ -407,7 +509,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       else stats[cat].long75++;
     });
     return stats;
-  }, [workouts]);
+  }, [scopedWorkouts]);
 
   const activeDurationCounts = useMemo(() => {
     let base = [];
@@ -415,9 +517,9 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       base = groupedWorkouts[activeFolder] || [];
     } else if (activeCollection) {
       const col = SMART_COLLECTIONS.find(c => c.id === activeCollection);
-      base = col ? workouts.filter(col.predicate) : workouts;
+      base = col ? scopedWorkouts.filter(col.predicate) : scopedWorkouts;
     } else {
-      base = workouts;
+      base = scopedWorkouts;
     }
 
     if (searchQuery.trim()) {
@@ -438,7 +540,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       else counts.over90++;
     });
     return counts;
-  }, [workouts, activeFolder, activeCollection, searchQuery, groupedWorkouts]);
+  }, [scopedWorkouts, activeFolder, activeCollection, searchQuery, groupedWorkouts]);
 
   const sortedCategories = useMemo(() => {
     return Object.keys(groupedWorkouts).sort((a, b) => {
@@ -450,7 +552,11 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
     });
   }, [groupedWorkouts]);
 
-  const isViewingWorkoutsList = Boolean(activeFolder || activeCollection || searchQuery.trim() || durationFilter !== 'all');
+  // U tabu "Moji Treninzi" prikaži kartice odmah ako korisnik ima manji broj osobnih treninga (<= 24)
+  const isCompactPrivateView = libraryScope === 'private' && privateWorkouts.length > 0 && privateWorkouts.length <= 24;
+  const isViewingWorkoutsList = Boolean(
+    activeFolder || activeCollection || searchQuery.trim() || durationFilter !== 'all' || isCompactPrivateView
+  );
 
   const displayWorkouts = useMemo(() => {
     let list = [];
@@ -458,9 +564,9 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
       list = [...(groupedWorkouts[activeFolder] || [])];
     } else if (activeCollection) {
       const col = SMART_COLLECTIONS.find(c => c.id === activeCollection);
-      list = col ? workouts.filter(col.predicate) : [...workouts];
+      list = col ? scopedWorkouts.filter(col.predicate) : [...scopedWorkouts];
     } else {
-      list = [...workouts];
+      list = [...scopedWorkouts];
     }
 
     if (searchQuery.trim()) {
@@ -503,64 +609,152 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
     });
 
     return list;
-  }, [workouts, activeFolder, activeCollection, searchQuery, durationFilter, sortBy, sortOrder, groupedWorkouts]);
+  }, [scopedWorkouts, activeFolder, activeCollection, searchQuery, durationFilter, sortBy, sortOrder, groupedWorkouts]);
+
+  const handleScopeChange = (nextScope) => {
+    setLibraryScope(nextScope);
+    setActiveFolder(null);
+    setActiveCollection(null);
+    setDurationFilter('all');
+    setEditingWorkoutId(null);
+  };
 
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-5 animate-in fade-in pb-20 md:pb-4">
       {/* ZAGLAVLJE S PRETRAGOM I AKCIJAMA */}
-      <div className="carbon-panel rounded-xl p-4 md:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400">STRUKTURIRANI RECEPTI · {workouts.length} UKUPNO</span>
-          <h2 className="text-2xl font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2.5 mt-0.5">
-            <Database className="text-volt-400 w-5 h-5" /> Knjižnica Treninga
-          </h2>
+      <div className="carbon-panel rounded-xl p-4 md:p-5 flex flex-col gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-volt-400">
+                STRUKTURIRANI RECEPTI · {publicWorkouts.length} JAVNIH · {privateWorkouts.length} MOJIH
+              </span>
+              {isAdmin && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/35">
+                  <ShieldCheck className="w-3 h-3" /> Admin Mod
+                </span>
+              )}
+            </div>
+            <h2 className="text-2xl font-display font-bold uppercase tracking-wide text-zinc-100 flex items-center gap-2.5 mt-0.5">
+              <Database className="text-volt-400 w-5 h-5" /> Knjižnica Treninga
+            </h2>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            <div className="relative flex-1 sm:w-64 lg:w-72 min-w-[180px]">
+              <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Pretraži trening ili opis..."
+                className="w-full bg-zinc-950 border border-zinc-800 focus:border-volt-400 rounded-lg pl-9 pr-8 py-2 text-xs font-medium text-zinc-100 placeholder-zinc-600 outline-none transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200"
+                  title="Očisti pretragu"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowGeneratorModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/50 text-zinc-100 font-mono font-bold text-xs uppercase tracking-wider rounded-lg transition-all"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-volt-400" />
+              <span className="hidden sm:inline">Generator</span>
+            </button>
+
+            <label
+              title="Uvezeni .ZWO/.ERG treninzi spremaju se privatno u Moje Treninge"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-volt-400 hover:bg-volt-300 text-zinc-950 font-mono font-bold text-xs uppercase tracking-wider rounded-lg cursor-pointer transition-all shadow-volt-glow"
+            >
+              {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{isUploading ? 'Uvoz...' : 'Uvezi ZWO/ERG'}</span>
+              <span className="sm:hidden">Uvezi</span>
+              <input type="file" multiple className="absolute w-0 h-0 opacity-0 pointer-events-none" onChange={handleFileUpload} disabled={isUploading} />
+            </label>
+
+            <button
+              type="button"
+              onClick={fetchWorkouts}
+              disabled={loading || isUploading}
+              title="Osvježi knjižnicu"
+              className="p-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400 hover:text-volt-400 hover:border-zinc-700 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-volt-400' : ''}`} />
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-          <div className="relative flex-1 sm:w-64 lg:w-72 min-w-[180px]">
-            <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Pretraži trening ili opis..."
-              className="w-full bg-zinc-950 border border-zinc-800 focus:border-volt-400 rounded-lg pl-9 pr-8 py-2 text-xs font-medium text-zinc-100 placeholder-zinc-600 outline-none transition-colors"
-            />
-            {searchQuery && (
+        {/* PREKIDAČ JAVNI KATALOG vs. MOJI PRIVATNI TRENINZI */}
+        <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="inline-flex items-center gap-1.5 p-1 rounded-xl bg-zinc-950 border border-zinc-800 self-start">
+            <button
+              type="button"
+              onClick={() => handleScopeChange('public')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold uppercase tracking-wider transition-all ${
+                libraryScope === 'public'
+                  ? 'bg-volt-400 text-zinc-950 shadow-volt-glow'
+                  : 'text-zinc-400 hover:text-zinc-100'
+              }`}
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>ErgVibe Katalog</span>
+              <span className={`text-[10px] px-1.5 rounded-full ${libraryScope === 'public' ? 'bg-zinc-950/20 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}`}>
+                {publicWorkouts.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleScopeChange('private')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold uppercase tracking-wider transition-all ${
+                libraryScope === 'private'
+                  ? 'bg-sky-400 text-zinc-950'
+                  : 'text-zinc-400 hover:text-zinc-100'
+              }`}
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Moji Treninzi</span>
+              <span className={`text-[10px] px-1.5 rounded-full ${libraryScope === 'private' ? 'bg-zinc-950/20 text-zinc-950' : 'bg-zinc-800 text-zinc-400'}`}>
+                {privateWorkouts.length}
+              </span>
+            </button>
+
+            {privateWorkouts.length > 0 && (
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200"
-                title="Očisti pretragu"
+                onClick={() => handleScopeChange('all')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold uppercase tracking-wider transition-all ${
+                  libraryScope === 'all'
+                    ? 'bg-zinc-800 text-zinc-100 border border-zinc-700'
+                    : 'text-zinc-500 hover:text-zinc-200'
+                }`}
               >
-                <X className="w-3.5 h-3.5" />
+                <span>Sve</span>
+                <span className="text-[10px] px-1.5 rounded-full bg-zinc-900 text-zinc-400">
+                  {workouts.length}
+                </span>
               </button>
             )}
           </div>
 
-          <button 
-            onClick={() => setShowGeneratorModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-volt-400/50 text-zinc-100 font-mono font-bold text-xs uppercase tracking-wider rounded-lg transition-all"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-volt-400" />
-            <span className="hidden sm:inline">Generator</span>
-          </button>
-
-          <label className="flex items-center gap-1.5 px-3.5 py-2 bg-volt-400 hover:bg-volt-300 text-zinc-950 font-mono font-bold text-xs uppercase tracking-wider rounded-lg cursor-pointer transition-all shadow-volt-glow">
-            {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">{isUploading ? 'Uvoz...' : 'Uvezi ZWO/ERG'}</span>
-            <span className="sm:hidden">Uvezi</span>
-            <input type="file" multiple className="absolute w-0 h-0 opacity-0 pointer-events-none" onChange={handleFileUpload} disabled={isUploading} />
-          </label>
-
-          <button 
-            onClick={fetchWorkouts} 
-            disabled={loading || isUploading}
-            title="Osvježi knjižnicu"
-            className="p-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-400 hover:text-volt-400 hover:border-zinc-700 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-volt-400' : ''}`} />
-          </button>
+          <span className="text-[11px] text-zinc-500 font-mono">
+            {libraryScope === 'private'
+              ? (isGuestUser(userId)
+                  ? 'Privatno · spremljeno lokalno u ovom pregledniku'
+                  : 'Privatna baza · vidljivo isključivo tebi na svim uređajima')
+              : (isAdmin
+                  ? 'Admin: uređuj ili prebacuj treninge između Javnog i Privatnog'
+                  : 'Javni ErgVibe katalog · tvoji uvezeni treninzi idu u Moji Treninzi')}
+          </span>
         </div>
       </div>
 
@@ -592,7 +786,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                   {SMART_COLLECTIONS.map(col => {
                     const Icon = col.icon;
-                    const count = workouts.filter(col.predicate).length;
+                    const count = scopedWorkouts.filter(col.predicate).length;
                     return (
                       <button
                         key={col.id}
@@ -679,11 +873,25 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                       </button>
                     );
                   })}
-                  {workouts.length === 0 && !loading && !error && (
-                    <div className="col-span-full py-16 text-center flex flex-col items-center carbon-panel rounded-xl">
-                      <Database className="w-12 h-12 text-zinc-700 mb-3" />
-                      <h3 className="text-lg font-display font-bold uppercase text-zinc-300 mb-1">Knjižnica je prazna</h3>
-                      <p className="text-zinc-500 font-mono text-xs">Uvezi .ZWO ili .ERG datoteke putem gumba u zaglavlju.</p>
+                  {scopedWorkouts.length === 0 && !loading && !error && (
+                    <div className="col-span-full py-16 text-center flex flex-col items-center carbon-panel rounded-xl px-4">
+                      {libraryScope === 'private' ? (
+                        <>
+                          <Lock className="w-12 h-12 text-sky-400/50 mb-3" />
+                          <h3 className="text-lg font-display font-bold uppercase text-zinc-200 mb-1">
+                            Tvoja privatna knjižnica je prazna
+                          </h3>
+                          <p className="text-zinc-500 font-mono text-xs max-w-md leading-relaxed">
+                            Uvezi vlastite .ZWO / .ERG datoteke ili kreiraj trening putem Generatora — svi tvoji treninzi bit će vidljivi isključivo tebi.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <Database className="w-12 h-12 text-zinc-700 mb-3" />
+                          <h3 className="text-lg font-display font-bold uppercase text-zinc-300 mb-1">Knjižnica je prazna</h3>
+                          <p className="text-zinc-500 font-mono text-xs">Uvezi .ZWO ili .ERG datoteke putem gumba u zaglavlju.</p>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -698,7 +906,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800 text-volt-400">
-                      {activeFolder ? <FolderOpen className="w-5 h-5" /> : (activeCollection ? <Sparkles className="w-5 h-5" /> : <Search className="w-5 h-5" />)}
+                      {activeFolder ? <FolderOpen className="w-5 h-5" /> : (activeCollection ? <Sparkles className="w-5 h-5" /> : (isCompactPrivateView && !searchQuery.trim() ? <Lock className="w-5 h-5 text-sky-400" /> : <Search className="w-5 h-5" />))}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -707,7 +915,9 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                             ? activeFolder 
                             : (activeCollection 
                                 ? SMART_COLLECTIONS.find(c => c.id === activeCollection)?.title || 'Kolekcija'
-                                : (searchQuery.trim() ? `Pretraga: "${searchQuery}"` : 'Svi Treninzi'))}
+                                : (searchQuery.trim()
+                                    ? `Pretraga: "${searchQuery}"`
+                                    : (libraryScope === 'private' ? 'Moji Privatni Treninzi' : 'Svi Treninzi')))}
                         </h3>
                         {activeFolder && (
                           <span className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getCategoryMeta(activeFolder).badge}`}>
@@ -750,17 +960,20 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                       </button>
                     </div>
 
-                    <button 
-                      onClick={() => {
-                        setActiveFolder(null);
-                        setActiveCollection(null);
-                        setSearchQuery('');
-                        setDurationFilter('all');
-                      }} 
-                      className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 hover:text-volt-400 hover:border-volt-400/40 transition-all font-mono font-bold text-xs uppercase tracking-wider"
-                    >
-                      <ArrowLeft className="w-3.5 h-3.5" /> Sve Mape
-                    </button>
+                    {(!isCompactPrivateView || activeFolder || activeCollection || searchQuery.trim() || durationFilter !== 'all') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveFolder(null);
+                          setActiveCollection(null);
+                          setSearchQuery('');
+                          setDurationFilter('all');
+                        }}
+                        className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 hover:text-volt-400 hover:border-volt-400/40 transition-all font-mono font-bold text-xs uppercase tracking-wider"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" /> Sve Mape
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -813,6 +1026,9 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                   displayWorkouts.map((workout) => {
                     const catMeta = getCategoryMeta(workout.category);
                     const metrics = getCachedWorkoutMetrics(workout);
+                    const isPriv = isPrivateWorkout(workout);
+                    const canEdit = canManageWorkout(workout, userId, isAdmin);
+                    const isTogglingVis = togglingVisibilityId === workout.id;
                     return (
                       <div
                         key={workout.id}
@@ -821,7 +1037,7 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                       >
                         <div className={`absolute top-0 left-0 right-0 h-[2px] ${catMeta.topBar}`} />
                         <div className="flex justify-between items-start gap-2 mb-2 relative z-10 w-full">
-                          {editingWorkoutId === workout.id ? (
+                          {editingWorkoutId === workout.id && canEdit ? (
                             <div className="flex flex-col gap-2 w-full p-2 rounded-lg bg-zinc-950 border border-volt-400/40">
                               <input 
                                 type="text" 
@@ -844,10 +1060,10 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                                 >
                                   {categoryOrder.map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
-                                <button onClick={(e) => { e.stopPropagation(); handleUpdateWorkout(); }} className="text-volt-400 hover:text-volt-300 shrink-0 p-1.5 bg-zinc-900 border border-zinc-800 rounded">
+                                <button type="button" onClick={(e) => { e.stopPropagation(); handleUpdateWorkout(); }} className="text-volt-400 hover:text-volt-300 shrink-0 p-1.5 bg-zinc-900 border border-zinc-800 rounded">
                                   <Check className="w-3.5 h-3.5" />
                                 </button>
-                                <button onClick={(e) => { e.stopPropagation(); setEditingWorkoutId(null); }} className="text-rose-400 hover:text-rose-300 shrink-0 p-1.5 bg-zinc-900 border border-zinc-800 rounded">
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setEditingWorkoutId(null); }} className="text-rose-400 hover:text-rose-300 shrink-0 p-1.5 bg-zinc-900 border border-zinc-800 rounded">
                                   <X className="w-3.5 h-3.5" />
                                 </button>
                               </div>
@@ -859,6 +1075,11 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                                   {!activeFolder && workout.category && (
                                     <span className={`inline-block text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${catMeta.badge}`}>
                                       {normalizeCategory(workout.category)}
+                                    </span>
+                                  )}
+                                  {isPriv && (
+                                    <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-sky-500/15 border border-sky-500/30 text-sky-300">
+                                      <Lock className="w-2.5 h-2.5" /> {workout.isLocalOnly ? 'Lokalno' : 'Moj'}
                                     </span>
                                   )}
                                   {isClassicWorkout(workout) && (
@@ -873,25 +1094,55 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                               </div>
 
                               <div className="flex items-center gap-1 shrink-0">
-                                <button 
-                                  onClick={(e) => { 
-                                    e.stopPropagation(); 
-                                    setEditTitle(workout.title); 
-                                    setEditCategory(workout.category || 'Ostalo');
-                                    setEditingWorkoutId(workout.id); 
-                                  }}
-                                  className="flex items-center justify-center w-7 h-7 rounded-md bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-sky-400 hover:border-sky-500/40 md:opacity-0 md:group-hover/card:opacity-100 transition-all"
-                                  title="Uredi trening"
-                                >
-                                  <Edit2 className="w-3 h-3" />
-                                </button>
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); handleDeleteWorkout(workout.id); }}
-                                  className="flex items-center justify-center w-7 h-7 rounded-md bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-rose-400 hover:border-rose-500/40 md:opacity-0 md:group-hover/card:opacity-100 transition-all"
-                                  title="Obriši"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
+                                {isAdmin && !workout.isLocalOnly && (
+                                  <button
+                                    type="button"
+                                    disabled={isTogglingVis}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTogglePublicStatus(workout);
+                                    }}
+                                    className={`flex items-center justify-center w-7 h-7 rounded-md bg-zinc-950 border border-zinc-800 md:opacity-0 md:group-hover/card:opacity-100 transition-all disabled:opacity-50 ${
+                                      isPriv
+                                        ? 'text-zinc-500 hover:text-volt-400 hover:border-volt-400/40'
+                                        : 'text-zinc-500 hover:text-amber-400 hover:border-amber-400/40'
+                                    }`}
+                                    title={isPriv ? 'Admin: Objavi u Javni Katalog' : 'Admin: Prebaci u Moje (privatno)'}
+                                  >
+                                    {isTogglingVis ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : isPriv ? (
+                                      <Globe className="w-3 h-3" />
+                                    ) : (
+                                      <Lock className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                )}
+                                {canEdit && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditTitle(workout.title);
+                                        setEditCategory(workout.category || 'Ostalo');
+                                        setEditingWorkoutId(workout.id);
+                                      }}
+                                      className="flex items-center justify-center w-7 h-7 rounded-md bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-sky-400 hover:border-sky-500/40 md:opacity-0 md:group-hover/card:opacity-100 transition-all"
+                                      title="Uredi trening"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); handleDeleteWorkout(workout); }}
+                                      className="flex items-center justify-center w-7 h-7 rounded-md bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-rose-400 hover:border-rose-500/40 md:opacity-0 md:group-hover/card:opacity-100 transition-all"
+                                      title="Obriši"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </>
+                                )}
                                 <div className="flex items-center justify-center px-2 h-7 rounded-md bg-zinc-950 border border-zinc-800 text-[11px] font-mono telemetry-num font-bold text-volt-400 shrink-0" title="Faktor težine">
                                   {typeof workout.difficulty_score === 'number' ? Number(workout.difficulty_score).toFixed(1).replace(/\.0$/, '') : workout.difficulty_score}
                                 </div>
@@ -1093,15 +1344,62 @@ export default function LibraryTab({ onSelectWorkout, onScheduleWorkout, ftp = 2
                   </div>
                 </div>
 
-                {selectedDetailWorkout.isLocalGenerated && (
-                  <button 
-                    onClick={handleSaveAiToLibrary}
-                    disabled={isSavingAi}
-                    className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-mono uppercase tracking-wider font-bold transition-all bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-volt-400 hover:border-volt-400/40 disabled:opacity-50"
-                  >
-                    {isSavingAi ? <Loader2 className="w-4 h-4 animate-spin"/> : <Database className="w-4 h-4" />}
-                    {isSavingAi ? 'Spremanje...' : 'Spremi trajno u bazu knjižnice'}
-                  </button>
+                {selectedDetailWorkout.isLocalGenerated ? (
+                  <div className="mt-3 flex flex-col sm:flex-row gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveAiToLibrary(false)}
+                      disabled={isSavingAi}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-mono uppercase tracking-wider font-bold transition-all bg-zinc-900 border border-zinc-800 text-sky-300 hover:border-sky-400/50 disabled:opacity-50"
+                    >
+                      {isSavingAi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
+                      {isSavingAi ? 'Spremanje...' : 'Spremi u Moje Treninge'}
+                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => handleSaveAiToLibrary(true)}
+                        disabled={isSavingAi}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-mono uppercase tracking-wider font-bold transition-all bg-amber-500/10 border border-amber-400/35 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+                      >
+                        {isSavingAi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                        Admin: Objavi Javno
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-3 flex flex-col sm:flex-row gap-2.5">
+                    {!isPrivateWorkout(selectedDetailWorkout) && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyToPrivate(selectedDetailWorkout)}
+                        disabled={isSavingAi}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider font-bold transition-all bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-sky-300 hover:border-sky-500/40 disabled:opacity-50"
+                      >
+                        {isSavingAi ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
+                        Kopiraj u Moje Treninge
+                      </button>
+                    )}
+                    {isAdmin && !selectedDetailWorkout.isLocalOnly && (
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePublicStatus(selectedDetailWorkout)}
+                        disabled={togglingVisibilityId === selectedDetailWorkout.id}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider font-bold transition-all bg-amber-500/10 border border-amber-400/35 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+                      >
+                        {togglingVisibilityId === selectedDetailWorkout.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : isPrivateWorkout(selectedDetailWorkout) ? (
+                          <Globe className="w-3.5 h-3.5" />
+                        ) : (
+                          <Lock className="w-3.5 h-3.5" />
+                        )}
+                        {isPrivateWorkout(selectedDetailWorkout)
+                          ? 'Admin: Objavi u Javni Katalog'
+                          : 'Admin: Prebaci u Moje (Privatno)'}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

@@ -1799,6 +1799,7 @@ export default function CalendarTab({ currentDate, setCurrentDate, workouts, wel
         onSave={handleSaveWorkout}
         isLoading={isUpdating}
         userFtp={profile?.ftp}
+        userId={userId}
       />
       <ActivityDetailModal
         activity={viewingActivity}
