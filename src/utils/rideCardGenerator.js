@@ -289,8 +289,6 @@ export function renderRideCardToCanvas(canvas, payload = {}, options = {}) {
   const isHr = cardLang === 'hr';
 
   const ftp = Math.max(50, Number(payload.ftp) || 200);
-  const weight = Number(payload.weight) > 25 ? Number(payload.weight) : null;
-  const wkg = weight ? (ftp / weight).toFixed(2) : null;
 
   const title = String(payload.title || (isHr ? 'Slobodna Vožnja' : 'Free Ride')).trim();
   const category = String(payload.category || '').trim();
@@ -397,9 +395,7 @@ export function renderRideCardToCanvas(canvas, payload = {}, options = {}) {
 
   const metaParts = [
     category ? category.toUpperCase() : null,
-    dateLabel,
-    `FTP ${ftp} W`,
-    wkg ? `${wkg} W/KG` : null
+    dateLabel
   ].filter(Boolean);
   ctx.font = '600 18px "JetBrains Mono", ui-monospace, SFMono-Regular, monospace';
   ctx.fillStyle = '#a1a1aa';
@@ -464,7 +460,7 @@ export function renderRideCardToCanvas(canvas, payload = {}, options = {}) {
 
     ctx.font = '700 13px "JetBrains Mono", ui-monospace, SFMono-Regular, monospace';
     ctx.fillStyle = lvl === 1.0 ? accent : '#52525b';
-    ctx.fillText(lvl === 1.0 ? `FTP ${ftp}W` : `${Math.round(lvl * ftp)}W`, px + 4, y - 10);
+    ctx.fillText(lvl === 1.0 ? 'FTP' : `${Math.round(lvl * 100)}%`, px + 4, y - 10);
   });
 
   if (hasSteps) {
