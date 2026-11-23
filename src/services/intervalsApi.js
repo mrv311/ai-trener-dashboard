@@ -79,7 +79,7 @@ export const extractIntervalsAthleteMetrics = (athlete) => {
 
   return {
     name: athlete.name || '',
-    firstName: firstName || 'Vozač',
+    firstName: firstName || tr('Vozač', 'Rider'),
     ftp: (!isNaN(ftp) && ftp > 0) ? ftp : null,
     weight: (!isNaN(weight) && weight > 0) ? weight : null,
     maxHr: (!isNaN(maxHr) && maxHr > 0) ? maxHr : null,

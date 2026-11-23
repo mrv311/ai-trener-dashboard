@@ -150,3 +150,27 @@ export function checkRateLimit(bucketKey, limit, windowMs) {
     retryAfterSec: 0
   };
 }
+
+const REGIONAL_HR_PREFIXES = ['hr', 'bs', 'sr', 'sl', 'cnr'];
+
+/**
+ * Određuje jezik odgovora za API poruke grešaka ('hr' ili 'en', zadano 'en').
+ */
+export function resolveRequestLang(req) {
+  const rawBodyLang = String(req?.body?.lang || '').trim().toLowerCase();
+  if (rawBodyLang === 'hr' || rawBodyLang.startsWith('hr-')) return 'hr';
+  if (rawBodyLang === 'en' || rawBodyLang.startsWith('en-')) return 'en';
+
+  const acceptLang = String(req?.headers?.['accept-language'] || '').trim().toLowerCase();
+  if (acceptLang) {
+    const primary = acceptLang.split(',')[0].split(';')[0].trim();
+    if (REGIONAL_HR_PREFIXES.some((p) => primary === p || primary.startsWith(`${p}-`))) {
+      return 'hr';
+    }
+  }
+  return 'en';
+}
+
+export function apiTr(req, hr, en) {
+  return resolveRequestLang(req) === 'hr' ? hr : en;
+}

@@ -1,5 +1,7 @@
 // Zwift Click / Play / Ride Web Bluetooth servis za virtualno mijenjanje brzina i ERG kontrolu
 
+import { tr } from '../i18n/i18nCore.js';
+
 export const ZWIFT_LEGACY_SERVICE_UUID = '00000001-19ca-4651-86e5-fa29dcdd09d1';
 export const ZWIFT_MODERN_SERVICE_UUID = '0000fc82-0000-1000-8000-00805f9b34fb';
 export const ZWIFT_MODERN_SHORT_UUID = 0xfc82;
@@ -274,7 +276,12 @@ export class ZwiftClickController {
 
   async requestAndConnect() {
     if (typeof navigator === 'undefined' || !navigator.bluetooth) {
-      throw new Error('Tvoj preglednik ne podržava Web Bluetooth (koristi Chrome ili Edge).');
+      throw new Error(
+        tr(
+          'Tvoj preglednik ne podržava Web Bluetooth (koristi Chrome ili Edge).',
+          'Your browser does not support Web Bluetooth (please use Google Chrome or Microsoft Edge).'
+        )
+      );
     }
 
     const optionalServices = [
@@ -365,7 +372,12 @@ export class ZwiftClickController {
     }
 
     if (!zwiftService) {
-      throw new Error('Na odabranom uređaju nije pronađen Zwift Click servis. Provjeri jesi li odabrao pravi uređaj.');
+      throw new Error(
+        tr(
+          'Na odabranom uređaju nije pronađen Zwift Click servis. Provjeri jesi li odabrao pravi uređaj.',
+          'Zwift Click service was not found on the selected device. Make sure you picked the right controller.'
+        )
+      );
     }
 
     // 2. Dohvati sve karakteristike i pretplati se STROGO SEKVENCIJALNO (prvo Indicate 0004, pa Notify 0002)

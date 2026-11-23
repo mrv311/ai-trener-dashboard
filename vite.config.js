@@ -9,6 +9,22 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       {
+        name: 'exclude-personal-history-in-prod',
+        apply: 'build',
+        resolveId(source) {
+          if (source.endsWith('data/historical_workouts.json')) {
+            return '\0empty-historical-workouts';
+          }
+          return null;
+        },
+        load(id) {
+          if (id === '\0empty-historical-workouts') {
+            return 'export default [];';
+          }
+          return null;
+        }
+      },
+      {
         name: 'local-gemini-proxy',
         configureServer(server) {
           server.middlewares.use('/api/intervals-token', async (req, res, next) => {

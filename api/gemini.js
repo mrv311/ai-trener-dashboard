@@ -8,6 +8,7 @@
  */
 
 import {
+  apiTr,
   applyStrictCors,
   checkRateLimit,
   getClientIp,
@@ -30,7 +31,9 @@ export default async function handler(req, res) {
   }
 
   if (!originOk) {
-    return res.status(403).json({ error: 'Zabranjen pristup s neovlaštene domene.' });
+    return res.status(403).json({
+      error: apiTr(req, 'Zabranjen pristup s neovlaštene domene.', 'Access forbidden from unauthorized origin.')
+    });
   }
 
   if (req.method === 'GET') {
@@ -42,7 +45,9 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Dozvoljena je samo POST metoda.' });
+    return res.status(405).json({
+      error: apiTr(req, 'Dozvoljena je samo POST metoda.', 'Method not allowed. Use POST.')
+    });
   }
 
   try {
@@ -65,7 +70,11 @@ export default async function handler(req, res) {
 
     if (!resolvedKey) {
       return res.status(500).json({
-        error: 'Gemini API ključ nije konfiguriran na poslužitelju (GEMINI_API_KEY). Provjeri Vercel Environment Variables.'
+        error: apiTr(
+          req,
+          'Gemini API ključ nije konfiguriran na poslužitelju (GEMINI_API_KEY). Provjeri Vercel Environment Variables.',
+          'Server Gemini API key is not configured. Enter your own Gemini API key in the Connections tab.'
+        )
       });
     }
 
@@ -78,7 +87,11 @@ export default async function handler(req, res) {
       if (!byokLimit.allowed) {
         res.setHeader('Retry-After', String(byokLimit.retryAfterSec));
         return res.status(429).json({
-          error: 'Previše zahtjeva u kratkom roku. Pričekaj par sekundi i pokušaj ponovno.'
+          error: apiTr(
+            req,
+            'Previše zahtjeva u kratkom roku. Pričekaj par sekundi i pokušaj ponovno.',
+            'Too many requests in a short time. Please wait a few seconds and try again.'
+          )
         });
       }
     } else {
@@ -86,7 +99,11 @@ export default async function handler(req, res) {
       const approxBytes = Buffer.byteLength(JSON.stringify(req.body || {}), 'utf8');
       if (approxBytes > MAX_SERVER_PAYLOAD_BYTES) {
         return res.status(413).json({
-          error: 'Zahtjev je prevelik za dijeljeni AI poslužitelj. Smanji privitke ili unesi vlastiti Gemini API ključ u tabu API Veze.'
+          error: apiTr(
+            req,
+            'Zahtjev je prevelik za dijeljeni AI poslužitelj. Smanji privitke ili unesi vlastiti Gemini API ključ u tabu API Veze.',
+            'Request payload is too large for the shared AI server. Reduce attachments or add your own Gemini API key in the Connections tab.'
+          )
         });
       }
 
@@ -108,8 +125,16 @@ export default async function handler(req, res) {
           res.setHeader('Retry-After', String(retryAfter));
           return res.status(429).json({
             error: authUser?.id
-              ? 'Dosegnuto je privremeno ograničenje besplatnog AI poslužitelja. Pričekaj malo ili u tabu API Veze unesi vlastiti besplatni Google Gemini API ključ za neograničen rad.'
-              : 'Gosti imaju ograničen broj besplatnih AI upita po satu. Prijavi se besplatno ili unesi vlastiti Gemini API ključ u tabu API Veze.'
+              ? apiTr(
+                  req,
+                  'Dosegnuto je privremeno ograničenje besplatnog AI poslužitelja. Pričekaj malo ili u tabu API Veze unesi vlastiti besplatni Google Gemini API ključ za neograničen rad.',
+                  'Temporary free AI server rate limit reached. Please wait a bit or add your own free Google Gemini API key in the Connections tab for unlimited use.'
+                )
+              : apiTr(
+                  req,
+                  'Gosti imaju ograničen broj besplatnih AI upita po satu. Prijavi se besplatno ili unesi vlastiti Gemini API ključ u tabu API Veze.',
+                  'Guests have a limited number of free AI requests per hour. Sign in for higher limits or add your own free Gemini API key in the Connections tab.'
+                )
           });
         }
       }
@@ -186,12 +211,16 @@ export default async function handler(req, res) {
       .trim();
 
     if (!text) {
-      return res.status(500).json({ error: 'Gemini nije vratio tekstualni odgovor.' });
+      return res.status(500).json({
+        error: apiTr(req, 'Gemini nije vratio tekstualni odgovor.', 'Gemini did not return a text response.')
+      });
     }
 
     return res.status(200).json({ text, raw: data });
   } catch (err) {
     console.error('[api/gemini] Poslužiteljska greška:', err);
-    return res.status(500).json({ error: err.message || 'Interna poslužiteljska greška.' });
+    return res.status(500).json({
+      error: err.message || apiTr(req, 'Interna poslužiteljska greška.', 'Internal server error.')
+    });
   }
 }

@@ -158,7 +158,8 @@ async function callGeminiApi({
     model,
     temperature,
     responseMimeType,
-    customApiKey: customKey || undefined
+    customApiKey: customKey || undefined,
+    lang: getCurrentLanguage()
   });
 
   let authHeader = null;

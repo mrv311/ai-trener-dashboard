@@ -10,7 +10,7 @@
  */
 
 import crypto from 'node:crypto';
-import { applyStrictCors, checkRateLimit, getClientIp, getSupabaseConfig } from './_security.js';
+import { apiTr, applyStrictCors, checkRateLimit, getClientIp, getSupabaseConfig } from './_security.js';
 
 export const config = {
   maxDuration: 30
@@ -80,11 +80,15 @@ export default async function handler(req, res) {
   }
 
   if (!originOk) {
-    return res.status(403).json({ error: 'Zabranjen pristup s neovlaštene domene.' });
+    return res.status(403).json({
+      error: apiTr(req, 'Zabranjen pristup s neovlaštene domene.', 'Access forbidden from unauthorized origin.')
+    });
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Dozvoljena je samo POST metoda.' });
+    return res.status(405).json({
+      error: apiTr(req, 'Dozvoljena je samo POST metoda.', 'Method not allowed. Use POST.')
+    });
   }
 
   // Osnovni anti-abuse rate limit po IP adresi (15 prijava u 15 min)
@@ -93,7 +97,11 @@ export default async function handler(req, res) {
   if (!rl.allowed) {
     res.setHeader('Retry-After', String(rl.retryAfterSec));
     return res.status(429).json({
-      error: 'Previše pokušaja prijave. Pokušaj ponovno za nekoliko minuta.'
+      error: apiTr(
+        req,
+        'Previše pokušaja prijave. Pokušaj ponovno za nekoliko minuta.',
+        'Too many sign-in attempts. Please try again in a few minutes.'
+      )
     });
   }
 
@@ -102,7 +110,11 @@ export default async function handler(req, res) {
 
   if (!supabaseUrl || !anonKey || !serviceRoleKey || !hmacSecret) {
     return res.status(503).json({
-      error: 'Sigurna Intervals.icu prijava zahtijeva SUPABASE_SERVICE_ROLE_KEY na Vercel poslužitelju.'
+      error: apiTr(
+        req,
+        'Sigurna Intervals.icu prijava zahtijeva SUPABASE_SERVICE_ROLE_KEY na Vercel poslužitelju.',
+        'Secure Intervals.icu sign-in is temporarily unavailable (server auth configuration missing).'
+      )
     });
   }
 
@@ -112,7 +124,9 @@ export default async function handler(req, res) {
       .trim();
 
     if (!rawToken || rawToken.length < 10) {
-      return res.status(400).json({ error: 'Nedostaje valjani Intervals.icu OAuth token.' });
+      return res.status(400).json({
+        error: apiTr(req, 'Nedostaje valjani Intervals.icu OAuth token.', 'Missing valid Intervals.icu OAuth token.')
+      });
     }
 
     // 1. Kriptografski dokaz identiteta: verificiraj token izravno na Intervals.icu API-ju!
@@ -126,7 +140,11 @@ export default async function handler(req, res) {
 
     if (!icuRes.ok) {
       return res.status(401).json({
-        error: 'Intervals.icu token nije valjan ili je istekao. Pokušaj se prijaviti ponovno.'
+        error: apiTr(
+          req,
+          'Intervals.icu token nije valjan ili je istekao. Pokušaj se prijaviti ponovno.',
+          'Intervals.icu token is invalid or expired. Please sign in again.'
+        )
       });
     }
 
@@ -137,12 +155,16 @@ export default async function handler(req, res) {
     ).trim();
 
     if (!verifiedAthleteId) {
-      return res.status(401).json({ error: 'Intervals.icu nije vratio ID sportaša.' });
+      return res.status(401).json({
+        error: apiTr(req, 'Intervals.icu nije vratio ID sportaša.', 'Intervals.icu did not return an athlete ID.')
+      });
     }
 
     const cleanAthleteId = verifiedAthleteId.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!cleanAthleteId) {
-      return res.status(400).json({ error: 'Neispravan format Intervals.icu ID-ja.' });
+      return res.status(400).json({
+        error: apiTr(req, 'Neispravan format Intervals.icu ID-ja.', 'Invalid Intervals.icu athlete ID format.')
+      });
     }
 
     const intervalsEmail = `intervals_${cleanAthleteId}@auth.ergvibe.app`;
@@ -174,7 +196,11 @@ export default async function handler(req, res) {
 
         if (!updateRes.ok) {
           const errBody = await updateRes.json().catch(() => ({}));
-          throw new Error(errBody?.msg || errBody?.message || 'Migracija korisničkog računa nije uspjela.');
+          throw new Error(
+            errBody?.msg ||
+              errBody?.message ||
+              apiTr(req, 'Migracija korisničkog računa nije uspjela.', 'User account migration failed.')
+          );
         }
       } else {
         // Kreiraj novi potvrđeni račun (nikada ne spremamo tajni intervals_key u Supabase metadata!)
@@ -188,14 +214,18 @@ export default async function handler(req, res) {
             user_metadata: {
               intervals_id: verifiedAthleteId,
               intervals_athlete_name: verifiedAthleteName,
-              username: verifiedAthleteName || 'Vozač'
+              username: verifiedAthleteName || apiTr(req, 'Vozač', 'Rider')
             }
           })
         });
 
         if (!createRes.ok) {
           const errBody = await createRes.json().catch(() => ({}));
-          throw new Error(errBody?.msg || errBody?.message || 'Kreiranje korisničkog računa nije uspjelo.');
+          throw new Error(
+            errBody?.msg ||
+              errBody?.message ||
+              apiTr(req, 'Kreiranje korisničkog računa nije uspjelo.', 'Failed to create user account.')
+          );
         }
       }
 
@@ -206,7 +236,7 @@ export default async function handler(req, res) {
       throw new Error(
         signInRes.data?.error_description ||
           signInRes.data?.msg ||
-          'Nije moguće izdati Supabase sesiju.'
+          apiTr(req, 'Nije moguće izdati Supabase sesiju.', 'Unable to issue session.')
       );
     }
 
@@ -232,7 +262,13 @@ export default async function handler(req, res) {
   } catch (err) {
     console.error('[api/intervals-auth] Greška:', err);
     return res.status(500).json({
-      error: err?.message || 'Interna greška pri sigurnoj prijavi putem Intervals.icu.'
+      error:
+        err?.message ||
+        apiTr(
+          req,
+          'Interna greška pri sigurnoj prijavi putem Intervals.icu.',
+          'Internal error during secure Intervals.icu sign-in.'
+        )
     });
   }
 }

@@ -5,7 +5,7 @@
  * Nije potreban niti dopušten Client Secret u pregledniku.
  */
 
-import { tr } from '../i18n/i18nCore.js';
+import { getCurrentLanguage, tr } from '../i18n/i18nCore.js';
 
 export const INTERVALS_OAUTH_CLIENT_ID = '1787';
 
@@ -113,7 +113,8 @@ export async function handleIntervalsOAuthCallback(code, state) {
     client_id: INTERVALS_OAUTH_CLIENT_ID,
     code,
     code_verifier: verifier,
-    redirect_uri: redirectUri
+    redirect_uri: redirectUri,
+    lang: getCurrentLanguage()
   };
 
   // Pokušaj 1: preko lokalnog / Vercel proxyja

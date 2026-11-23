@@ -6,7 +6,7 @@ import {
 import BrandLogo from './BrandLogo';
 import { useI18n } from '../i18n/I18nContext';
 
-const GENERIC_USERNAMES = ['Gost Vozač', 'Guest Rider', 'Gost', 'Korisnik', 'Odvažni Vozač', 'Vozač'];
+const GENERIC_USERNAMES = ['Gost Vozač', 'Guest Rider', 'Gost', 'Korisnik', 'Odvažni Vozač', 'Vozač', 'Rider'];
 
 const getEditableUsername = (name) => {
   const trimmed = typeof name === 'string' ? name.trim() : '';
@@ -61,7 +61,7 @@ export default function OnboardingModal({ isOpen, onClose, initialProfile, onSav
       const trimmedName = username.trim();
       onSaveProfile({
         ...(initialProfile || {}),
-        username: trimmedName || initialProfile?.username || 'Gost Vozač',
+        username: trimmedName || initialProfile?.username || tr('Gost Vozač', 'Guest Rider'),
         ftp: numFtp,
         weight: numWeight,
         ...(editedFieldsRef.current.ftp ? { isManualFtp: true } : {}),

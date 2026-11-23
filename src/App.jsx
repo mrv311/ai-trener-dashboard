@@ -34,7 +34,7 @@ import { extractIntervalsAthleteMetrics } from './services/intervalsApi';
 import { parseIsoLocal } from './utils/plannerUtils';
 import { VALID_UI_THEME_IDS } from './utils/themeConfig';
 import { canRunInTrainer } from './utils/sportTypes';
-import { useI18n } from './i18n/I18nContext';
+import { useI18n, getCurrentLanguage } from './i18n/I18nContext';
 import LanguageSwitcher from './i18n/LanguageSwitcher';
 
 const DEFAULT_GUEST_PROFILE = {
@@ -199,7 +199,10 @@ export default function App() {
             const serverAuthRes = await fetch('/api/intervals-auth', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ access_token: result.accessToken || authKey })
+              body: JSON.stringify({
+                access_token: result.accessToken || authKey,
+                lang: getCurrentLanguage()
+              })
             });
             const serverAuthData = await serverAuthRes.json().catch(() => ({}));
 
@@ -243,7 +246,7 @@ export default function App() {
                   for (const col of ALLOWED_PROFILE_COLS) {
                     if (guestProfile[col] !== undefined) cleanProfile[col] = guestProfile[col];
                   }
-                  cleanProfile.username = athleteName || cleanProfile.username || 'Vozač';
+                  cleanProfile.username = athleteName || cleanProfile.username || tr('Vozač', 'Rider');
                   await supabase.from('profiles').upsert(cleanProfile);
                 }
                 const guestActivities = JSON.parse(localStorage.getItem('ai_trener_local_completed_activities_guest') || '[]');
@@ -366,9 +369,9 @@ export default function App() {
       const icuLthr = metrics?.thresholdHr || Number(athleteInfo.icu_threshold_hr || athleteInfo.lthr) || null;
 
       setAthleteProfile(prev => {
-        const isGenericName = !prev?.username || ['Gost Vozač', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(prev.username);
+        const isGenericName = !prev?.username || ['Gost Vozač', 'Guest Rider', 'Gost', 'Korisnik', 'Odvažni Vozač', 'Vozač', 'Rider'].includes(prev.username);
         const hasFullLastName = prev?.username && athleteInfo.name && prev.username.trim() === athleteInfo.name.trim();
-        const nextUsername = (isGenericName || hasFullLastName) && athleteFirstName ? athleteFirstName : (prev?.username || athleteFirstName || 'Vozač');
+        const nextUsername = (isGenericName || hasFullLastName) && athleteFirstName ? athleteFirstName : (prev?.username || athleteFirstName || tr('Vozač', 'Rider'));
 
         // Ako korisnik NIJE ručno zaključao FTP (isManualFtp: false) ili ako je FTP na zadanih 200W, preuzmi stvarni FTP s Intervals.icu
         const shouldUpdateFtp = !prev?.isManualFtp || prev?.ftp === 200;
@@ -625,7 +628,7 @@ export default function App() {
     handleTabChange('trainer');
   };
 
-  const isDefaultGuestName = !athleteProfile?.username || ['Gost Vozač', 'Guest Rider', 'Gost', 'Korisnik', 'Odvažni Vozač'].includes(athleteProfile.username);
+  const isDefaultGuestName = !athleteProfile?.username || ['Gost Vozač', 'Guest Rider', 'Gost', 'Korisnik', 'Odvažni Vozač', 'Vozač', 'Rider'].includes(athleteProfile.username);
   const displayName = isDefaultGuestName ? tr('Gost Vozač', 'Guest Rider') : athleteProfile.username.trim().split(' ')[0];
   const athleteWkg = ((Number(athleteProfile?.ftp) || 200) / (Number(athleteProfile?.weight) || 75)).toFixed(2);
 

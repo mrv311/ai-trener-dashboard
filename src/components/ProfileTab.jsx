@@ -29,8 +29,14 @@ export default function ProfileTab({
   setUiQuietGlow
 }) {
   const { tr, isEn, locale } = useI18n();
+  const resolveDisplayUsername = (raw) => {
+    const clean = typeof raw === 'string' ? raw.trim() : '';
+    const generic = ['Gost Vozač', 'Guest Rider', 'Gost', 'Korisnik', 'Odvažni Vozač', 'Vozač', 'Rider'];
+    if (!clean || generic.includes(clean)) return tr('Gost Vozač', 'Guest Rider');
+    return clean;
+  };
   const [formData, setFormData] = useState({
-    username: profile?.username || 'Odvažni Vozač',
+    username: resolveDisplayUsername(profile?.username),
     weight: profile?.weight !== undefined && profile?.weight !== null ? profile.weight : 75.9,
     ftp: profile?.ftp !== undefined && profile?.ftp !== null ? profile.ftp : 270,
     maxHr: profile?.maxHr !== undefined && profile?.maxHr !== null ? profile.maxHr : 180,
@@ -44,13 +50,13 @@ export default function ProfileTab({
   useEffect(() => {
     if (!profile) return;
     setFormData({
-      username: profile.username || 'Odvažni Vozač',
+      username: resolveDisplayUsername(profile.username),
       weight: profile.weight !== undefined && profile.weight !== null ? profile.weight : 75.9,
       ftp: profile.ftp !== undefined && profile.ftp !== null ? profile.ftp : 270,
       maxHr: profile.maxHr !== undefined && profile.maxHr !== null ? profile.maxHr : 180,
       thresholdHr: profile.thresholdHr !== undefined && profile.thresholdHr !== null ? profile.thresholdHr : 160
     });
-  }, [profile?.username, profile?.weight, profile?.ftp, profile?.maxHr, profile?.thresholdHr]);
+  }, [profile?.username, profile?.weight, profile?.ftp, profile?.maxHr, profile?.thresholdHr, isEn]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -61,7 +67,7 @@ export default function ProfileTab({
   const handleSave = () => {
     const updatedData = {
       ...formData,
-      username: String(formData.username || '').trim() || 'Gost Vozač',
+      username: String(formData.username || '').trim() || tr('Gost Vozač', 'Guest Rider'),
       weight: Number(formData.weight) || 75.9,
       ftp: Number(formData.ftp) || 200,
       maxHr: Number(formData.maxHr) || 180,

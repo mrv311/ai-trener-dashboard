@@ -18,6 +18,8 @@ let cachedBaseHistory = null;
  * Lazy-load ugrađene povijesne baze (Vite će je odvojiti u zaseban chunk).
  */
 export async function loadBaseHistory() {
+  // Osobna arhiva vlasnika dostupna je isključivo u lokalnom dev modu (nikada u produkcijskom buildu)
+  if (!import.meta.env.DEV) return [];
   if (cachedBaseHistory) return cachedBaseHistory;
   try {
     const mod = await import('../data/historical_workouts.json');
@@ -30,8 +32,8 @@ export async function loadBaseHistory() {
 }
 
 export function getHistoryOptions(userId = null) {
-  // Za goste ugrađena arhiva vlasnika uopće ne postoji
-  if (userId === 'guest') {
+  // Za produkciju i goste ugrađena arhiva vlasnika uopće ne postoji
+  if (!import.meta.env.DEV || userId === 'guest') {
     return { includeBaseHistory: false };
   }
 
