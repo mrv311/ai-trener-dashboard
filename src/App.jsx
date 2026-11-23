@@ -737,7 +737,7 @@ export default function App() {
               </div>
               <div className="flex flex-col min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-xs font-bold text-zinc-100 truncate" title={athleteProfile.username || tr('Korisnik', 'User')}>
+                  <span className="text-xs font-bold text-zinc-100 truncate" title={displayName}>
                     {displayName}
                   </span>
                   {intervalsConnected ? (

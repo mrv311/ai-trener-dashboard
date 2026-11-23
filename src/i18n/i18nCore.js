@@ -221,3 +221,25 @@ export function translateWorkoutDescription(title, description, lang = _currentL
   }
   return description;
 }
+
+const GENERIC_RIDER_NAMES = new Set([
+  'gost vozač',
+  'guest rider',
+  'gost',
+  'korisnik',
+  'odvažni vozač',
+  'vozač',
+  'rider'
+]);
+
+/**
+ * Lokalizira zadana/generička imena vozača ('Gost Vozač' -> 'Guest Rider' na EN)
+ * dok stvarna osobna imena ostavlja netaknuta.
+ */
+export function formatRiderDisplayName(rawName, lang = _currentLang) {
+  const clean = typeof rawName === 'string' ? rawName.trim() : '';
+  if (!clean || GENERIC_RIDER_NAMES.has(clean.toLowerCase())) {
+    return lang === 'en' ? 'Guest Rider' : 'Gost Vozač';
+  }
+  return clean;
+}

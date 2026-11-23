@@ -1108,7 +1108,11 @@ export default function AICoachTab({
                   </div>
                   <h3 className="text-base md:text-lg font-display font-bold uppercase tracking-wide text-zinc-100 mb-1">
                     {tr('Spreman za analizu, {name}', 'Ready to analyze, {name}', {
-                      name: profile?.username || tr('Vozač', 'Rider')
+                      name: (() => {
+                        const clean = String(profile?.username || '').trim();
+                        const generic = ['Gost Vozač', 'Guest Rider', 'Gost', 'Korisnik', 'Odvažni Vozač', 'Vozač', 'Rider'];
+                        return !clean || generic.includes(clean) ? tr('Gost Vozač', 'Guest Rider') : clean;
+                      })()
                     })}
                   </h3>
                   <p className="text-xs text-zinc-400 mb-3 max-w-xl leading-relaxed">

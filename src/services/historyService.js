@@ -8,7 +8,7 @@
  *           godine, godišnja doba, nazivi ruta/treninga, zone intenziteta, rekordi/ekstremi).
  */
 
-import { tr } from '../i18n/i18nCore.js';
+import { formatRiderDisplayName, tr } from '../i18n/i18nCore.js';
 
 const STORAGE_KEY_EXTRA_HISTORY = 'ergvibe_extra_historical_workouts_v1';
 
@@ -1733,7 +1733,7 @@ export async function buildAthleteContextPrompt({
 
   const lines = [];
   lines.push('## PROFIL SPORTAŠA I TRENUTNO STANJE');
-  lines.push(`- Ime: ${athleteProfile?.username || 'Vozač'}`);
+  lines.push(`- Ime: ${formatRiderDisplayName(athleteProfile?.username)}`);
   lines.push(`- Trenutni FTP: ${ftp} W | Težina: ${weight} kg (${wkg} W/kg)`);
   lines.push(`- Max HR: ${athleteProfile?.maxHr || 180} bpm | LTHR (Prag pulsa): ${athleteProfile?.thresholdHr || 160} bpm`);
   if (athleteProfile?.hoursPerWeek) lines.push(`- Raspoloživo vrijeme za trening: ~${athleteProfile.hoursPerWeek} h/tjedno`);
