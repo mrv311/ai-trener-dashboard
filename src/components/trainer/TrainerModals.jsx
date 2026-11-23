@@ -1,6 +1,7 @@
-import React from 'react';
-import { Square, Award, CheckCircle2, Download, Route, Gauge, Loader2, AlertCircle, Clock, RefreshCw } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Square, Award, CheckCircle2, Download, Route, Gauge, Loader2, AlertCircle, Clock, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import WorkoutAIAnalysisPanel from '../ai/WorkoutAIAnalysisPanel';
+import RideCardModal from '../RideCardModal';
 import { useI18n } from '../../i18n/I18nContext';
 
 const formatDurationClock = (totalSeconds) => {
@@ -33,9 +34,65 @@ export default function TrainerModals({
   athleteProfile,
   liveWorkouts = [],
   wellnessData = {},
-  onAddWorkoutToCalendar
+  onAddWorkoutToCalendar,
+  workoutHistory = [],
+  workoutRecipe = [],
+  controlMode = 'ERG',
+  sessionStartTime = null
 }) {
-  const { tr } = useI18n();
+  const { tr, tCat } = useI18n();
+  const [showRideCard, setShowRideCard] = useState(false);
+
+  const rideCardPayload = useMemo(() => {
+    if (!summaryStats) return null;
+    const validHrs = Array.isArray(workoutHistory)
+      ? workoutHistory.map((p) => Number(p?.hr || 0)).filter((v) => v > 35)
+      : [];
+    const maxHr = validHrs.length > 0 ? Math.max(...validHrs) : 0;
+    const modeLabel =
+      controlMode === 'ERG'
+        ? isPmConnected
+          ? 'ERG MODE · POWER MATCH'
+          : 'ERG MODE · SMART FTMS'
+        : isPmConnected
+          ? '24G VIRTUAL SHIFT · PM'
+          : '24G VIRTUAL SHIFT · FTMS';
+
+    return {
+      title: workoutFromCalendar ? workoutFromCalendar.title : tr('Slobodna Vožnja', 'Free Ride'),
+      category: workoutFromCalendar?.category ? tCat(workoutFromCalendar.category) : '',
+      date: sessionStartTime || new Date().toISOString(),
+      modeBadge: modeLabel,
+      durationSeconds: summaryStats.totalDur || 0,
+      avgPower: summaryStats.avgPower || 0,
+      np: summaryStats.np || 0,
+      ifFactor: summaryStats.ifFactor || 0,
+      tss: summaryStats.tss || 0,
+      workKj: summaryStats.workKj || 0,
+      avgHr: summaryStats.avgHr || 0,
+      maxHr,
+      avgCadence: summaryStats.avgCadence || 0,
+      distanceKm: summaryStats.distanceKm || 0,
+      avgSpeedKmh: summaryStats.avgSpeedKmh || 0,
+      ef: summaryStats.ef || null,
+      decoupling: summaryStats.decoupling ?? null,
+      ftp: athleteProfile?.ftp || 200,
+      weight: athleteProfile?.weight || null,
+      steps: workoutFromCalendar ? workoutRecipe : [],
+      stream: workoutHistory
+    };
+  }, [
+    summaryStats,
+    workoutHistory,
+    workoutRecipe,
+    workoutFromCalendar,
+    controlMode,
+    isPmConnected,
+    sessionStartTime,
+    athleteProfile,
+    tr,
+    tCat
+  ]);
 
   return (
     <>
@@ -252,7 +309,7 @@ export default function TrainerModals({
               )}
             </div>
 
-            {/* Izvoz datoteka (.FIT primarni, .TCX sekundarni) */}
+            {/* Izvoz datoteka (.FIT primarni, Strava Ride Card, .TCX) */}
             <div className="flex flex-col sm:flex-row gap-2.5 w-full shrink-0">
               <button
                 onClick={handleExportFit}
@@ -268,11 +325,26 @@ export default function TrainerModals({
               </button>
 
               <button
-                onClick={handleExportTcx}
-                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold transition-all text-xs md:text-sm bg-zinc-950 text-zinc-200 hover:bg-zinc-900 border border-zinc-800"
+                type="button"
+                onClick={() => setShowRideCard(true)}
+                className="flex-1 flex flex-col items-center justify-center py-3 px-3.5 rounded-xl font-bold transition-all bg-zinc-950 text-volt-400 hover:bg-zinc-900 border border-volt-400/35 hover:border-volt-400"
               >
-                <Download className="w-4 h-4 text-zinc-400" />
-                {tr('Preuzmi .TCX', 'Download .TCX')}
+                <span className="flex items-center gap-1.5 text-xs md:text-sm font-display uppercase tracking-wide font-bold">
+                  <ImageIcon className="w-4 h-4 shrink-0" />
+                  {tr('Strava Kartica', 'Ride Card')}
+                </span>
+                <span className="text-[9px] font-mono text-zinc-400 mt-0.5">
+                  1200×900 PNG
+                </span>
+              </button>
+
+              <button
+                onClick={handleExportTcx}
+                className="sm:w-auto flex items-center justify-center gap-1.5 py-3 px-3.5 rounded-xl font-bold transition-all text-xs bg-zinc-950 text-zinc-300 hover:bg-zinc-900 border border-zinc-800"
+                title={tr('Preuzmi .TCX datoteku', 'Download .TCX file')}
+              >
+                <Download className="w-3.5 h-3.5 text-zinc-400" />
+                .TCX
               </button>
             </div>
 
@@ -282,6 +354,12 @@ export default function TrainerModals({
           </div>
         </div>
       )}
+
+      <RideCardModal
+        isOpen={showRideCard}
+        onClose={() => setShowRideCard(false)}
+        payload={rideCardPayload}
+      />
     </>
   );
 }

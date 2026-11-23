@@ -3027,6 +3027,10 @@ export default function TrainerTab({
         liveWorkouts={workouts}
         wellnessData={wellnessData}
         onAddWorkoutToCalendar={onAddWorkoutToCalendar}
+        workoutHistory={workoutHistory}
+        workoutRecipe={workoutRecipe}
+        controlMode={controlMode}
+        sessionStartTime={sessionStartTime}
       />
 
       {/* GORNJA TRAKA: Hardware Sensor Dock */}

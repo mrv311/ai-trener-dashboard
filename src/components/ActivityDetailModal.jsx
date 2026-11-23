@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2, Upload, Trash2, Sparkles, Dumbbell, Footprints, Waves, FileText } from 'lucide-react';
+import { X, Download, Activity, Heart, Zap, Clock, TrendingUp, BarChart2, Database, Pencil, Check, Loader2, Upload, Trash2, Sparkles, Dumbbell, Footprints, Waves, FileText, Image as ImageIcon } from 'lucide-react';
 import { downloadActivityFitFile, getActivityStreams, updateActivityName } from '../services/intervalsApi';
 import { calculateEF, calculateVI, calculateCogganMetrics, calculateAerobicDecoupling } from '../utils/performanceMetrics';
 import { exportFITFromStream } from '../utils/exportUtils';
@@ -7,6 +7,8 @@ import { supabase } from '../services/supabaseClient';
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { parseFitFile, validateFitFile, calculateTSS } from '../utils/fitParser';
 import WorkoutAIAnalysisPanel from './ai/WorkoutAIAnalysisPanel';
+import RideCardModal from './RideCardModal';
+import { flattenStructuredSteps, parseIntervalsCode } from '../utils/workoutParser';
 import { getWorkoutSportKind, getSportLabel } from '../utils/sportTypes';
 import { useI18n } from '../i18n/I18nContext';
 
@@ -113,6 +115,7 @@ export default function ActivityDetailModal({
   const [displayTitle, setDisplayTitle] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showRideCard, setShowRideCard] = useState(false);
   const titleInputRef = useRef(null);
   const fileInputRef = useRef(null);
   const aiSectionRef = useRef(null);
@@ -132,7 +135,10 @@ export default function ActivityDetailModal({
 
   // Sync displayTitle s activity.title kad se modal otvori
   useEffect(() => {
-    if (activity) setDisplayTitle(activity.title || tr('Trening', 'Workout'));
+    if (activity) {
+      setDisplayTitle(activity.title || tr('Trening', 'Workout'));
+      setShowRideCard(false);
+    }
   }, [activity?.id]); // Samo kad se aktivnost promijeni, NE na svaki re-render
 
   useEffect(() => {
@@ -413,6 +419,80 @@ export default function ActivityDetailModal({
   const decouplingInfo = useMemo(() => {
     return calculateAerobicDecoupling(streamsData, userFtp);
   }, [streamsData, userFtp]);
+
+  const rideCardPayload = useMemo(() => {
+    if (!showRideCard || !activity) return null;
+    const sbData = supabaseMetrics || {};
+    const validHrs = streamsData.map((d) => Number(d?.hr || 0)).filter((v) => v > 35);
+    const maxHrFromStream = validHrs.length > 0 ? Math.max(...validHrs) : 0;
+    const durMin = activity.duration || (sbData.duration_seconds ? Math.round(sbData.duration_seconds / 60) : 0);
+    const durationSeconds =
+      Number(sbData.duration_seconds) ||
+      (streamsData.length > 1 ? Number(streamsData[streamsData.length - 1]?.time || 0) : 0) ||
+      durMin * 60;
+    const npVal = activity.np || streamMetrics.np || sbData.np || 0;
+    const avgPwrVal = activity.average_power || streamMetrics.avgPower || sbData.avg_power || 0;
+    const avgHrVal = activity.average_heartrate || streamMetrics.avgHr || sbData.avg_hr || 0;
+    const tssVal = activity.tss || activity.icu_training_load || sbData.tss || 0;
+    const distMeters = Number(sbData.distance_m || activity.distance || 0);
+    const distKm = distMeters > 500 ? distMeters / 1000 : distMeters;
+    const speedKmh =
+      Number(sbData.avg_speed_kmh) ||
+      (distKm > 0 && durationSeconds > 0 ? distKm / (durationSeconds / 3600) : 0);
+    const sourceBadge =
+      activity.type === 'VirtualRide' || dataSource === 'supabase'
+        ? 'INDOOR · ERGVIBE'
+        : dataSource === 'intervals'
+          ? 'INTERVALS.ICU SYNC'
+          : 'CYCLING TELEMETRY';
+    const ftpVal = Number(sbData.ftp_used || userFtp || 200);
+    let resolvedSteps = [];
+    if (Array.isArray(activity.steps) && activity.steps.length > 0) {
+      resolvedSteps = activity.steps;
+    } else if (activity.workout_doc?.steps && Array.isArray(activity.workout_doc.steps)) {
+      resolvedSteps = flattenStructuredSteps(activity.workout_doc.steps, ftpVal, activity.workout_doc.ftp);
+    } else if (typeof activity.workout_doc === 'string' && activity.workout_doc.trim()) {
+      const parsed = parseIntervalsCode(activity.workout_doc, ftpVal);
+      if (parsed?.allSteps?.length > 0) resolvedSteps = parsed.allSteps;
+    }
+
+    return {
+      title: displayTitle || activity.title || tr('Trening', 'Workout'),
+      category: activity.category ? tCat(activity.category) : '',
+      date: sbData.started_at || activity.started_at || activity.date,
+      modeBadge: sourceBadge,
+      durationSeconds,
+      avgPower: avgPwrVal,
+      np: npVal,
+      ifFactor: sbData.if_factor || (npVal && ftpVal ? (npVal / ftpVal).toFixed(2) : 0),
+      tss: tssVal,
+      workKj: sbData.work_kj || activity.work_kj || 0,
+      avgHr: avgHrVal,
+      maxHr: Number(activity.max_heartrate || maxHrFromStream || 0),
+      avgCadence: Number(sbData.avg_cadence || activity.average_cadence || 0),
+      distanceKm: distKm,
+      avgSpeedKmh: speedKmh,
+      ef: calculateEF(npVal, avgHrVal),
+      decoupling: decouplingInfo?.decoupling ?? null,
+      ftp: ftpVal,
+      weight: Number(sbData.weight_kg || userProfile?.weight || 0) || null,
+      steps: resolvedSteps,
+      stream: streamsData
+    };
+  }, [
+    showRideCard,
+    activity,
+    supabaseMetrics,
+    streamsData,
+    streamMetrics,
+    dataSource,
+    displayTitle,
+    userFtp,
+    userProfile?.weight,
+    decouplingInfo,
+    tr,
+    tCat
+  ]);
 
   if (!isOpen || !activity) return null;
 
@@ -1086,7 +1166,7 @@ export default function ActivityDetailModal({
             />
           </div>
 
-          <div className="flex gap-2 ml-auto">
+          <div className="flex flex-wrap gap-2 ml-auto">
             <button
               type="button"
               onClick={onClose}
@@ -1094,6 +1174,18 @@ export default function ActivityDetailModal({
             >
               {tr('Zatvori', 'Close')}
             </button>
+
+            {!hideCyclingTelemetry && (
+              <button
+                type="button"
+                onClick={() => setShowRideCard(true)}
+                className="px-4 py-2 rounded-lg font-mono font-bold uppercase tracking-wider text-xs text-volt-400 bg-volt-400/12 hover:bg-volt-400/20 border border-volt-400/35 transition-all flex items-center gap-2"
+                title={tr('Generiraj 1200×900 PNG karticu za Stravu', 'Generate 1200×900 PNG card for Strava')}
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                {tr('Strava Kartica', 'Ride Card')}
+              </button>
+            )}
 
             <button
               onClick={handleDownload}
@@ -1110,6 +1202,12 @@ export default function ActivityDetailModal({
           </div>
         </div>
       </div>
+
+      <RideCardModal
+        isOpen={showRideCard}
+        onClose={() => setShowRideCard(false)}
+        payload={rideCardPayload}
+      />
     </div>
   );
 }
